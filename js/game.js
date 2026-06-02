@@ -842,6 +842,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 对最终story文本也应用输出端正则，确保与流式显示一致
         if (typeof RegexManager !== 'undefined') {
             finalStory = RegexManager.apply(finalStory, 'output');
+            if (gameState._regexExtractions && gameState._regexExtractions.length > 0) {
+                _processRegexExtractions(gameState._regexExtractions);
+            }
         }
         // 先设置 onComplete 回调（在 push 之前，防止时序竞争）
         TypewriterBuffer.onComplete = function() {
@@ -1938,6 +1941,12 @@ async function loadFromSlot(slot) {
         
         // 兼容新字段
         if (!gameState._presetApps) gameState._presetApps = {};
+        if (!gameState._customVars) gameState._customVars = {};
+        if (gameState._customVars && typeof MacroEngine !== 'undefined') {
+            Object.keys(gameState._customVars).forEach(function(varName) {
+                MacroEngine.setLocalVar(varName, gameState._customVars[varName]);
+            });
+        }
         if (!gameState._stats) {
             gameState._stats = {
                 startTime: Date.now(),

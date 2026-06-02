@@ -2037,11 +2037,13 @@ var PresetManager = {
     // 应用自定义变量
     if (preset.customVariables) {
         console.log('[Preset] 检测到自定义变量:', Object.keys(preset.customVariables).length, '个');
-        if (typeof MacroEngine !== 'undefined') {
-            Object.keys(preset.customVariables).forEach(function(varName) {
+        if (!gameState._customVars) gameState._customVars = {};
+        Object.keys(preset.customVariables).forEach(function(varName) {
+            gameState._customVars[varName] = preset.customVariables[varName];
+            if (typeof MacroEngine !== 'undefined') {
                 MacroEngine.setLocalVar(varName, preset.customVariables[varName]);
-                });
-        }
+            }
+        });
     }
 
     // 应用触发器配置
@@ -3136,26 +3138,24 @@ PLACEMENT: {
 apply: function(text, placement, messageIndex) {
     const self = this;
     var result = text;
+    if (!gameState._regexExtractions) gameState._regexExtractions = [];
+    gameState._regexExtractions = [];
 
-    // 使用 getAllScripts() 获取全局正则 + 当前预设正则
     var allScripts = this.getAllScripts();
     allScripts.forEach(function(script) {
         if (!script.enabled) return;
 
-        // 检查是否应该应用于当前位置
-        // 构建 placement 集合（去重）
         var placements = [];
         if (script._originalPlacement) {
             script._originalPlacement.forEach(function(p) {
                 if (placements.indexOf(p) === -1) placements.push(p);
             });
     }
-if (script.applyInput && placements.indexOf(1) === -1) placements.push(1);  // USER_INPUT
-if (script.applyOutput && placements.indexOf(2) === -1) placements.push(2); // AI_OUTPUT
+if (script.applyInput && placements.indexOf(1) === -1) placements.push(1);
+if (script.applyOutput && placements.indexOf(2) === -1) placements.push(2);
 
 var shouldApply = false;
 
-// 根据 placement 参数检查是否应该应用
 switch(placement) {
     case 'input':
     case 'user_input':
@@ -3205,7 +3205,16 @@ if (messageIndex != null) {
 }
 
 try {
+    var beforeApply = result;
     result = self.applySingleScript(result, script);
+    if (result !== beforeApply && placement === 'output') {
+        gameState._regexExtractions.push({
+            scriptName: script.scriptName || script.name || 'unnamed',
+            placement: placement,
+            pattern: script.findPattern,
+            matched: true
+        });
+    }
 } catch(e) {
 console.warn('Regex error in "' + (script.name || 'unnamed') + '":', e.message);
 }

@@ -479,11 +479,13 @@ emit: function(event, data) { var l=this._eventListeners[event]; if(l)l.forEach(
 parseQuickReplies: function(data) {
     if(!data||!data.button||!data.button.buttons) return [];
     this._quickReplies = data.button.buttons.filter(function(b){
-        // 支持 disabled 字段
         if (b.disabled === true) return false;
-        // 支持 visible 字段
         if (b.visible === false) return false;
         return true;
+    });
+    if (!gameState._quickReplies) gameState._quickReplies = [];
+    gameState._quickReplies = this._quickReplies.map(function(b) {
+        return { name: b.name, prompt: b.prompt || '', script: b.script || '', setVariable: b.setVariable || null, emphasized: b.emphasized || false, secondary: b.secondary || false };
     });
     this._renderQuickReplyButtons();
     return this._quickReplies;
@@ -558,6 +560,7 @@ _renderQuickReplyButtons: function() {
                         else if (typeof MacroEngine !== 'undefined' && MacroEngine.setGlobalVar) MacroEngine.setGlobalVar(varName, varValue);
                         else { if(!gameState._globalVars) gameState._globalVars = {}; gameState._globalVars[varName] = varValue; }
                     });
+                    if (typeof safeAutoSave === 'function') safeAutoSave();
                 }
 
                 // 【增强】快捷回复与游戏融合

@@ -1633,11 +1633,12 @@ if (Object.keys(theaterContent).length > 0) {
     Object.assign(gameState._theaterContent, theaterContent);
     console.log('[小剧场融合] 提取到', Object.keys(theaterContent).length, '个小剧场');
 
-    // 根据小剧场类型注入到对应的日志功能
     injectTheaterToLogs(theaterContent);
 
-    // 【深度融合】将预设<branches>选项桥接到游戏原生选项系统
     _bridgeBranchesToChoices(theaterContent);
+
+    var theaterTags = /<(?:giggle|ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|mail|forum|shop|ranking|moments|calendar|author_note|diary|quest)[\s\S]*?<\/(?:giggle|ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|mail|forum|shop|ranking|moments|calendar|author_note|diary|quest)>/gi;
+    storyText = storyText.replace(theaterTags, '');
 }
 
 return {
@@ -1996,12 +1997,30 @@ options = lines.map(function(line, idx) {
 }
 
 if (options.length > 0) {
-    // 桥接到游戏原生选项系统
     if (typeof renderChoices === 'function') {
         renderChoices(options);
         console.log('[深度融合] 已将 ' + options.length + ' 个<branches>选项桥接到游戏选项系统');
     }
 }
+}
+
+function _processRegexExtractions(extractions) {
+    if (!extractions || extractions.length === 0) return;
+    extractions.forEach(function(ext) {
+        if (!ext.matched || ext.placement !== 'output') return;
+        var name = (ext.scriptName || '').toLowerCase();
+        if (name.indexOf('giggle') !== -1 || name.indexOf('心声') !== -1) {
+            if (!gameState._pendingInsights) gameState._pendingInsights = [];
+        }
+        if (name.indexOf('mail') !== -1 || name.indexOf('邮件') !== -1) {
+            if (!gameState._pendingMailNotif) gameState._pendingMailNotif = true;
+        }
+        if (name.indexOf('quest') !== -1 || name.indexOf('任务') !== -1) {
+            if (typeof QuestSystem !== 'undefined' && QuestSystem.checkAchievements) {
+                try { QuestSystem.checkAchievements(); } catch(e) {}
+            }
+        }
+    });
 }
 
 // 【深度融合】将预设<meow_FM>摘要桥接到游戏EnhancedMemory系统

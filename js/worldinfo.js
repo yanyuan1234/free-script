@@ -1943,7 +1943,11 @@ var WorldInfo = {
         // 各position的文本分别收集
         ['beforeChar', 'afterChar', 'emTop', 'emBottom', 'anTop', 'anBottom'].forEach(function(pos) {
             groups[pos].forEach(function(text) {
-                positionTexts[pos].push(MacroEngine.process(text));
+                var processed = MacroEngine.process(text);
+                if (typeof RegexManager !== 'undefined') {
+                    processed = RegexManager.apply(processed, 'worldInfo');
+                }
+                positionTexts[pos].push(processed);
                 });
             });
 
@@ -1957,7 +1961,11 @@ var WorldInfo = {
                     if (!gameState._depthPrompts[depth]) gameState._depthPrompts[depth] = [];
                     gameState._depthPrompts[depth].push({
                         enabled: true,
-                        content: MacroEngine.process(item.text),
+                        content: (function() {
+                            var c = MacroEngine.process(item.text);
+                            if (typeof RegexManager !== 'undefined') c = RegexManager.apply(c, 'worldInfo');
+                            return c;
+                        })(),
                         identifier: 'worldInfo_depth_' + depth,
                         name: 'WI@Depth' + depth,
                         _order: item.order !== undefined ? item.order : 100,

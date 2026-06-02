@@ -637,20 +637,22 @@ function buildModuleHTML(mod) {
 }
 function renderWorldModules(modules) {
     modules = modules || [];
-    // 增量更新：保留旧模块，用新模块替换同类型的
     if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-    var existingTypes = {};
+    var existingKeys = {};
     gameState._worldModules.forEach(function(mod, idx) {
-        if (mod && mod.type) existingTypes[mod.type] = idx;
+        if (mod && mod.type) {
+            var key = mod.type + '::' + (mod.title || '');
+            existingKeys[key] = idx;
+        }
     });
     modules.forEach(function(newMod) {
         if (!newMod || !newMod.type) return;
-        if (existingTypes.hasOwnProperty(newMod.type)) {
-            // 替换同类型旧模块
-            gameState._worldModules[existingTypes[newMod.type]] = newMod;
+        var key = newMod.type + '::' + (newMod.title || '');
+        if (existingKeys.hasOwnProperty(key)) {
+            gameState._worldModules[existingKeys[key]] = newMod;
         } else {
-            // 新增模块
             gameState._worldModules.push(newMod);
+            existingKeys[key] = gameState._worldModules.length - 1;
         }
     });
     // 本地联动：根据剧情自动生成朋友圈和日记
@@ -1625,7 +1627,14 @@ function renderChatPage() {
                 '</div><div class="chat-time">' + escapeHtml(timeStr) + '</div></div><div class="chat-preview">' +
                 escapeHtml(lastMsg) + '</div></div></div>';
         }).join('') +
-        '</div></div>';
+        '</div>' +
+        (gameState._quickReplyLog && gameState._quickReplyLog.length > 0 ?
+            '<div style="padding:8px 16px;border-top:1px solid #f0f0f0;"><div style="font-size:12px;color:#999;margin-bottom:6px;">快捷回复记录</div>' +
+            gameState._quickReplyLog.slice(-5).map(function(log) {
+                return '<div style="font-size:12px;color:#666;padding:3px 0;">' + escapeHtml(log.name) + ' → ' + escapeHtml((log.prompt || '').substring(0, 30)) + '</div>';
+            }).join('') +
+            '</div>' : '') +
+        '</div>';
     return html;
 }
 function renderQuestsPage() {
