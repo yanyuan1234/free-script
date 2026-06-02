@@ -92,7 +92,7 @@
     font-size: 22px;
     color: var(--text-tertiary);
     cursor: pointer;
-    transition: transform .2s;
+    transition: transform .2s, color .3s;
     line-height: 1;
     padding: 0;
     display: flex;
@@ -101,11 +101,22 @@
 }
 
 .menu-top-star:hover {
-    transform: scale(1.1);
+    transform: scale(1.2);
+    color: var(--warning);
 }
 
-.menu-top-star.active {
+.menu-top-star:active {
+    transform: scale(0.9);
+}
+
+.menu-top-star.dark-mode {
+    color: var(--warning);
+    text-shadow: 0 0 8px rgba(255, 152, 0, 0.4);
+}
+
+.menu-top-star.dark-mode:hover {
     color: var(--text-secondary);
+    text-shadow: none;
 }
 
 /* 预设滑动区域 */

@@ -13,6 +13,8 @@ async function initApp() {
     // 防止重复初始化
     if (initApp._initialized) return;
     initApp._initialized = true;
+        // 初始化主题管理
+        if (typeof ThemeManager !== 'undefined') ThemeManager.init();
         // 初始化世界书系统
         WorldInfo.init();
         // 初始化预设管理系统

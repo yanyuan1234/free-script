@@ -177,3 +177,65 @@ try { localStorage.removeItem(testKey); } catch(e) {}
 
 GlobalCleanup.registerListener(window, 'error', function(event) { if (console && console.error) console.error('[全局错误]', event.message); });
 GlobalCleanup.registerListener(window, 'unhandledrejection', function(event) { if (console && console.error) console.error('[Promise错误]', event.reason); });
+
+var ThemeManager = {
+    _current: 'light',
+
+    init: function() {
+        var saved = localStorage.getItem('freeScript_theme');
+        if (saved === 'dark' || saved === 'light') {
+            this._current = saved;
+        } else {
+            this._current = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        }
+        this.apply();
+        this._updateStar();
+        var self = this;
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
+            if (!localStorage.getItem('freeScript_theme')) {
+                self._current = e.matches ? 'dark' : 'light';
+                self.apply();
+                self._updateStar();
+            }
+        });
+    },
+
+    apply: function() {
+        if (this._current === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    },
+
+    toggle: function() {
+        this._current = this._current === 'dark' ? 'light' : 'dark';
+        this.apply();
+        this._updateStar();
+        localStorage.setItem('freeScript_theme', this._current);
+    },
+
+    _updateStar: function() {
+        var star = document.getElementById('menuTopStar');
+        if (!star) return;
+        if (this._current === 'dark') {
+            star.textContent = '☀';
+            star.classList.add('dark-mode');
+        } else {
+            star.textContent = '★';
+            star.classList.remove('dark-mode');
+        }
+    }
+};
+
+function toggleTheme() {
+    ThemeManager.toggle();
+}
+
+(function() {
+    var saved = localStorage.getItem('freeScript_theme');
+    var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+        document.documentElement.setAttribute('data-theme', 'dark');
+    }
+})();

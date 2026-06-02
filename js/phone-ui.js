@@ -3179,7 +3179,7 @@ function bindEvents() {
 
     // ★ 收藏/记录按钮
     document.getElementById('menuTopStar').addEventListener('click', function() {
-        openLoadModal();
+        toggleTheme();
     });
 
     // 生成中取消按钮
