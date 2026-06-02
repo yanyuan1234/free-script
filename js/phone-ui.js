@@ -2,28 +2,18 @@
 // ========================================
 // 第7层: 论坛系统
 // ========================================
-function _switchForumView(showHot) {
+function _switchForumView(viewIdx) {
     var hotView = document.getElementById('forumHotView');
     var topicView = document.getElementById('forumTopicView');
+    var myView = document.getElementById('forumMyView');
     var tabBar = document.getElementById('forumTabBar');
     var details = document.querySelectorAll('.forum-post-detail');
-    var showEl = showHot ? hotView : topicView;
-    var hideEl = showHot ? topicView : hotView;
-    var activeIdx = showHot ? 0 : 1;
-    if (hideEl && hideEl.style.display !== 'none') {
-        hideEl.classList.add('slide-out');
-        TimerManager.setTimeout('forumSlideOut', function() {
-            hideEl.style.display = 'none';
-            hideEl.classList.remove('slide-out');
-            if (showEl) {
-                showEl.style.display = 'block';
-                showEl.classList.add('slide-in');
-                TimerManager.setTimeout('forumSlideIn', function() { showEl.classList.remove('slide-in'); }, 250);
-            }
-        }, 200);
-    } else {
-        if (showEl) showEl.style.display = 'block';
+    var views = [hotView, topicView, myView];
+    var showEl = views[viewIdx] || hotView;
+    for (var vi = 0; vi < views.length; vi++) {
+        if (views[vi] && views[vi] !== showEl) views[vi].style.display = 'none';
     }
+    if (showEl) showEl.style.display = 'block';
     for (var i = 0; i < details.length; i++) {
         details[i].style.display = 'none';
         details[i].classList.remove('active');
@@ -31,10 +21,57 @@ function _switchForumView(showHot) {
     if (tabBar) tabBar.style.display = 'flex';
     var tabs = document.querySelectorAll('.forum-tab-item');
     for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
-    if (tabs[activeIdx]) tabs[activeIdx].classList.add('active');
+    if (tabs[viewIdx]) tabs[viewIdx].classList.add('active');
 }
-function showForumHot() { _switchForumView(true); }
-function showForumTopic() { _switchForumView(false); }
+function showForumHot() { _switchForumView(0); }
+function showForumTopic() { _switchForumView(1); }
+function showForumMy() { _switchForumView(2); }
+function _renderForumMyPosts(commentMods, playerName, colors) {
+    var myPosts = [];
+    commentMods.forEach(function(mod, idx) {
+        var playerComments = (mod.comments || []).filter(function(cm) {
+            return cm.name === playerName || cm.isPlayer;
+        });
+        if (playerComments.length > 0) {
+            myPosts.push({ mod: mod, idx: idx, playerComments: playerComments });
+        }
+    });
+    if (myPosts.length === 0) {
+        return '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#999;padding:60px 0;"><p>暂无我的评论</p><p style="font-size:12px;margin-top:4px;">在帖子中评论后将显示在这里</p></div>';
+    }
+    return myPosts.map(function(item) {
+        var mod = item.mod;
+        var idx = item.idx;
+        var avatarChar = (mod.author || '匿').charAt(0);
+        var avatarColor = colors[idx % colors.length];
+        var commentPreviews = item.playerComments.slice(0, 3).map(function(cm) {
+            return '<div style="font-size:12px;color:#666;padding:4px 0;border-top:1px solid #f0f0f0;">我: ' + escapeHtml((cm.text || '').substring(0, 40)) + '</div>';
+        }).join('');
+        return '<div class="forum-feed-item" role="button" tabindex="0" onclick="openForumPost(' + idx + ')">' +
+            '<div class="forum-feed-header">' +
+            '<div class="forum-feed-avatar" style="background:' + avatarColor + ';">' + avatarChar + '</div>' +
+            '<div class="forum-feed-info"><div class="forum-feed-name-row"><span class="forum-feed-name">' + escapeHtml(mod.author || '匿名') + '</span></div><div class="forum-feed-time">' + escapeHtml(mod.title || '帖子') + '</div></div>' +
+            '</div>' +
+            commentPreviews +
+            '</div>';
+    }).join('');
+}
+function _initForumSearch() {
+    var input = document.getElementById('forumSearchInput');
+    if (!input || input._searchBound) return;
+    input._searchBound = true;
+    input.addEventListener('input', function() {
+        var keyword = (input.textContent || '').trim().toLowerCase();
+        var hotList = document.getElementById('forumHotList');
+        if (!hotList) return;
+        var items = hotList.querySelectorAll('.forum-hot-item');
+        for (var i = 0; i < items.length; i++) {
+            var titleEl = items[i].querySelector('.forum-hot-title');
+            var title = titleEl ? titleEl.textContent.toLowerCase() : '';
+            items[i].style.display = (!keyword || title.indexOf(keyword) !== -1) ? '' : 'none';
+        }
+    });
+}
 function openForumPost(idx) {
     var detail = document.getElementById('forumPostDetail' + idx);
     var hotView = document.getElementById('forumHotView');
@@ -1171,7 +1208,6 @@ function getLogPageRenderers() {
         chat: renderChatPage,
         quests: renderQuestsPage,
         achieve: renderAchievePage,
-        world: renderWorldPage,
         moments: renderMomentsPage,
         forum: renderForumPage,
         rank: renderRankPage,
@@ -1179,7 +1215,6 @@ function getLogPageRenderers() {
         diary: renderDiaryPage,
         mail: renderMailPage,
         shop: renderShopPage,
-        // 【小剧场融合】新增渲染器
         calendar: renderCalendarPage,
         author_note: renderAuthorNotePage
     };
@@ -1345,7 +1380,8 @@ function openLogSubPage(type) {
         achieve: '成就',
         diary: '日记',
         mail: '邮箱',
-        world: '世界信息'
+        calendar: '日程表',
+        author_note: '作者有话说'
     };
     var title = titles[type] || type;
     var logSubTitle = document.getElementById('logSubTitle');
@@ -1469,6 +1505,86 @@ function _applyLogPageStyle(content, type, html) {
             }
         });
     }
+
+    if (type === 'forum') {
+        _initForumSearch();
+    }
+
+    if (type === 'shop') {
+        _initShopSearch();
+        _initShopCategoryFilter();
+    }
+
+    if (type === 'rank' && !content._rankDelegated) {
+        content._rankDelegated = true;
+        content.addEventListener('click', function(e) {
+            var row = e.target.closest('[data-rank-idx]');
+            if (!row) return;
+            var idx = parseInt(row.dataset.rankIdx);
+            var rankMods = (gameState._worldModules || []).filter(function(m) { return m.type === 'ranking'; });
+            var rankItems = [];
+            rankMods.forEach(function(mod) {
+                (mod.items || []).forEach(function(it) {
+                    if (typeof it === 'string') {
+                        var cleaned = it.replace(/^(第[一二三四五六七八九十百千万\d]+名|NO\.?\s*\d+|第\d+名)[：:\s]*/i, '');
+                        var parts = cleaned.split(/[\s：:]+/);
+                        rankItems.push({ name: parts[0] || cleaned, value: parts.length > 1 ? parts[parts.length - 1] : '', extra: '' });
+                    } else if (typeof it === 'object' && it !== null) {
+                        var rawName = String(it.name || it.title || it.label || it[0] || '未知');
+                        rawName = rawName.replace(/^(NO\.?\s*\d+|第[一二三四五六七八九十百千万\d]+名|第\d+名)[：:\s]*/i, '').trim();
+                        rankItems.push({ name: rawName, value: String(it.value || it.score || it.points || it[1] || ''), extra: String(it.extra || it.desc || it[2] || '') });
+                    }
+                });
+            });
+            if (idx < 0 || idx >= rankItems.length) return;
+            var item = rankItems[idx];
+            var charData = gameState.allCharacters && gameState.allCharacters[item.name];
+            var detailHtml = '<div style="padding:20px;background:#fff;min-height:100%;">' +
+                '<div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">' +
+                '<div style="width:48px;height:48px;border-radius:50%;background:#f0f0f0;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:600;">' + escapeHtml(item.name.charAt(0)) + '</div>' +
+                '<div><div style="font-size:16px;font-weight:600;">' + escapeHtml(item.name) + '</div>' +
+                (charData && charData.title ? '<div style="font-size:13px;color:#666;">' + escapeHtml(charData.title) + '</div>' : '') +
+                '</div></div>' +
+                '<div style="display:flex;gap:12px;margin-bottom:16px;">' +
+                '<div style="flex:1;padding:12px;background:#f8f8f8;border-radius:8px;text-align:center;"><div style="font-size:18px;font-weight:600;">' + escapeHtml(item.value || '-') + '</div><div style="font-size:12px;color:#999;">排行数值</div></div>' +
+                '<div style="flex:1;padding:12px;background:#f8f8f8;border-radius:8px;text-align:center;"><div style="font-size:18px;font-weight:600;">#' + (idx + 1) + '</div><div style="font-size:12px;color:#999;">排名</div></div>' +
+                '</div>' +
+                (item.extra ? '<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-size:14px;margin-bottom:12px;">' + escapeHtml(item.extra) + '</div>' : '') +
+                (charData && charData.desc ? '<div style="font-size:14px;line-height:1.6;color:#333;">' + escapeHtml(charData.desc) + '</div>' : '') +
+                '<div style="margin-top:20px;"><button onclick="openLogSubPage(\'rank\')" style="padding:8px 24px;border:1px solid #ddd;border-radius:20px;background:#fff;font-size:14px;cursor:pointer;">返回排行榜</button></div>' +
+                '</div>';
+            content.innerHTML = detailHtml;
+        });
+    }
+
+    if (type === 'items' && !content._itemsDelegated) {
+        content._itemsDelegated = true;
+        content.addEventListener('click', function(e) {
+            var box = e.target.closest('[data-item-idx]');
+            if (!box) return;
+            var idx = parseInt(box.dataset.itemIdx);
+            var bag = gameState.currentBag || [];
+            if (idx < 0 || idx >= bag.length) return;
+            var item = bag[idx];
+            var rarityColors = { '普通': '#999', '稀有': '#1890ff', '史诗': '#722ed1', '传说': '#fa8c16', '装备': '#ff4d4f', '消耗品': '#07c160', '材料': '#8d6e63' };
+            var rarityColor = rarityColors[item.rarity] || '#999';
+            var detailHtml = '<div style="padding:20px;background:#fff;min-height:100%;">' +
+                '<div style="text-align:center;margin-bottom:20px;">' +
+                '<div style="width:80px;height:80px;border-radius:16px;background:#f5f5f5;display:flex;align-items:center;justify-content:center;font-size:36px;margin:0 auto 12px;">' + escapeHtml(item.icon || item.name.charAt(0)) + '</div>' +
+                '<div style="font-size:18px;font-weight:600;">' + escapeHtml(item.name || '未知物品') + '</div>' +
+                '<div style="font-size:13px;color:' + rarityColor + ';margin-top:4px;">' + escapeHtml(item.rarity || '普通') + '</div>' +
+                '</div>' +
+                '<div style="display:flex;gap:12px;margin-bottom:16px;">' +
+                '<div style="flex:1;padding:12px;background:#f8f8f8;border-radius:8px;text-align:center;"><div style="font-size:18px;font-weight:600;">x' + (item.count || 1) + '</div><div style="font-size:12px;color:#999;">数量</div></div>' +
+                '<div style="flex:1;padding:12px;background:#f8f8f8;border-radius:8px;text-align:center;"><div style="font-size:14px;font-weight:600;">' + (item.equipped ? '已装备' : '未装备') + '</div><div style="font-size:12px;color:#999;">状态</div></div>' +
+                '</div>' +
+                (item.desc ? '<div style="padding:12px;background:#f8f8f8;border-radius:8px;font-size:14px;line-height:1.6;margin-bottom:12px;">' + escapeHtml(item.desc) + '</div>' : '') +
+                (item.effect ? '<div style="padding:12px;background:#fff8e1;border-radius:8px;font-size:13px;margin-bottom:12px;">✨ ' + escapeHtml(item.effect) + '</div>' : '') +
+                '<div style="margin-top:20px;"><button onclick="openLogSubPage(\'items\')" style="padding:8px 24px;border:1px solid #ddd;border-radius:20px;background:#fff;font-size:14px;cursor:pointer;">返回物品</button></div>' +
+                '</div>';
+            content.innerHTML = detailHtml;
+        });
+    }
 }
 // 渲染聊天页面
 function renderChatPage() {
@@ -1518,80 +1634,6 @@ function renderQuestsPage() {
 function renderAchievePage() {
     return null;
 }
-// 渲染世界信息页面
-function renderWorldPage() {
-    var modules = gameState._worldModules || [];
-    if (modules.length === 0) {
-        return '<div class="empty-state"><div class="empty-state-icon">世</div><p>暂无世界信息</p></div>';
-    }
-
-    return modules.map(function(mod) {
-        var inner = '';
-        switch (mod.type) {
-            case 'text':
-                inner = '<div style="font-size:14px;line-height:1.7;">' + parseMarkdown(escapeHtml(mod
-                    .content || '')) + '</div>';
-                break;
-            case 'list':
-                inner = (mod.items || []).map(function(it) {
-                    return '<div style="padding:6px 0;font-size:14px;">▸ ' + escapeHtml(it) + '</div>';
-                }).join('');
-                break;
-            case 'ranking':
-                inner = (mod.items || []).map(function(it, i) {
-                    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;"><span style="font-weight:600;color:' +
-                        (i < 3 ? 'var(--text)' : 'var(--text-tertiary)') + ';">' + (i + 1) +
-                        '</span><span style="font-size:14px;">' + escapeHtml(it) + '</span></div>';
-                }).join('');
-                break;
-            case 'key_value':
-                inner = (mod.items || []).map(function(kv) {
-                    return '<div class="player-field"><span class="player-field-label">' +
-                        escapeHtml(kv.key) + '</span><span class="player-field-value">' + escapeHtml(kv.value) +
-                        '</span></div>';
-                }).join('');
-                break;
-            case 'cards':
-                inner = (mod.items || []).map(function(c) {
-                    return '<div class="pearl-card" style="padding:12px;margin-bottom:8px;"><div style="font-weight:500;">' +
-                        escapeHtml(c.icon || '') + ' ' + escapeHtml(c.title || '') +
-                        '</div><div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">' +
-                        escapeHtml(c.content || '') + '</div></div>';
-                }).join('');
-                break;
-            case 'comments':
-                inner = '<div style="font-size:14px;margin-bottom:8px;">' + escapeHtml(mod.main || '') +
-                    '</div>' + (mod.comments || []).map(function(cm) {
-                        return '<div style="padding:8px 0;border-top:1px solid var(--border);font-size:13px;"><strong>' +
-                            escapeHtml(cm.name) + ':</strong> ' + escapeHtml(cm.text) + '</div>';
-                    }).join('');
-                break;
-            case 'moments':
-                var mPosts2 = [];
-                if (mod.posts) { mPosts2 = mod.posts.slice(0, 3); }
-                else if (mod.moments && Array.isArray(mod.moments)) { mPosts2 = mod.moments.slice(0, 3); }
-                if (mPosts2.length > 0) {
-                    inner = mPosts2.map(function(p) {
-                        var mA = (p.author || '匿名').replace(/\n/g, '').trim();
-                        var mT = p.text || p.content || p.main || '';
-                        if (mT.length > 50) mT = mT.substring(0, 50) + '...';
-                        return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
-                            '<strong style="color:#576b95;">' + escapeHtml(mA) + '</strong>: ' +
-                            escapeHtml(mT) + '</div>';
-                    }).join('');
-                } else {
-                    inner = '<div style="font-size:14px;color:var(--text-secondary);">暂无朋友圈动态</div>';
-                }
-                break;
-            default:
-                inner = '<div style="font-size:14px;">' + parseMarkdown(escapeHtml(mod.content || JSON
-                    .stringify(mod))) + '</div>';
-        }
-        return '<div class="pearl-card" style="padding:14px;margin-bottom:12px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;">' +
-            escapeHtml(mod.title || '信息') + '</div>' + inner + '</div>';
-    }).join('');
-}
-// 渲染朋友圈页面
 function renderMomentsPage() {
     var playerName = gameState.playerName || '我';
     var modules = gameState._worldModules || [];
@@ -1951,21 +1993,25 @@ function renderForumPage() {
     return '<div class="forum-page" id="forumPage">' +
         '<div id="forumHotView">' +
         '<div style="flex:1;overflow-y:auto;">' +
-        '<div class="forum-search-box"><div class="forum-search-input" contenteditable="true"></div></div>' +
+        '<div class="forum-search-box"><div class="forum-search-input" contenteditable="true" id="forumSearchInput" data-placeholder="搜索帖子"></div></div>' +
         '<div class="forum-section-title">热搜榜单</div>' +
-        '<div class="forum-hot-list">' + hotItems + '</div>' +
+        '<div class="forum-hot-list" id="forumHotList">' + hotItems + '</div>' +
         '<div style="height:20px;"></div>' +
         '</div>' +
         '</div>' +
         '<div id="forumTopicView" style="display:none;">' +
         '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
-        '<div class="forum-topic-body">' + feedItems + '</div>' +
+        '<div class="forum-topic-body" id="forumTopicBody">' + feedItems + '</div>' +
+        '</div>' +
+        '<div id="forumMyView" style="display:none;">' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title">我的</div><div class="forum-nav-right"></div></div>' +
+        '<div class="forum-topic-body" id="forumMyBody">' + _renderForumMyPosts(commentMods, playerName, colors) + '</div>' +
         '</div>' +
         postDetails +
         '<div class="forum-tab-bar" id="forumTabBar">' +
         '<div class="forum-tab-item active" onclick="showForumHot()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
         '<div class="forum-tab-item" onclick="showForumTopic()"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
-        '<div class="forum-tab-item"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
+        '<div class="forum-tab-item" onclick="showForumMy()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
         '</div>' +
         '</div>';
 }
@@ -2018,9 +2064,9 @@ function renderRankPage() {
             var valueDisplay = it.value || '-';
             var extraDisplay = it.extra || '';
             var isPlayer = it.name === playerName || (playerName && it.name.indexOf(playerName) !== -1) || (playerName && playerName.indexOf(it.name) !== -1);
-            return '<div class="rank-row' + (isPlayer ? ' rank-self' : '') + '">' +
+            return '<div class="rank-row' + (isPlayer ? ' rank-self' : '') + '" data-rank-idx="' + i + '" style="cursor:pointer;">' +
                 '<div class="rank-num ' + rankClass + '">' + (i + 1) + '</div>' +
-                '<div class="rank-id' + (isPlayer ? ' rank-id-self' : '') + '">' + it.name + (
+                '<div class="rank-id' + (isPlayer ? ' rank-id-self' : '') + '">' + escapeHtml(it.name) + (
                     isPlayer ? ' (我)' : '') + '</div>' +
                 '<div class="rank-calls">' + valueDisplay + '</div>' +
                 (extraDisplay ? '<div class="rank-duration">' + extraDisplay + '</div>' : '') +
@@ -2070,8 +2116,8 @@ function renderItemsPage() {
             var rarity = item.rarity || '普通';
             var rarityClass = item.rarityClass || 'common';
             var equipped = item.equipped ? ' [已装备]' : '';
-            return '<div class="items-box" role="button" tabindex="0" style="padding:20px 10px;">' +
-                '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;">' + (item.name || '未知物品') + equipped + '</div>' +
+            return '<div class="items-box" role="button" tabindex="0" data-item-idx="' + i + '" style="padding:20px 10px;cursor:pointer;">' +
+                '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;">' + escapeHtml(item.name || '未知物品') + equipped + '</div>' +
                 '<div class="items-box-count" style="margin-bottom:4px;">x' + count + '</div>' +
                 '<div class="items-box-rarity ' + rarityClass + '">' + rarity + '</div></div>';
         }).join('');
@@ -2292,8 +2338,9 @@ function renderShopPage() {
 
     var catHtml = '';
     if (categories.length > 0) {
-        catHtml = categories.map(function(c) {
-            return '<div class="shop-cat-item"><div class="shop-cat-icon">' + c.icon +
+        catHtml = '<div class="shop-cat-item" data-shop-cat="all" style="cursor:pointer;"><div class="shop-cat-icon">全</div><div class="shop-cat-name">全部</div></div>' +
+        categories.map(function(c) {
+            return '<div class="shop-cat-item" data-shop-cat="' + escapeHtml(c.name) + '" style="cursor:pointer;"><div class="shop-cat-icon">' + c.icon +
                 '</div><div class="shop-cat-name">' + c.name + '</div></div>';
         }).join('');
     }
@@ -2327,7 +2374,7 @@ function renderShopPage() {
             }
             // 修复B: 将"已拥有"移到商品信息区域外部
             var ownedDisplay = ownedCount > 0 ? '<div style="font-size:11px;color:var(--success);margin-top:4px;">已拥有:' + ownedCount + '</div>' : '';
-            return '<div class="shop-goods-item" onclick="buyShopItem(' + gi + ')"><div class="shop-goods-icon">' + escapeHtml(icon) +
+            return '<div class="shop-goods-item" data-shop-item-name="' + escapeHtml(name.toLowerCase()) + '" data-shop-item-cat="' + escapeHtml(g.category || '') + '" onclick="buyShopItem(' + gi + ')"><div class="shop-goods-icon">' + escapeHtml(icon) +
                 '</div><div class="shop-goods-info"><div class="shop-goods-name">' + escapeHtml(name) +
                 '</div><div class="shop-goods-desc">' + escapeHtml(desc) + '</div>' +
                 ownedDisplay +
@@ -2341,12 +2388,47 @@ function renderShopPage() {
         '<div class="shop-section-title">分类</div><div class="shop-cat-row">' + catHtml + '</div>' : '';
 
     return '<div style="display:flex;flex-direction:column;flex:1;background:#f5f5f5;overflow:hidden;">' +
-        '<div class="shop-search-box"><div class="shop-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索商品</div></div>' +
+        '<div class="shop-search-box"><input type="text" id="shopSearchInput" placeholder="搜索商品" style="width:100%;border:none;outline:none;font-size:14px;background:transparent;"></div>' +
         '<div class="shop-banner"><div class="shop-banner-text">限时特惠<br>新品上架</div><div class="shop-banner-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div></div>' +
         catSectionHtml +
         '<div class="shop-section-title">新品推荐</div>' +
-        '<div class="shop-goods-list">' + goodsHtml + '</div>' +
+        '<div class="shop-goods-list" id="shopGoodsList">' + goodsHtml + '</div>' +
         '</div>';
+}
+function _initShopSearch() {
+    var input = document.getElementById('shopSearchInput');
+    if (!input || input._searchBound) return;
+    input._searchBound = true;
+    input.addEventListener('input', function() {
+        var keyword = input.value.trim().toLowerCase();
+        var list = document.getElementById('shopGoodsList');
+        if (!list) return;
+        var items = list.querySelectorAll('.shop-goods-item');
+        for (var i = 0; i < items.length; i++) {
+            var name = items[i].dataset.shopItemName || '';
+            items[i].style.display = (!keyword || name.indexOf(keyword) !== -1) ? '' : 'none';
+        }
+    });
+}
+function _initShopCategoryFilter() {
+    var catRow = document.querySelector('.shop-cat-row');
+    if (!catRow || catRow._catBound) return;
+    catRow._catBound = true;
+    catRow.addEventListener('click', function(e) {
+        var catItem = e.target.closest('[data-shop-cat]');
+        if (!catItem) return;
+        var cat = catItem.dataset.shopCat;
+        var allCats = catRow.querySelectorAll('[data-shop-cat]');
+        for (var i = 0; i < allCats.length; i++) allCats[i].classList.remove('active');
+        catItem.classList.add('active');
+        var list = document.getElementById('shopGoodsList');
+        if (!list) return;
+        var items = list.querySelectorAll('.shop-goods-item');
+        for (var j = 0; j < items.length; j++) {
+            var itemCat = items[j].dataset.shopItemCat || '';
+            items[j].style.display = (cat === 'all' || !cat || itemCat === cat) ? '' : 'none';
+        }
+    });
 }
 // 商城购买函数
 function buyShopItem(index) {
