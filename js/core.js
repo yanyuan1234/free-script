@@ -61,27 +61,45 @@ var UI = {
             }
         titleEl.textContent = title;
         msgEl.textContent = message;
+        var resolved = false;
+        function doResolve(val) {
+            if (resolved) return;
+            resolved = true;
+            UI.hideModal('confirmModal');
+            resolve(val);
+        }
         UI.showModal('confirmModal');
         var yesBtn = document.getElementById('confirmYes');
         if (!yesBtn) {
-            resolve(false);
+            doResolve(false);
             return;
         }
         var newYes = yesBtn.cloneNode(true);
         yesBtn.parentNode.replaceChild(newYes, yesBtn);
         newYes.addEventListener('click', function() {
-            UI.hideModal('confirmModal');
-            resolve(true);
-            });
-        // 绑定"否"按钮，防止Promise永远悬挂
+            doResolve(true);
+        });
         var noBtn = document.getElementById('confirmNo');
         if (noBtn) {
             var newNo = noBtn.cloneNode(true);
             noBtn.parentNode.replaceChild(newNo, noBtn);
             newNo.addEventListener('click', function() {
-                UI.hideModal('confirmModal');
-                resolve(false);
-                });
+                doResolve(false);
+            });
+        }
+        var closeBtn = document.querySelector('#confirmModal [data-close="confirmModal"]');
+        if (closeBtn) {
+            var newClose = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newClose, closeBtn);
+            newClose.addEventListener('click', function() {
+                doResolve(false);
+            });
+        }
+        var overlay = document.getElementById('confirmModal');
+        if (overlay) {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) doResolve(false);
+            });
         }
     });
     },
@@ -95,34 +113,51 @@ var UI = {
             }
         titleEl.textContent = title;
         inputEl.value = defaultValue || '';
+        var resolved = false;
+        function doResolve(val) {
+            if (resolved) return;
+            resolved = true;
+            UI.hideModal('promptModal');
+            resolve(val);
+        }
         UI.showModal('promptModal');
         inputEl.focus();
         var okBtn = document.getElementById('promptOk');
         var cancelBtn = document.getElementById('promptCancel');
         if (!okBtn) {
-            resolve(null);
+            doResolve(null);
             return;
         }
         var newOk = okBtn.cloneNode(true);
         okBtn.parentNode.replaceChild(newOk, okBtn);
         newOk.addEventListener('click', function() {
-            UI.hideModal('promptModal');
-            resolve(inputEl.value || null);
-            });
+            doResolve(inputEl.value || null);
+        });
         if (cancelBtn) {
             var newCancel = cancelBtn.cloneNode(true);
             cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
             newCancel.addEventListener('click', function() {
-                UI.hideModal('promptModal');
-                resolve(null);
-                });
+                doResolve(null);
+            });
         }
-    // 回车确认
+        var closeBtn = document.querySelector('#promptModal [data-close="promptModal"]');
+        if (closeBtn) {
+            var newClose = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newClose, closeBtn);
+            newClose.addEventListener('click', function() {
+                doResolve(null);
+            });
+        }
+        var overlay = document.getElementById('promptModal');
+        if (overlay) {
+            overlay.addEventListener('click', function(e) {
+                if (e.target === overlay) doResolve(null);
+            });
+        }
     inputEl.onkeydown = function(e) {
         if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
-            UI.hideModal('promptModal');
-            resolve(inputEl.value || null);
+            doResolve(inputEl.value || null);
         }
     };
     });
