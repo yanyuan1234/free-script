@@ -3159,20 +3159,33 @@ async function requestNpcReply(playerText) {
         replies.forEach(function(msg, i) {
             TimerManager.setTimeout('npcReply_' + i, function() {
                 addNpcChatBubble('npc', msg);
-                // 最后一条消息显示完后，渲染选项
                 if (i === replies.length - 1) {
+                    var choicesEl = document.getElementById('npcChatChoices');
+                    if (!choicesEl) return;
                     if (choices.length > 0) {
-                        // 【修复X5】NPC聊天选项需要转义
-                        var choicesHtml = choices.map(function(ch) {
-                            var safe = String(ch).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(
-                                /"/g, '&quot;').replace(/\n/g, ' ');
-                            return '<button class="npc-chat-choice" onclick="selectNpcChatChoice(\'' +
-                                safe + '\')">' + escapeHtml(ch) + '</button>';
-                        }).join('');
-                        document.getElementById('npcChatChoices').innerHTML =
-                            choicesHtml;
+                        choicesEl.innerHTML = '';
+                        choicesEl._choiceTexts = choices.map(function(ch) {
+                            return typeof ch === 'string' ? ch : String(ch);
+                        });
+                        choices.forEach(function(ch, idx) {
+                            var btn = document.createElement('button');
+                            btn.className = 'npc-chat-choice';
+                            btn.dataset.choiceIdx = idx;
+                            btn.textContent = typeof ch === 'string' ? ch : String(ch);
+                            choicesEl.appendChild(btn);
+                        });
+                        if (!choicesEl._handlerBound) {
+                            choicesEl._handlerBound = true;
+                            choicesEl.addEventListener('click', function(e) {
+                                var btn = e.target.closest('.npc-chat-choice');
+                                if (!btn) return;
+                                var idx = parseInt(btn.dataset.choiceIdx);
+                                if (isNaN(idx) || !choicesEl._choiceTexts) return;
+                                selectNpcChatChoice(choicesEl._choiceTexts[idx]);
+                            });
+                        }
                     } else {
-                        document.getElementById('npcChatChoices').innerHTML = '';
+                        choicesEl.innerHTML = '';
                     }
                 }
             }, delay);

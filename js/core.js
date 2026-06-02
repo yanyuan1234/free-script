@@ -2616,12 +2616,15 @@ function updateSceneTitle(title) {
 }
 var _autoSaveTimer = null;
 async function autoSave() {
-    if (_autoSaveTimer) return; // 防抖：已有待执行的保存，跳过
+    if (_autoSaveTimer) return;
     _autoSaveTimer = TimerManager.setTimeout('autoSave', async function() {
         _autoSaveTimer = null;
         try {
             if (typeof SaveDB !== 'undefined') {
                 await SaveDB.set(0, buildSaveData(''));
+            }
+            if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) {
+                try { AchievementSystem.checkAchievements(); } catch(e) {}
             }
     } catch (e) {
     console.error('[自动保存] 保存失败:', e);
