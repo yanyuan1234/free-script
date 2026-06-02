@@ -425,10 +425,54 @@ var LocalGameAPI = {
     normalizeUrl(baseUrl) {
         return baseUrl.replace(/\/$/, '');
     },
+    _proxyUrl: '',
+    _networkStatus: 'unknown',
+    setProxyUrl(url) {
+        this._proxyUrl = (url || '').trim();
+        localStorage.setItem('freeScript_proxyUrl', this._proxyUrl);
+    },
+    getProxyUrl() {
+        if (!this._proxyUrl) {
+            this._proxyUrl = localStorage.getItem('freeScript_proxyUrl') || '';
+        }
+        return this._proxyUrl;
+    },
+    buildApiUrl(baseUrl, path) {
+        var proxyUrl = this.getProxyUrl();
+        if (proxyUrl) {
+            var targetUrl = this.normalizeUrl(baseUrl) + path;
+            return proxyUrl + '?target=' + encodeURIComponent(targetUrl);
+        }
+        return this.normalizeUrl(baseUrl) + path;
+    },
+    async checkConnectivity(baseUrl) {
+        var testUrl = this.buildApiUrl(baseUrl, '/models');
+        var cfg = this.getCurrentConfig();
+        var headers = { 'Content-Type': 'application/json' };
+        if (cfg && cfg.apiKey) headers['Authorization'] = 'Bearer ' + cfg.apiKey;
+        try {
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
+            var res = await fetch(testUrl, { method: 'GET', headers: headers, signal: controller.signal });
+            clearTimeout(timeoutId);
+            this._networkStatus = res.ok ? 'connected' : 'error';
+            return { ok: res.ok, status: res.status, message: res.ok ? '连接正常' : 'HTTP ' + res.status };
+        } catch (e) {
+            this._networkStatus = 'disconnected';
+            var msg = '';
+            if (e.name === 'AbortError') msg = '连接超时（8秒无响应）';
+            else if (e.message.includes('Failed to fetch')) msg = '网络不可达（DNS解析失败或被阻断）';
+            else msg = e.message;
+            return { ok: false, status: 0, message: msg };
+        }
+    },
+    getNetworkStatus() {
+        return this._networkStatus;
+    },
     async fetchModels(baseUrl, apiKey) {
         if (!baseUrl) return [];
         try {
-            const url = this.normalizeUrl(baseUrl) + '/models';
+            const url = this.buildApiUrl(baseUrl, '/models');
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + apiKey
@@ -2588,7 +2632,7 @@ async function callAI(messages, options = {}) {
 
 return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
     const config = LocalGameAPI._configs[slotIdx];
-    const url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
+    const url = LocalGameAPI.buildApiUrl(config.baseUrl, '/chat/completions');
     // 【修复】先检查 PresetManager 是否存在，再调用 getParams()
     if (typeof PresetManager === 'undefined') {
         throw new Error('PresetManager 未初始化');

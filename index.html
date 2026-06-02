@@ -1839,6 +1839,17 @@
                                                 兼容模式（只发送基本参数，解决某些API报错问题）
                                             </label>
                                         </div>
+                                        <div class="mt-8" style="border-top:1px solid var(--border);padding-top:10px;">
+                                            <label style="font-size:12px;color:var(--text-secondary);display:block;margin-bottom:4px;">代理地址（可选，解决WiFi连不上API的问题）</label>
+                                            <div style="display:flex;gap:6px;align-items:center;">
+                                                <input type="text" class="input-field" id="detailApiProxyUrl"
+                                                    placeholder="如 https://your-worker.workers.dev"
+                                                    style="font-size:13px;padding:8px 10px;flex:1;">
+                                                <button class="crystal-btn" id="btnTestProxy" style="font-size:11px;padding:6px 10px;white-space:nowrap;">测试</button>
+                                            </div>
+                                            <div id="proxyTestResult" style="font-size:11px;margin-top:4px;display:none;"></div>
+                                            <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">填入 Cloudflare Worker 地址后，所有API请求将通过代理转发，绕过DNS污染和运营商阻断</div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="pearl-card" style="padding:14px;">
