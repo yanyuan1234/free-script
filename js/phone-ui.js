@@ -316,6 +316,25 @@ function filterBagItems(category, el) {
         box.style.display = show ? '' : 'none';
     }
 }
+function filterBillItems(type, el) {
+    if (el) {
+        var tabs = el.parentElement.querySelectorAll('.items-sub-tab');
+        for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+        el.classList.add('active');
+    }
+    var flowList = document.querySelector('#billSection .items-flow-list');
+    if (!flowList) return;
+    var items = flowList.querySelectorAll('.items-flow-item');
+    for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        var billType = item.dataset.billType || '';
+        var show = true;
+        if (type === 'all') show = true;
+        else if (type === 'income') show = billType === 'income';
+        else if (type === 'expense') show = billType === 'expense';
+        item.style.display = show ? '' : 'none';
+    }
+}
 function viewNpcDiary(name) {
     gameState._currentDiaryNpc = name;
     if (!gameState._npcDiaries) gameState._npcDiaries = {};
@@ -374,7 +393,7 @@ function openMailDetail(index) {
             time) + '</div></div>' +
         '<div class="mail-detail-body">' + body + '</div>' +
         '</div>' +
-        '<div class="mail-detail-bottom"><div class="mail-detail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-detail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-detail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-detail-bottom-btn"><span>...</span>更多</div></div>' +
+        '<div class="mail-detail-bottom"><div class="mail-detail-bottom-btn" data-mail-detail-action="delete" data-mail-idx="' + index + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-detail-bottom-btn" data-mail-detail-action="share" data-mail-idx="' + index + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-detail-bottom-btn" data-mail-detail-action="reply" data-mail-idx="' + index + '"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-detail-bottom-btn" data-mail-detail-action="more" data-mail-idx="' + index + '"><span>...</span>更多</div></div>' +
         '</div>';
     var content = document.getElementById('logSubContent');
     if (content) {
@@ -408,6 +427,64 @@ function deleteMail(index) {
             backToMailList();
         }
     }
+}
+function _deleteAllReadMails() {
+    var mailModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'mail'; });
+    var deleted = 0;
+    if (mailModules.length > 0 && mailModules[0].items && Array.isArray(mailModules[0].items)) {
+        var before = mailModules[0].items.length;
+        mailModules[0].items = mailModules[0].items.filter(function(m) { return !m.read; });
+        deleted = before - mailModules[0].items.length;
+    } else if (gameState._mails && Array.isArray(gameState._mails)) {
+        var before2 = gameState._mails.length;
+        gameState._mails = gameState._mails.filter(function(m) { return !m.read; });
+        deleted = before2 - gameState._mails.length;
+    }
+    if (deleted > 0) {
+        safeAutoSave();
+        UI.toast('已删除 ' + deleted + ' 封已读邮件');
+        openLogSubPage('mail');
+    } else {
+        UI.toast('没有已读邮件可删除');
+    }
+}
+function _showMailReplyInput(mailIdx) {
+    var mailModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'mail'; });
+    var allMails = [];
+    mailModules.forEach(function(mod) {
+        if (mod.items && Array.isArray(mod.items)) mod.items.forEach(function(item) { allMails.push(item); });
+    });
+    if (allMails.length === 0) allMails = gameState._mails || [];
+    if (mailIdx < 0 || mailIdx >= allMails.length) return;
+    var mail = allMails[mailIdx];
+    var sender = mail.from || mail.sender || '未知发件人';
+    var subject = mail.subject || '无主题';
+    var replyBody = document.querySelector('.mail-detail-body');
+    if (!replyBody) return;
+    if (document.getElementById('mailReplyBox')) return;
+    var replyBox = document.createElement('div');
+    replyBox.id = 'mailReplyBox';
+    replyBox.style.cssText = 'margin-top:16px;padding-top:12px;border-top:1px solid #eee;';
+    replyBox.innerHTML = '<div style="font-size:13px;color:#576b95;margin-bottom:8px;">回复 ' + escapeHtml(sender) + '</div>' +
+        '<textarea id="mailReplyText" style="width:100%;height:80px;border:1px solid #e5e5e5;border-radius:8px;padding:10px;font-size:14px;resize:none;outline:none;box-sizing:border-box;" placeholder="写下你的回复..."></textarea>' +
+        '<div style="display:flex;justify-content:flex-end;margin-top:8px;gap:8px;">' +
+        '<button id="mailReplyCancel" style="padding:6px 16px;border:1px solid #ddd;border-radius:16px;background:#fff;font-size:13px;cursor:pointer;">取消</button>' +
+        '<button id="mailReplySend" style="padding:6px 16px;border:none;border-radius:16px;background:var(--accent,#333);color:#fff;font-size:13px;cursor:pointer;">发送</button>' +
+        '</div>';
+    replyBody.appendChild(replyBox);
+    document.getElementById('mailReplyCancel').addEventListener('click', function() {
+        var box = document.getElementById('mailReplyBox');
+        if (box) box.remove();
+    });
+    document.getElementById('mailReplySend').addEventListener('click', function() {
+        var text = document.getElementById('mailReplyText');
+        if (!text || !text.value.trim()) { UI.toast('请输入回复内容'); return; }
+        UI.toast('回复已发送给 ' + sender);
+        var box = document.getElementById('mailReplyBox');
+        if (box) box.remove();
+    });
+    var textarea = document.getElementById('mailReplyText');
+    if (textarea) textarea.focus();
 }
 // --- 世界模块渲染 ---
 // 【修复X1】所有AI返回的数据必须经过escapeHtml转义，防止XSS
@@ -1327,13 +1404,70 @@ function _applyLogPageStyle(content, type, html) {
         }
     }
 
-    // 全屏页面需要让子元素填满容器
     if (isFullScreen) {
         var child = content.firstElementChild;
         if (child) {
             child.style.flex = '1';
             child.style.minHeight = '0';
         }
+    }
+
+    if (type === 'chat' && !content._chatDelegated) {
+        content._chatDelegated = true;
+        content.addEventListener('click', function(e) {
+            var item = e.target.closest('[data-chat-idx]');
+            if (!item) return;
+            var idx = parseInt(item.dataset.chatIdx);
+            var chattedNpcs = gameState._chattedNpcs || {};
+            var chattedNames = Object.keys(chattedNpcs).filter(function(name) {
+                return chattedNpcs[name] && gameState.allCharacters[name];
+            });
+            if (idx >= 0 && idx < chattedNames.length) {
+                openNpcChat(chattedNames[idx]);
+            }
+        });
+    }
+
+    if (type === 'mail' && !content._mailDelegated) {
+        content._mailDelegated = true;
+        content.addEventListener('click', function(e) {
+            var listBtn = e.target.closest('[data-mail-action]');
+            if (listBtn) {
+                var action = listBtn.dataset.mailAction;
+                if (action === 'delete-all') {
+                    if (typeof UI !== 'undefined' && UI.confirm) {
+                        UI.confirm('确认删除', '确定要删除所有已读邮件吗？').then(function(ok) {
+                            if (!ok) return;
+                            _deleteAllReadMails();
+                        });
+                    } else {
+                        _deleteAllReadMails();
+                    }
+                } else if (action === 'share') {
+                    UI.toast('请先选择一封邮件');
+                } else if (action === 'reply') {
+                    UI.toast('请先选择一封邮件');
+                } else if (action === 'more') {
+                    UI.toast('请先选择一封邮件');
+                }
+                return;
+            }
+            var detailBtn = e.target.closest('[data-mail-detail-action]');
+            if (detailBtn) {
+                var dAction = detailBtn.dataset.mailDetailAction;
+                var dIdx = parseInt(detailBtn.dataset.mailIdx);
+                if (dAction === 'delete') {
+                    deleteMail(dIdx);
+                } else if (dAction === 'share') {
+                    UI.toast('已复制邮件内容到剪贴板');
+                } else if (dAction === 'reply') {
+                    _showMailReplyInput(dIdx);
+                } else if (dAction === 'more') {
+                    UI.toast('更多功能开发中');
+                }
+                return;
+            }
+        });
     }
 }
 // 渲染聊天页面
@@ -1352,7 +1486,7 @@ function renderChatPage() {
     var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
-        chattedNames.map(function(name) {
+        chattedNames.map(function(name, idx) {
             var c = gameState.allCharacters[name];
             var now = new Date();
             var h = now.getHours();
@@ -1368,8 +1502,7 @@ function renderChatPage() {
                     lastMsg = last.text.length > 20 ? last.text.substring(0, 20) + '...' : last.text;
                 }
             }
-            return '<div class="chat-item" role="button" tabindex="0" onclick="openNpcChat(\'' + name
-                .replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;') + '\')">' +
+            return '<div class="chat-item" role="button" tabindex="0" data-chat-idx="' + idx + '">' +
                 '<div class="chat-avatar" style="background:' + avatarColor + ';">' + name.charAt(0) +
                 '</div>' +
                 '<div class="chat-content"><div class="chat-row"><div class="chat-name">' + escapeHtml(name) +
@@ -1543,8 +1676,10 @@ function renderMomentsPage() {
             // 统一使用相对时间格式
             var postTime = post.time;
             if (!postTime || /^\d{4}-\d{2}-\d{2}/.test(postTime)) {
-                // 如果时间为空或为绝对时间格式，生成相对时间
-                var offsetMinutes = idx * 30 + Math.floor(Math.random() * 30);
+                var seed = 0;
+                var seedStr = (post.author || '') + (post.text || '').substring(0, 20);
+                for (var si = 0; si < seedStr.length; si++) seed = ((seed << 5) - seed + seedStr.charCodeAt(si)) | 0;
+                var offsetMinutes = idx * 30 + (Math.abs(seed) % 30);
                 if (offsetMinutes < 60) postTime = offsetMinutes + '分钟前';
                 else if (offsetMinutes < 24 * 60) postTime = Math.floor(offsetMinutes / 60) + '小时前';
                 else postTime = Math.floor(offsetMinutes / (24 * 60)) + '天前';
@@ -1956,7 +2091,7 @@ function renderItemsPage() {
             var isIncome = amount > 0;
             var amountStr = (isIncome ? '+' : '') + amount;
             var amountClass = isIncome ? 'income' : 'expense';
-            return '<div class="items-flow-item">' +
+            return '<div class="items-flow-item" data-bill-type="' + (isIncome ? 'income' : 'expense') + '">' +
                 '<div class="items-flow-icon">' + icon + '</div>' +
                 '<div class="items-flow-info"><div class="items-flow-name">' + title +
                 '</div><div class="items-flow-meta">' + dateStr + '</div></div>' +
@@ -1981,7 +2116,7 @@ function renderItemsPage() {
         '<div class="items-grid" id="itemsGrid" style="justify-items:center;">' + itemsHtml + '</div>' +
         '</div>' +
         '<div id="billSection" style="display:none;">' +
-        '<div class="items-sub-tabs"><div class="items-sub-tab active">全部</div><div class="items-sub-tab">收入</div><div class="items-sub-tab">支出</div></div>' +
+        '<div class="items-sub-tabs" id="billSubTabs"><div class="items-sub-tab active" onclick="filterBillItems(\'all\',this)">全部</div><div class="items-sub-tab" onclick="filterBillItems(\'income\',this)">收入</div><div class="items-sub-tab" onclick="filterBillItems(\'expense\',this)">支出</div></div>' +
         '<div class="items-flow-header"><span class="items-flow-title">最近流水</span><span class="items-flow-count">' +
         cardMods.length + '</span></div>' +
         '<div class="items-flow-list">' + (flowItems ||
@@ -1996,9 +2131,11 @@ function renderDiaryPage() {
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
     var chars = Object.values(gameState.allCharacters || {});
     var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2'];
-    var now = new Date();
-    var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
-    '0');
+    var dateOffset = gameState._diaryDateOffset || 0;
+    var targetDate = new Date();
+    targetDate.setDate(targetDate.getDate() + dateOffset);
+    var dateStr = String(targetDate.getMonth() + 1).padStart(2, '0') + '.' + String(targetDate.getDate()).padStart(2, '0');
+    var targetDateKey = targetDate.getFullYear() + '-' + String(targetDate.getMonth() + 1).padStart(2, '0') + '-' + String(targetDate.getDate()).padStart(2, '0');
 
     if (!currentDiaryNpc) {
         return '<div class="diary-page">' +
@@ -2020,15 +2157,23 @@ function renderDiaryPage() {
     if (charIdx >= 0) avatarColor = colors[charIdx % colors.length];
 
     var entries = npcData.entries || [];
+    var filteredEntries = entries;
+    if (dateOffset !== 0 && entries.length > 0) {
+        filteredEntries = entries.filter(function(entry) {
+            if (!entry.date && !entry.time) return true;
+            var entryDateStr = (entry.date || entry.time || '').split(' ')[0];
+            return entryDateStr === targetDateKey;
+        });
+    }
     var journalHtml = '';
-    if (entries.length === 0) {
+    if (filteredEntries.length === 0) {
         journalHtml =
             '<div class="diary-card"><div class="diary-card-header"><div class="diary-card-label">JOURNAL（' +
             currentDiaryNpc +
             '）</div><div class="diary-card-lock"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div></div>' +
-            '<div class="diary-card-text"><p>暂无日记内容，该角色的日记将在剧情推进中自动生成。</p></div></div>';
+            '<div class="diary-card-text"><p>' + (entries.length === 0 ? '暂无日记内容，该角色的日记将在剧情推进中自动生成。' : '该日期暂无日记记录') + '</p></div></div>';
     } else {
-        journalHtml = entries.map(function(entry) {
+        journalHtml = filteredEntries.map(function(entry) {
             var paragraphs = (entry.text || '').split('\n').filter(function(p) {
                 return p.trim();
             }).map(function(p) {
@@ -2109,7 +2254,7 @@ function renderMailPage() {
         '<div class="mail-big-title">收件箱</div>' +
         '<div class="mail-search-box"><div class="mail-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索</div></div>' +
         '<div class="mail-scroll-list">' + mailListHtml + '</div>' +
-        '<div class="mail-bottom-bar"><div class="mail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-bottom-btn"><span>...</span>更多</div></div>' +
+        '<div class="mail-bottom-bar"><div class="mail-bottom-btn" data-mail-action="delete-all"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-bottom-btn" data-mail-action="share"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-bottom-btn" data-mail-action="reply"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-bottom-btn" data-mail-action="more"><span>...</span>更多</div></div>' +
         '</div>';
 }
 // 渲染商店页面
@@ -2254,30 +2399,16 @@ function buyShopItem(index) {
 
 // 【小剧场融合】日程表页面渲染
 function renderCalendarPage() {
-    var container = document.createElement('div');
-    container.className = 'calendar-page';
-    container.style.cssText = 'padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;';
-
-    // 标题
-    var title = document.createElement('h2');
-    title.textContent = '📅 日程表';
-    title.style.cssText = 'color:#e94560;margin-bottom:20px;text-align:center;';
-    container.appendChild(title);
-
-    // 获取日程数据
     var calendarModule = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'calendar'; });
     var events = (calendarModule && calendarModule.events) || [];
 
-    // 如果没有数据，显示提示
     if (events.length === 0) {
-        var emptyTip = document.createElement('div');
-        emptyTip.style.cssText = 'text-align:center;color:#888;padding:40px;';
-        emptyTip.innerHTML = '<p>暂无日程安排</p><p style="font-size:12px;margin-top:10px;">小剧场中的日程内容将显示在这里</p>';
-        container.appendChild(emptyTip);
-        return container;
+        return '<div class="calendar-page" style="padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;">' +
+            '<h2 style="color:#e94560;margin-bottom:20px;text-align:center;">📅 日程表</h2>' +
+            '<div style="text-align:center;color:#888;padding:40px;"><p>暂无日程安排</p><p style="font-size:12px;margin-top:10px;">小剧场中的日程内容将显示在这里</p></div>' +
+            '</div>';
     }
 
-    // 按日期分组
     var groupedEvents = {};
     events.forEach(function(evt) {
         var date = evt.time ? evt.time.split(' ')[0] : '待定';
@@ -2285,67 +2416,34 @@ function renderCalendarPage() {
         groupedEvents[date].push(evt);
     });
 
-    // 渲染每一天
+    var daysHtml = '';
     Object.keys(groupedEvents).forEach(function(date) {
-        var daySection = document.createElement('div');
-        daySection.style.cssText = 'margin-bottom:20px;background:rgba(255,255,255,0.05);border-radius:12px;padding:15px;';
+        var evtsHtml = groupedEvents[date].map(function(evt) {
+            var metaParts = [];
+            if (evt.time && evt.time.includes(' ')) metaParts.push(evt.time.split(' ')[1]);
+            if (evt.location) metaParts.push('📍 ' + evt.location);
+            if (evt.type) metaParts.push('🏷️ ' + evt.type);
+            return '<div style="background:rgba(233,69,96,0.1);border-left:3px solid #e94560;padding:10px;margin-bottom:8px;border-radius:4px;">' +
+                '<div style="color:#fff;font-weight:bold;margin-bottom:4px;">' + escapeHtml(evt.title || '无标题') + '</div>' +
+                (evt.description ? '<div style="color:#aaa;font-size:12px;margin-bottom:4px;">' + escapeHtml(evt.description) + '</div>' : '') +
+                (metaParts.length > 0 ? '<div style="color:#666;font-size:11px;">' + escapeHtml(metaParts.join(' | ')) + '</div>' : '') +
+                '</div>';
+        }).join('');
 
-        var dateLabel = document.createElement('div');
-        dateLabel.textContent = date;
-        dateLabel.style.cssText = 'color:#0f3460;font-weight:bold;margin-bottom:10px;font-size:14px;';
-        daySection.appendChild(dateLabel);
-
-        groupedEvents[date].forEach(function(evt) {
-            var eventCard = document.createElement('div');
-            eventCard.style.cssText = 'background:rgba(233,69,96,0.1);border-left:3px solid #e94560;padding:10px;margin-bottom:8px;border-radius:4px;';
-
-            var eventTitle = document.createElement('div');
-            eventTitle.textContent = evt.title || '无标题';
-            eventTitle.style.cssText = 'color:#fff;font-weight:bold;margin-bottom:4px;';
-            eventCard.appendChild(eventTitle);
-
-            if (evt.description) {
-                var eventDesc = document.createElement('div');
-                eventDesc.textContent = evt.description;
-                eventDesc.style.cssText = 'color:#aaa;font-size:12px;margin-bottom:4px;';
-                eventCard.appendChild(eventDesc);
-            }
-
-            var eventMeta = document.createElement('div');
-            eventMeta.style.cssText = 'color:#666;font-size:11px;';
-            var metaText = [];
-            if (evt.time && evt.time.includes(' ')) metaText.push(evt.time.split(' ')[1]);
-            if (evt.location) metaText.push('📍 ' + evt.location);
-            if (evt.type) metaText.push('🏷️ ' + evt.type);
-            eventMeta.textContent = metaText.join(' | ');
-            eventCard.appendChild(eventMeta);
-
-            daySection.appendChild(eventCard);
-        });
-
-        container.appendChild(daySection);
+        daysHtml += '<div style="margin-bottom:20px;background:rgba(255,255,255,0.05);border-radius:12px;padding:15px;">' +
+            '<div style="color:#0f3460;font-weight:bold;margin-bottom:10px;font-size:14px;">' + escapeHtml(date) + '</div>' +
+            evtsHtml + '</div>';
     });
 
-    return container;
+    return '<div class="calendar-page" style="padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;">' +
+        '<h2 style="color:#e94560;margin-bottom:20px;text-align:center;">📅 日程表</h2>' +
+        daysHtml + '</div>';
 }
 
 // 【小剧场融合】作者有话说页面渲染
 function renderAuthorNotePage() {
-    var container = document.createElement('div');
-    container.className = 'author-note-page';
-    container.style.cssText = 'padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;';
-
-    // 标题
-    var title = document.createElement('h2');
-    title.textContent = '✍️ 作者有话说';
-    title.style.cssText = 'color:#e94560;margin-bottom:20px;text-align:center;';
-    container.appendChild(title);
-
-    // 获取作话数据
-    var noteModule = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'author_note'; });
     var notes = [];
 
-    // 从 _theaterContent 中也获取
     if (gameState._theaterContent) {
         Object.keys(gameState._theaterContent).forEach(function(key) {
             var theater = gameState._theaterContent[key];
@@ -2360,44 +2458,39 @@ function renderAuthorNotePage() {
         });
     }
 
-    // 如果没有数据，显示提示
-    if (notes.length === 0) {
-        var emptyTip = document.createElement('div');
-        emptyTip.style.cssText = 'text-align:center;color:#888;padding:40px;';
-        emptyTip.innerHTML = '<p>暂无作者留言</p><p style="font-size:12px;margin-top:10px;">小剧场中的"作者有话说"将显示在这里</p>';
-        container.appendChild(emptyTip);
-        return container;
+    var noteModule = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'author_note'; });
+    if (noteModule) {
+        var noteContent = noteModule.content || noteModule.html || '';
+        if (noteContent) {
+            notes.push({
+                source: noteModule.title || '作者',
+                content: noteContent,
+                html: noteModule.html,
+                time: noteModule.time || new Date().toLocaleString()
+            });
+        }
     }
 
-    // 渲染每条作话
-    notes.forEach(function(note) {
-        var noteCard = document.createElement('div');
-        noteCard.style.cssText = 'background:rgba(255,255,255,0.05);border-radius:12px;padding:20px;margin-bottom:15px;';
+    if (notes.length === 0) {
+        return '<div class="author-note-page" style="padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;">' +
+            '<h2 style="color:#e94560;margin-bottom:20px;text-align:center;">✍️ 作者有话说</h2>' +
+            '<div style="text-align:center;color:#888;padding:40px;"><p>暂无作者留言</p><p style="font-size:12px;margin-top:10px;">小剧场中的"作者有话说"将显示在这里</p></div>' +
+            '</div>';
+    }
 
-        var noteHeader = document.createElement('div');
-        noteHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
+    var notesHtml = notes.map(function(note) {
+        return '<div style="background:rgba(255,255,255,0.05);border-radius:12px;padding:20px;margin-bottom:15px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+            '<span style="color:#e94560;font-weight:bold;">' + escapeHtml(note.source || '作者') + '</span>' +
+            '<span style="color:#666;font-size:11px;">' + escapeHtml(note.time) + '</span>' +
+            '</div>' +
+            '<div style="color:#ddd;line-height:1.6;white-space:pre-wrap;">' + escapeHtml(note.content || note.html || '') + '</div>' +
+            '</div>';
+    }).join('');
 
-        var noteSource = document.createElement('span');
-        noteSource.textContent = note.source || '作者';
-        noteSource.style.cssText = 'color:#e94560;font-weight:bold;';
-        noteHeader.appendChild(noteSource);
-
-        var noteTime = document.createElement('span');
-        noteTime.textContent = note.time;
-        noteTime.style.cssText = 'color:#666;font-size:11px;';
-        noteHeader.appendChild(noteTime);
-
-        noteCard.appendChild(noteHeader);
-
-        var noteContent = document.createElement('div');
-        noteContent.style.cssText = 'color:#ddd;line-height:1.6;white-space:pre-wrap;';
-        noteContent.textContent = note.content || note.html || '';
-        noteCard.appendChild(noteContent);
-
-        container.appendChild(noteCard);
-    });
-
-    return container;
+    return '<div class="author-note-page" style="padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;">' +
+        '<h2 style="color:#e94560;margin-bottom:20px;text-align:center;">✍️ 作者有话说</h2>' +
+        notesHtml + '</div>';
 }
 
 // 渲染默认页面
