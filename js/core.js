@@ -214,14 +214,12 @@ var LocalGameAPI = {
                 const oldModels = ['deepseek-v4-flash', 'gemini-2.5-flash'];
                 const hasOld = data.configs && data.configs.some(c => oldModels.includes(c.model));
                 if (hasOld) {
-                    // 保留已有配置的 apiKey 和 baseUrl
                     const savedKeys = {};
                     data.configs.forEach((cfg, idx) => {
                         if (cfg.apiKey) savedKeys[idx] = { apiKey: cfg.apiKey };
                         if (cfg.baseUrl) savedKeys[idx] = savedKeys[idx] || {};
                         if (cfg.baseUrl) savedKeys[idx].baseUrl = cfg.baseUrl;
                         });
-                    // 应用新默认值，但保留 apiKey 和 baseUrl
                     this._configs.forEach((cfg, idx) => {
                         if (savedKeys[idx]) {
                             if (savedKeys[idx].apiKey) cfg.apiKey = savedKeys[idx].apiKey;
@@ -229,6 +227,12 @@ var LocalGameAPI = {
                         }
                     });
                 console.log('[API] 检测到旧模型配置，已更新配置（保留API密钥）');
+                this._currentSlot = data.currentSlot || 0;
+                this._autoRotate = data.autoRotate !== undefined ? data.autoRotate : this._autoRotate;
+                this._groups = data.groups || [];
+                this._currentGroup = data.currentGroup || 'all';
+                this._requestLog = data.requestLog || [];
+                this._failedModels = data.failedModels || {};
                 this.save();
                 return;
             }

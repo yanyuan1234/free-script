@@ -1673,21 +1673,33 @@ function renderChoices(choices) {
         '<span>选项 (' + choices.length + '个)</span>' +
         '<span id="choicesToggleIcon" style="transition:transform 0.2s;transform:rotate(-90deg);">▼</span></div>' +
         '<div id="choicesPanel" style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px;">';
-    // 【修复X4】选项文本和标签需要转义
     var btnsHtml = choices.map(function(c, i) {
         var id = c.id || String.fromCharCode(65 + i);
-        // 兼容多种AI输出格式：text/label/content/description/action
         var text = c.text || c.label || c.content || c.description || c.action || '';
         if (typeof text !== 'string') text = String(text);
-        var safeT = JSON.stringify(text);
         var tagHtml = c.tag ?
             '<span class="badge badge-soft" style="margin-left:8px;font-size:10px;">' + escapeHtml(c.tag) +
             '</span>' : '';
-        return '<button class="option-btn" onclick="fillChoiceToInput(' + safeT + ')">' +
+        var dataIdx = 'data-choice-idx="' + i + '"';
+        return '<button class="option-btn" ' + dataIdx + '>' +
             '<span class="option-index">' + id + '</span><span>' + escapeHtml(text) + '</span>' + tagHtml +
             '</button>';
     }).join('');
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
+    container._choiceTexts = choices.map(function(c) {
+        var text = c.text || c.label || c.content || c.description || c.action || '';
+        return typeof text === 'string' ? text : String(text);
+    });
+    if (!container._choiceHandlerBound) {
+        container._choiceHandlerBound = true;
+        container.addEventListener('click', function(e) {
+            var btn = e.target.closest('.option-btn');
+            if (!btn) return;
+            var idx = parseInt(btn.dataset.choiceIdx);
+            if (isNaN(idx) || !container._choiceTexts) return;
+            fillChoiceToInput(container._choiceTexts[idx]);
+        });
+    }
 }
 function toggleChoicesPanel() {
     var panel = document.getElementById('choicesPanel');
@@ -2132,12 +2144,17 @@ async function openLoadModal() {
         var old = document.getElementById('loadModal');
         if (old) old.remove();
         var overlay = document.createElement('div');
-        overlay.className = 'modal-overlay show';
+        overlay.className = 'modal-overlay active';
         overlay.id = 'loadModal';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:200;display:flex;align-items:center;justify-content:center;';
         overlay.innerHTML =
             '<div class="pixel-modal"><div class="modal-titlebar"><span class="modal-titlebar-text">读取存档</span><div class="modal-close-btn" onclick="document.getElementById(\'loadModal\').remove()">×</div></div><div class="modal-body">' +
             html + '</div></div>';
-        document.body.appendChild(overlay);
+        var gameContainer = document.getElementById('gameContainer') || document.body;
+        gameContainer.appendChild(overlay);
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) overlay.remove();
+        });
     } catch (e) {
         console.error('打开存档列表失败:', e);
         UI.toast('读取存档列表时出错: ' + translateError(e.message));
