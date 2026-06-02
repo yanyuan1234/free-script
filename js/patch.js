@@ -7,7 +7,7 @@
     // 等待游戏核心模块加载完毕
     function initSTscriptIntegration() {
         if (typeof PresetManager === 'undefined') {
-            setTimeout(initSTscriptIntegration, 100);
+            TimerManager.setTimeout('initSTscript', initSTscriptIntegration, 100);
             return;
         }
 
@@ -184,7 +184,7 @@
 
     // 启动集成
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initSTscriptIntegration);
+        GlobalCleanup.registerListener(document, 'DOMContentLoaded', initSTscriptIntegration);
     } else {
         initSTscriptIntegration();
     }
@@ -323,7 +323,7 @@
     // ============================================================================
     // 4. 全局错误处理增强
     // ============================================================================
-    window.addEventListener('error', (e) => {
+    GlobalCleanup.registerListener(window, 'error', (e) => {
         // 过滤图片/CSS等资源加载错误（不显示给用户）
         if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'LINK' || e.target.tagName === 'SCRIPT')) {
             return;
@@ -334,7 +334,7 @@
         }
     }, true);
     
-    window.addEventListener('unhandledrejection', (e) => {
+    GlobalCleanup.registerListener(window, 'unhandledrejection', (e) => {
         console.error('[未处理的Promise]', e.reason);
         if (typeof UI !== 'undefined' && UI.toast) {
             UI.toast('异步操作失败');
@@ -352,7 +352,7 @@
     (function() {
         // 防止双击缩放
         let lastTouchEnd = 0;
-        document.addEventListener('touchend', (e) => {
+        GlobalCleanup.registerListener(document, 'touchend', (e) => {
             const now = Date.now();
             if (now - lastTouchEnd <= 300) {
                 e.preventDefault();
@@ -361,7 +361,7 @@
         }, { passive: false });
         
         // 优化滚动性能
-        setTimeout(() => {
+        TimerManager.setTimeout('scrollOptimize', function() {
             const scrollables = document.querySelectorAll('.scrollable, .page, .modal-body, #gameContent');
             scrollables.forEach(el => {
                 if (el) el.style.webkitOverflowScrolling = 'touch';

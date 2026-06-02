@@ -173,11 +173,11 @@
                 <!-- 顶部用户信息卡片 -->
                 <div class="menu-top-card">
                     <div class="menu-top-inner">
-                        <div class="avatar avatar-lg" id="menuAvatar" style="position:relative;cursor:pointer;"
+                        <div class="avatar avatar-lg relative cursor-pointer" id="menuAvatar"
                             title="点击上传头像">
-                            <img id="menuAvatarImg" style="display:none;">
-                            <span id="menuAvatarFallback"><svg class="icon"
-                                    style="width:36px;height:36px;stroke-width:1.5;">
+                            <img id="menuAvatarImg" class="hidden">
+                            <span id="menuAvatarFallback"><svg class="icon size-36"
+                                    style="stroke-width:1.5;">
                                     <use href="#icon-user" />
                                 </svg></span>
                             <input type="file" id="menuAvatarUpload" class="avatar-upload" accept="image/*">
@@ -210,7 +210,7 @@
                 <div class="menu-feature-row">
                     <button class="menu-feature-card" id="btnMenuWorldInfo">
                         <div class="menu-feature-icon">
-                            <svg class="icon" style="width:20px;height:20px;">
+                            <svg class="icon size-20">
                                 <use href="#icon-book" />
                             </svg>
                         </div>
@@ -219,7 +219,7 @@
                     </button>
                     <button class="menu-feature-card" id="btnMenuPresets">
                         <div class="menu-feature-icon">
-                            <svg class="icon" style="width:20px;height:20px;">
+                            <svg class="icon size-20">
                                 <use href="#icon-sliders" />
                             </svg>
                         </div>
@@ -229,10 +229,10 @@
                 </div>
 
                 <!-- 长条开始按钮 -->
-                <div class="menu-start-card" id="menuStartCard" role="button" tabindex="0" style="cursor:pointer;">
-                    <div class="menu-start-icon" id="menuStartIcon"
-                        style="color:var(--text);display:flex;align-items:center;justify-content:center;">
-                        <svg class="icon" style="width:28px;height:28px;stroke-width:2;">
+                <div class="menu-start-card cursor-pointer" id="menuStartCard" role="button" tabindex="0">
+                    <div class="menu-start-icon flex-center" id="menuStartIcon"
+                        style="color:var(--text);">
+                        <svg class="icon size-28" style="stroke-width:2;">
                             <use href="#icon-sparkles" />
                         </svg>
                     </div>
@@ -240,7 +240,7 @@
                         <div class="menu-start-title" id="menuStartTitle">开始你的故事</div>
                         <div class="menu-start-desc" id="menuStartDesc">选择一个预设以开始冒险</div>
                     </div>
-                    <svg class="icon icon-lg" style="color:var(--text-tertiary);stroke-width:2.5;">
+                    <svg class="icon icon-lg text-tertiary" style="stroke-width:2.5;">
                         <use href="#icon-chevron-right" />
                     </svg>
                 </div>
@@ -276,7 +276,7 @@
                         </svg></button>
                     <h2 class="page-title">创造你的世界</h2>
                     <button class="crystal-btn primary" id="btnCreatePresetFromSetup"
-                        style="padding:8px 16px;font-size:13px;">
+                        class="p-8-16 text-13">
                         <svg class="icon icon-sm" style="stroke:white;">
                             <use href="#icon-plus" />
                         </svg>
@@ -284,7 +284,7 @@
                     </button>
                 </div>
                 <div class="page-body">
-                    <div class="world-setup-form" style="padding:0 20px;">
+                    <div class="world-setup-form p-0-20">
                         <div>
                             <label class="field-label">快速选择题材</label>
                             <div class="world-preset-chips" id="worldPresetChips">
@@ -304,13 +304,13 @@
                         </div>
 
                         <div>
-                            <label class="field-label">描述你想玩的游戏 <span style="color:#ff3b30">*</span></label>
+                            <label class="field-label">描述你想玩的游戏 <span class="text-danger">*</span></label>
                             <div class="world-example-box" id="worldExampleBox">
                                 <span class="label">示例</span>
-                                <p style="margin-top:6px;">「我想玩末日生存，一个人在丧尸世界求生，需要收集物资建立庇护所」</p>
+                                <p class="mt-6">「我想玩末日生存，一个人在丧尸世界求生，需要收集物资建立庇护所」</p>
                             </div>
-                            <textarea class="input-field textarea-field" id="worldDescription" rows="4"
-                                placeholder="随便写！一句话也行，详细设定也行。还可以指定特殊能力、CP线、世界观..." style="margin-top:8px;"></textarea>
+                            <textarea class="input-field textarea-field mt-8" id="worldDescription" rows="4"
+                                placeholder="随便写！一句话也行，详细设定也行。还可以指定特殊能力、CP线、世界观...">
                         </div>
 
                         <div>
@@ -320,27 +320,26 @@
                                 <div><input type="text" class="input-field" id="setupPlayerGender" placeholder="性别">
                                 </div>
                             </div>
-                            <input type="text" class="input-field" id="setupPlayerIdentity" placeholder="身份/职业"
-                                style="margin-top:8px;">
-                            <textarea class="input-field textarea-field" id="setupPlayerDesc" rows="2"
-                                placeholder="性格、外貌、背景...（留空让AI自动分配）" style="margin-top:8px;"></textarea>
+                            <input type="text" class="input-field mt-8" id="setupPlayerIdentity" placeholder="身份/职业">
+                            <textarea class="input-field textarea-field mt-8" id="setupPlayerDesc" rows="2"
+                                placeholder="性格、外貌、背景...（留空让AI自动分配）">
                         </div>
 
                         <div>
-                            <label class="field-label">选择你的预设 <span style="font-size:11px;color:var(--text-secondary);font-weight:400;">（大佬调教，影响AI文笔风格）</span></label>
-                            <div id="setupPresetSelector" class="pearl-card" style="padding:12px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;" onclick="PresetManager.showModal();">
+                            <label class="field-label">选择你的预设 <span class="text-xs text-secondary font-normal">（大佬调教，影响AI文笔风格）</span></label>
+                            <div id="setupPresetSelector" class="pearl-card p-12 cursor-pointer flex-between" onclick="PresetManager.showModal();">
                                 <div>
-                                    <div id="setupPresetName" style="font-size:14px;font-weight:500;">默认预设</div>
-                                    <div id="setupPresetDesc" style="font-size:12px;color:var(--text-secondary);margin-top:2px;">点击选择或导入酒馆预设</div>
+                                    <div id="setupPresetName" class="text-base font-medium">默认预设</div>
+                                    <div id="setupPresetDesc" class="text-sm text-secondary mt-2">点击选择或导入酒馆预设</div>
                                 </div>
-                                <svg class="icon" style="width:20px;height:20px;stroke:var(--text-secondary);"><use href="#icon-chevron-right"/></svg>
+                                <svg class="icon size-20 text-secondary"><use href="#icon-chevron-right"/></svg>
                             </div>
-                            <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
-                                <button class="crystal-btn" style="padding:6px 12px;font-size:12px;" onclick="PresetManager.showModal();">
+                            <div class="mt-8 flex-row-gap-8 flex-wrap">
+                                <button class="crystal-btn p-6-12 text-sm" onclick="PresetManager.showModal();">
                                     <svg class="icon icon-sm" style="stroke:currentColor;margin-right:4px;"><use href="#icon-folder"/></svg>
                                     管理预设
                                 </button>
-                                <button class="crystal-btn" style="padding:6px 12px;font-size:12px;" onclick="document.getElementById('presetFileInput').click();">
+                                <button class="crystal-btn p-6-12 text-sm" onclick="document.getElementById('presetFileInput').click();">
                                     <svg class="icon icon-sm" style="stroke:currentColor;margin-right:4px;"><use href="#icon-upload"/></svg>
                                     导入预设
                                 </button>
@@ -348,7 +347,7 @@
                         </div>
                     </div>
                 </div>
-                <div style="padding:16px 20px;flex-shrink:0;">
+                <div class="p-16-20 flex-shrink-0">
                     <button class="crystal-btn primary w-full" id="btnCreateWorld">
                         <svg class="icon icon-sm" style="stroke:white;">
                             <use href="#icon-sparkles" />
@@ -367,8 +366,7 @@
                 </div>
                 <h3 class="loading-title" id="loadingTitle">正在创造世界...</h3>
                 <p class="loading-sub" id="loadingSub">AI正在根据你的描述生成完整的游戏世界</p>
-                <button class="crystal-btn" id="btnLoadingCancel"
-                    style="margin-top:32px;padding:10px 28px;font-size:14px;">
+                <button class="crystal-btn mt-32 p-10 text-base" id="btnLoadingCancel">
                     <svg class="icon icon-sm" style="stroke:currentColor;margin-right:6px;">
                         <use href="#icon-back" />
                     </svg>
@@ -380,14 +378,14 @@
             <div class="page" id="storyPage">
                 <div class="story-header">
                     <div class="story-header-left">
-                        <span class="scene-time" style="display:flex;align-items:center;gap:4px;">
+                        <span class="scene-time flex-row-gap-4">
                             <svg class="icon icon-sm">
                                 <use href="#icon-clock" />
                             </svg>
                             <span id="gameTimeText">--</span>
                         </span>
                         <!-- Token计数显示 -->
-                        <div class="token-display" style="display:flex;align-items:center;gap:10px;font-size:12px;color:var(--text-secondary);margin-left:16px;">
+                        <div class="token-display flex-row-gap-10 text-sm text-secondary ml-16">
                             <span class="token-item" title="本段剧情Token">
                                 <svg class="icon icon-sm" style="vertical-align:middle;margin-right:2px;">
                                     <use href="#icon-zap" />
@@ -484,8 +482,8 @@
                 <div class="page-body" id="playerPageBody">
                     <div class="player-hero">
                         <div class="avatar avatar-lg" id="playerPageAvatar" style="margin:0 auto;">
-                            <span id="playerPageAvatarFallback"><svg class="icon"
-                                    style="width:36px;height:36px;stroke-width:1.5;">
+                            <span id="playerPageAvatarFallback"><svg class="icon size-36"
+                                    style="stroke-width:1.5;">
                                     <use href="#icon-user" />
                                 </svg></span>
                         </div>
@@ -503,7 +501,7 @@
                     <div class="player-section">
                         <p class="player-section-title">关系网</p>
                         <div class="relation-net" id="relationNet">
-                            <p class="text-soft" style="font-size:13px;">暂无关系记录</p>
+                            <p class="text-soft text-13">暂无关系记录</p>
                         </div>
                     </div>
                 </div>
@@ -552,8 +550,8 @@
                         </svg></button>
                     <h2 class="page-title">日志</h2>
                 </div>
-                <div class="page-body" style="overflow-y:auto;padding-top:12px;">
-                    <div class="menu-top-card" style="width:100%;margin:0 0 20px;">
+                <div class="page-body overflow-y-auto pt-12">
+                    <div class="menu-top-card w-full mb-20">
                         <div class="menu-top-inner">
                             <div class="avatar avatar-lg" style="background:linear-gradient(135deg,#f2f2f7,#e5e5ea);">
                                 <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -562,35 +560,30 @@
                                     <line x1="12" y1="18" x2="12.01" y2="18" />
                                 </svg></div>
                             <div class="menu-top-info">
-                                <div class="menu-top-name" id="logDynamicTitle" style="font-size:18px;font-weight:600;">
+                                <div class="menu-top-name text-18 font-semibold" id="logDynamicTitle">
                                     冒险日志</div>
-                                <div class="menu-top-motto" id="logDynamicSubtitle"
-                                    style="font-size:13px;color:var(--text-secondary);margin-top:4px;">记录你的每一次奇遇</div>
+                                <div class="menu-top-motto text-13 text-secondary mt-4" id="logDynamicSubtitle">记录你的每一次奇遇</div>
                             </div>
-                            <div class="menu-top-meta" style="text-align:right;">
-                                <div class="menu-top-date" id="logTopDate"
-                                    style="font-size:15px;color:var(--text-secondary);font-weight:500;">--/--</div>
+                            <div class="menu-top-meta text-right">
+                                <div class="menu-top-date text-15 text-secondary font-medium" id="logTopDate">--/--</div>
                             </div>
                         </div>
                     </div>
                     <div id="logSubContainer"
-                        style="display:none;position:absolute;inset:0;background:var(--bg);z-index:50;overflow:hidden;animation:slideInRight .3s ease">
-                        <div
-                            style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);background:var(--card);position:relative;z-index:10;flex-shrink:0;">
-                            <button class="circle-btn" id="logSubBackBtn" style="width:36px;height:36px;"
+                        class="hidden absolute-fill bg-bg z-50 overflow-hidden" style="animation:slideInRight .3s ease">
+                        <div class="flex-row-gap-10 p-12-16 border-b bg-card relative z-10 flex-shrink-0">
+                            <button class="circle-btn size-36" id="logSubBackBtn"
                                 aria-label="返回"><svg class="icon">
                                     <use href="#icon-back" />
                                 </svg></button>
-                            <h3 id="logSubTitle"
-                                style="font-size:17px;font-weight:600;flex:1;text-align:center;margin-right:36px;"></h3>
+                            <h3 id="logSubTitle" class="text-17 font-semibold flex-1 text-center mr-36"></h3>
                         </div>
                         <div id="logSubContent" aria-live="polite"
-                            style="padding:16px;position:absolute;top:60px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;">
+                            class="p-16 absolute" style="top:60px;left:0;right:0;bottom:0;overflow-y:auto;-webkit-overflow-scrolling:touch;">
                         </div>
                     </div>
                     <div id="logMainContent">
-                        <div id="logFeatureGrid"
-                            style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px 12px;padding:8px 4px;">
+                        <div id="logFeatureGrid" class="grid" style="grid-template-columns:repeat(4,1fr);gap:16px 12px;padding:8px 4px;">
                             <div class="preset-item" data-log="chat" id="logFeat-chat" role="button" tabindex="0">
                                 <div class="preset-icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
                                         stroke="currentColor" stroke-width="1.5">
@@ -740,7 +733,7 @@
 
             <!-- ==================== 预设操作模态框 ==================== -->
             <div class="modal-overlay" id="presetActionModal">
-                <div class="modal-content" style="max-width:320px;">
+                <div class="modal-content max-w-320">
                     <div class="modal-header">
                         <h3 class="modal-title">世界</h3>
                         <button class="circle-btn" data-close="presetActionModal"><svg class="icon icon-sm">
@@ -766,7 +759,7 @@
                                     </svg>
                                     开始新旅程
                                 </button>
-                                <button class="preset-action-btn primary" id="btnPresetContinue" style="display:none;">
+                                <button class="preset-action-btn primary hidden" id="btnPresetContinue">
                                     <svg class="icon icon-sm" style="stroke:currentColor;margin-right:6px;">
                                         <use href="#icon-book" />
                                     </svg>
@@ -810,11 +803,11 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             新建书
                         </button>
-                        <button class="wi-toolbar-btn" id="btnWiNewEntry" onclick="WorldInfo.addEntry()" style="display:none;">
+                        <button class="wi-toolbar-btn hidden" id="btnWiNewEntry" onclick="WorldInfo.addEntry()">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             新建条目
                         </button>
-                        <button class="wi-toolbar-btn" id="btnWiBack" onclick="WorldInfo.goBack()" style="display:none;">
+                        <button class="wi-toolbar-btn hidden" id="btnWiBack" onclick="WorldInfo.goBack()">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                             返回
                         </button>
@@ -822,7 +815,7 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             导入
                         </button>
-                        <input type="file" id="wiFileInput" accept=".json" style="display:none;">
+                        <input type="file" id="wiFileInput" accept=".json" class="hidden">
                         <button class="wi-toolbar-btn" id="btnWiExport">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             导出
@@ -846,7 +839,7 @@
                         <label><input type="checkbox" id="wiRecursive" checked> 递归扫描</label>
                     </div>
                     <!-- 世界书信息（隐藏，由JS控制显示） -->
-                    <div id="wiBookInfo" style="display:none;">
+                    <div id="wiBookInfo" class="hidden">
                         <div id="wiBookName"></div>
                     </div>
                     <!-- 条目列表 -->
@@ -878,7 +871,7 @@
                 <div class="modal-content modal-enhanced">
                     <div class="modal-header">
                         <h3 id="wiEntryModalTitle">编辑条目</h3>
-                        <button class="circle-btn" data-close="wiEntryModal" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="wiEntryModal">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -946,7 +939,7 @@
                         <div class="wi-field-row wi-field">
                             <div>
                                 <label class="wi-field-label">位置</label>
-                                <select id="wiEditPosition" class="wi-field-input" style="padding:8px 10px;">
+                                <select id="wiEditPosition" class="wi-field-input p-8-10">
                                     <option value="0">角色定义前 (before_char)</option>
                                     <option value="1">角色定义后 (after_char)</option>
                                     <option value="2">作者备注前 (AN Top)</option>
@@ -959,7 +952,7 @@
                             </div>
                             <div>
                                 <label class="wi-field-label">角色</label>
-                                <select id="wiEditRole" class="wi-field-input" style="padding:8px 10px;">
+                                <select id="wiEditRole" class="wi-field-input p-8-10">
                                     <option value="0">System 系统</option>
                                     <option value="1">User 用户</option>
                                     <option value="2">Assistant 助手</option>
@@ -977,7 +970,7 @@
                             </div>
                             <div>
                                 <label class="wi-field-label">逻辑</label>
-                                <select id="wiEditLogic" class="wi-field-input" style="padding:8px 10px;">
+                                <select id="wiEditLogic" class="wi-field-input p-8-10">
                                     <option value="0">AND ANY (任一主+任一次)</option>
                                     <option value="1">NOT ALL (主+非全部次)</option>
                                     <option value="2">NOT ANY (主+非任一次)</option>
@@ -1002,7 +995,7 @@
                                         <span>Selective 选择性</span>
                                     </div>
                                 </div>
-                                <div class="wi-field-row" style="margin-top:10px;">
+                                <div class="wi-field-row mt-10">
                                     <div class="wi-checkbox" id="wiEditDisable" onclick="this.classList.toggle('checked')">
                                         <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
                                         <span>Disabled 禁用</span>
@@ -1043,7 +1036,7 @@
                                     </div>
                                 </div>
                                 <!-- 保留原始checkbox用于JS兼容 -->
-                                <div style="display:none;">
+                                <div class="hidden">
                                     <input type="checkbox" id="wiEntryConstant">
                                     <input type="checkbox" id="wiEntrySelective">
                                     <input type="checkbox" id="wiEntryEnabled" checked>
@@ -1078,7 +1071,7 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="wi-field-row" style="margin-top:6px;">
+                                <div class="wi-field-row mt-6">
                                     <div class="wi-checkbox" id="wiEditGroupOverride" onclick="this.classList.toggle('checked')">
                                         <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
                                         <span>Group Override 分组覆盖</span>
@@ -1089,7 +1082,7 @@
                                     </div>
                                 </div>
                                 <!-- 轮次控制 -->
-                                <div class="wi-field-col3 wi-field" style="margin-top:12px;">
+                                <div class="wi-field-col3 wi-field mt-12">
                                     <div>
                                         <label class="wi-field-label">Sticky 粘性</label>
                                         <input type="number" id="wiEditSticky" class="wi-field-input" value="" min="0" max="999" placeholder="null=关" style="font-size:12px;">
@@ -1104,14 +1097,14 @@
                                     </div>
                                 </div>
                                 <!-- 概率开关 -->
-                                <div style="margin-top:10px;">
+                                <div class="mt-10">
                                     <div class="wi-checkbox" id="wiEditUseProbability" onclick="this.classList.toggle('checked')">
                                         <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
                                         <span>Use Probability 启用概率控制</span>
                                     </div>
                                 </div>
                                 <!-- Triggers触发器（正则表达式） -->
-                                <div class="wi-field" style="margin-top:12px;">
+                                <div class="wi-field mt-12">
                                     <label class="wi-field-label">Triggers 触发器 <span style="font-size:10px;color:var(--text-tertiary);">（正则表达式，每行一个）</span></label>
                                     <textarea id="wiEditTriggers" class="wi-field-input" rows="3" placeholder="每行一个正则表达式&#10;例如：/^User:.*hello/&#10;或纯正则：hello\\s+world" style="resize:vertical;min-height:50px;font-family:monospace;font-size:12px;"></textarea>
                                     <div id="wiTriggersValidation" style="font-size:11px;margin-top:4px;display:none;"></div>
@@ -1141,7 +1134,7 @@
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                             预设管理
                         </h3>
-                        <button class="circle-btn" data-close="presetManagerModal" onclick="PresetManager.updateSetupPresetDisplay();" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="presetManagerModal" onclick="PresetManager.updateSetupPresetDisplay();">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1151,7 +1144,7 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             导入
                         </button>
-                        <input type="file" id="presetFileInput" accept=".json" style="display:none;">
+                        <input type="file" id="presetFileInput" accept=".json" class="hidden">
                         <button class="wi-toolbar-btn" id="btnPresetExport">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             导出
@@ -1171,7 +1164,7 @@
                     </div>
                     <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 !important;">
                         <!-- 当前预设信息 -->
-                        <div id="currentPresetInfo" style="display:none;padding:12px 14px;">
+                        <div id="currentPresetInfo" class="hidden p-12-14">
                             <div class="current-preset-card">
                                 <div class="cp-name" id="currentPresetName"></div>
                                 <div class="cp-params" id="currentPresetParams"></div>
@@ -1194,11 +1187,11 @@
                         <!-- 参数调节区域（可折叠） -->
                         <div style="overflow-y:auto;">
                             <div class="wi-section">
-                                <div class="wi-section-title" style="display:flex;justify-content:space-between;align-items:center;cursor:pointer;" id="presetParamsToggle">
+                                <div class="wi-section-title flex-between cursor-pointer" id="presetParamsToggle">
                                     <span>参数调节</span>
-                                    <span id="presetParamsToggleIcon" style="font-size:12px;color:var(--text-tertiary);transition:transform 0.2s;">▼</span>
+                                    <span id="presetParamsToggleIcon" class="text-sm-tertiary" style="transition:transform 0.2s;">▼</span>
                                 </div>
-                                <div id="presetParamsContent" style="display:none;">
+                                <div id="presetParamsContent" class="hidden">
                                     <!-- 上下文长度 + 最大回复长度 -->
                                     <div class="wi-field-row wi-field">
                                         <div>
@@ -1275,7 +1268,7 @@
                                         </div>
                                     </div>
                                     <!-- 应用参数按钮 -->
-                                    <div class="wi-btn-row" style="margin-top:16px;">
+                                    <div class="wi-btn-row mt-16">
                                         <button class="wi-btn wi-btn-primary" id="btnPresetApplyParams" style="flex:1;">
                                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
                                             应用参数
@@ -1290,42 +1283,42 @@
 
             <!-- ==================== 预设详情模态框 ==================== -->
             <div class="modal-overlay" id="presetDetailModal">
-                <div class="modal-content modal-enhanced" style="max-width:480px;max-height:85vh;">
+                <div class="modal-content modal-enhanced max-w-480 max-h-85vh">
                     <div class="modal-header">
-                        <button class="circle-btn" id="btnBackToPresetList" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" id="btnBackToPresetList">
                             <svg class="icon icon-sm"><use href="#icon-back"/></svg>
                         </button>
                         <h3 id="presetDetailTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">预设详情</h3>
-                        <button class="circle-btn" data-close="presetDetailModal" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="presetDetailModal">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
                     <div class="modal-body" style="padding:0 !important;overflow-y:auto;flex:1;">
                         <!-- 预设参数概览 -->
-                        <div id="presetDetailParams" style="padding:12px 14px;border-bottom:1px solid var(--border);">
+                        <div id="presetDetailParams" class="p-12-14 border-b">
                         </div>
                         <!-- 提示词条目列表 -->
-                        <div style="padding:10px 14px;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                        <div class="p-10-14">
+                            <div class="flex-between mb-8">
                                 <div class="wi-section-title" style="margin:0;">提示词条目</div>
-                                <div style="display:flex;gap:8px;">
-                                    <span id="presetPromptStats" style="font-size:11px;color:var(--text-tertiary);"></span>
-                                    <span id="presetToggleAll" style="font-size:11px;color:var(--accent);cursor:pointer;">全部开启</span>
+                                <div class="flex gap-8">
+                                    <span id="presetPromptStats" class="text-xs-tertiary"></span>
+                                      <span id="presetToggleAll" class="text-xs-accent cursor-pointer">全部开启</span>
                                 </div>
                             </div>
                             <div id="presetPromptList">
                             </div>
                         </div>
                         <!-- 正则脚本列表（预设附带，只读查看） -->
-                        <div style="padding:10px 14px;border-top:1px solid var(--border);">
+                        <div class="p-10-14 border-t">
                             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                                 <div class="wi-section-title" style="margin:0;">正则脚本（预设附带）</div>
                                 <div style="display:flex;gap:8px;">
-                                    <span id="presetRegexStats" style="font-size:11px;color:var(--text-tertiary);"></span>
+                                    <span id="presetRegexStats" class="text-xs-tertiary"></span>
                                 </div>
                             </div>
                             <div id="presetRegexList">
-                                <div style="font-size:12px;color:var(--text-tertiary);text-align:center;padding:10px;">加载中...</div>
+                                <div class="text-sm-tertiary text-center p-10">加载中...</div>
                             </div>
                         </div>
                     </div>
@@ -1334,10 +1327,10 @@
 
             <!-- ==================== 提示条详情模态框 ==================== -->
             <div class="modal-overlay" id="promptContentModal">
-                <div class="modal-content modal-enhanced" style="max-width:480px;max-height:80vh;">
+                <div class="modal-content modal-enhanced max-w-480 max-h-80vh">
                     <div class="modal-header">
                         <h3 id="promptContentTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">提示条内容</h3>
-                        <button class="circle-btn" data-close="promptContentModal" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="promptContentModal">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1350,10 +1343,10 @@
 
             <!-- ==================== 保存预设名称输入 ==================== -->
             <div class="modal-overlay" id="presetSaveNameModal">
-                <div class="modal-content" style="max-width:340px;">
+                <div class="modal-content max-w-340">
                     <div class="modal-header">
                         <h3 style="margin:0;font-size:16px;">保存预设</h3>
-                        <button class="circle-btn" data-close="presetSaveNameModal" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="presetSaveNameModal">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1375,13 +1368,13 @@
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                             <span id="regexModalTitle">正则脚本</span>
                         </h3>
-                        <button class="circle-btn" data-close="regexManagerModal" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="regexManagerModal">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
                     <!-- 工具栏 -->
                     <div class="wi-toolbar" id="regexToolbar">
-                        <button class="wi-toolbar-btn" id="btnRegexBack" style="display:none;">
+                        <button class="wi-toolbar-btn hidden" id="btnRegexBack">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                             返回
                         </button>
@@ -1393,7 +1386,7 @@
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                             导入
                         </button>
-                        <input type="file" id="regexFileInput" accept=".json" style="display:none;">
+                        <input type="file" id="regexFileInput" accept=".json" class="hidden">
                         <button class="wi-toolbar-btn" id="btnRegexAdd">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             新建
@@ -1421,13 +1414,13 @@
                             </div>
                         </div>
                         <!-- 第二级：分组内条目列表 -->
-                        <div id="regexDetailView" style="display:none;max-height:50vh;overflow-y:auto;">
+                        <div id="regexDetailView" class="hidden max-h-50vh overflow-y-auto">
                             <div class="wi-section">
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
                                     <div class="wi-section-title" id="regexDetailTitle" style="margin:0;"></div>
                                     <div style="display:flex;gap:8px;">
-                                        <span id="regexDetailStats" style="font-size:11px;color:var(--text-tertiary);"></span>
-                                        <span id="regexToggleAll" style="font-size:11px;color:var(--accent);cursor:pointer;">全部开启</span>
+                                        <span id="regexDetailStats" class="text-xs-tertiary"></span>
+                                        <span id="regexToggleAll" class="text-xs-accent cursor-pointer">全部开启</span>
                                     </div>
                                 </div>
                                 <div id="regexDetailList"></div>
@@ -1442,7 +1435,7 @@
                 <div class="modal-content modal-enhanced">
                     <div class="modal-header">
                         <h3 id="regexEditTitle">编辑正则</h3>
-                        <button class="circle-btn" data-close="regexEditModal" style="flex-shrink:0;">
+                        <button class="circle-btn flex-shrink-0" data-close="regexEditModal">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1515,7 +1508,7 @@
                                         <span>Run On Edit 编辑时运行</span>
                                     </div>
                                 </div>
-                                <div class="wi-field-row wi-field" style="margin-top:12px;">
+                                <div class="wi-field-row wi-field mt-12">
                                     <div>
                                         <label class="wi-field-label">最小深度 Min Depth</label>
                                         <input type="number" id="regexMinDepth" class="wi-field-input" value="" min="-1" max="999" placeholder="-1=不限" style="font-size:12px;">
@@ -1525,9 +1518,9 @@
                                         <input type="number" id="regexMaxDepth" class="wi-field-input" value="" min="0" max="999" placeholder="0=不限" style="font-size:12px;">
                                     </div>
                                 </div>
-                                <div class="wi-field" style="margin-top:10px;">
+                                <div class="wi-field mt-10">
                                     <label class="wi-field-label">宏替换模式 Substitute Regex</label>
-                                    <select id="regexSubstituteRegex" class="wi-field-input" style="padding:8px 10px;">
+                                    <select id="regexSubstituteRegex" class="wi-field-input p-8-10">
                                         <option value="0">NONE 不替换</option>
                                         <option value="1">RAW 原始宏替换</option>
                                         <option value="2">ESCAPED 转义宏替换</option>
@@ -1662,7 +1655,7 @@
                     </div>
                     <div class="modal-body" id="apiConfigBody" style="padding:0;">
                         <!-- 顶部操作栏 -->
-                        <div style="display:flex;gap:10px;padding:12px 20px;border-bottom:1px solid var(--border);">
+                        <div class="flex gap-10 p-12-20 border-b">
                             <button class="crystal-btn primary flex-1" id="btnCreateApi"
                                 style="font-size:13px;padding:10px;">
                                 <svg class="icon icon-sm" style="stroke:white;">
@@ -1687,7 +1680,7 @@
                         <!-- 自动轮询开关 -->
                         <div
                             style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid var(--border);background:var(--card);">
-                            <div style="display:flex;align-items:center;gap:12px;">
+                            <div class="flex-row-gap-12">
                                 <div
                                     style="width:36px;height:36px;display:flex;align-items:center;justify-content:center;">
                                     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -1699,7 +1692,7 @@
                                 </div>
                                 <div>
                                     <div style="font-size:14px;font-weight:500;color:var(--text);">自动轮询</div>
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">
+                                    <div class="text-sm-secondary mt-2">
                                         API出错时自动切换到下一个可用配置</div>
                                 </div>
                             </div>
@@ -1710,12 +1703,12 @@
                         </div>
                         <!-- 分组标签 -->
                         <div id="apiGroupTabs"
-                            style="display:flex;gap:8px;padding:10px 20px;border-bottom:1px solid var(--border);overflow-x:auto;">
+                            <div class="flex gap-8 p-10-20 border-b overflow-x-auto">
                             <button class="tag-btn active" data-group="all">全部</button>
                             <button class="tag-btn" data-group="ungrouped">未分组</button>
                         </div>
                         <!-- API列表 -->
-                        <div id="apiListContainer" style="padding:12px 20px;max-height:55vh;overflow-y:auto;"></div>
+                        <div id="apiListContainer" class="p-12-20 max-h-55vh overflow-y-auto"></div>
                     </div>
                 </div>
             </div>
@@ -1724,13 +1717,13 @@
             <div class="modal-overlay" id="apiDetailModal">
                 <div class="modal-content" style="max-height:90vh;">
                     <div class="modal-header">
-                        <div style="display:flex;align-items:center;gap:10px;">
+                        <div class="flex-row-gap-10">
                             <button class="circle-btn" id="apiDetailBack"><svg class="icon">
                                     <use href="#icon-back" />
                                 </svg></button>
                             <div>
                                 <h3 class="modal-title" id="apiDetailName" style="font-size:16px;">--</h3>
-                                <div style="font-size:12px;color:var(--text-secondary);" id="apiDetailUrl">--</div>
+                                <div class="text-sm-secondary" id="apiDetailUrl">--</div>
                             </div>
                         </div>
                         <button class="circle-btn" id="apiDetailRefresh"><svg class="icon icon-sm">
@@ -1747,17 +1740,17 @@
                     <div class="modal-body" style="padding:16px 20px;max-height:60vh;overflow-y:auto;">
                         <!-- 概览面板 -->
                         <div class="edit-panel active" id="apiOverviewPanel">
-                            <div style="display:flex;flex-direction:column;gap:12px;">
+                            <div class="flex-col-gap-12">
                                 <!-- 统计信息（置顶） -->
                                 <div class="pearl-card" style="padding:14px;">
                                     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                                         <div>
-                                            <div style="font-size:12px;color:var(--text-secondary);">请求数</div>
+                                            <div class="text-sm-secondary">请求数</div>
                                             <div id="apiDetailRequests"
                                                 style="font-size:18px;font-weight:600;margin-top:4px;">--</div>
                                         </div>
                                         <div>
-                                            <div style="font-size:12px;color:var(--text-secondary);">模型数</div>
+                                            <div class="text-sm-secondary">模型数</div>
                                             <div id="apiDetailModels"
                                                 style="font-size:18px;font-weight:600;margin-top:4px;">--</div>
                                         </div>
@@ -1765,13 +1758,13 @@
                                 </div>
                                 <!-- 状态卡片 -->
                                 <div class="pearl-card" style="padding:14px;">
-                                    <div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">状态</div>
-                                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                                    <div class="text-sm-secondary mb-8">状态</div>
+                                    <div class="flex-row-gap-8 mb-10">
                                         <span id="apiDetailStatusBadge" class="badge badge-primary">正在使用</span>
                                         <span id="apiDetailModel"
                                             style="font-size:13px;color:var(--text-secondary);">--</span>
                                     </div>
-                                    <div style="display:flex;gap:8px;margin-bottom:12px;">
+                                    <div class="flex gap-8 mb-12">
                                         <button class="crystal-btn" id="btnSetCurrentApi"
                                             style="font-size:12px;padding:6px 12px;">设为当前</button>
                                         <button class="crystal-btn" id="btnTestApiDetail"
@@ -1786,7 +1779,7 @@
                                     <div
                                         style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;font-weight:500;">
                                         配置信息</div>
-                                    <div style="display:flex;flex-direction:column;gap:10px;">
+                                    <div class="flex-col-gap-10">
                                         <div>
                                             <label class="field-label"
                                                 style="font-size:12px;margin-bottom:4px;">API名称</label>
@@ -1802,7 +1795,7 @@
                                         <div>
                                             <label class="field-label"
                                                 style="font-size:12px;margin-bottom:4px;">密钥</label>
-                                            <div style="display:flex;gap:6px;">
+                                            <div class="flex gap-6">
                                                 <input type="password" class="input-field" id="detailApiKey"
                                                     style="font-size:13px;padding:8px 10px;flex:1;">
                                                 <button class="api-pwd-toggle" id="detailApiTogglePwd"
@@ -1816,7 +1809,7 @@
                                         <div>
                                             <label class="field-label"
                                                 style="font-size:12px;margin-bottom:4px;">模型</label>
-                                            <div style="display:flex;gap:6px;min-width:0;overflow:hidden;">
+                                            <div class="flex gap-6 min-w-0 overflow-hidden">
                                                 <select class="api-model-select" id="detailApiModelSelect"
                                                     style="flex:1;padding:8px 10px;font-size:13px;">
                                                     <option value="">选择或输入模型</option>
@@ -1825,7 +1818,7 @@
                                                     placeholder="手动输入"
                                                     style="flex:1;font-size:13px;padding:8px 10px;display:none;">
                                             </div>
-                                            <div style="display:flex;gap:6px;margin-top:8px;">
+                                            <div class="flex gap-6 mt-8">
                                                 <button class="api-fetch-btn" id="btnFetchModelsDetail"
                                                     style="flex:1;padding:6px 12px;font-size:12px;">获取模型列表</button>
                                                 <button class="api-fetch-btn" id="btnFailedModelsDetail"
@@ -1840,7 +1833,7 @@
                                                 <option value="">未分组</option>
                                             </select>
                                         </div>
-                                        <div style="display:flex;align-items:center;gap:8px;margin-top:8px;">
+                                        <div class="flex-row-gap-8 mt-8">
                                             <input type="checkbox" id="detailApiCompatibleMode" style="width:16px;height:16px;">
                                             <label for="detailApiCompatibleMode" style="font-size:13px;cursor:pointer;">
                                                 兼容模式（只发送基本参数，解决某些API报错问题）
@@ -1850,7 +1843,7 @@
                                 </div>
                                 <div class="pearl-card" style="padding:14px;">
                                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
-                                        <span style="font-size:12px;color:var(--text-secondary);">最近请求</span>
+                                        <span class="text-sm-secondary">最近请求</span>
                                         <button class="crystal-btn" id="btnClearApiRecent" style="font-size:11px;padding:4px 10px;color:var(--danger);border-color:var(--danger);">清空</button>
                                     </div>
                                     <div id="apiDetailRecent" style="font-size:13px;color:var(--text-secondary);">暂无记录
@@ -1860,11 +1853,11 @@
                         </div>
                         <!-- 错误面板 -->
                         <div class="edit-panel" id="apiErrorsPanel">
-                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-                                <span style="font-size:12px;color:var(--text-secondary);">错误日志</span>
+                            <div class="flex-between mb-10">
+                                <span class="text-sm-secondary">错误日志</span>
                                 <button class="crystal-btn" id="btnClearApiErrors" style="font-size:11px;padding:4px 10px;color:var(--danger);border-color:var(--danger);">清空错误</button>
                             </div>
-                            <div id="apiErrorList" style="display:flex;flex-direction:column;gap:10px;">
+                            <div id="apiErrorList" class="flex-col-gap-10">
                                 <div class="empty-state">暂无错误记录</div>
                             </div>
                         </div>
@@ -1880,7 +1873,7 @@
 
             <!-- ==================== 预设存档列表模态框 ==================== -->
             <div class="modal-overlay" id="presetSaveListModal">
-                <div class="modal-content" style="max-width:360px;max-height:80vh;">
+                <div class="modal-content max-w-360 max-h-80vh">
                     <div class="modal-header">
                         <button class="circle-btn" id="btnBackToPresetAction"><svg class="icon">
                                 <use href="#icon-back" />
@@ -1905,7 +1898,7 @@
                             </svg></button>
                     </div>
                     <div class="modal-body">
-                        <div style="display:flex;flex-direction:column;gap:14px;">
+                        <div class="flex-col-gap-14">
                             <div>
                                 <label class="field-label">名称（选填）</label>
                                 <input type="text" class="input-field" id="createApiName" placeholder="如：Ruoyun">
@@ -1957,7 +1950,7 @@
 
             <!-- ==================== 创建分组模态框 ==================== -->
             <div class="modal-overlay" id="createGroupModal">
-                <div class="modal-content" style="max-width:300px;">
+                <div class="modal-content max-w-300">
                     <div class="modal-header">
                         <h3 class="modal-title">创建分组</h3>
                         <button class="circle-btn" data-close="createGroupModal"><svg class="icon icon-sm">

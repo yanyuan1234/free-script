@@ -76,7 +76,7 @@
 }
 
 .preset-action-btn:hover {
-    background: #f7f7f9;
+    background: var(--bg-secondary);
 }
 
 .preset-action-btn.primary {
@@ -166,21 +166,10 @@
 
 .world-preset-chip {
     padding: 6px 12px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    font-size: 12px;
-    cursor: pointer;
-    transition: background .2s, color .2s, border-color .2s;
-    font-family: inherit
-}
-
-.world-preset-chip:hover {
-    border-color: var(--text-secondary)
 }
 
 .world-preset-chip.active {
-    background: #f2f2f7;
+    background: var(--bg-secondary);
     border-color: var(--text);
     font-weight: 500
 }
@@ -214,7 +203,7 @@
 }
 
 #worldSetupPage .tag-btn.active:hover {
-    background: #333;
+    background: var(--text);
 }
 
 #worldSetupPage .world-preset-chip.active {
@@ -355,7 +344,7 @@
 .gen-spinner {
     width: 16px;
     height: 16px;
-    border: 2px solid #f2f2f7;
+    border: 2px solid var(--bg-secondary);
     border-top-color: var(--text);
     border-radius: 50%;
     animation: spin .8s linear infinite;
@@ -381,7 +370,7 @@
 }
 
 .gen-btn:hover {
-    background: #f2f2f7
+    background: var(--bg-secondary)
 }
 
 .game-content {
@@ -455,7 +444,7 @@
 }
 
 .story-text .system-msg {
-    background: #f2f2f7;
+    background: var(--bg-secondary);
     color: var(--text-secondary);
     padding: 8px 12px;
     border-radius: 8px;
@@ -518,7 +507,7 @@
     top: -6px;
     right: -6px;
     font-size: 10px;
-    background: #999;
+    background: var(--text-tertiary);
     color: #fff;
     border-radius: 50%;
     width: 16px;
@@ -644,7 +633,7 @@
 }
 
 .option-btn:hover {
-    background: #f7f7f9;
+    background: var(--bg-secondary);
     border-color: var(--text-secondary);
     transform: translateX(4px)
 }
@@ -847,12 +836,12 @@
     margin-bottom: 6px
 }
 
-.player-field-warning .progress-fill {
-    background: #ff3b30 !important
-}
+.player-field-warning .progress-fill.warning {
+        background: var(--danger)
+    }
 
 .player-field-warning .player-field-value {
-    color: #ff3b30
+    color: var(--danger)
 }
 
 /* ================================================================
@@ -903,7 +892,7 @@
 .char-tag {
     font-size: 10px;
     padding: 2px 8px;
-    background: #f2f2f7;
+    background: var(--bg-secondary);
     border-radius: 10px;
     color: var(--text-secondary)
 }
@@ -937,7 +926,7 @@
 .npc-thought-bubble {
     margin-top: 10px;
     padding: 10px 14px;
-    background: #f8f8f8;
+    background: var(--bg-secondary);
     border-radius: var(--radius-sm);
     border-left: 3px solid var(--text-tertiary);
     position: relative;
@@ -1028,7 +1017,7 @@
     position: relative;
     padding: 12px 14px 20px 28px;
     margin-left: 12px;
-    border-left: 2px solid #e5e5ea;
+    border-left: 2px solid var(--border);
     cursor: pointer;
     transition: background var(--transition), border-color var(--transition)
 }
@@ -1046,7 +1035,7 @@
     width: 10px;
     height: 10px;
     border-radius: 50%;
-    background: #e5e5ea;
+    background: var(--border);
     border: 2px solid var(--bg);
     transition: background var(--transition), border-color var(--transition), transform var(--transition)
 }
@@ -1105,7 +1094,7 @@
 .ending-title-box {
     display: inline-block;
     padding: 12px 30px;
-    background: #f2f2f7;
+    background: var(--bg-secondary);
     border-radius: 30px;
     margin: 14px 0
 }
@@ -1388,4 +1377,1910 @@
 }
 .status-row:first-child {
     border-bottom: 1px dashed var(--border);
+}
+
+/* ================================================================
+   PAGES - RESPONSIVE BREAKPOINTS
+================================================================ */
+
+/* ========== Small phones (< 375px) ========== */
+@media (max-width: 374px) {
+    .story-header {
+        padding: 8px 12px;
+    }
+    
+    .story-header-left {
+        gap: 10px;
+    }
+    
+    .scene-location {
+        font-size: 11px;
+    }
+    
+    .scene-time {
+        font-size: 10px;
+    }
+    
+    .gen-control {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+    
+    .gen-spinner {
+        width: 14px;
+        height: 14px;
+    }
+    
+    .gen-btn {
+        padding: 3px 10px;
+        font-size: 10px;
+    }
+    
+    .game-content {
+        padding: 12px;
+        gap: 12px;
+    }
+    
+    .story-card {
+        padding: 14px;
+    }
+    
+    .story-card-head {
+        margin-bottom: 10px;
+    }
+    
+    .story-scene-label {
+        font-size: 10px;
+    }
+    
+    .story-scene-title {
+        font-size: 14px;
+        margin-top: 2px;
+    }
+    
+    .story-actions {
+        gap: 4px;
+    }
+    
+    .story-text {
+        font-size: 13px;
+        line-height: 1.75;
+    }
+    
+    .story-text .dialogue {
+        padding: 1px 4px;
+    }
+    
+    .story-text .system-msg {
+        padding: 6px 10px;
+        font-size: 0.9em;
+    }
+    
+    .options-container {
+        gap: 8px;
+    }
+    
+    .option-btn {
+        padding: 10px 12px;
+        font-size: 12px;
+        gap: 8px;
+    }
+    
+    .option-index {
+        width: 18px;
+        height: 18px;
+        font-size: 10px;
+    }
+    
+    .custom-action-bar {
+        gap: 6px;
+    }
+    
+    .action-bar-btn {
+        width: 32px;
+        height: 32px;
+    }
+    
+    .send-btn {
+        width: 36px;
+        height: 36px;
+    }
+    
+    .player-hero {
+        padding: 20px 16px 14px;
+    }
+    
+    .player-hero-name {
+        font-size: 18px;
+        margin-top: 8px;
+    }
+    
+    .player-hero-sub {
+        font-size: 12px;
+        margin-top: 2px;
+    }
+    
+    .player-section {
+        padding: 0 16px;
+        margin-bottom: 16px;
+    }
+    
+    .player-section-title {
+        font-size: 12px;
+        margin-bottom: 8px;
+    }
+    
+    .player-fields {
+        gap: 8px;
+    }
+    
+    .player-field {
+        padding: 8px 12px;
+    }
+    
+    .player-field-label {
+        font-size: 12px;
+    }
+    
+    .player-field-value {
+        font-size: 12px;
+    }
+    
+    .player-events {
+        gap: 6px;
+    }
+    
+    .player-event {
+        padding: 8px 12px;
+        font-size: 12px;
+        border-left-width: 2px;
+    }
+    
+    .player-event-time {
+        font-size: 10px;
+        margin-top: 2px;
+    }
+    
+    .relation-net {
+        gap: 8px;
+    }
+    
+    .relation-item {
+        padding: 8px 12px;
+    }
+    
+    .player-field-rich {
+        padding: 10px 12px;
+    }
+    
+    .player-field-head {
+        margin-bottom: 4px;
+    }
+    
+    .character-list {
+        gap: 8px;
+    }
+    
+    .character-card {
+        padding: 12px;
+        gap: 12px;
+    }
+    
+    .char-name {
+        font-size: 14px;
+    }
+    
+    .char-meta {
+        font-size: 11px;
+        margin-top: 2px;
+    }
+    
+    .char-tags {
+        gap: 4px;
+        margin-top: 4px;
+    }
+    
+    .char-tag {
+        font-size: 9px;
+        padding: 2px 6px;
+    }
+    
+    .char-stats {
+        margin-top: 6px;
+        gap: 4px;
+    }
+    
+    .char-stat-row {
+        gap: 6px;
+        font-size: 10px;
+    }
+    
+    .char-stat-value {
+        min-width: 24px;
+    }
+    
+    .npc-thought-bubble {
+        margin-top: 8px;
+        padding: 8px 12px;
+        border-left-width: 2px;
+    }
+    
+    .npc-thought-bubble .npc-thought-label {
+        font-size: 9px;
+    }
+    
+    .npc-thought-text {
+        font-size: 11px;
+        line-height: 1.5;
+    }
+    
+    .npc-card-edit {
+        padding: 12px;
+        gap: 12px;
+        margin-bottom: 8px;
+    }
+    
+    .npc-card-edit-name {
+        font-size: 14px;
+    }
+    
+    .npc-card-edit-role {
+        font-size: 11px;
+        margin-top: 1px;
+    }
+    
+    .npc-card-edit-actions {
+        gap: 4px;
+    }
+    
+    .recap-list {
+        gap: 8px;
+    }
+    
+    .timeline-item {
+        padding: 10px 12px 16px 24px;
+        margin-left: 10px;
+        border-left-width: 1px;
+    }
+    
+    .timeline-item::before {
+        left: -5px;
+        top: 14px;
+        width: 8px;
+        height: 8px;
+    }
+    
+    .timeline-item-head {
+        margin-bottom: 2px;
+    }
+    
+    .timeline-item-title {
+        font-size: 13px;
+    }
+    
+    .timeline-item-time {
+        font-size: 10px;
+    }
+    
+    .timeline-item-summary {
+        font-size: 11px;
+        line-height: 1.5;
+        -webkit-line-clamp: 2;
+    }
+    
+    .ending-header {
+        padding: 24px 16px 16px;
+    }
+    
+    .ending-label {
+        font-size: 11px;
+        letter-spacing: 0.15em;
+    }
+    
+    .ending-title-box {
+        padding: 10px 24px;
+        margin: 12px 0;
+    }
+    
+    .ending-title {
+        font-size: 20px;
+    }
+    
+    .ending-names {
+        font-size: 16px;
+    }
+    
+    .ending-section {
+        padding: 16px;
+        margin: 0 16px 12px;
+    }
+    
+    .ending-section h4 {
+        font-size: 16px;
+        margin-bottom: 8px;
+    }
+    
+    .ending-row {
+        padding: 6px 0;
+        font-size: 12px;
+    }
+    
+    .ending-actions {
+        gap: 10px;
+        padding: 0 16px 24px;
+    }
+    
+    #loadingPage {
+        padding: 30px;
+    }
+    
+    .loading-dots {
+        gap: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .loading-dot {
+        width: 8px;
+        height: 8px;
+    }
+    
+    .loading-title {
+        font-size: 18px;
+        margin-bottom: 6px;
+    }
+    
+    .loading-sub {
+        font-size: 12px;
+    }
+    
+    .edit-tabs {
+        margin: 0 16px;
+    }
+    
+    .edit-tab {
+        padding: 10px;
+        font-size: 13px;
+    }
+    
+    .edit-form {
+        gap: 12px;
+    }
+    
+    .edit-form-row {
+        gap: 10px;
+    }
+    
+    #worldSetupPage .page-body {
+        padding: 16px;
+    }
+    
+    .world-setup-form {
+        gap: 12px;
+    }
+    
+    .world-preset-chips {
+        gap: 6px;
+        margin-bottom: 6px;
+    }
+    
+    .world-preset-chip {
+        padding: 5px 10px;
+        font-size: 11px;
+    }
+    
+    .world-example-box {
+        padding: 10px;
+        font-size: 11px;
+        line-height: 1.6;
+        margin-bottom: 2px;
+    }
+    
+    .world-example-box .label {
+        margin-bottom: 2px;
+    }
+    
+    .confirm-body {
+        padding: 8px 0 16px;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+    
+    .confirm-actions {
+        gap: 8px;
+    }
+    
+    .confirm-actions .crystal-btn {
+        font-size: 13px;
+        padding: 8px;
+    }
+    
+    .settings-group {
+        gap: 14px;
+    }
+    
+    .setting-group {
+        margin-bottom: 12px;
+    }
+    
+    .settings-row {
+        gap: 6px;
+        margin-top: 6px;
+    }
+    
+    .settings-info {
+        padding: 8px 12px;
+        font-size: 11px;
+    }
+    
+    .settings-divider {
+        margin: 2px 0;
+    }
+    
+    .settings-context-info {
+        font-size: 11px;
+        margin-top: 2px;
+    }
+    
+    .setting-item {
+        padding: 8px 0;
+    }
+    
+    .setting-label {
+        font-size: 12px;
+    }
+    
+    .setting-controls {
+        gap: 6px;
+    }
+    
+    .setting-select {
+        padding: 5px 10px;
+        font-size: 12px;
+        min-width: 70px;
+    }
+    
+    .setting-actions {
+        gap: 6px;
+        margin-top: 10px;
+    }
+    
+    .setting-status {
+        padding: 8px 10px;
+        margin-top: 10px;
+    }
+    
+    .status-row {
+        font-size: 11px;
+        padding: 3px 0;
+    }
+}
+
+/* ========== Large phones/phablets (414-480px) ========== */
+@media (min-width: 414px) {
+    .story-header {
+        padding: 12px 18px;
+    }
+    
+    .story-header-left {
+        gap: 16px;
+    }
+    
+    .scene-location {
+        font-size: 13px;
+    }
+    
+    .scene-time {
+        font-size: 12px;
+    }
+    
+    .gen-control {
+        padding: 12px 18px;
+        font-size: 13px;
+    }
+    
+    .gen-spinner {
+        width: 18px;
+        height: 18px;
+    }
+    
+    .gen-btn {
+        padding: 5px 14px;
+        font-size: 12px;
+    }
+    
+    .game-content {
+        padding: 18px;
+        gap: 16px;
+    }
+    
+    .story-card {
+        padding: 22px;
+    }
+    
+    .story-card-head {
+        margin-bottom: 16px;
+    }
+    
+    .story-scene-label {
+        font-size: 12px;
+    }
+    
+    .story-scene-title {
+        font-size: 17px;
+        margin-top: 5px;
+    }
+    
+    .story-actions {
+        gap: 8px;
+    }
+    
+    .story-text {
+        font-size: 15px;
+        line-height: 1.9;
+    }
+    
+    .story-text .dialogue {
+        padding: 3px 8px;
+    }
+    
+    .story-text .system-msg {
+        padding: 10px 14px;
+        margin: 10px 0;
+    }
+    
+    .options-container {
+        gap: 12px;
+    }
+    
+    .option-btn {
+        padding: 14px 18px;
+        font-size: 14px;
+        gap: 12px;
+    }
+    
+    .option-index {
+        width: 24px;
+        height: 24px;
+        font-size: 12px;
+    }
+    
+    .custom-action-bar {
+        gap: 10px;
+    }
+    
+    .action-bar-btn {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .send-btn {
+        width: 44px;
+        height: 44px;
+    }
+    
+    .player-hero {
+        padding: 28px 22px 18px;
+    }
+    
+    .player-hero-name {
+        font-size: 22px;
+        margin-top: 12px;
+    }
+    
+    .player-hero-sub {
+        font-size: 14px;
+        margin-top: 6px;
+    }
+    
+    .player-section {
+        padding: 0 22px;
+        margin-bottom: 22px;
+    }
+    
+    .player-section-title {
+        font-size: 14px;
+        margin-bottom: 12px;
+    }
+    
+    .player-fields {
+        gap: 12px;
+    }
+    
+    .player-field {
+        padding: 12px 16px;
+    }
+    
+    .player-field-label {
+        font-size: 14px;
+    }
+    
+    .player-field-value {
+        font-size: 14px;
+    }
+    
+    .player-events {
+        gap: 10px;
+    }
+    
+    .player-event {
+        padding: 12px 16px;
+        font-size: 14px;
+    }
+    
+    .player-event-time {
+        font-size: 12px;
+        margin-top: 6px;
+    }
+    
+    .relation-net {
+        gap: 12px;
+    }
+    
+    .relation-item {
+        padding: 12px 16px;
+    }
+    
+    .player-field-rich {
+        padding: 14px 16px;
+    }
+    
+    .player-field-head {
+        margin-bottom: 8px;
+    }
+    
+    .character-list {
+        gap: 12px;
+    }
+    
+    .character-card {
+        padding: 16px;
+        gap: 16px;
+    }
+    
+    .char-name {
+        font-size: 16px;
+    }
+    
+    .char-meta {
+        font-size: 13px;
+        margin-top: 4px;
+    }
+    
+    .char-tags {
+        gap: 8px;
+        margin-top: 8px;
+    }
+    
+    .char-tag {
+        font-size: 11px;
+        padding: 3px 10px;
+    }
+    
+    .char-stats {
+        margin-top: 10px;
+        gap: 8px;
+    }
+    
+    .char-stat-row {
+        gap: 10px;
+        font-size: 12px;
+    }
+    
+    .char-stat-value {
+        min-width: 32px;
+    }
+    
+    .npc-thought-bubble {
+        margin-top: 12px;
+        padding: 12px 16px;
+    }
+    
+    .npc-thought-bubble .npc-thought-label {
+        font-size: 11px;
+    }
+    
+    .npc-thought-text {
+        font-size: 13px;
+        line-height: 1.7;
+    }
+    
+    .npc-card-edit {
+        padding: 16px;
+        gap: 16px;
+        margin-bottom: 12px;
+    }
+    
+    .npc-card-edit-name {
+        font-size: 16px;
+    }
+    
+    .npc-card-edit-role {
+        font-size: 13px;
+        margin-top: 4px;
+    }
+    
+    .npc-card-edit-actions {
+        gap: 8px;
+    }
+    
+    .recap-list {
+        gap: 12px;
+    }
+    
+    .timeline-item {
+        padding: 14px 16px 22px 30px;
+        margin-left: 14px;
+    }
+    
+    .timeline-item::before {
+        width: 12px;
+        height: 12px;
+    }
+    
+    .timeline-item-head {
+        margin-bottom: 6px;
+    }
+    
+    .timeline-item-title {
+        font-size: 15px;
+    }
+    
+    .timeline-item-time {
+        font-size: 12px;
+    }
+    
+    .timeline-item-summary {
+        font-size: 13px;
+        line-height: 1.7;
+    }
+    
+    .ending-header {
+        padding: 36px 22px 24px;
+    }
+    
+    .ending-label {
+        font-size: 13px;
+        letter-spacing: 0.25em;
+    }
+    
+    .ending-title-box {
+        padding: 14px 36px;
+        margin: 16px 0;
+    }
+    
+    .ending-title {
+        font-size: 26px;
+    }
+    
+    .ending-names {
+        font-size: 20px;
+    }
+    
+    .ending-section {
+        padding: 22px;
+        margin: 0 22px 16px;
+    }
+    
+    .ending-section h4 {
+        font-size: 20px;
+        margin-bottom: 12px;
+    }
+    
+    .ending-row {
+        padding: 10px 0;
+        font-size: 14px;
+    }
+    
+    .ending-actions {
+        gap: 14px;
+        padding: 0 22px 36px;
+    }
+    
+    #loadingPage {
+        padding: 50px;
+    }
+    
+    .loading-dots {
+        gap: 12px;
+        margin-bottom: 28px;
+    }
+    
+    .loading-dot {
+        width: 12px;
+        height: 12px;
+    }
+    
+    .loading-title {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+    
+    .loading-sub {
+        font-size: 14px;
+    }
+    
+    .edit-tabs {
+        margin: 0 22px;
+    }
+    
+    .edit-tab {
+        padding: 14px;
+        font-size: 15px;
+    }
+    
+    .edit-form {
+        gap: 18px;
+    }
+    
+    .edit-form-row {
+        gap: 14px;
+    }
+    
+    #worldSetupPage .page-body {
+        padding: 22px;
+    }
+    
+    .world-setup-form {
+        gap: 18px;
+    }
+    
+    .world-preset-chips {
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    
+    .world-preset-chip {
+        padding: 8px 14px;
+        font-size: 13px;
+    }
+    
+    .world-example-box {
+        padding: 14px;
+        font-size: 13px;
+        line-height: 1.8;
+    }
+    
+    .world-example-box .label {
+        margin-bottom: 6px;
+    }
+    
+    .confirm-body {
+        padding: 12px 0 24px;
+        font-size: 15px;
+        line-height: 1.7;
+    }
+    
+    .confirm-actions {
+        gap: 12px;
+    }
+    
+    .confirm-actions .crystal-btn {
+        font-size: 15px;
+        padding: 12px;
+    }
+    
+    .settings-group {
+        gap: 22px;
+    }
+    
+    .setting-group {
+        margin-bottom: 18px;
+    }
+    
+    .settings-row {
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .settings-info {
+        padding: 12px 16px;
+        font-size: 13px;
+    }
+    
+    .settings-divider {
+        margin: 6px 0;
+    }
+    
+    .settings-context-info {
+        font-size: 13px;
+        margin-top: 6px;
+    }
+    
+    .setting-item {
+        padding: 12px 0;
+    }
+    
+    .setting-label {
+        font-size: 14px;
+    }
+    
+    .setting-controls {
+        gap: 10px;
+    }
+    
+    .setting-select {
+        padding: 8px 14px;
+        font-size: 14px;
+        min-width: 90px;
+    }
+    
+    .setting-actions {
+        gap: 10px;
+        margin-top: 14px;
+    }
+    
+    .setting-status {
+        padding: 12px 14px;
+        margin-top: 14px;
+    }
+    
+    .status-row {
+        font-size: 13px;
+        padding: 6px 0;
+    }
+}
+
+/* ========== Tablets (480-768px) ========== */
+@media (min-width: 480px) {
+    .story-header {
+        padding: 14px 22px;
+    }
+    
+    .story-header-left {
+        gap: 18px;
+    }
+    
+    .story-header-center {
+        padding-left: 24px;
+    }
+    
+    .scene-location {
+        font-size: 14px;
+    }
+    
+    .scene-time {
+        font-size: 13px;
+    }
+    
+    .gen-control {
+        padding: 14px 22px;
+        font-size: 14px;
+        gap: 12px;
+    }
+    
+    .gen-spinner {
+        width: 20px;
+        height: 20px;
+    }
+    
+    .gen-btn {
+        padding: 6px 16px;
+        font-size: 13px;
+        border-radius: 16px;
+    }
+    
+    .game-content {
+        padding: 22px;
+        gap: 18px;
+    }
+    
+    .story-card {
+        padding: 26px;
+    }
+    
+    .story-card-head {
+        margin-bottom: 18px;
+    }
+    
+    .story-scene-label {
+        font-size: 13px;
+        letter-spacing: 0.1em;
+    }
+    
+    .story-scene-title {
+        font-size: 18px;
+        margin-top: 6px;
+    }
+    
+    .story-actions {
+        gap: 10px;
+    }
+    
+    .story-text {
+        font-size: 16px;
+        line-height: 2;
+        padding-right: 8px;
+    }
+    
+    .story-text .dialogue {
+        padding: 4px 10px;
+        border-radius: 6px;
+    }
+    
+    .story-text .system-msg {
+        padding: 12px 16px;
+        margin: 12px 0;
+        font-size: 1em;
+    }
+    
+    .options-container {
+        gap: 14px;
+    }
+    
+    .option-btn {
+        padding: 16px 20px;
+        font-size: 15px;
+        gap: 14px;
+    }
+    
+    .option-index {
+        width: 26px;
+        height: 26px;
+        font-size: 13px;
+    }
+    
+    .custom-action-bar {
+        gap: 12px;
+    }
+    
+    .action-bar-btn {
+        width: 44px;
+        height: 44px;
+    }
+    
+    .send-btn {
+        width: 48px;
+        height: 48px;
+    }
+    
+    .player-hero {
+        padding: 32px 26px 22px;
+    }
+    
+    .player-hero-name {
+        font-size: 24px;
+        margin-top: 14px;
+    }
+    
+    .player-hero-sub {
+        font-size: 15px;
+        margin-top: 8px;
+    }
+    
+    .player-section {
+        padding: 0 26px;
+        margin-bottom: 26px;
+    }
+    
+    .player-section-title {
+        font-size: 15px;
+        margin-bottom: 14px;
+    }
+    
+    .player-fields {
+        gap: 14px;
+    }
+    
+    .player-field {
+        padding: 14px 18px;
+    }
+    
+    .player-field-label {
+        font-size: 15px;
+    }
+    
+    .player-field-value {
+        font-size: 15px;
+    }
+    
+    .player-events {
+        gap: 12px;
+    }
+    
+    .player-event {
+        padding: 14px 18px;
+        font-size: 15px;
+        border-left-width: 4px;
+    }
+    
+    .player-event-time {
+        font-size: 13px;
+        margin-top: 8px;
+    }
+    
+    .relation-net {
+        gap: 14px;
+    }
+    
+    .relation-item {
+        padding: 14px 18px;
+    }
+    
+    .player-field-rich {
+        padding: 16px 18px;
+    }
+    
+    .player-field-head {
+        margin-bottom: 10px;
+    }
+    
+    .character-list {
+        gap: 14px;
+    }
+    
+    .character-card {
+        padding: 18px;
+        gap: 18px;
+    }
+    
+    .char-name {
+        font-size: 17px;
+    }
+    
+    .char-meta {
+        font-size: 14px;
+        margin-top: 6px;
+    }
+    
+    .char-tags {
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .char-tag {
+        font-size: 12px;
+        padding: 4px 12px;
+    }
+    
+    .char-stats {
+        margin-top: 12px;
+        gap: 10px;
+    }
+    
+    .char-stat-row {
+        gap: 12px;
+        font-size: 13px;
+    }
+    
+    .char-stat-value {
+        min-width: 36px;
+    }
+    
+    .npc-thought-bubble {
+        margin-top: 14px;
+        padding: 14px 18px;
+        border-left-width: 4px;
+    }
+    
+    .npc-thought-bubble .npc-thought-label {
+        font-size: 12px;
+    }
+    
+    .npc-thought-text {
+        font-size: 14px;
+        line-height: 1.8;
+    }
+    
+    .npc-card-edit {
+        padding: 18px;
+        gap: 18px;
+        margin-bottom: 14px;
+    }
+    
+    .npc-card-edit-name {
+        font-size: 17px;
+    }
+    
+    .npc-card-edit-role {
+        font-size: 14px;
+        margin-top: 6px;
+    }
+    
+    .npc-card-edit-actions {
+        gap: 10px;
+    }
+    
+    .recap-list {
+        gap: 14px;
+    }
+    
+    .timeline-item {
+        padding: 16px 18px 26px 34px;
+        margin-left: 16px;
+    }
+    
+    .timeline-item::before {
+        width: 14px;
+        height: 14px;
+        left: -7px;
+    }
+    
+    .timeline-item-head {
+        margin-bottom: 8px;
+    }
+    
+    .timeline-item-title {
+        font-size: 16px;
+    }
+    
+    .timeline-item-time {
+        font-size: 13px;
+    }
+    
+    .timeline-item-summary {
+        font-size: 14px;
+        line-height: 1.8;
+    }
+    
+    .ending-header {
+        padding: 42px 26px 28px;
+    }
+    
+    .ending-label {
+        font-size: 14px;
+        letter-spacing: 0.3em;
+    }
+    
+    .ending-title-box {
+        padding: 16px 42px;
+        margin: 18px 0;
+    }
+    
+    .ending-title {
+        font-size: 28px;
+    }
+    
+    .ending-names {
+        font-size: 22px;
+    }
+    
+    .ending-section {
+        padding: 26px;
+        margin: 0 26px 18px;
+    }
+    
+    .ending-section h4 {
+        font-size: 22px;
+        margin-bottom: 14px;
+    }
+    
+    .ending-row {
+        padding: 12px 0;
+        font-size: 15px;
+    }
+    
+    .ending-actions {
+        gap: 16px;
+        padding: 0 26px 42px;
+    }
+    
+    #loadingPage {
+        padding: 60px;
+    }
+    
+    .loading-dots {
+        gap: 14px;
+        margin-bottom: 32px;
+    }
+    
+    .loading-dot {
+        width: 14px;
+        height: 14px;
+    }
+    
+    .loading-title {
+        font-size: 26px;
+        margin-bottom: 12px;
+    }
+    
+    .loading-sub {
+        font-size: 15px;
+    }
+    
+    .edit-tabs {
+        margin: 0 26px;
+    }
+    
+    .edit-tab {
+        padding: 16px;
+        font-size: 16px;
+    }
+    
+    .edit-form {
+        gap: 22px;
+    }
+    
+    .edit-form-row {
+        gap: 16px;
+    }
+    
+    #worldSetupPage .page-body {
+        padding: 26px;
+    }
+    
+    .world-setup-form {
+        gap: 22px;
+    }
+    
+    .world-preset-chips {
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    
+    .world-preset-chip {
+        padding: 10px 16px;
+        font-size: 14px;
+    }
+    
+    .world-example-box {
+        padding: 16px;
+        font-size: 14px;
+        line-height: 1.9;
+    }
+    
+    .world-example-box .label {
+        margin-bottom: 8px;
+    }
+    
+    .confirm-body {
+        padding: 14px 0 28px;
+        font-size: 16px;
+        line-height: 1.8;
+    }
+    
+    .confirm-actions {
+        gap: 14px;
+    }
+    
+    .confirm-actions .crystal-btn {
+        font-size: 16px;
+        padding: 14px;
+    }
+    
+    .settings-group {
+        gap: 26px;
+    }
+    
+    .setting-group {
+        margin-bottom: 22px;
+    }
+    
+    .settings-row {
+        gap: 12px;
+        margin-top: 12px;
+    }
+    
+    .settings-info {
+        padding: 14px 18px;
+        font-size: 14px;
+    }
+    
+    .settings-divider {
+        margin: 8px 0;
+    }
+    
+    .settings-context-info {
+        font-size: 14px;
+        margin-top: 8px;
+    }
+    
+    .setting-item {
+        padding: 14px 0;
+    }
+    
+    .setting-label {
+        font-size: 15px;
+    }
+    
+    .setting-controls {
+        gap: 12px;
+    }
+    
+    .setting-select {
+        padding: 10px 16px;
+        font-size: 15px;
+        min-width: 100px;
+    }
+    
+    .setting-actions {
+        gap: 12px;
+        margin-top: 16px;
+    }
+    
+    .setting-status {
+        padding: 14px 16px;
+        margin-top: 16px;
+    }
+    
+    .status-row {
+        font-size: 14px;
+        padding: 8px 0;
+    }
+}
+
+/* ========== Desktop (> 768px) ========== */
+@media (min-width: 768px) {
+    .story-header {
+        padding: 16px 30px;
+    }
+    
+    .story-header-left {
+        gap: 22px;
+    }
+    
+    .story-header-center {
+        padding-left: 30px;
+    }
+    
+    .story-header-right {
+        gap: 10px;
+    }
+    
+    .scene-location {
+        font-size: 15px;
+    }
+    
+    .scene-time {
+        font-size: 14px;
+    }
+    
+    .gen-control {
+        padding: 16px 30px;
+        font-size: 15px;
+        gap: 14px;
+    }
+    
+    .gen-spinner {
+        width: 22px;
+        height: 22px;
+    }
+    
+    .gen-btn {
+        padding: 8px 18px;
+        font-size: 14px;
+        border-radius: 18px;
+    }
+    
+    .game-content {
+        padding: 30px;
+        gap: 22px;
+    }
+    
+    .story-card {
+        padding: 30px;
+    }
+    
+    .story-card-head {
+        margin-bottom: 20px;
+    }
+    
+    .story-scene-label {
+        font-size: 14px;
+        letter-spacing: 0.12em;
+    }
+    
+    .story-scene-title {
+        font-size: 20px;
+        margin-top: 8px;
+    }
+    
+    .story-actions {
+        gap: 12px;
+    }
+    
+    .story-text {
+        font-size: 17px;
+        line-height: 2.1;
+        padding-right: 12px;
+    }
+    
+    .story-text .dialogue {
+        padding: 5px 12px;
+        border-radius: 8px;
+    }
+    
+    .story-text .system-msg {
+        padding: 14px 18px;
+        margin: 14px 0;
+        font-size: 1.05em;
+        border-radius: 12px;
+    }
+    
+    .story-text .character-name {
+        font-size: 1.05em;
+    }
+    
+    .options-container {
+        gap: 16px;
+    }
+    
+    .option-btn {
+        padding: 18px 24px;
+        font-size: 16px;
+        gap: 16px;
+    }
+    
+    .option-index {
+        width: 28px;
+        height: 28px;
+        font-size: 14px;
+    }
+    
+    .custom-action-bar {
+        gap: 14px;
+    }
+    
+    .action-bar-btn {
+        width: 48px;
+        height: 48px;
+    }
+    
+    .send-btn {
+        width: 52px;
+        height: 52px;
+    }
+    
+    .player-hero {
+        padding: 40px 30px 28px;
+    }
+    
+    .player-hero-name {
+        font-size: 26px;
+        margin-top: 16px;
+    }
+    
+    .player-hero-sub {
+        font-size: 16px;
+        margin-top: 10px;
+    }
+    
+    .player-section {
+        padding: 0 30px;
+        margin-bottom: 30px;
+    }
+    
+    .player-section-title {
+        font-size: 16px;
+        margin-bottom: 16px;
+    }
+    
+    .player-fields {
+        gap: 16px;
+    }
+    
+    .player-field {
+        padding: 16px 22px;
+    }
+    
+    .player-field-label {
+        font-size: 16px;
+    }
+    
+    .player-field-value {
+        font-size: 16px;
+    }
+    
+    .player-events {
+        gap: 14px;
+    }
+    
+    .player-event {
+        padding: 16px 22px;
+        font-size: 16px;
+        border-left-width: 5px;
+    }
+    
+    .player-event-time {
+        font-size: 14px;
+        margin-top: 10px;
+    }
+    
+    .relation-net {
+        gap: 16px;
+    }
+    
+    .relation-item {
+        padding: 16px 22px;
+    }
+    
+    .player-field-rich {
+        padding: 18px 22px;
+    }
+    
+    .player-field-head {
+        margin-bottom: 12px;
+    }
+    
+    .character-list {
+        gap: 16px;
+    }
+    
+    .character-card {
+        padding: 22px;
+        gap: 22px;
+    }
+    
+    .char-name {
+        font-size: 18px;
+    }
+    
+    .char-meta {
+        font-size: 15px;
+        margin-top: 8px;
+    }
+    
+    .char-tags {
+        gap: 12px;
+        margin-top: 12px;
+    }
+    
+    .char-tag {
+        font-size: 13px;
+        padding: 5px 14px;
+    }
+    
+    .char-stats {
+        margin-top: 14px;
+        gap: 12px;
+    }
+    
+    .char-stat-row {
+        gap: 14px;
+        font-size: 14px;
+    }
+    
+    .char-stat-value {
+        min-width: 40px;
+    }
+    
+    .npc-thought-bubble {
+        margin-top: 16px;
+        padding: 16px 22px;
+        border-left-width: 5px;
+    }
+    
+    .npc-thought-bubble .npc-thought-label {
+        font-size: 13px;
+    }
+    
+    .npc-thought-text {
+        font-size: 15px;
+        line-height: 1.9;
+    }
+    
+    .npc-card-edit {
+        padding: 22px;
+        gap: 22px;
+        margin-bottom: 16px;
+    }
+    
+    .npc-card-edit-name {
+        font-size: 18px;
+    }
+    
+    .npc-card-edit-role {
+        font-size: 15px;
+        margin-top: 8px;
+    }
+    
+    .npc-card-edit-actions {
+        gap: 12px;
+    }
+    
+    .recap-list {
+        gap: 16px;
+    }
+    
+    .timeline-item {
+        padding: 18px 22px 30px 38px;
+        margin-left: 18px;
+    }
+    
+    .timeline-item::before {
+        width: 16px;
+        height: 16px;
+        left: -8px;
+    }
+    
+    .timeline-item-head {
+        margin-bottom: 10px;
+    }
+    
+    .timeline-item-title {
+        font-size: 17px;
+    }
+    
+    .timeline-item-time {
+        font-size: 14px;
+    }
+    
+    .timeline-item-summary {
+        font-size: 15px;
+        line-height: 1.9;
+    }
+    
+    .ending-header {
+        padding: 50px 30px 34px;
+    }
+    
+    .ending-label {
+        font-size: 15px;
+        letter-spacing: 0.35em;
+    }
+    
+    .ending-title-box {
+        padding: 18px 50px;
+        margin: 20px 0;
+    }
+    
+    .ending-title {
+        font-size: 30px;
+    }
+    
+    .ending-names {
+        font-size: 24px;
+    }
+    
+    .ending-section {
+        padding: 30px;
+        margin: 0 30px 22px;
+    }
+    
+    .ending-section h4 {
+        font-size: 24px;
+        margin-bottom: 16px;
+    }
+    
+    .ending-row {
+        padding: 14px 0;
+        font-size: 16px;
+    }
+    
+    .ending-actions {
+        gap: 18px;
+        padding: 0 30px 50px;
+    }
+    
+    #loadingPage {
+        padding: 80px;
+    }
+    
+    .loading-dots {
+        gap: 16px;
+        margin-bottom: 40px;
+    }
+    
+    .loading-dot {
+        width: 16px;
+        height: 16px;
+    }
+    
+    .loading-title {
+        font-size: 28px;
+        margin-bottom: 14px;
+    }
+    
+    .loading-sub {
+        font-size: 16px;
+    }
+    
+    .edit-tabs {
+        margin: 0 30px;
+    }
+    
+    .edit-tab {
+        padding: 18px;
+        font-size: 17px;
+    }
+    
+    .edit-form {
+        gap: 26px;
+    }
+    
+    .edit-form-row {
+        gap: 18px;
+    }
+    
+    #worldSetupPage .page-body {
+        padding: 30px;
+    }
+    
+    .world-setup-form {
+        gap: 26px;
+    }
+    
+    .world-preset-chips {
+        gap: 14px;
+        margin-bottom: 14px;
+    }
+    
+    .world-preset-chip {
+        padding: 12px 18px;
+        font-size: 15px;
+    }
+    
+    .world-example-box {
+        padding: 18px;
+        font-size: 15px;
+        line-height: 2;
+    }
+    
+    .world-example-box .label {
+        margin-bottom: 10px;
+    }
+    
+    .confirm-body {
+        padding: 16px 0 32px;
+        font-size: 17px;
+        line-height: 1.9;
+    }
+    
+    .confirm-actions {
+        gap: 16px;
+    }
+    
+    .confirm-actions .crystal-btn {
+        font-size: 17px;
+        padding: 16px;
+    }
+    
+    .settings-group {
+        gap: 30px;
+    }
+    
+    .setting-group {
+        margin-bottom: 26px;
+    }
+    
+    .settings-row {
+        gap: 14px;
+        margin-top: 14px;
+    }
+    
+    .settings-info {
+        padding: 16px 22px;
+        font-size: 15px;
+    }
+    
+    .settings-divider {
+        margin: 10px 0;
+    }
+    
+    .settings-context-info {
+        font-size: 15px;
+        margin-top: 10px;
+    }
+    
+    .setting-item {
+        padding: 16px 0;
+    }
+    
+    .setting-label {
+        font-size: 16px;
+    }
+    
+    .setting-controls {
+        gap: 14px;
+    }
+    
+    .setting-select {
+        padding: 12px 18px;
+        font-size: 16px;
+        min-width: 110px;
+    }
+    
+    .setting-actions {
+        gap: 14px;
+        margin-top: 18px;
+    }
+    
+    .setting-status {
+        padding: 16px 18px;
+        margin-top: 18px;
+    }
+    
+    .status-row {
+        font-size: 15px;
+        padding: 10px 0;
+    }
 }
