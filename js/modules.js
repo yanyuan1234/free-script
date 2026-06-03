@@ -1831,7 +1831,14 @@ var PresetManager = {
         depthPrompts[d].forEach(function(p) {
             var c = MacroEngine.process(p.content.trim(), macroEnv);
             if (c.trim()) {
-                gameState._depthPrompts[d].push({ enabled: true, content: c });
+                // 【酒馆兼容】injection_position: 0=RELATIVE(默认，从聊天底部往上数)
+                //                                1=ABSOLUTE(从聊天顶部往下数)
+                // game.js 的深度注入逻辑会按这个标志决定从哪一端开始数
+                gameState._depthPrompts[d].push({
+                    enabled: true,
+                    content: c,
+                    injection_position: (p.injection_position === 1) ? 1 : 0
+                });
             }
         });
     });
@@ -1948,7 +1955,12 @@ var PresetManager = {
         gameState._useSysprompt = preset.params.use_sysprompt !== undefined ? preset.params.use_sysprompt : true;
         gameState._squashSystemMessages = preset.params.squash_system_messages || false;
         gameState._namesBehavior = preset.params.names_behavior || 0;
-        console.log('[预设加载] 行为参数: use_sysprompt=' + gameState._useSysprompt + ', squash=' + gameState._squashSystemMessages + ', names=' + gameState._namesBehavior);
+        // 【酒馆兼容】世界书/预设提示词合并顺序：true=世界书在前（默认），false=预设在世界书前
+        // 酒馆标准参数名 world_info_position_first（部分预设可能用 prompt_world_info_first）
+        var wiFirstVal = preset.params.world_info_position_first;
+        if (wiFirstVal === undefined) wiFirstVal = preset.params.prompt_world_info_first;
+        gameState._wiFirst = (wiFirstVal === false) ? false : true;
+        console.log('[预设加载] 行为参数: use_sysprompt=' + gameState._useSysprompt + ', squash=' + gameState._squashSystemMessages + ', names=' + gameState._namesBehavior + ', wiFirst=' + gameState._wiFirst);
     }
 
     // 正则脚本已由 RegexManager.setPresetScripts() 处理（见下方）

@@ -428,13 +428,22 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             // 辅助函数：合并世界书和预设提示词
+            // 【可配置顺序】默认世界书在前（酒馆常规行为），部分预设期望预设在前
+            // 通过 gameState._wiFirst 控制：true(默认)=世界书在前；false=预设在世界书前面
             function mergePositionContent(wiTexts, presetTexts) {
-                var parts = [];
-                if (wiTexts && wiTexts.length > 0) {
-                    parts.push('【世界知识库】\n' + wiTexts.join('\n'));
-                }
+                var wiFirst = gameState._wiFirst !== false; // 默认为 true
+                var wiBlock = (wiTexts && wiTexts.length > 0) ? ('【世界知识库】\n' + wiTexts.join('\n')) : null;
+                var presetBlock = null;
                 if (presetTexts && presetTexts.length > 0) {
-                    presetTexts.forEach(function(t) { parts.push(t); });
+                    presetBlock = presetTexts.slice();
+                }
+                var parts = [];
+                if (wiFirst) {
+                    if (wiBlock) parts.push(wiBlock);
+                    if (presetBlock) presetBlock.forEach(function(t) { parts.push(t); });
+                } else {
+                    if (presetBlock) presetBlock.forEach(function(t) { parts.push(t); });
+                    if (wiBlock) parts.push(wiBlock);
                 }
                 return parts.length > 0 ? parts.join('\n\n') : null;
             }
@@ -558,10 +567,21 @@ async function sendAIRequest(userMessage, isInit = false) {
                         if (p.enabled !== false && p.content && p.content.trim()) {
                             var processedContent = typeof p.content === 'string' && !p.content.includes('{{') ? p.content : MacroEngine.process(p.content.trim(), macroEnvForDepth);
                             if (processedContent.trim()) {
-                                // 【酒馆标准】depth=N 从聊天历史末尾（不含最后user消息）往前数第N条之后插入
+                                // 【酒馆兼容】injection_position:
+                                //   0 = RELATIVE（默认，从聊天底部往上数，depth=N → 倒数第N条之后）
+                                //   1 = ABSOLUTE（从聊天顶部往下数，depth=N → 正数第N条之后）
+                                var isAbsolute = p.injection_position === 1;
                                 var chatEndIndex = messages.length - 1; // 最后一条是user消息
-                                var insertIndex = chatEndIndex - depth;
-                                // 确保不插入到聊天历史之前（系统提示词区域）
+                                var insertIndex;
+                                if (isAbsolute) {
+                                    // ABSOLUTE：从 chatHistoryStart 往后数 depth 条
+                                    insertIndex = chatHistoryStart + depth;
+                                } else {
+                                    // RELATIVE（酒馆默认）：从聊天末尾往回数 depth 条
+                                    insertIndex = chatEndIndex - depth;
+                                }
+                                // 边界保护：不允许插入到聊天历史之前（系统提示词区域），
+                                // 也不允许越过最后一条 user 消息
                                 insertIndex = Math.max(chatHistoryStart, Math.min(insertIndex, chatEndIndex));
                                 messages.splice(insertIndex, 0, { role: 'system', content: processedContent });
                             }

@@ -3992,24 +3992,49 @@ return this.regex.execute(text, scripts, {
 }
 
 getVar(name, scope = 'local') {
-switch (scope) {
-    case 'global': return this.variables.getGlobal(name);
-    case 'character': return this.variables.getCharacter(this.variables.getCurrentCharacter(), name);
-    default: return this.variables.getLocal(name);
-}
+    if (!name) return '';
+    // 【桥接】走 MacroEngine：自动 trim + 纯数字字符串转 Number，
+    // 保证 {{getvar::xxx}} 在酒馆/STscript 语法和游戏宏语法里行为一致
+    if (scope === 'local' && typeof MacroEngine !== 'undefined' && MacroEngine.getLocalVar) {
+        try { return MacroEngine.getLocalVar(String(name)); } catch (e) { /* fallthrough */ }
+    }
+    if (scope === 'global' && typeof MacroEngine !== 'undefined' && MacroEngine.getGlobalVar) {
+        try { return MacroEngine.getGlobalVar(String(name)); } catch (e) { /* fallthrough */ }
+    }
+    const key = (typeof name === 'string') ? name.trim() : name;
+    switch (scope) {
+        case 'global': return this.variables.getGlobal(key);
+        case 'character': return this.variables.getCharacter(this.variables.getCurrentCharacter(), key);
+        default: return this.variables.getLocal(key);
+    }
 }
 setVar(name, value, scope = 'local') {
-switch (scope) {
-    case 'global': this.variables.setGlobal(name, value); break;
-    case 'character': this.variables.setCharacter(this.variables.getCurrentCharacter(), name, value); break;
-    default: this.variables.setLocal(name, value);
-}
+    if (!name) return value;
+    // 【桥接】走 MacroEngine：保证预设 setvar 写入和宏 {{setvar::xxx}} 写入走同一条路径
+    if (scope === 'local' && typeof MacroEngine !== 'undefined' && MacroEngine.setLocalVar) {
+        try { MacroEngine.setLocalVar(String(name), value); return value; } catch (e) { /* fallthrough */ }
+    }
+    if (scope === 'global' && typeof MacroEngine !== 'undefined' && MacroEngine.setGlobalVar) {
+        try { MacroEngine.setGlobalVar(String(name), value); return value; } catch (e) { /* fallthrough */ }
+    }
+    const key = (typeof name === 'string') ? name.trim() : name;
+    switch (scope) {
+        case 'global': this.variables.setGlobal(key, value); break;
+        case 'character': this.variables.setCharacter(this.variables.getCurrentCharacter(), key, value); break;
+        default: this.variables.setLocal(key, value);
+    }
+    return value;
 }
     }
 
     // ============================================================================
     // 导出
     // ============================================================================
+    // 【关键修复】VariableStore 必须暴露到 window，否则 modules.js 里的 MacroEngine
+    // 因为 typeof VariableStore === 'undefined' 而静默失败，导致 setvar/getvar
+    // 宏、STscript 引擎与游戏宏系统之间数据不同步。
+    // 兼容保留 STscriptVariableStore 别名，旧代码不受影响。
+    global.VariableStore = VariableStore;
     global.STscriptEngine = STscriptEngine;
     global.STscriptVariableStore = VariableStore;
     global.STscriptTemplateVars = TemplateVars;
