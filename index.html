@@ -275,8 +275,7 @@
                             <use href="#icon-back" />
                         </svg></button>
                     <h2 class="page-title">创造你的世界</h2>
-                    <button class="crystal-btn primary" id="btnCreatePresetFromSetup"
-                        class="p-8-16 text-13">
+                    <button class="crystal-btn primary p-8-16 text-13" id="btnCreatePresetFromSetup">
                         <svg class="icon icon-sm" style="stroke:white;">
                             <use href="#icon-plus" />
                         </svg>
@@ -1726,9 +1725,14 @@
                                 <div class="text-sm-secondary" id="apiDetailUrl">--</div>
                             </div>
                         </div>
-                        <button class="circle-btn" id="apiDetailRefresh"><svg class="icon icon-sm">
-                                <use href="#icon-refresh" />
-                            </svg></button>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <button class="circle-btn" id="apiDetailRefresh"><svg class="icon icon-sm">
+                                    <use href="#icon-refresh" />
+                                </svg></button>
+                            <button class="circle-btn" data-close="apiDetailModal" aria-label="关闭"><svg class="icon icon-sm">
+                                    <use href="#icon-close" />
+                                </svg></button>
+                        </div>
                     </div>
                     <!-- 标签页 -->
                     <div style="display:flex;border-bottom:1px solid var(--border);padding:0 20px;">
@@ -2030,13 +2034,21 @@
                             </svg>
                         </div>
                         <div class="chat-detail-name" id="npcChatTitle">对话</div>
-                        <div class="chat-detail-more" id="chatDetailMore" onclick="toggleChatMenu()"
-                            style="cursor:pointer">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                                <circle cx="5" cy="12" r="2" fill="#111" />
-                                <circle cx="12" cy="12" r="2" fill="#111" />
-                                <circle cx="19" cy="12" r="2" fill="#111" />
-                            </svg>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="chat-detail-more" id="chatDetailMore" onclick="toggleChatMenu()"
+                                style="cursor:pointer">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                                    <circle cx="5" cy="12" r="2" fill="#111" />
+                                    <circle cx="12" cy="12" r="2" fill="#111" />
+                                    <circle cx="19" cy="12" r="2" fill="#111" />
+                                </svg>
+                            </div>
+                            <button class="circle-btn" data-close="npcChatModal" aria-label="关闭"
+                                style="width:28px;height:28px;background:transparent;border:none;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                                <svg class="icon" style="width:18px;height:18px;">
+                                    <use href="#icon-close" />
+                                </svg>
+                            </button>
                         </div>
                     </div>
                     <!-- 消息区域 -->

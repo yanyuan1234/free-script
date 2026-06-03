@@ -3097,6 +3097,30 @@ function showPresetSaveList(preset) {
 // ========================================
 // 第12层: 页面初始化和事件
 // ========================================
+// 通用事件绑定助手：元素不存在时安全跳过（避免 TypeError 连锁中断后续绑定）
+function bindEvent(id, event, handler, opts) {
+    var el = typeof id === 'string' ? document.getElementById(id) : id;
+    if (!el) {
+        if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[bindEvent] element not found:', id);
+        }
+        return false;
+    }
+    el.addEventListener(event, handler, opts);
+    return true;
+}
+function bindEventQuery(selector, event, handler, opts) {
+    var el = document.querySelector(selector);
+    if (!el) {
+        if (typeof console !== 'undefined' && console.warn) {
+            console.warn('[bindEventQuery] selector not found:', selector);
+        }
+        return false;
+    }
+    el.addEventListener(event, handler, opts);
+    return true;
+}
+
 // 页面加载时自动恢复上次填写的内容
 function renderMenu() {
     // 渲染预设页面
@@ -3173,12 +3197,12 @@ function bindEvents() {
     });
 
     // 记录按钮
-    document.getElementById('btnMenuRecords').addEventListener('click', function() {
+    bindEvent('btnMenuRecords', 'click', function() {
         showGameStats();
     });
 
     // ★ 收藏/记录按钮
-    document.getElementById('menuTopStar').addEventListener('click', function() {
+    bindEvent('menuTopStar', 'click', function() {
         toggleTheme();
     });
 
@@ -3200,7 +3224,7 @@ function bindEvents() {
     }
 
     // 加载最新存档按钮
-    document.getElementById('btnMenuLoadLatest').addEventListener('click', function() {
+    bindEvent('btnMenuLoadLatest', 'click', function() {
         loadFromSlot(0).catch(function(e) {
             console.error('加载最新存档失败:', e);
             UI.toast('加载失败');
@@ -3208,7 +3232,7 @@ function bindEvents() {
     });
 
     // 设置按钮 → API配置
-    document.getElementById('btnMenuApiSettings').addEventListener('click', function() {
+    bindEvent('btnMenuApiSettings', 'click', function() {
         renderAPISettings();
     });
 
@@ -3218,23 +3242,23 @@ function bindEvents() {
     // 记忆按钮（在导航栏中通过_navBarClickHandler处理）
 
     // 世界设定页面
-    document.getElementById('worldSetupBackBtn').addEventListener('click', function() {
+    bindEvent('worldSetupBackBtn', 'click', function() {
         UI.showPage('menuPage');
     });
 
     // 创造世界按钮
-    document.getElementById('btnCreateWorld').addEventListener('click', function() {
+    bindEvent('btnCreateWorld', 'click', function() {
         startNewGame();
     });
 
     // 保存预设按钮
-    document.getElementById('btnCreatePresetFromSetup').addEventListener('click', function() {
+    bindEvent('btnCreatePresetFromSetup', 'click', function() {
         document.getElementById('savePresetName').value = '';
         UI.showModal('savePresetModal');
     });
 
     // 确认保存预设
-    document.getElementById('btnConfirmSavePreset').addEventListener('click', function() {
+    bindEvent('btnConfirmSavePreset', 'click', function() {
         var name = document.getElementById('savePresetName').value.trim();
         if (!name) {
             UI.toast('请输入预设名称');
@@ -3272,33 +3296,33 @@ function bindEvents() {
     });
 
     // 剧情页面
-    document.getElementById('btnSaveHeader').addEventListener('click', function() {
+    bindEvent('btnSaveHeader', 'click', function() {
         openSaveLoadModal();
     });
-    document.getElementById('btnApiConfigHeader').addEventListener('click', function() {
+    bindEvent('btnApiConfigHeader', 'click', function() {
         renderAPISettings();
     });
-    document.getElementById('btnSettingsHeader').addEventListener('click', function() {
+    bindEvent('btnSettingsHeader', 'click', function() {
         openSettingsModal();
     });
     // 世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
     // 预设按钮
     // 预设按钮（已由 PresetManager.bindEvents 绑定，此处不再重复）
-    document.getElementById('btnUndo').addEventListener('click', function() {
+    bindEvent('btnUndo', 'click', function() {
         deleteLastTurn();
     });
-    document.getElementById('btnRetry').addEventListener('click', function() {
+    bindEvent('btnRetry', 'click', function() {
         retryStory();
     });
-    document.getElementById('btnContinueGen').addEventListener('click', function() {
+    bindEvent('btnContinueGen', 'click', function() {
         continueStory();
     });
-    document.getElementById('btnRefreshPanels').addEventListener('click', function() {
+    bindEvent('btnRefreshPanels', 'click', function() {
         refreshAllPanels();
     });
 
     // 自定义行动输入
-    document.getElementById('customAction').addEventListener('keypress', function(e) {
+    bindEvent('customAction', 'keypress', function(e) {
         if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
             var text = this.value.trim();
@@ -3307,7 +3331,7 @@ function bindEvents() {
             sendAIRequest(text);
         }
     });
-    document.getElementById('btnSendAction').addEventListener('click', function() {
+    bindEvent('btnSendAction', 'click', function() {
         var input = document.getElementById('customAction');
         var text = input.value.trim();
         if (!text) return;
@@ -3319,7 +3343,7 @@ function bindEvents() {
     var isEditingStory = false;
     var storyTextBackup = '';
     var editToolbar = null;
-    document.getElementById('btnEditLastMsg').addEventListener('click', function() {
+    bindEvent('btnEditLastMsg', 'click', function() {
         if (isWaiting) {
             UI.toast('请等待AI回复完成');
             return;
@@ -3426,34 +3450,34 @@ function bindEvents() {
     });
 
     // 玩家页面返回
-    document.getElementById('playerBackBtn').addEventListener('click', function() {
+    bindEvent('playerBackBtn', 'click', function() {
         UI.showPage('storyPage');
     });
 
     // NPC页面返回
-    document.getElementById('npcBackBtn').addEventListener('click', function() {
+    bindEvent('npcBackBtn', 'click', function() {
         UI.showPage('storyPage');
     });
 
     // 回顾页面返回
-    document.getElementById('recapBackBtn').addEventListener('click', function() {
+    bindEvent('recapBackBtn', 'click', function() {
         UI.showPage('storyPage');
     });
 
     // 回顾导出
-    document.getElementById('recapExportBtn').addEventListener('click', function() {
+    bindEvent('recapExportBtn', 'click', function() {
         exportStoryText();
     });
 
     // 日志页面返回
-    document.getElementById('logBackBtn').addEventListener('click', function() {
+    bindEvent('logBackBtn', 'click', function() {
         UI.showPage('storyPage');
     });
 
     // 日志子页面返回按钮（已在 renderLogPage 中绑定，此处不再重复）
 
     // 设置弹窗
-    document.getElementById('streamOn').addEventListener('click', function() {
+    bindEvent('streamOn', 'click', function() {
         gameState.useStream = true;
         this.classList.add('active');
         document.getElementById('streamOff').classList.remove('active');
@@ -3465,7 +3489,7 @@ function bindEvents() {
         }
         saveGameSettings();
     });
-    document.getElementById('streamOff').addEventListener('click', function() {
+    bindEvent('streamOff', 'click', function() {
         gameState.useStream = false;
         this.classList.add('active');
         document.getElementById('streamOn').classList.remove('active');
@@ -3497,38 +3521,38 @@ function bindEvents() {
     });
 
     // 自动压缩
-    document.getElementById('autoCompressOn').addEventListener('click', function() {
+    bindEvent('autoCompressOn', 'click', function() {
         gameState.autoCompress = true;
         this.classList.add('active');
         document.getElementById('autoCompressOff').classList.remove('active');
         saveGameSettings();
     });
-    document.getElementById('autoCompressOff').addEventListener('click', function() {
+    bindEvent('autoCompressOff', 'click', function() {
         gameState.autoCompress = false;
         this.classList.add('active');
         document.getElementById('autoCompressOn').classList.remove('active');
         saveGameSettings();
     });
     // 增量更新开关
-    document.getElementById('incrementalOn').addEventListener('click', function() {
+    bindEvent('incrementalOn', 'click', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = true;
         this.classList.add('active');
         document.getElementById('incrementalOff').classList.remove('active');
         UI.toast('增量更新已开启');
     });
-    document.getElementById('incrementalOff').addEventListener('click', function() {
+    bindEvent('incrementalOff', 'click', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = false;
         this.classList.add('active');
         document.getElementById('incrementalOn').classList.remove('active');
         UI.toast('增量更新已关闭');
     });
     // 触发阈值选择
-    document.getElementById('compressThreshold').addEventListener('change', function() {
+    bindEvent('compressThreshold', 'change', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.triggerThreshold = parseFloat(this.value);
         UI.toast('触发阈值已设置为 ' + (this.value * 100) + '%');
     });
     // 回滚摘要按钮
-    document.getElementById('btnRollbackSummary').addEventListener('click', function() {
+    bindEvent('btnRollbackSummary', 'click', function() {
         if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.rollbackSummary()) {
             UI.toast('已回滚到上一版本摘要');
             updateCompressionStats();
@@ -3552,12 +3576,12 @@ function bindEvents() {
     gameState.generateChoices = true;
 
     // 压缩历史
-    document.getElementById('btnCompressHistory').addEventListener('click', function() {
+    bindEvent('btnCompressHistory', 'click', function() {
         manualCompress();
     });
 
     // 重新开始
-    document.getElementById('btnSettingsBackToMenu').addEventListener('click', async function() {
+    bindEvent('btnSettingsBackToMenu', 'click', async function() {
         if (await UI.confirm('返回主页', '确定要返回主页吗？当前进度会自动保存。')) {
             try { await saveGame(); } catch(e) {}
             safeAbort();
@@ -3569,12 +3593,12 @@ function bindEvents() {
     });
 
     // 导出为小说
-    document.getElementById('btnExportNovel').addEventListener('click', function() {
+    bindEvent('btnExportNovel', 'click', function() {
         exportAsNovel();
     });
 
     // 清除数据（分级选择）
-    document.getElementById('btnSettingsClear').addEventListener('click', async function() {
+    bindEvent('btnSettingsClear', 'click', async function() {
         // 第一次确认：选择清除范围
         var clearAll = await UI.confirm('清除数据', '选择清除范围：\n\n确定 = 清除存档和设置（保留API配置）\n取消 = 仅清除存档（保留设置和API配置）');
         if (!clearAll) {
@@ -3613,12 +3637,12 @@ function bindEvents() {
     });
 
     // 生成结局
-    document.getElementById('btnGenerateEnding').addEventListener('click', function() {
+    bindEvent('btnGenerateEnding', 'click', function() {
         generateEnding();
     });
 
     // 结局页面
-    document.getElementById('btnEndingHome').addEventListener('click', function() {
+    bindEvent('btnEndingHome', 'click', function() {
         UI.showPage('menuPage');
     });
 
@@ -3630,12 +3654,12 @@ function bindEvents() {
     });
 
     // NPC编辑保存
-    document.getElementById('npcEditSave').addEventListener('click', function() {
+    bindEvent('npcEditSave', 'click', function() {
         saveNpcEdit();
     });
 
     // NPC详情聊天按钮
-    document.getElementById('btnNpcChat').addEventListener('click', function() {
+    bindEvent('btnNpcChat', 'click', function() {
         UI.hideModal('npcDetailModal');
         // 需要知道当前选中的NPC名字
         var body = document.getElementById('npcDetailBody');
@@ -3644,18 +3668,18 @@ function bindEvents() {
     });
 
     // 加载页面取消
-    document.getElementById('btnLoadingCancel').addEventListener('click', function() {
+    bindEvent('btnLoadingCancel', 'click', function() {
         UI.showPage('worldSetupPage');
     });
 
     // API配置模态框
-    document.getElementById('btnCreateApi').addEventListener('click', function() {
+    bindEvent('btnCreateApi', 'click', function() {
         showCreateApiModal();
     });
-    document.getElementById('btnCreateGroup').addEventListener('click', function() {
+    bindEvent('btnCreateGroup', 'click', function() {
         showCreateGroupModal();
     });
-    document.getElementById('btnRefreshAllApi').addEventListener('click', async function() {
+    bindEvent('btnRefreshAllApi', 'click', async function() {
         var btn = this;
         // 如果正在测试中，点击则取消
         if (btn._testing && btn._testAbortCtrl) {
@@ -3713,12 +3737,12 @@ function bindEvents() {
     });
 
     // 自动轮询
-    document.getElementById('apiAutoRotateOn').addEventListener('click', function() {
+    bindEvent('apiAutoRotateOn', 'click', function() {
         LocalGameAPI.setAutoRotate(true);
         this.classList.add('active');
         document.getElementById('apiAutoRotateOff').classList.remove('active');
     });
-    document.getElementById('apiAutoRotateOff').addEventListener('click', function() {
+    bindEvent('apiAutoRotateOff', 'click', function() {
         LocalGameAPI.setAutoRotate(false);
         this.classList.add('active');
         document.getElementById('apiAutoRotateOn').classList.remove('active');
