@@ -108,7 +108,18 @@ var QuestSystem = {
     },
     renderQuestList(quests) {
         const self = this;
-        return quests.map(function(q) {
+        // 【优化】主线 → 支线 → 隐藏，进行中 → 已完成 → 已失败
+        var typeOrder = { '主线': 0, '支线': 1, '隐藏': 2 };
+        var statusOrder = { '进行中': 0, '已完成': 1, '已失败': 2 };
+        var sorted = quests.slice().sort(function(a, b) {
+            var ta = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99;
+            var tb = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99;
+            if (ta !== tb) return ta - tb;
+            var sa = statusOrder[a.status] !== undefined ? statusOrder[a.status] : 99;
+            var sb = statusOrder[b.status] !== undefined ? statusOrder[b.status] : 99;
+            return sa - sb;
+        });
+        return sorted.map(function(q) {
             var pp = self.parseProgress(q.progress);
             var tc = q.type === self.TYPE.MAIN ? 'main-quest' : q.type === self.TYPE.SIDE ?
             'side-quest' : 'hidden-quest';
@@ -134,6 +145,11 @@ var QuestSystem = {
     var hh = (q.hint && !isC && !isF) ?
     '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;padding:8px;background:var(--bg);border-radius:var(--radius-sm);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2v1"/><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>' +
     escapeHtml(q.hint) + '</div>' : '';
+    // 【优化】截止时间显示
+    var dh = '';
+    if (q.deadline && !isC && !isF) {
+        dh = '<div style="font-size:12px;color:#f44336;margin-top:6px;display:flex;align-items:center;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>截止：' + escapeHtml(q.deadline) + '</div>';
+    }
     return '<div class="quest-item-card ' + tc + (isC ? ' completed' : '') + (isF ?
     ' failed' : '') +
     '"><div class="quest-item-header"><span class="quest-item-type ' + (q.type ===
@@ -141,7 +157,7 @@ var QuestSystem = {
     'quest-type-side' : 'quest-type-hidden') + '">' + escapeHtml(q.type || '') +
     '</span><span class="quest-item-status ' + sc + '">' + escapeHtml(q.status || '') +
     '</span></div><div class="quest-item-title">' + escapeHtml(q.title || '') + '</div>' + (q.desc ?
-    '<div class="quest-item-desc">' + escapeHtml(q.desc) + '</div>' : '') + ph + hh + rh +
+    '<div class="quest-item-desc">' + escapeHtml(q.desc) + '</div>' : '') + ph + hh + rh + dh +
     '</div>';
     }).join('');
     },

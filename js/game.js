@@ -913,6 +913,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             });
             safeAutoSave();
         }
+        // 刷新通知中心红点
+        if (typeof refreshNotificationBadge === 'function') {
+            try { refreshNotificationBadge(); } catch (e) {}
+        }
         // 剧情推入打字机
         var finalStory = (storyText && storyText.trim()) ? storyText : response;
         // 对最终story文本也应用输出端正则，确保与流式显示一致
@@ -2627,6 +2631,17 @@ function openNpcChat(name) {
         npcChatState.abortController = null; // 重置NPC聊天的AbortController
     if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
     gameState._chattedNpcs[name] = true;
+    // 【优化】打开聊天时标记该 NPC 的消息为已读
+    if (gameState._notifSeenSnapshot) {
+        if (!gameState._notifSeenSnapshot.chat) gameState._notifSeenSnapshot.chat = {};
+        var npcSent = (gameState._chatLogs[name] || []).filter(function(m) {
+            if (!m) return false;
+            if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
+            return (m.text || '').trim();
+        });
+        gameState._notifSeenSnapshot.chat[name] = npcSent.length;
+        if (typeof refreshNotificationBadge === 'function') refreshNotificationBadge();
+    }
     var titleEl = document.getElementById('npcChatTitle');
     var msgsEl = document.getElementById('npcChatMessages');
     var choicesEl = document.getElementById('npcChatChoices');

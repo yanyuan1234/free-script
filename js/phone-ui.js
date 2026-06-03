@@ -336,6 +336,58 @@ function diaryChangeDate(dir) {
     gameState._diaryDateOffset += dir;
     openLogSubPage('diary');
 }
+function diaryResetDate() {
+    gameState._diaryDateOffset = 0;
+    openLogSubPage('diary');
+}
+function openDiaryDatePicker() {
+    var npcName = gameState._currentDiaryNpc;
+    if (!npcName) return;
+    var diaries = gameState._npcDiaries || {};
+    var entries = (diaries[npcName] && diaries[npcName].entries) || [];
+    if (entries.length === 0) {
+        UI.toast('该角色尚无日记');
+        return;
+    }
+    var seen = {};
+    var dateList = [];
+    entries.forEach(function(e) {
+        if (e && e.date && !seen[e.date]) {
+            seen[e.date] = true;
+            dateList.push(e.date);
+        }
+    });
+    dateList.sort(function(a, b) { return a < b ? 1 : (a > b ? -1 : 0); });
+    var html = '<div id="diaryDatePicker" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeDiaryDatePicker()">' +
+        '<div style="background:#fff;border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
+        '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
+        '<span>选择日期</span><span style="cursor:pointer;color:#999;font-size:20px;" onclick="closeDiaryDatePicker()">×</span></div>' +
+        dateList.map(function(d) {
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="closeDiaryDatePicker();diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
+        }).join('') +
+        '</div></div>';
+    var container = document.querySelector('.diary-page') || document.getElementById('logSubContent');
+    if (container) {
+        var old = document.getElementById('diaryDatePicker');
+        if (old) old.remove();
+        var wrap = document.createElement('div');
+        wrap.innerHTML = html;
+        container.appendChild(wrap.firstElementChild);
+    }
+}
+function closeDiaryDatePicker() {
+    var el = document.getElementById('diaryDatePicker');
+    if (el) el.remove();
+}
+function diaryJumpToDate(dateStr) {
+    var npcName = gameState._currentDiaryNpc;
+    if (!npcName) return;
+    var diaries = gameState._npcDiaries || {};
+    var entries = (diaries[npcName] && diaries[npcName].entries) || [];
+    var idx = entries.findIndex(function(e) { return e && e.date === dateStr; });
+    gameState._diaryDateOffset = -idx;
+    openLogSubPage('diary');
+}
 // 邮件详情
 function openMailDetail(index) {
     var mailModules = (gameState._worldModules || []).filter(function(m) {
@@ -352,7 +404,18 @@ function openMailDetail(index) {
     if (allMails.length === 0) allMails = gameState._mails || [];
     if (index >= allMails.length) return;
     var mail = allMails[index];
-    mail.read = true; // 标记已读
+    if (!mail.read) {
+        mail.read = true;
+        if (!gameState._notifSeenSnapshot) gameState._notifSeenSnapshot = {};
+        if (!gameState._notifSeenSnapshot.mail) gameState._notifSeenSnapshot.mail = { count: 0 };
+        var seenMailCount = 0;
+        for (var mi = 0; mi < allMails.length; mi++) {
+            if (allMails[mi].read) seenMailCount++;
+        }
+        gameState._notifSeenSnapshot.mail.count = Math.max(gameState._notifSeenSnapshot.mail.count, seenMailCount);
+        if (typeof refreshNotificationBadge === 'function') refreshNotificationBadge();
+        safeAutoSave();
+    }
     var sender = mail.from || mail.sender || '未知发件人';
     var avatar = sender.charAt(0);
     var subject = mail.subject || '无主题';
@@ -1283,6 +1346,7 @@ function renderChatPage() {
     }
 
     var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+    var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
         chattedNames.map(function(name) {
@@ -1294,19 +1358,30 @@ function renderChatPage() {
             var colorIdx = name.charCodeAt(0) % colors.length;
             var avatarColor = colors[colorIdx];
             var lastMsg = '点击开始对话';
+            var unreadNpc = 0;
             if (gameState._chatLogs && gameState._chatLogs[name]) {
                 var logs = gameState._chatLogs[name];
                 if (logs.length > 0) {
                     var last = logs[logs.length - 1];
                     lastMsg = last.text.length > 20 ? last.text.substring(0, 20) + '...' : last.text;
                 }
+                var npcSent = logs.filter(function(m) {
+                    if (!m) return false;
+                    if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
+                    return (m.text || '').trim();
+                });
+                var seenCount = seen[name] || 0;
+                unreadNpc = Math.max(0, npcSent.length - seenCount);
             }
+            var unreadBadge = unreadNpc > 0 ?
+                '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;background:#ff3b30;color:#fff;border-radius:9px;font-size:11px;font-weight:600;margin-left:6px;">' + (unreadNpc > 99 ? '99+' : unreadNpc) + '</span>' : '';
+            var boldStyle = unreadNpc > 0 ? 'font-weight:600;color:#111;' : '';
             return '<div class="chat-item" role="button" tabindex="0" onclick="openNpcChat(\'' + name
                 .replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;') + '\')">' +
                 '<div class="chat-avatar" style="background:' + avatarColor + ';">' + name.charAt(0) +
                 '</div>' +
-                '<div class="chat-content"><div class="chat-row"><div class="chat-name">' + escapeHtml(name) +
-                '</div><div class="chat-time">' + escapeHtml(timeStr) + '</div></div><div class="chat-preview">' +
+                '<div class="chat-content"><div class="chat-row"><div class="chat-name" style="' + boldStyle + '">' + escapeHtml(name) + unreadBadge +
+                '</div><div class="chat-time">' + escapeHtml(timeStr) + '</div></div><div class="chat-preview" style="' + boldStyle + '">' +
                 escapeHtml(lastMsg) + '</div></div></div>';
         }).join('') +
         '</div></div>';
@@ -1471,7 +1546,20 @@ function renderMomentsPage() {
                 else postTime = Math.floor(offsetMinutes / (24 * 60)) + '天前';
             }
             if (!post.likes) post.likes = [];
-            html += '<div class="moment">';
+            var mentions = (post.text || '').indexOf(playerName) !== -1;
+            if (!mentions && Array.isArray(post.comments)) {
+                for (var ci = 0; ci < post.comments.length; ci++) {
+                    var cm = post.comments[ci];
+                    if (cm && (cm.name === playerName || (cm.text || '').indexOf(playerName) !== -1 || cm.replyTo === playerName)) {
+                        mentions = true;
+                        break;
+                    }
+                }
+            }
+            html += '<div class="moment" style="' + (mentions ? 'background:linear-gradient(180deg,#e8f3ff 0%,#f7fbff 60%);border-left:3px solid #1a73e8;padding-left:6px;border-radius:6px;' : '') + '">';
+            if (mentions) {
+                html += '<div style="display:inline-flex;align-items:center;gap:4px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-bottom:6px;font-weight:500;">@ 提到你</div>';
+            }
             html += '<div class="moment-avatar">' + postAvatar + '</div>';
             html += '<div class="moment-content">';
             html += '<div class="moment-name">' + escapeHtml(authorName) + '</div>';
@@ -1957,15 +2045,26 @@ function renderDiaryPage() {
             listHtml = npcNames.map(function(npcName) {
                 var charIdx = chars.findIndex(function(c) { return c.name === npcName; });
                 var av = charIdx >= 0 ? colors[charIdx % colors.length] : '#8d6e63';
-                var eCount = (diaries[npcName].entries || []).length;
+                var entriesArr = diaries[npcName].entries || [];
                 var mCount = (diaries[npcName].memos || []).length;
-                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;" onclick="viewNpcDiary(\'' +
+                // 检测有多少篇提到玩家
+                var mentionCount = 0;
+                if (gameState.playerName) {
+                    for (var me = 0; me < entriesArr.length; me++) {
+                        if ((entriesArr[me].content || entriesArr[me].text || '').indexOf(gameState.playerName) !== -1) {
+                            mentionCount++;
+                        }
+                    }
+                }
+                var mentionTag = mentionCount > 0 ?
+                    '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
+                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" onclick="viewNpcDiary(\'' +
                     escapeHtml(npcName).replace(/'/g, "\\'") + '\')">' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
-                    '<div class="char-name">' + escapeHtml(npcName) + '</div>' +
+                    '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
                     '<div class="char-meta" style="font-size:12px;color:var(--text-secondary);">' +
-                    eCount + ' 篇日记 · ' + mCount + ' 条备忘' +
+                    entriesArr.length + ' 篇日记 · ' + mCount + ' 条备忘' +
                     '</div></div></div>';
             }).join('');
         }
@@ -1985,7 +2084,36 @@ function renderDiaryPage() {
     });
     if (charIdx >= 0) avatarColor = colors[charIdx % colors.length];
 
-    var entries = npcData.entries || [];
+    var allEntries = npcData.entries || [];
+    var _playerName = gameState.playerName || '';
+    // 提到玩家的日记置顶
+    if (_playerName && allEntries.length > 1) {
+        allEntries = allEntries.slice().sort(function(a, b) {
+            var am = ((a.content || a.text || '').indexOf(_playerName) !== -1) ? 1 : 0;
+            var bm = ((b.content || b.text || '').indexOf(_playerName) !== -1) ? 1 : 0;
+            if (am !== bm) return bm - am;
+            return 0; // 保持原始顺序
+        });
+        npcData.entries = allEntries;
+    }
+    var entries = allEntries;
+    var currentOffset = gameState._diaryDateOffset || 0;
+    if (currentOffset < 0) {
+        var targetIdx = -currentOffset;
+        if (targetIdx >= 0 && targetIdx < allEntries.length) {
+            entries = [allEntries[targetIdx]];
+        }
+    } else if (currentOffset > 0) {
+        entries = allEntries.slice(currentOffset);
+    } else if (allEntries.length > 0) {
+        entries = [allEntries[allEntries.length - 1]];
+    }
+    if (entries.length > 0) {
+        var firstEntry = entries[0];
+        if (firstEntry && firstEntry.date) {
+            dateStr = firstEntry.date;
+        }
+    }
     var journalHtml = '';
     if (entries.length === 0) {
         journalHtml =
@@ -1995,14 +2123,19 @@ function renderDiaryPage() {
             '<div class="diary-card-text"><p>暂无日记内容，该角色的日记将在剧情推进中自动生成。</p></div></div>';
     } else {
         journalHtml = entries.map(function(entry) {
-            var paragraphs = (entry.content || entry.text || '').split('\n').filter(function(p) {
+            var entryText = entry.content || entry.text || '';
+            var paragraphs = entryText.split('\n').filter(function(p) {
                 return p.trim();
             }).map(function(p) {
                 return '<p>' + escapeHtml(p) + '</p>';
             }).join('');
             var moodTag = entry.mood ? '<span style="float:right;font-size:12px;color:#999;">' + escapeHtml(entry.mood) + '</span>' : '';
             var dateTag = entry.date ? '<div style="font-size:12px;color:#999;margin-bottom:6px;">' + escapeHtml(entry.date) + moodTag + '</div>' : '';
-            return '<div class="diary-card"><div class="diary-card-header"><div class="diary-card-label">JOURNAL（' +
+            var _mentionsPlayer = _playerName && entryText.indexOf(_playerName) !== -1;
+            var cardStyle = _mentionsPlayer ? 'background:linear-gradient(180deg,#e8f3ff 0%,#f7fbff 100%);border-left:3px solid #1a73e8;' : '';
+            var mentionBadge = _mentionsPlayer ?
+                '<div style="display:inline-flex;align-items:center;gap:4px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-bottom:6px;font-weight:500;">@ 提到你</div><br>' : '';
+            return '<div class="diary-card" style="' + cardStyle + '">' + mentionBadge + '<div class="diary-card-header"><div class="diary-card-label">JOURNAL（' +
                 currentDiaryNpc +
                 '）</div><div class="diary-card-lock"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div></div>' +
                 '<div class="diary-card-text">' + dateTag + paragraphs + '</div></div>';
@@ -2024,9 +2157,9 @@ function renderDiaryPage() {
 
     return '<div class="diary-page">' +
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 15px;flex-shrink:0;"><div class="diary-nav-btn" onclick="diaryBackToList()" style="font-size:20px;">←</div></div>' +
-        '<div class="diary-date-nav"><div class="diary-nav-btn" onclick="diaryChangeDate(-7)"><<</div><div class="diary-nav-btn" onclick="diaryChangeDate(-1)"><</div><div class="diary-nav-date">' +
+        '<div class="diary-date-nav"><div class="diary-nav-btn" onclick="diaryChangeDate(-1)" title="上一条"><</div><div class="diary-nav-date" onclick="openDiaryDatePicker()" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;">📅</span>' +
         dateStr +
-        '</div><div class="diary-nav-btn" onclick="diaryChangeDate(1)">></div><div class="diary-nav-btn" onclick="diaryChangeDate(7)">>></div></div>' +
+        '</div><div class="diary-nav-btn" onclick="diaryChangeDate(1)" title="下一条">></div><div class="diary-nav-btn" onclick="diaryResetDate()" title="返回最近">»</div></div>' +
         '<div class="diary-user-bar"><div class="diary-user-avatar" style="background:' + avatarColor +
         ';color:#fff;font-size:14px;">' + currentDiaryNpc.charAt(0) +
         '</div><div class="diary-user-name">' + currentDiaryNpc + (npcChar.title ? ' · ' + npcChar.title :
@@ -2058,17 +2191,21 @@ function renderMailPage() {
     } else {
         mailListHtml = allMails.map(function(mail, i) {
             var unread = mail.read ? '' : ' unread';
+            var unreadDot = mail.read ? '' :
+                '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff3b30;margin-right:6px;flex-shrink:0;"></span>';
             var sender = mail.from || mail.sender || '未知发件人';
             var date = mail.date || mail.time || '';
             var subject = mail.subject || '无主题';
             var preview = mail.preview || mail.body || '';
             if (preview.length > 80) preview = preview.substring(0, 80) + '...';
             preview = preview.replace(/<[^>]*>/g, '');
+            var subjectStyle = mail.read ? '' : 'font-weight:600;color:#111;';
+            var senderStyle = mail.read ? '' : 'font-weight:600;color:#111;';
             return '<div class="mail-list-item' + unread + '" onclick="openMailDetail(' + i +
-                ')">' +
-                '<div class="mail-list-header"><div class="mail-list-sender">' + escapeHtml(sender) +
+                ')" style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
+                '<div class="mail-list-header">' + unreadDot + '<div class="mail-list-sender" style="' + senderStyle + '">' + escapeHtml(sender) +
                 '</div><div class="mail-list-date">' + escapeHtml(date) + '</div></div>' +
-                '<div class="mail-list-subject">' + escapeHtml(subject) + '</div>' +
+                '<div class="mail-list-subject" style="' + subjectStyle + '">' + escapeHtml(subject) + '</div>' +
                 '<div class="mail-list-preview">' + escapeHtml(preview) + '</div></div>';
         }).join('');
     }
