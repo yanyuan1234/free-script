@@ -56,7 +56,7 @@ var GlobalCleanup = {
     cleanup: function() { for (var i = 0; i < this._listeners.length; i++) { try { this._listeners[i].target.removeEventListener(this._listeners[i].type, this._listeners[i].handler, this._listeners[i].options); } catch(e) {} } this._listeners = []; TimerManager.clearAll(); DOMCache.clear(); }
 };
 
-window.addEventListener('beforeunload', function() { GlobalCleanup.cleanup(); });
+// beforeunload 已合并到 core.js 中，此处不再重复注册
 
 function sanitizeHTML(str) { if (!str) return ''; if (typeof str !== 'string') str = String(str); return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
 
@@ -66,24 +66,28 @@ function throttle(fn, interval) { var last = 0, t = null; return function() { va
 function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fallback; } }
 function safeSetItem(key, value) {
     try {
-        var dataSize = (key.length + value.length) * 2;
-        var capacity = StorageMonitor.checkCapacity();
-        if (capacity.percentage > 90) {
-            Logger.warn('localStorage接近满载:', capacity.percentage.toFixed(1) + '%');
+        localStorage.setItem(key, value);
+        return { success: true, used: (key.length + value.length) * 2 };
+    } catch(e) {
+        if (e.name === 'QuotaExceededError' || e.code === 22) {
+            Logger.error('localStorage存储已满:', key);
+            // 尝试清理临时数据后重试
+            try {
+                for (var i = localStorage.length - 1; i >= 0; i--) {
+                    var k = localStorage.key(i);
+                    if (k && (k.indexOf('temp_') === 0 || k.indexOf('cache_') === 0)) {
+                        localStorage.removeItem(k);
+                    }
+                }
+                localStorage.setItem(key, value);
+                return { success: true, used: (key.length + value.length) * 2 };
+            } catch(e2) {
+                return { success: false, error: 'quota_exceeded', message: '存储配额已超', key: key };
+            }
         }
-    if (capacity.used + dataSize > capacity.total) {
-        return { success: false, error: 'quota_exceeded', message: '存储空间不足', required: dataSize, available: capacity.total - capacity.used };
+        Logger.error('localStorage写入失败:', e.message);
+        return { success: false, error: 'write_error', message: e.message, key: key };
     }
-localStorage.setItem(key, value);
-return { success: true, used: dataSize };
-} catch(e) {
-if (e.name === 'QuotaExceededError' || e.code === 22) {
-    Logger.error('localStorage存储已满:', key);
-    return { success: false, error: 'quota_exceeded', message: '存储配额已超', key: key };
-}
-Logger.error('localStorage写入失败:', e.message);
-return { success: false, error: 'write_error', message: e.message, key: key };
-}
 }
 function safeGetItem(key, defaultValue) { try { var v = localStorage.getItem(key); return v !== null ? v : defaultValue; } catch(e) { return defaultValue; } }
 

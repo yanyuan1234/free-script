@@ -362,7 +362,9 @@ var LocalGameAPI = {
         if (this._requestLog.length > this._MAX_LOG) {
             this._requestLog = this._requestLog.slice(-this._MAX_LOG);
         }
-    this.save();
+    // 【优化】防抖保存，避免每次请求都写 localStorage
+    if (this._saveTimer) clearTimeout(this._saveTimer);
+    this._saveTimer = setTimeout(function() { LocalGameAPI.save(); }, 2000);
     },
     _markModelFailed(slot) {
         var cfg = this._configs[slot];
@@ -988,10 +990,11 @@ var gameState = createDefaultGameState();
 
 var streamBuffer = '';
 var isWaiting = false;
-// ======= 打字机缓冲系统 v2（优化版） =======
-// 优化：段落级渲染节流、标点智能停顿、统一光标、脏检查
+// ======= 打字机缓冲系统 v3（性能优化版） =======
+// 优化：requestAnimationFrame 渲染节流、索引式队列、标点智能停顿、脏检查
 var TypewriterBuffer = {
-    queue: '',
+    _queue: '',
+    _queueIdx: 0,
     displayed: '',
     isTyping: false,
     timer: null,
@@ -1002,6 +1005,7 @@ var TypewriterBuffer = {
     _currentParaChars: '',
     _lastRendered: '',
     _forceFullRender: false,
+    _rafPending: false,
     // 标点停顿映射（字符 → 额外等待ms）
     _pauseMap: {
         '\u3002': 120, '\uff01': 120, '\uff1f': 120, '\u2026': 80,
@@ -1011,87 +1015,96 @@ var TypewriterBuffer = {
         '\n': 60
     },
 
+    // 队列剩余长度（避免重复创建子字符串）
+    get queueLen() { return this._queue.length - this._queueIdx; },
+
     push(newText) {
         if (!newText) return;
-        // 确保 queue 和 displayed 已初始化，防止 undefined 错误
-        if (typeof this.queue !== 'string') this.queue = '';
+        if (typeof this._queue !== 'string') this._queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        if (newText.length > this.queue.length + this.displayed.length) {
-            var newPart = newText.substring(this.displayed.length + this.queue.length);
-            this.queue += newPart;
-            } else {
-            this.queue = newText.substring(this.displayed.length);
+        if (newText.length > this.displayed.length + this.queueLen) {
+            // 新文本更长，追加增量部分
+            var newPart = newText.substring(this.displayed.length + this.queueLen);
+            this._queue += newPart;
+        } else {
+            // 重建队列（仅在此情况下需要拷贝）
+            this._queue = newText.substring(this.displayed.length);
+            this._queueIdx = 0;
         }
-    if (!this.isTyping) this.start();
+        if (!this.isTyping) this.start();
     },
     start() {
         if (this.isTyping) return;
         this.isTyping = true;
-        // 只在首次启动（displayed为空）时重置段落缓存，
-        // 标点停顿后恢复打字时不能重置，否则已完成的段落会丢失
         if (this.displayed.length === 0) {
             this._completedParagraphs = [];
             this._currentParaChars = '';
         }
-    this._forceFullRender = true;
-    const self = this;
-    TimerManager.setInterval('typewriter', function() {
-        if (self.queue.length === 0) {
-            self.pause();
-            if (self._currentParaChars) {
-                self._completedParagraphs.push(self._currentParaChars);
-                self._currentParaChars = '';
-            }
-        self._renderCached();
-        if (self.onComplete) {
-            self.onComplete();
-            self.onComplete = null;
-        }
-    return;
-    }
-    var ch = self.queue[0];
-    self.queue = self.queue.substring(1);
-    self.displayed += ch;
-
-    // 段落分割：遇到换行且当前段落有内容时，完成当前段落
-    if (ch === '\n' && self._currentParaChars.length > 0) {
-        self._completedParagraphs.push(self._currentParaChars);
-        self._currentParaChars = '';
-        self._renderCached();
-        } else {
-        self._currentParaChars += ch;
-        self._renderCurrentPara();
-    }
-
-    // 标点智能停顿
-    var pause = self._pauseMap[ch];
-    if (pause) {
-        self.pause();
-        self._pauseTimer = TimerManager.setTimeout('typewriterPause', function() {
-            self._pauseTimer = null;
-            if (self.queue.length > 0 || self._currentParaChars.length > 0) {
-                self.start();
-                } else {
+        this._forceFullRender = true;
+        const self = this;
+        TimerManager.setInterval('typewriter', function() {
+            if (self.queueLen === 0) {
                 self.pause();
                 if (self._currentParaChars) {
                     self._completedParagraphs.push(self._currentParaChars);
                     self._currentParaChars = '';
                 }
-            self._renderCached();
-            if (self.onComplete) {
-                self.onComplete();
-                self.onComplete = null;
+                self._scheduleRender();
+                if (self.onComplete) {
+                    self.onComplete();
+                    self.onComplete = null;
+                }
+                return;
             }
-    }
-    }, pause);
-    }
-    }, this.baseSpeed);
-    if (!this._visibilityHandler) {
-        this._visibilityHandler = function() {
-            if (document.hidden && self.isTyping) self.pause();
+            var ch = self._queue[self._queueIdx];
+            self._queueIdx++;
+            self.displayed += ch;
+
+            // 段落分割：遇到换行且当前段落有内容时，完成当前段落
+            if (ch === '\n' && self._currentParaChars.length > 0) {
+                self._completedParagraphs.push(self._currentParaChars);
+                self._currentParaChars = '';
+                self._scheduleRender();
+            } else {
+                self._currentParaChars += ch;
+                self._scheduleRender();
+            }
+
+            // 定期清理已消费的队列前缀，防止字符串无限增长
+            if (self._queueIdx > 512) {
+                self._queue = self._queue.substring(self._queueIdx);
+                self._queueIdx = 0;
+            }
+
+            // 标点智能停顿
+            var pause = self._pauseMap[ch];
+            if (pause) {
+                self.pause();
+                self._pauseTimer = TimerManager.setTimeout('typewriterPause', function() {
+                    self._pauseTimer = null;
+                    if (self.queueLen > 0 || self._currentParaChars.length > 0) {
+                        self.start();
+                    } else {
+                        self.pause();
+                        if (self._currentParaChars) {
+                            self._completedParagraphs.push(self._currentParaChars);
+                            self._currentParaChars = '';
+                        }
+                        self._scheduleRender();
+                        if (self.onComplete) {
+                            self.onComplete();
+                            self.onComplete = null;
+                        }
+                    }
+                }, pause);
+            }
+        }, this.baseSpeed);
+        if (!this._visibilityHandler) {
+            this._visibilityHandler = function() {
+                if (document.hidden && self.isTyping) self.pause();
             };
-        GlobalCleanup.registerListener(document, 'visibilitychange', this._visibilityHandler);
-    }
+            GlobalCleanup.registerListener(document, 'visibilitychange', this._visibilityHandler);
+        }
     },
     pause() {
         this.isTyping = false;
@@ -1100,13 +1113,14 @@ var TypewriterBuffer = {
     stop() {
         if (this._pauseTimer) { TimerManager.clearTimeout('typewriterPause'); this._pauseTimer = null; }
         this.pause();
-        this.queue = '';
+        this._queue = '';
+        this._queueIdx = 0;
         this.displayed = '';
         this._lastRendered = '';
         this._forceFullRender = true;
+        this._rafPending = false;
         this.onComplete = null;
     },
-    // 添加销毁方法，移除事件监听器防止内存泄漏
     destroy() {
         this.stop();
         if (this._visibilityHandler) {
@@ -1115,11 +1129,12 @@ var TypewriterBuffer = {
         }
     },
     flush() {
-        // 确保 queue 和 displayed 已初始化
-        if (typeof this.queue !== 'string') this.queue = '';
+        if (typeof this._queue !== 'string') this._queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        this.displayed += this.queue;
-        this.queue = '';
+        // 一次性消费所有剩余队列
+        this.displayed += this._queue.substring(this._queueIdx);
+        this._queue = '';
+        this._queueIdx = 0;
         this.pause();
         this.render();
         if (this.onComplete) {
@@ -1128,12 +1143,21 @@ var TypewriterBuffer = {
         }
     },
     isFinished() {
-        // 确保 queue 已初始化
-        if (typeof this.queue !== 'string') this.queue = '';
-        return this.queue.length === 0 && !this.isTyping;
+        if (typeof this._queue !== 'string') this._queue = '';
+        return this.queueLen === 0 && !this.isTyping;
+    },
+    // 使用 requestAnimationFrame 节流渲染，避免每字符都触发 DOM 重绘
+    _scheduleRender() {
+        if (this._rafPending) return;
+        this._rafPending = true;
+        var self = this;
+        requestAnimationFrame(function() {
+            self._rafPending = false;
+            self.render();
+        });
     },
     render() {
-        var storyEl = document.getElementById('storyText');
+        var storyEl = DOMCache.get('storyText', true) || document.getElementById('storyText');
         if (!storyEl) return;
         var allText = this._completedParagraphs.join('\n') + (this._completedParagraphs.length > 0 ? '\n' : '') + this._currentParaChars;
         // 脏检查：内容未变化则跳过重绘
@@ -1142,12 +1166,10 @@ var TypewriterBuffer = {
         storyEl.innerHTML = formatStory(allText);
     },
     _renderCached() {
-        // 渲染已完成的段落
-        this.render();
+        this._scheduleRender();
     },
     _renderCurrentPara() {
-        // 渲染当前段落（节流）
-        this.render();
+        this._scheduleRender();
     }
 };
 const MAX_HISTORY = 20;
@@ -2363,14 +2385,18 @@ function translateError(msg) {
     };
 // 【修复】如果翻译后的结果与原文不同，在末尾附加原始错误信息
 // 这样用户既能看到中文解释，也能看到原始英文错误用于排查
+// 【优化】缓存排序后的 key 数组，避免每次调用都重新排序
+var _translateErrorSortedKeys = null;
 var translated = null;
 for (var key in map) {
     if (m === key) { translated = map[key]; break; }
 }
 if (!translated) {
-    var keys = Object.keys(map).sort(function(a, b) { return b.length - a.length; });
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
+    if (!_translateErrorSortedKeys) {
+        _translateErrorSortedKeys = Object.keys(map).sort(function(a, b) { return b.length - a.length; });
+    }
+    for (var i = 0; i < _translateErrorSortedKeys.length; i++) {
+        var key = _translateErrorSortedKeys[i];
         if (m.indexOf(key) !== -1) { translated = map[key]; break; }
     }
 }
@@ -2452,17 +2478,21 @@ function sanitizeHtml(html) {
     str = str.replace(/expression\s*\([^)]*\)/gi, '');
     return str;
 }
-// 页面关闭前保存
+// 页面关闭前保存（合并所有 beforeunload 逻辑，避免多个监听器）
 window.addEventListener('beforeunload', function() {
     try {
         var data = buildSaveData('');
         safeSetItem('__autoSaveBackup', JSON.stringify(data));
     } catch(e) { console.warn('beforeunload save failed:', e); }
-try {
-    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.saveToStorage) {
-        EnhancedMemory.saveToStorage();
-    }
-} catch(memE) {}
+    try {
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.saveToStorage) {
+            EnhancedMemory.saveToStorage();
+        }
+    } catch(memE) {}
+    // 清理全局资源（定时器、事件监听器等）
+    try {
+        if (typeof GlobalCleanup !== 'undefined') GlobalCleanup.cleanup();
+    } catch(gcE) {}
 });
 function parseMarkdown(text) {
     if (!text) return '';
@@ -2483,7 +2513,7 @@ function toggleSettingGroup(header) {
     }
 }
 function applyFontSize() {
-    var storyText = document.getElementById('storyText');
+    var storyText = DOMCache.get('storyText') || document.getElementById('storyText');
     if (storyText) storyText.style.fontSize = (gameState.fontSize || 16) + 'px';
 }
 
@@ -2593,8 +2623,8 @@ function safeAutoSave() { try { autoSave(); } catch(e) { console.warn('autoSave 
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
 function setWaiting(w) {
     isWaiting = w;
-    var input = document.getElementById('customAction');
-    var sendBtn = document.getElementById('btnSendAction');
+    var input = DOMCache.get('customAction') || document.getElementById('customAction');
+    var sendBtn = DOMCache.get('btnSendAction') || document.getElementById('btnSendAction');
     if (input) input.disabled = w;
     if (sendBtn) sendBtn.disabled = w;
     var optBtns = document.querySelectorAll('.option-btn');

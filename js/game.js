@@ -852,7 +852,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 流式模式下 onStreamChunk 已经在逐步推送了，
         // 这里只需要确保最终完整文本被推送（处理流式解析可能遗漏的尾部内容）。
         // 如果打字机已经在打字且 displayed 已包含 finalStory 的内容，则跳过重复推送。
-        var alreadyDisplayed = TypewriterBuffer.displayed.length + TypewriterBuffer.queue.length;
+        var alreadyDisplayed = TypewriterBuffer.displayed.length + TypewriterBuffer.queueLen;
         if (finalStory.length > alreadyDisplayed) {
             TypewriterBuffer.push(finalStory);
         }

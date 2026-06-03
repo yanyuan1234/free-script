@@ -234,6 +234,9 @@ var WorldInfo = {
         if (budgetEl) budgetEl.value = this.settings.tokenBudget;
         if (recursiveEl) recursiveEl.checked = this.settings.recursive;
 
+        // 【优化】打开设置面板时标记缓存失效，下次 scan 时重新读取 DOM
+        this._settingsCached = false;
+
         // 重置到书籍列表视图
         this.currentView = 'books';
         this.currentBookId = null;
@@ -1360,16 +1363,18 @@ var WorldInfo = {
             console.warn('[WorldInfo] scan: chatMessages 参数无效');
             return activated;
         }
+        // 【优化】缓存 DOM 设置值，避免每次扫描都读取 DOM
+        // 只在设置值未缓存时才读取 DOM
+        if (!this._settingsCached) {
+            var depthEl = document.getElementById('wiScanDepth');
+            var budgetEl = document.getElementById('wiTokenBudget');
+            var recursiveEl = document.getElementById('wiRecursive');
+            if (depthEl) this.settings.scanDepth = parseInt(depthEl.value) || 2;
+            if (budgetEl) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
+            if (recursiveEl) this.settings.recursive = recursiveEl.checked;
+            this._settingsCached = true;
+        }
         var scanDepth = this.settings.scanDepth;
-
-        // 读取UI设置
-        var depthEl = document.getElementById('wiScanDepth');
-        var budgetEl = document.getElementById('wiTokenBudget');
-        var recursiveEl = document.getElementById('wiRecursive');
-        // scanDepth默认值统一为2（与酒馆一致）
-        if (depthEl) this.settings.scanDepth = parseInt(depthEl.value) || 2;
-        if (budgetEl) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
-        if (recursiveEl) this.settings.recursive = recursiveEl.checked;
 
         // 递增轮次
         this._currentTurn++;
