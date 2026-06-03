@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [master, trae/**]
   workflow_dispatch:
 
 permissions:
@@ -23,6 +23,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Inject build version & timestamp into index.html
+        run: |
+          TS=$(date -u +"%Y-%m-%d %H:%M UTC")
+          SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
+          VERSION="b${SHA}-${TS// /_}"
+          # Replace placeholder; if absent, leave file untouched.
+          if grep -q "__BUILD_VERSION__" index.html; then
+            sed -i "s|__BUILD_VERSION__|${VERSION}|g" index.html
+            echo "Injected build version: ${VERSION}"
+          else
+            echo "No __BUILD_VERSION__ placeholder found, skipping injection."
+          fi
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
