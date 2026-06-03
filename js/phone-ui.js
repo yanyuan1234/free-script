@@ -2846,7 +2846,7 @@ function savePresets(list) {
 function loadWorldPreset(idx) {
     var presets = getPresets();
     if (!presets[idx]) return;
-    var gpEl = document.getElementById('gamePrompt');
+    var gpEl = document.getElementById('worldDescription');
     if (gpEl) gpEl.value = presets[idx].prompt || '';
     var ssEl = document.getElementById('setupStyle');
     if (ssEl) ssEl.value = presets[idx].style || '';
@@ -2968,6 +2968,8 @@ function showPresetAction(idx) {
         gameState._currentPresetName = preset.name;
         // 填充设定并跳转到世界设定页
         document.getElementById('worldDescription').value = preset.prompt || '';
+        var styleEl = document.getElementById('setupStyle');
+        if (styleEl) styleEl.value = preset.style || '';
         var mc = preset.mc || {};
         if (mc.mcName) document.getElementById('setupPlayerName').value = mc.mcName;
         if (mc.mcGender) document.getElementById('setupPlayerGender').value = mc.mcGender;
@@ -3265,7 +3267,8 @@ function bindEvents() {
             return;
         }
         var prompt = document.getElementById('worldDescription').value.trim();
-        var style = '';
+        var styleEl = document.getElementById('setupStyle');
+        var style = styleEl ? styleEl.value.trim() : '';
         var mc = {};
         var mcFields = ['setupPlayerName', 'setupPlayerGender', 'setupPlayerIdentity',
             'setupPlayerDesc'

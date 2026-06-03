@@ -87,10 +87,10 @@ ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date 
     return _prompt;
 }
 // 开始游戏时自动记住当前填写内容
-var _origStartBtn = document.getElementById('startBtn');
+var _origStartBtn = document.getElementById('btnCreateWorld');
 if (_origStartBtn) {
     _origStartBtn.addEventListener('click', function() {
-        var gpEl = document.getElementById('gamePrompt');
+        var gpEl = document.getElementById('worldDescription');
         if (gpEl) safeSetItem('freeScript_lastPrompt', gpEl.value || '');
         var ssEl = document.getElementById('setupStyle');
         if (ssEl) safeSetItem('freeScript_lastStyle', ssEl.value || '');
@@ -977,11 +977,12 @@ function updateTokenCount(currentResponseLength) {
             (estimated / 1000).toFixed(1) + 'k' : estimated;
     }
     
-    // 更新设置弹窗里的显示
-    var msgEl = document.getElementById('settingMsgCount');
-    if (msgEl) msgEl.textContent = gameState.conversationHistory.length;
-    var tokEl = document.getElementById('settingTokenCount');
-    if (tokEl) tokEl.textContent = estimated > 1000 ? (estimated / 1000).toFixed(1) + 'k' : estimated;
+    // 更新设置弹窗里的显示（已合并到 contextInfo）
+    var ctxEl = document.getElementById('contextInfo');
+    if (ctxEl) {
+        ctxEl.textContent = '上下文: ' + gameState.conversationHistory.length + ' 条 | 约 ' +
+            (estimated > 1000 ? (estimated / 1000).toFixed(1) + 'k' : estimated) + ' token';
+    }
 
     // 更新聊天界面底部Token显示
     var chatTokenEl = document.getElementById('chatTokenDisplay');
@@ -1313,7 +1314,7 @@ async function manualCompress(btn) {
     var lastPrompt = localStorage.getItem('freeScript_lastPrompt');
     var lastStyle = localStorage.getItem('freeScript_lastStyle');
     if (lastPrompt) {
-        var el = document.getElementById('gamePrompt');
+        var el = document.getElementById('worldDescription');
         if (el && !el.value) el.value = lastPrompt;
     }
     if (lastStyle) {
