@@ -35,6 +35,21 @@ function _switchForumView(showHot) {
 }
 function showForumHot() { _switchForumView(true); }
 function showForumTopic() { _switchForumView(false); }
+function showForumMine() {
+    var hotView = document.getElementById('forumHotView');
+    var topicView = document.getElementById('forumTopicView');
+    var mineView = document.getElementById('forumMineView');
+    var tabBar = document.getElementById('forumTabBar');
+    if (hotView) hotView.style.display = 'none';
+    if (topicView) topicView.style.display = 'none';
+    if (mineView) mineView.style.display = 'block';
+    if (tabBar) tabBar.style.display = 'flex';
+    var tabs = document.querySelectorAll('.forum-tab-item');
+    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    if (tabs[2]) tabs[2].classList.add('active');
+    var details = document.querySelectorAll('.forum-post-detail');
+    for (var k = 0; k < details.length; k++) details[k].style.display = 'none';
+}
 function openForumPost(idx) {
     var detail = document.getElementById('forumPostDetail' + idx);
     var hotView = document.getElementById('forumHotView');
@@ -1825,11 +1840,41 @@ function renderForumPage() {
         '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
         '<div class="forum-topic-body">' + feedItems + '</div>' +
         '</div>' +
+        '<div id="forumMineView" style="display:none;">' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
+        '<div class="forum-mine-body">' + (function() {
+            var mineHtml = '';
+            var myCommented = [];
+            commentMods.forEach(function(mod, idx) {
+                var cmts = mod.comments || [];
+                var myCount = 0;
+                for (var mi = 0; mi < cmts.length; mi++) {
+                    if (cmts[mi].name === playerName) myCount++;
+                }
+                if (myCount > 0) {
+                    myCommented.push({ idx: idx, title: mod.title || '帖子', count: myCount, mod: mod });
+                }
+            });
+            if (myCommented.length === 0) {
+                return '<div style="padding:60px 20px;text-align:center;color:#999;">还没发表过评论<br><span style="font-size:12px;">去点击话题发表你的观点吧</span></div>';
+            }
+            return myCommented.map(function(item) {
+                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
+                    '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">💬</div>' +
+                    '<div style="flex:1;min-width:0;">' +
+                    '<div style="font-size:14px;color:#222;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
+                    '<div style="font-size:12px;color:#999;margin-top:2px;">你发表了 ' + item.count + ' 条评论</div>' +
+                    '</div>' +
+                    '<div style="color:#ccc;font-size:16px;">›</div>' +
+                    '</div>';
+            }).join('');
+        })() + '</div>' +
+        '</div>' +
         postDetails +
         '<div class="forum-tab-bar" id="forumTabBar">' +
         '<div class="forum-tab-item active" onclick="showForumHot()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
         '<div class="forum-tab-item" onclick="showForumTopic()"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
-        '<div class="forum-tab-item"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
+        '<div class="forum-tab-item" onclick="showForumMine()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
         '</div>' +
         '</div>';
 }
@@ -1872,6 +1917,10 @@ function renderRankPage() {
         });
     });
 
+    // 上次排行快照，用于计算 ↑/↓
+    var prevSnapshot = gameState._lastRankSnapshot || {};
+    var currentNameToRank = {};
+    rankItems.forEach(function(it, i) { currentNameToRank[it.name] = i; });
     var rowHtml = '';
     if (rankItems.length === 0) {
         rowHtml =
@@ -1882,15 +1931,31 @@ function renderRankPage() {
             var valueDisplay = it.value || '-';
             var extraDisplay = it.extra || '';
             var isPlayer = it.name === playerName || (playerName && it.name.indexOf(playerName) !== -1) || (playerName && playerName.indexOf(it.name) !== -1);
+            // 排名变化指示
+            var changeTag = '';
+            if (prevSnapshot[it.name] !== undefined) {
+                var prev = prevSnapshot[it.name];
+                if (prev > i) {
+                    changeTag = '<span style="display:inline-flex;align-items:center;gap:2px;background:#e8f5e9;color:#2e7d32;font-size:11px;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:600;">↑' + (prev - i) + '</span>';
+                } else if (prev < i) {
+                    changeTag = '<span style="display:inline-flex;align-items:center;gap:2px;background:#ffebee;color:#c62828;font-size:11px;padding:1px 6px;border-radius:8px;margin-left:6px;font-weight:600;">↓' + (i - prev) + '</span>';
+                } else {
+                    changeTag = '<span style="display:inline-flex;align-items:center;gap:2px;background:#f5f5f5;color:#999;font-size:11px;padding:1px 6px;border-radius:8px;margin-left:6px;">—</span>';
+                }
+            } else {
+                changeTag = '<span style="display:inline-flex;align-items:center;background:#e3f2fd;color:#1976d2;font-size:11px;padding:1px 6px;border-radius:8px;margin-left:6px;">NEW</span>';
+            }
             return '<div class="rank-row' + (isPlayer ? ' rank-self' : '') + '">' +
                 '<div class="rank-num ' + rankClass + '">' + (i + 1) + '</div>' +
                 '<div class="rank-id' + (isPlayer ? ' rank-id-self' : '') + '">' + it.name + (
-                    isPlayer ? ' (我)' : '') + '</div>' +
+                    isPlayer ? ' (我)' : '') + changeTag + '</div>' +
                 '<div class="rank-calls">' + valueDisplay + '</div>' +
                 (extraDisplay ? '<div class="rank-duration">' + extraDisplay + '</div>' : '') +
                 '</div>';
         }).join('');
     }
+    // 更新快照（在异步生成完后会被覆盖）
+    gameState._lastRankSnapshot = currentNameToRank;
 
     // 查找玩家排名
     var playerRank = -1;
@@ -1903,10 +1968,15 @@ function renderRankPage() {
         }
     }
 
+    var myChangeTag = '';
+    if (playerRank >= 0 && prevSnapshot[playerName] !== undefined) {
+        if (prevSnapshot[playerName] > playerRank) myChangeTag = '<span style="background:#e8f5e9;color:#2e7d32;font-size:12px;padding:2px 8px;border-radius:10px;margin-left:8px;font-weight:600;">↑ 上升 ' + (prevSnapshot[playerName] - playerRank) + ' 位</span>';
+        else if (prevSnapshot[playerName] < playerRank) myChangeTag = '<span style="background:#ffebee;color:#c62828;font-size:12px;padding:2px 8px;border-radius:10px;margin-left:8px;font-weight:600;">↓ 下降 ' + (playerRank - prevSnapshot[playerName]) + ' 位</span>';
+    }
     return '<div class="rank-page">' +
         '<div class="rank-card">' +
         '<div class="rank-card-header"><span class="rank-card-tab active">' + rankTitle + '</span></div>' +
-        '<div class="rank-user-id">' + playerName + '</div>' +
+        '<div class="rank-user-id">' + playerName + myChangeTag + '</div>' +
         (playerTitle ? '<div class="rank-user-stage">' + playerTitle + '</div>' : '') +
         '<div class="rank-stats-row">' +
         '<div class="rank-stat-box"><div class="rank-stat-num">' + (playerValue || '--') +
@@ -2276,23 +2346,32 @@ function renderShopPage() {
                     break;
                 }
             }
-            // 修复A: 价格显示逻辑
+            var stockCount = (g.count !== undefined && g.count !== null) ? parseInt(g.count) : null;
+            var isSoldOut = stockCount !== null && stockCount <= 0;
             var priceDisplay = '';
             if (typeof price === 'number' || /^\d+$/.test(price)) {
                 priceDisplay = '¥' + price;
             } else if (price && price !== '0') {
-                priceDisplay = price; // 显示自定义价格文本如 "friendship"
+                priceDisplay = price;
             } else {
                 priceDisplay = '价格面议';
             }
-            // 修复B: 将"已拥有"移到商品信息区域外部
-            var ownedDisplay = ownedCount > 0 ? '<div style="font-size:11px;color:var(--success);margin-top:4px;">已拥有:' + ownedCount + '</div>' : '';
-            return '<div class="shop-goods-item" onclick="buyShopItem(' + gi + ')"><div class="shop-goods-icon">' + escapeHtml(icon) +
+            var ownedDisplay = ownedCount > 0 ? '<div style="font-size:11px;color:var(--success);margin-top:4px;">已拥有: ×' + ownedCount + '</div>' : '';
+            var stockTag = stockCount !== null && !isSoldOut ?
+                '<div style="font-size:11px;color:#999;margin-top:2px;">库存: ' + stockCount + '</div>' : '';
+            var soldOutTag = isSoldOut ?
+                '<div style="font-size:11px;color:#e53935;margin-top:2px;font-weight:500;">已售稀</div>' : '';
+            var buyAction = isSoldOut ?
+                '<span style="font-size:11px;padding:2px 8px;background:#ccc;color:#fff;border-radius:10px;cursor:not-allowed;white-space:nowrap;">已售稀</span>' :
+                '<span style="font-size:11px;padding:2px 8px;background:var(--accent,#333);color:#fff;border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span>';
+            var itemStyle = isSoldOut ? 'opacity:0.6;cursor:not-allowed;' : 'cursor:pointer;';
+            var itemClick = isSoldOut ? '' : ' onclick="buyShopItem(' + gi + ')"';
+            return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemClick + '><div class="shop-goods-icon">' + escapeHtml(icon) +
                 '</div><div class="shop-goods-info"><div class="shop-goods-name">' + escapeHtml(name) +
                 '</div><div class="shop-goods-desc">' + escapeHtml(desc) + '</div>' +
-                ownedDisplay +
+                ownedDisplay + stockTag + soldOutTag +
                 '</div><div class="shop-goods-price" style="display:flex;align-items:center;gap:6px;">' + escapeHtml(priceDisplay) +
-                '<span style="font-size:11px;padding:2px 8px;background:var(--accent,#333);color:#fff;border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span></div></div>';
+                buyAction + '</div></div>';
         }).join('');
     }
 
@@ -2300,7 +2379,11 @@ function renderShopPage() {
     var catSectionHtml = catHtml ?
         '<div class="shop-section-title">分类</div><div class="shop-cat-row">' + catHtml + '</div>' : '';
 
+    var _balance = gameState.currency || gameState.money || gameState.coins || 0;
+    var _cName = gameState.currencyName || '金币';
+    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
     return '<div style="display:flex;flex-direction:column;flex:1;background:#f5f5f5;overflow:hidden;">' +
+        balanceBar +
         '<div class="shop-search-box"><div class="shop-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索商品</div></div>' +
         '<div class="shop-banner"><div class="shop-banner-text">限时特惠<br>新品上架</div><div class="shop-banner-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div></div>' +
         catSectionHtml +
@@ -2321,6 +2404,10 @@ function buyShopItem(index) {
     var price = parseInt(item.price) || 0;
     var currency = parseInt(gameState.currency || gameState.money || gameState.coins || 0);
     var currencyName = gameState.currencyName || '金币';
+    if (item.count !== undefined && item.count !== null && parseInt(item.count) <= 0) {
+        UI.toast('该商品已售稀');
+        return;
+    }
     if (currency < price) {
         UI.toast(currencyName + '不足！需要 ' + price + '，当前 ' + currency);
         return;
@@ -2346,13 +2433,13 @@ function buyShopItem(index) {
     }
     UI.toast('购买成功：' + bagItem.name);
     safeAutoSave();
-    // 刷新商城页面
+    var newCurrency = parseInt(gameState.currency || gameState.money || gameState.coins || 0);
     var content = document.getElementById('logSubContent');
     if (content) { content.innerHTML = renderShopPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
-    // 同步更新物品页面的余额显示
+    var shopBal = document.getElementById('shopBalanceDisplay');
+    if (shopBal) shopBal.textContent = newCurrency;
     var balanceAmount = document.querySelector('.items-balance-amount');
     if (balanceAmount) {
-        var newCurrency = parseInt(gameState.currency || gameState.money || gameState.coins || 0);
         balanceAmount.textContent = newCurrency;
     }
 }

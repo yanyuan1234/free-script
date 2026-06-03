@@ -507,6 +507,18 @@ var AchievementSystem = {
         '</div><div class="achieve-stat-label">传说</div></div></div></div>';
         html +=
         '<div class="achieve-filter-bar"><button class="quest-filter-btn active" data-achieve-filter="all">全部</button><button class="quest-filter-btn" data-achieve-filter="unlocked">已解锁</button><button class="quest-filter-btn" data-achieve-filter="locked">未解锁</button></div>';
+        // 分类 tab
+        var tabHtml = '<div class="achieve-cat-tabs" style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#fafafa;border-bottom:1px solid #eee;">';
+        var totalUc = 0, totalTc = 0;
+        Object.keys(this.CATEGORY).forEach(function(ck) {
+            var achs = cat[ck];
+            if (!achs || achs.length === 0) return;
+            var cu = achs.filter(function(a) { return pd.unlocked.some(function(u) { return u.id === a.id; }); }).length;
+            totalUc += cu; totalTc += achs.length;
+            tabHtml += '<button class="achieve-cat-tab" data-cat-filter="' + ck + '" style="flex-shrink:0;padding:6px 12px;border:1px solid #ddd;border-radius:14px;background:#fff;font-size:12px;cursor:pointer;color:#555;">' + this.CATEGORY[ck].label + ' <span style="color:#999;font-size:11px;">' + cu + '/' + achs.length + '</span></button>';
+        }.bind(this));
+        tabHtml += '</div>';
+        html += tabHtml;
         html += '<div class="achieve-list-container" id="achieveListContainer">';
         const self = this;
         Object.keys(this.CATEGORY).forEach(function(ck) {
@@ -518,9 +530,10 @@ var AchievementSystem = {
                     return u.id === a.id;
                     });
                 }).length;
-            html += '<div class="achieve-category-header">' + c.label +
-            '<span class="achieve-category-count">(' + cu + '/' + achs.length +
-            ')</span></div>';
+            html += '<div class="achieve-category-header" data-cat-key="' + ck + '">' + c.label +
+            '<span class="achieve-category-count">(' + cu + '/' + achs.length + ')</span>' +
+            '<span class="achieve-category-pct" style="margin-left:8px;color:#1a73e8;font-size:11px;">' + Math.round((cu/achs.length)*100) + '%</span>' +
+            '</div>';
             html += achs.map(function(a) {
                 return self.renderAchieveItem(a, pd);
                 }).join('');
@@ -528,6 +541,28 @@ var AchievementSystem = {
         html += '</div></div>';
         container.innerHTML = html;
         this.bindAchieveFilter(container);
+        // 绑定分类 tab
+        container.querySelectorAll('.achieve-cat-tab').forEach(function(tab) {
+            tab.addEventListener('click', function() {
+                container.querySelectorAll('.achieve-cat-tab').forEach(function(t) {
+                    t.style.background = '#fff';
+                    t.style.color = '#555';
+                    t.style.borderColor = '#ddd';
+                });
+                this.style.background = '#1a73e8';
+                this.style.color = '#fff';
+                this.style.borderColor = '#1a73e8';
+                var cat = this.dataset.catFilter;
+                container.querySelectorAll('.achieve-category-header').forEach(function(h) {
+                    h.style.display = (cat === 'all' || h.dataset.catKey === cat) ? '' : 'none';
+                });
+                container.querySelectorAll('.achieve-item').forEach(function(it) {
+                    var itemCat = it.dataset.achieveCategory;
+                    it.style.display = (cat === 'all' || itemCat === cat) ? '' : 'none';
+                });
+            });
+        });
+        // 默认选中全部 tab 的中间一个（如果有）
         container.querySelectorAll('.achieve-item').forEach(function(item) {
             item.addEventListener('click', function() {
                 var id = this.dataset.achieveId;
@@ -561,7 +596,7 @@ var AchievementSystem = {
     var nb = (isU && uD && Date.now() - uD.unlockedAt < 86400000) ?
     '<span class="new-badge">NEW</span>' : '';
     return '<div class="achieve-item ' + (isU ? '' : 'locked') + '" data-achieve-id="' + escapeHtml(ach.id) +
-    '"><div class="achieve-icon-wrap ' + escapeHtml(ach.rarity) + '">' + escapeHtml(ach.icon) +
+    '" data-achieve-category="' + escapeHtml(ach.category.toUpperCase()) + '"><div class="achieve-icon-wrap ' + escapeHtml(ach.rarity) + '">' + escapeHtml(ach.icon) +
     '<div class="achieve-rarity-badge ' + escapeHtml(ach.rarity) +
     '"></div></div><div class="achieve-info"><div class="achieve-name">' + escapeHtml(ach.name) + nb +
     '</div><div class="achieve-desc">' + escapeHtml(ach.desc) + '</div>' + ph + ut +
