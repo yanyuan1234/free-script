@@ -2083,12 +2083,6 @@ if (wcMaxEl) wcMaxEl.value = config.max || 3000;
 if (wcStyleEl) wcStyleEl.value = config.paragraphStyle || 'medium';
 if (wcEnabledEl) wcEnabledEl.checked = config.enabled !== false;
 
-// 更新显示值
-var wcMinValEl = document.getElementById('wcMinValue');
-var wcMaxValEl = document.getElementById('wcMaxValue');
-if (wcMinValEl) wcMinValEl.textContent = config.min || 1500;
-if (wcMaxValEl) wcMaxValEl.textContent = config.max || 3000;
-
 console.log('[深度融合] 已将预设字数配置同步到设置UI:', config.min + '-' + config.max + '字');
 }
 

@@ -545,16 +545,25 @@ function renderWorldModules(modules) {
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0 && modules.length > 0) {
         _autoExtractWorldNotes(modules);
     }
-    var container = document.getElementById('logWorldContent');
-    if (!container) return;
-    if (gameState._worldModules.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><p>暂无世界信息</p></div>';
+    // 【修复】世界页是通过 renderWorldPage() 渲染到 logSubContent 里的，
+    // 不存在独立的 logWorldContent 容器。检测用户是否正停留在世界子页面，
+    // 如果是则用最新数据重新渲染；否则只更新 gameState，下次进入世界页时自动反映。
+    var subContainer = document.getElementById('logSubContainer');
+    var subTitleEl = document.getElementById('logSubTitle');
+    var subContentEl = document.getElementById('logSubContent');
+    var isWorldPageActive = subContainer && subContainer.style.display !== 'none'
+        && subContentEl && subTitleEl && subTitleEl.textContent === '世界信息';
+    if (!isWorldPageActive) {
+        if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
         return;
     }
-    container.innerHTML = gameState._worldModules.map(function(mod) {
-        return buildModuleHTML(mod);
-    }).join('');
+    if (gameState._worldModules.length === 0) {
+        subContentEl.innerHTML =
+            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><p>暂无世界信息</p></div>';
+        if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
+        return;
+    }
+    subContentEl.innerHTML = renderWorldPage();
     if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
 }
 
@@ -2687,27 +2696,30 @@ function renderPlayerPage() {
 // --- 背包渲染 ---
 function renderBag(items) {
     gameState.currentBag = items || [];
-    var container = document.getElementById('logItemsList');
+    // 【修复】itemsGrid 是在 renderItemsPage() 中通过 innerHTML 动态创建到 logSubContent 里的，
+    // 不存在时仅更新 gameState.currentBag，下次进入物品页会自动用最新数据渲染。
+    var container = document.getElementById('itemsGrid');
     if (!container) return;
     if (gameState.currentBag.length === 0) {
         container.innerHTML =
             '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
         return;
     }
-    // 【修复X3】物品数据需要转义
+    // 【修复X3】物品数据需要转义；并使用与 renderItemsPage 一致的 items-box 结构，保证 filterBagItems 仍可工作
     container.innerHTML = gameState.currentBag.map(function(item) {
         var name = item.name || item || '未知物品';
-        var desc = item.desc || item.description || '';
         var count = item.count || item.amount || 1;
-        var icon = item.icon || '背';
-        return '<div class="character-card pearl-card" style="cursor:default;">' +
-            '<div class="avatar avatar-md" style="font-size:24px;">' + escapeHtml(icon) + '</div>' +
-            '<div class="char-info">' +
-            '<div class="char-name">' + escapeHtml(name) + (count > 1 ?
-                ' <span style="font-size:12px;color:var(--text-secondary);">x' + count + '</span>' :
-                '') + '</div>' +
-            (desc ? '<div class="char-meta" style="margin-top:4px;">' + escapeHtml(desc) + '</div>' : '') +
-            '</div></div>';
+        var rarity = item.rarity || '普通';
+        var rarityClass = item.rarityClass || 'common';
+        var equipped = item.equipped ? ' [已装备]' : '';
+        var desc = item.desc || item.description || '';
+        var descHtml = desc ? '<div class="char-meta" style="margin-top:4px;font-size:12px;color:var(--text-secondary);">' + escapeHtml(desc) + '</div>' : '';
+        return '<div class="items-box" role="button" tabindex="0" style="padding:20px 10px;">' +
+            '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;">' + escapeHtml(name) + equipped + '</div>' +
+            '<div class="items-box-count" style="margin-bottom:4px;">x' + count + '</div>' +
+            '<div class="items-box-rarity ' + rarityClass + '">' + escapeHtml(rarity) + '</div>' +
+            descHtml +
+            '</div>';
     }).join('');
 }
 // 渲染物品页面
@@ -3864,10 +3876,6 @@ function startNewGame() {
     // 清空UI残留
     var storyEl = document.getElementById('storyText');
     if (storyEl) storyEl.innerHTML = '';
-    var hudEl = document.getElementById('hudPanel');
-    if (hudEl) hudEl.innerHTML = '';
-    var choiceEl = document.getElementById('choicePanel');
-    if (choiceEl) choiceEl.innerHTML = '';
 
     // ======== 开始新游戏 ========
     gameState.userPrompt = prompt;
