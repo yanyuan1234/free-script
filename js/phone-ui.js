@@ -3183,18 +3183,21 @@ function bindEvents() {
     });
 
     // 生成中取消按钮
-    document.getElementById('genCancelBtn').addEventListener('click', function() {
-        if (isWaiting) {
-            safeAbort();
-            setWaiting(false);
-            hideStoryLoading();
-            TypewriterBuffer.stop();
-            streamBuffer = '';
-            _streamModeLocked = false;
-            _streamMode = null;
-            UI.toast('已取消生成');
-        }
-    });
+    var genCancelBtn = document.getElementById('genCancelBtn');
+    if (genCancelBtn) {
+        genCancelBtn.addEventListener('click', function() {
+            if (isWaiting) {
+                safeAbort();
+                setWaiting(false);
+                hideStoryLoading();
+                TypewriterBuffer.stop();
+                streamBuffer = '';
+                _streamModeLocked = false;
+                _streamMode = null;
+                UI.toast('已取消生成');
+            }
+        });
+    }
 
     // 加载最新存档按钮
     document.getElementById('btnMenuLoadLatest').addEventListener('click', function() {
