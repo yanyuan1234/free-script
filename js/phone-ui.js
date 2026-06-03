@@ -539,8 +539,7 @@ function renderWorldModules(modules) {
             gameState._worldModules.push(newMod);
         }
     });
-    // 本地联动：根据剧情自动生成朋友圈和日记
-    generateLocalContent();
+    // 【已移除】本地模板生成朋友圈/日记：现在由 AI 主动在 world 中提供 moments/diary 模块
     // 自动将AI返回的world模块解析到世界观设定中（仅首次或worldNotes为空时）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0 && modules.length > 0) {
         _autoExtractWorldNotes(modules);
@@ -683,105 +682,24 @@ function getStoryList() {
         });
 }
 
-// 本地联动生成：根据剧情自动生成朋友圈和日记
+// 【已禁用】本地模板生成的"假"朋友圈/日记已下线，全部由 API 动态生成。
+// 保留空函数（仅清空旧数据），避免残留的 _moments / _npcDiaries 污染新内容。
+// 朋友圈：由 AI 返回的 world[].type === 'moments' 提供（renderMomentsPage 读取 _worldModules）
+// 日记：由 AI 返回的 world[].type === 'diary' 提供（renderDiaryPage 读取 _worldModules）
 function generateLocalContent() {
-    // 从最近剧情中提取信息
-    var stories = getStoryList();
-    var lastStory = stories.length > 0 ? stories[stories.length - 1].text : '';
-    if (!lastStory) return;
-
-    // 提取涉及的NPC名字（从storyHistory和characters中）
-    var involvedNpcs = [];
-    if (gameState.allCharacters) {
-        Object.values(gameState.allCharacters).forEach(function(c) {
-            if (lastStory.indexOf(c.name) !== -1) {
-                involvedNpcs.push(c);
-            }
-        });
-    }
-
-    // 生成朋友圈动态（本地模板生成，不调用API）
-    if (involvedNpcs.length > 0) {
-        generateMomentsFromStory(involvedNpcs, lastStory);
-    }
-
-    // 生成日记条目
-    if (involvedNpcs.length > 0) {
-        generateDiaryFromStory(involvedNpcs, lastStory);
-    }
+    // no-op: 一切走 API
 }
 
-// 根据剧情生成朋友圈
+// 根据剧情生成朋友圈（已禁用）
 function generateMomentsFromStory(npcs, storyText) {
-    if (!gameState._moments) gameState._moments = [];
-    // 只取前2个NPC生成朋友圈
-    var templates = [
-        { text: '今天遇到了一个有趣的人，感觉生活变得有意思了。', mood: '开心' },
-        { text: '有些事情正在发生，我不知道该期待还是担忧。', mood: '纠结' },
-        { text: '刚刚经历了一些事情，需要好好消化一下。', mood: '思考' },
-        { text: '这个世界比我想象的复杂多了...', mood: '感慨' },
-        { text: '有人让我印象深刻，不知道以后还会不会见面。', mood: '好奇' }
-    ];
-    npcs.slice(0, 2).forEach(function(npc) {
-        // 检查这个NPC最近是否已经发过朋友圈（避免刷屏）
-        var recent = gameState._moments.slice(-5).some(function(m) {
-            return m.author === npc.name;
-        });
-        if (recent) return;
-
-        var template = templates[Math.floor(Math.random() * templates.length)];
-        var moment = {
-            author: npc.name,
-            avatar: npc.avatar || '',
-            text: template.text,
-            time: Math.floor(Math.random() * 30) + '分钟前',
-            likes: [],
-            comments: []
-        };
-        gameState._moments.unshift(moment);
-    });
-    // 限制最多保留20条
-    if (gameState._moments.length > 20) {
-        gameState._moments = gameState._moments.slice(0, 20);
-    }
+    // no-op: 一切走 API
+    return;
 }
 
-// 根据剧情生成日记
+// 根据剧情生成日记（已禁用）
 function generateDiaryFromStory(npcs, storyText) {
-    if (!gameState._npcDiaries) gameState._npcDiaries = {};
-    var diaryTemplates = [
-        '今天发生了意想不到的事情。{summary} 我不知道这意味着什么，但感觉生活即将改变。',
-        '遇到了一个特别的人。{summary} 这个人给我留下了很深的印象，希望以后还能再见。',
-        '今天的心情很复杂。{summary} 有些事情正在发生，我需要时间来消化。',
-        '记录一下今天的事。{summary} 这可能会成为重要的回忆。'
-    ];
-    npcs.slice(0, 2).forEach(function(npc) {
-        if (!gameState._npcDiaries[npc.name]) {
-            gameState._npcDiaries[npc.name] = { entries: [], memos: [] };
-        }
-        var diary = gameState._npcDiaries[npc.name];
-        // 检查今天是否已经写过（避免重复）
-        var today = new Date().toDateString();
-        var todayEntry = diary.entries.some(function(e) {
-            return e.date === today;
-        });
-        if (todayEntry) return;
-
-        // 生成简短摘要（取storyText前50字）
-        var summary = storyText.substring(0, 50) + '...';
-        var template = diaryTemplates[Math.floor(Math.random() * diaryTemplates.length)];
-        var content = template.replace('{summary}', summary);
-
-        diary.entries.unshift({
-            date: today,
-            content: content,
-            mood: ['开心', '纠结', '思考', '感慨', '好奇'][Math.floor(Math.random() * 5)]
-        });
-        // 限制最多保留10条
-        if (diary.entries.length > 10) {
-            diary.entries = diary.entries.slice(0, 10);
-        }
-    });
+    // no-op: 一切走 API
+    return;
 }
 // ========================================
 // 预设装饰组件管理器 (PresetAppManager)
@@ -1481,7 +1399,6 @@ function renderMomentsPage() {
     var momentModules = modules.filter(function(m) {
         return m.type === 'moments';
     });
-    var moments = gameState._moments || gameState.moments || [];
 
     var posts = [];
     momentModules.forEach(function(mod) {
@@ -1518,18 +1435,7 @@ function renderMomentsPage() {
             });
         }
     });
-    moments.forEach(function(m) {
-        posts.push({
-            author: m.author || '匿名',
-            avatar: m.avatar || '',
-            text: m.text || m.content || '',
-            time: m.time || '',
-            location: m.location || '',
-            images: m.images || [],
-            likes: Array.isArray(m.likes) ? m.likes : [],
-            comments: Array.isArray(m.comments) ? m.comments : []
-        });
-    });
+    // 【已移除】gameState._moments 本地兑底，全部由 AI 动态生成
 
     var avatarInitial = playerName.charAt(0);
     var now = new Date();
@@ -1663,17 +1569,7 @@ function getMomentPost(idx) {
             });
         }
     });
-    // 合并 gameState._moments，与 renderMomentsPage 保持一致
-    var moments = gameState._moments || gameState.moments || [];
-    moments.forEach(function(m) {
-        allPosts.push({
-            author: m.author || '匿名', avatar: m.avatar || '',
-            text: m.text || m.content || '', time: m.time || '',
-            location: m.location || '', images: m.images || [],
-            likes: Array.isArray(m.likes) ? m.likes : [],
-            comments: Array.isArray(m.comments) ? m.comments : []
-        });
-    });
+    // 【已移除】gameState._moments 本地兑底，全部由 AI 动态生成
     if (idx >= 0 && idx < allPosts.length) return allPosts[idx];
     return null;
 }
@@ -2007,26 +1903,81 @@ function renderItemsPage() {
 }
 // 渲染日记页面
 function renderDiaryPage() {
+    // 【已重构】日记数据完全从 AI 的 world[].type === 'diary' 模块读取，不再依赖本地生成
+    // 兼容的数据格式：
+    //   items 形式：{"type":"diary","items":[{"npc":"角色名","date":"...","content":"...","mood":"...","memos":[...]}]}
+    //   扁平形式：{"type":"diary","npc":"角色名","date":"...","content":"...","mood":"...","memos":[...]}
     var diaries = gameState._npcDiaries || {};
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
     var chars = Object.values(gameState.allCharacters || {});
     var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2'];
     var now = new Date();
     var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
-    '0');
+        '0');
+
+    // 【已重构】从 AI 的 world[].type === 'diary' 模块汇总日记数据
+    var diaryModules = (gameState._worldModules || []).filter(function(m) {
+        return m.type === 'diary';
+    });
+    var collectDiaryEntry = function(entry) {
+        if (!entry || !entry.npc) return;
+        var npcName = entry.npc;
+        if (!diaries[npcName]) diaries[npcName] = { entries: [], memos: [] };
+        if (entry.content) {
+            diaries[npcName].entries.push({
+                date: entry.date || '',
+                content: entry.content,
+                mood: entry.mood || ''
+            });
+        }
+        if (Array.isArray(entry.memos)) {
+            entry.memos.forEach(function(m) {
+                if (m) diaries[npcName].memos.push(m);
+            });
+        }
+    };
+    diaryModules.forEach(function(mod) {
+        if (Array.isArray(mod.items)) {
+            mod.items.forEach(collectDiaryEntry);
+        } else {
+            collectDiaryEntry(mod);
+        }
+    });
 
     if (!currentDiaryNpc) {
+        // 【已重构】列表模式：显示有日记的 NPC
+        var npcNames = Object.keys(diaries).filter(function(n) {
+            return (diaries[n].entries || []).length > 0 || (diaries[n].memos || []).length > 0;
+        });
+        var listHtml;
+        if (npcNames.length === 0) {
+            listHtml =
+                '<div class="diary-empty"><div class="diary-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><p>日记是私密的</p><p style="font-size:13px;margin-top:8px;color:#666;">AI 正在记录他们的心情...<br><br><span style="color:#999;font-size:12px;">（日记内容由 AI 在剧情推进中动态生成）</span></p></div>';
+        } else {
+            listHtml = npcNames.map(function(npcName) {
+                var charIdx = chars.findIndex(function(c) { return c.name === npcName; });
+                var av = charIdx >= 0 ? colors[charIdx % colors.length] : '#8d6e63';
+                var eCount = (diaries[npcName].entries || []).length;
+                var mCount = (diaries[npcName].memos || []).length;
+                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;" onclick="viewNpcDiary(\'' +
+                    escapeHtml(npcName).replace(/'/g, "\\'") + '\')">' +
+                    '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
+                    '<div class="char-info">' +
+                    '<div class="char-name">' + escapeHtml(npcName) + '</div>' +
+                    '<div class="char-meta" style="font-size:12px;color:var(--text-secondary);">' +
+                    eCount + ' 篇日记 · ' + mCount + ' 条备忘' +
+                    '</div></div></div>';
+            }).join('');
+        }
         return '<div class="diary-page">' +
             '<div class="diary-date-nav"><div class="diary-nav-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg></div><div class="diary-nav-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg></div><div class="diary-nav-date">' +
             dateStr +
             '</div><div class="diary-nav-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg></div><div class="diary-nav-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></div></div>' +
             '<div class="diary-user-bar"><div class="diary-user-avatar"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div><div class="diary-user-name">日记</div></div>' +
-            '<div class="diary-body">' +
-            '<div class="diary-empty"><div class="diary-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div><p>日记是私密的</p><p style="font-size:13px;margin-top:8px;color:#666;">请在「人际」页面选择角色<br>点击「偷看日记」查看</p></div>' +
-            '</div></div>';
+            '<div class="diary-body" style="padding:12px;">' + listHtml + '</div></div>';
     }
 
-    var npcData = diaries[currentDiaryNpc];
+    var npcData = diaries[currentDiaryNpc] || { entries: [], memos: [] };
     var npcChar = gameState.allCharacters[currentDiaryNpc] || {};
     var avatarColor = '#8d6e63';
     var charIdx = chars.findIndex(function(c) {
@@ -2044,15 +1995,17 @@ function renderDiaryPage() {
             '<div class="diary-card-text"><p>暂无日记内容，该角色的日记将在剧情推进中自动生成。</p></div></div>';
     } else {
         journalHtml = entries.map(function(entry) {
-            var paragraphs = (entry.text || '').split('\n').filter(function(p) {
+            var paragraphs = (entry.content || entry.text || '').split('\n').filter(function(p) {
                 return p.trim();
             }).map(function(p) {
                 return '<p>' + escapeHtml(p) + '</p>';
             }).join('');
+            var moodTag = entry.mood ? '<span style="float:right;font-size:12px;color:#999;">' + escapeHtml(entry.mood) + '</span>' : '';
+            var dateTag = entry.date ? '<div style="font-size:12px;color:#999;margin-bottom:6px;">' + escapeHtml(entry.date) + moodTag + '</div>' : '';
             return '<div class="diary-card"><div class="diary-card-header"><div class="diary-card-label">JOURNAL（' +
                 currentDiaryNpc +
                 '）</div><div class="diary-card-lock"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div></div>' +
-                '<div class="diary-card-text">' + paragraphs + '</div></div>';
+                '<div class="diary-card-text">' + dateTag + paragraphs + '</div></div>';
         }).join('');
     }
 

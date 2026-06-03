@@ -33,7 +33,10 @@ function buildSystemPrompt() {
     var _safeUserPrompt = _sanitizePromptInput(gameState.userPrompt);
     var _safeCustomStyle = _sanitizePromptInput(gameState.customStyle);
 
-    var _prompt = `你是一个高自由度的文字游戏AI引擎。 玩家想玩的游戏： "${_safeUserPrompt}" ${_safeCustomStyle ? '【写作风格】\n' + _safeCustomStyle + '\n' : ''} ${buildProtagonistPrompt()} ${_memoryText ? '【剧情记忆】\n' + _memoryText + '\n' : ''} 【核心规则】 1. 根据玩家描述创造沉浸式游戏世界 2. 每次回复必须是一个完整的JSON对象，不要包裹在代码块中 3. 剧情要有画面感和代入感，像沉浸式小说段落 4. 根据世界观在world中创造性设计信息模块 5. 【极其重要】所有输出必须是纯中文！story、choices、player、characters、world等所有字段的值都必须用中文书写，绝对禁止出现英文！
+    // 【新】收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
+    var _chatContextText = buildRecentChatContext();
+
+    var _prompt = `你是一个高自由度的文字游戏AI引擎。 玩家想玩的游戏： "${_safeUserPrompt}" ${_safeCustomStyle ? '【写作风格】\n' + _safeCustomStyle + '\n' : ''} ${buildProtagonistPrompt()} ${_memoryText ? '【剧情记忆】\n' + _memoryText + '\n' : ''} ${_chatContextText} 【核心规则】 1. 根据玩家描述创造沉浸式游戏世界 2. 每次回复必须是一个完整的JSON对象，不要包裹在代码块中 3. 剧情要有画面感和代入感，像沉浸式小说段落 4. 根据世界观在world中创造性设计信息模块 5. 【极其重要】所有输出必须是纯中文！story、choices、player、characters、world等所有字段的值都必须用中文书写，绝对禁止出现英文！
 
 【字数与格式控制 - 由预设完全控制】
 - 字数要求：严格遵循预设中的字数设定，通过 {{getglobalvar::字数总要求}} 获取
@@ -69,8 +72,13 @@ ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date 
 4. 禁止写主角角度的心声，仅限非主角角色
 5. 心声要自然融入正文节奏，在情绪转折、关键抉择、暧昧时刻等峰值处插入
 6. 不同NPC心声风格必须差异化，体现各自性格
-9. 【NPC主动消息】npcMessages数组用于NPC主动给玩家发消息（类似微信私聊）。根据NPC性格决定是否发消息：黏人型NPC可能每回合都发，冷漠型可能几回合才发一次。没有NPC要发消息时就输出空数组[]。消息内容要符合NPC性格和当前剧情情境，字数由预设控制。【重要区分】npcMessages是即时聊天消息（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在mail（邮箱）中。
-8. 章节结尾可使用[章节结束|章节标题]标记，如[章节结束|幸福之愿·无伤的相遇] 【回复格式 - 纯JSON，不要用代码块包裹】 { "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。由预设控制字数。心声标记数量由预设控制，格式：<giggle>NPC角色名：该NPC的内心想法</giggle>，单独成段。心声只能写NPC的，绝对不能写主角的！", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 50, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "标题", "items": ["第一名"]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "标题", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "标题", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "任务名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的消息内容"}], "currency": 0, "currencyName": "根据世界观设定货币名称（修仙世界用灵石，现代用元/余额，古代用银两等）", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" } 【keyEvents规则 - 极其重要】 1. 每回合检查是否发生了"重要事件"，有则写入keyEvents数组 2. 什么算重要事件：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露 3. 每条用简短一句话描述，包含人物名和具体内容 4. 日常对话、普通移动、无关紧要的小事不要写入 5. 每回合0-3条，没有重要事件就写空数组 [] 6. 示例："苏婉儿与主角约定今晚在咖啡厅见面"、"发现李铁柱是卧底"、"获得传说级宝剑" 【player规则 - 绝对核心，违反会导致游戏崩溃】player是主角（玩家自己），是玩家操控的唯一角色！必须包含name/age/identity/personality四个固定字段，stats放其他动态属性。player.name必须严格等于玩家设定的主角姓名，绝对禁止擅自改名或替换角色！ 【characters规则 - 极其重要！！！】 1. characters是NPC列表，绝对禁止把主角/玩家放进characters！主角信息只能放在player里！ 2. 只要剧情中提到了任何角色名字（无论是否直接交互），都必须放入characters数组！ 3. 已知角色即使本回合未出场也要保留在characters中，更新其状态即可 4. 每回合检查：所有已知NPC都应该在characters中，不要遗漏！ 5. 同一个角色只用一个固定名字，不要加括号备注或变体名 6. favorability必须有数值（0-100），不要省略
+9. 【NPC主动消息 - 由性格决定频率】npcMessages数组是NPC主动给玩家发即时消息（类似微信私聊）。【频率由NPC性格严格决定】：
+   - 高频型（黏人/热情/外向/暗恋/崇拜/恋人/亲人/挚友/担心你/情绪波动中）→ 几乎每回合都要发 1-3 条
+   - 中频型（友好/同事/同门/温和/中好感/日常关心）→ 隔 1-2 回合发 1 条，或在剧情触发时发
+   - 低频型（内向/沉默/高冷/傲娇/陌生/淡漠/警戒）→ 隔 2-4 回合才发 1 条，且往往只在剧情相关时
+   - 几乎不发（敌对/仇恨/恐惧/已拉黑/已断联/完全不熟）→ 极少发，重大剧情转折才可能发
+   重要原则：①根据characters中每个NPC的personality/relation/favorability综合判断；②同一NPC不要每条消息都重复发，关键剧情点才值得发；③消息内容要符合该NPC当下的心情和与主角的关系；④当主角刚和某NPC在剧情中互动过，该NPC本回合发消息的概率显著提升。【重要区分】npcMessages是即时聊天消息（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在mail（邮箱）中。
+8. 章节结尾可使用[章节结束|章节标题]标记，如[章节结束|幸福之愿·无伤的相遇] 【回复格式 - 纯JSON，不要用代码块包裹】 { "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。由预设控制字数。心声标记数量由预设控制，格式：<giggle>NPC角色名：该NPC的内心想法</giggle>，单独成段。心声只能写NPC的，绝对不能写主角的！", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 50, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "标题", "items": ["第一名"]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "标题", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "标题", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "任务名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的消息内容"}], "currency": 0, "currencyName": "根据世界观设定货币名称（修仙世界用灵石，现代用元/余额，古代用银两等）", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" } 【keyEvents规则 - 极其重要】 1. 每回合检查是否发生了"重要事件"，有则写入keyEvents数组 2. 什么算重要事件：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露 3. 每条用简短一句话描述，包含人物名和具体内容 4. 日常对话、普通移动、无关紧要的小事不要写入 5. 每回合0-3条，没有重要事件就写空数组 [] 6. 示例："苏婉儿与主角约定今晚在咖啡厅见面"、"发现李铁柱是卧底"、"获得传说级宝剑" 7. 【玩家私聊影响剧情】如果玩家在上一回合和某个NPC私聊（玩家与NPC在手机聊天中做出了约定、表白、求助、秘密分享、吵架等），本回合剧情必须体现该私聊的后果：约定的要兑现，求助的要回应，秘密要在剧情中起作用，吵架的要有后续情绪。该私聊的核心内容可以用一句话写在keyEvents里，例：「与林小满私聊约定晚上图书馆见面」「向李铁柱私聊求助被婉拒」。私聊中的约定/承诺/情报是剧情推进的重要驱动力，不要无视它。 8. 【剧情影响NPC态度】剧情中发生的重要事件会改变NPC对主角的态度：a. 在characters中相应NPC的favorability/relation/desc必须真实反映；b. 涉及该NPC的npcMessages、diary、moments的措辞要与其当前情绪一致。 【player规则 - 绝对核心，违反会导致游戏崩溃】player是主角（玩家自己），是玩家操控的唯一角色！必须包含name/age/identity/personality四个固定字段，stats放其他动态属性。player.name必须严格等于玩家设定的主角姓名，绝对禁止擅自改名或替换角色！ 【characters规则 - 极其重要！！！】 1. characters是NPC列表，绝对禁止把主角/玩家放进characters！主角信息只能放在player里！ 2. 只要剧情中提到了任何角色名字（无论是否直接交互），都必须放入characters数组！ 3. 已知角色即使本回合未出场也要保留在characters中，更新其状态即可 4. 每回合检查：所有已知NPC都应该在characters中，不要遗漏！ 5. 同一个角色只用一个固定名字，不要加括号备注或变体名 6. favorability必须有数值（0-100），不要省略
 
 【好感度等级与关系类型 - 由AI根据世界观动态生成】
 1. **严禁使用固定模板**！不要套用预设的好感度等级名称（如"道侣"、"至交"等），必须根据当前世界观和角色关系自然生成。
@@ -84,8 +92,57 @@ ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date 
    - -39 到 -15：略有隔阂（疏远、冷淡、不太信任等）
    - -100 到 -40：负面关系（敌意、厌恶、仇恨等）
 4. **根据关系类型调整**：亲人之间80+可以是"骨肉至亲"；恋人之间80+可以是"挚爱"；朋友之间80+可以是"生死之交"。**不要让亲兄妹显示"道侣"或"挚爱"这种暧昧词汇**！
-5. **世界观适配**：现代职场不要用"道侣"，古代不要用"同事"，修仙不要用"CEO"。**关系描述必须符合世界观和角色设定**！ 【world动态模块 - 极其重要！！！】 1. world数组每次回复world模块数量和内容由预设控制，不要为空！这是游戏的核心玩法！ 2. 必须包含以下类型（每回合都要生成）： - comments: 论坛帖子，反映当前剧情热点话题，玩家可以评论互动 - moments: 朋友圈动态，NPC的生活日常、心情分享、吐槽剧情，示例：{"type":"moments","title":"朋友圈","posts":[{"author":"NPC名字","avatar":"👤","text":"今天遇到了一个有趣的人...","time":"刚刚","likes":3,"comments":1}]} - mail: 邮件系统，用于重要通知和正式信件（与npcMessages即时聊天不同）。以下情况应该发邮件：①系统重要通知（任务完成奖励、等级提升、活动公告等）②NPC情绪激动时的正式表达（极度开心、伤心、愤怒、告白、决裂等）③玩家将NPC拉黑后NPC的沟通尝试④正式邀请函、挑战书、契约等。日常闲聊、邀约、吐槽等短消息请用npcMessages，不要用mail。【重要】所有邮件的收件人都是玩家本人，不要生成发给其他NPC的邮件。items中每个对象必须有from/subject/body字段（body是完整邮件正文，不要只写preview），示例：{"type":"mail","title":"收件箱","items":[{"from":"发件人","subject":"主题","body":"完整邮件正文内容","preview":"预览文字","date":"今天"}]} - shop: 商店商品，当前可购买的物品，示例：{"type":"shop","title":"神秘商店","items":[{"icon":"剑","name":"物品名","desc":"描述","price":100}]} - ranking: 实力排行榜，反映当前世界格局，items中每个对象必须有name/value字段，不要在name中加"NO.1"等排名前缀（排名由系统自动生成），必须包含玩家本人条目（name用玩家设定的名字），示例：{"type":"ranking","title":"实力榜","items":[{"name":"角色名","value":"999分"},{"name":"玩家名","value":"500分"}]} - cards: 任务/线索卡片，示例：{"type":"cards","title":"可接任务","items":[{"icon":"任务","title":"任务名","content":"任务描述"}]} 3. 【强制要求】world模块内容必须和当前剧情紧密联动！例如： - 玩家刚和NPC聊天 → 该NPC的朋友圈要发相关动态 - 玩家获得重要物品 → 商店出现相关商品，邮件收到系统奖励 - 剧情有重要转折 → 论坛出现讨论帖，排行榜发生变化 - 玩家身份提升 → 收到更多邮件，解锁更高级商店商品 4. world模块类型由预设控制！后续每回合更新内容！ 5. 每种类型都要给具体内容，不要只给空数组！ 【characters的details】根据世界观设计字段 【quests任务规则】 1. 根据剧情自动生成和更新任务列表 2. type分三种：主线（推动核心剧情）、支线（可选任务）、隐藏（特殊触发） 3. status分三种：进行中、已完成、失败 4. progress用"当前/总数"格式，如"2/5"，没有明确进度的可以省略 5. hint是给玩家的下一步提示，简短一句话 6. 完成或失败的任务保留1-2回合后可以移除 7. 同时存在的任务不超过5个 8. 第一回合就应该根据剧情给出至少1个主线任务 【relationships关系网规则】 1. 记录当前所有重要角色之间的关系 2. from和to用角色名，主角用"主角"二字 3. type必须是以下之一：暧昧、恋人、敌对、仇恨、友好、盟友、师徒、上下级、亲人、家族、对手、中立 4. desc用一句短话说明关系现状或变化原因 5. 每回合更新关系网，反映最新的关系状态 6. 只记重要关系，上限10条 7. 包括NPC之间的关系，不仅仅是主角和NPC的关系 【bag背包规则】 1. usable为true表示可以使用的消耗品（药品、食物等），effect描述使用后的效果 2. equippable为true表示可以装备的物品，slot表示装备位（weapon/armor/accessory/head） 3. equipped为true表示当前已装备 4. 同一个slot只能装备一件，装备新的自动替换旧的 5. 使用消耗品后count减1，为0时从背包移除 6. 非消耗品非装备的普通物品usable和equippable都为false 7. 当玩家说"使用XX"或"装备XX"时，在下一回合的bag中更新对应状态 【重要约束】hud最多4个,${gameState.generateChoices ? 'choices数量由预设控制,所有选项必须从主角(玩家)视角出发,描述主角下一步行动/对话/反应(用"我"或主角名),绝对不要写成NPC的行为,' : '不要输出choices字段,'}每次推进剧情,favorability -100到100,rarity可选普通/精良/珍稀/传说 【格式约束】直接输出JSON，不要用\`\`\`json包裹，story字段中用\\n表示换行 【滚动摘要】contextSummary字段非常重要！每次回复必须包含，把之前的摘要内容融合本回合新剧情，形成持续更新的剧情档案 【输出顺序】story必须是JSON的第一个字段，先写完剧情再写其他数据`;
+5. **世界观适配**：现代职场不要用"道侣"，古代不要用"同事"，修仙不要用"CEO"。**关系描述必须符合世界观和角色设定**！ 【world动态模块 - 极其重要！！！】 1. world数组每次回复world模块数量和内容由预设控制，不要为空！这是游戏的核心玩法！ 2. 必须包含以下类型（每回合都要生成）： - comments: 论坛帖子，反映当前剧情热点话题，玩家可以评论互动 - moments: 朋友圈动态，NPC的生活日常、心情分享、吐槽剧情，示例：{"type":"moments","title":"朋友圈","posts":[{"author":"NPC名字","avatar":"👤","text":"今天遇到了一个有趣的人...","time":"刚刚","likes":3,"comments":1}]} - mail: 邮件系统，用于重要通知和正式信件（与npcMessages即时聊天不同）。以下情况应该发邮件：①系统重要通知（任务完成奖励、等级提升、活动公告等）②NPC情绪激动时的正式表达（极度开心、伤心、愤怒、告白、决裂等）③玩家将NPC拉黑后NPC的沟通尝试④正式邀请函、挑战书、契约等。日常闲聊、邀约、吐槽等短消息请用npcMessages，不要用mail。【重要】所有邮件的收件人都是玩家本人，不要生成发给其他NPC的邮件。items中每个对象必须有from/subject/body字段（body是完整邮件正文，不要只写preview），示例：{"type":"mail","title":"收件箱","items":[{"from":"发件人","subject":"主题","body":"完整邮件正文内容","preview":"预览文字","date":"今天"}]} - shop: 商店商品，当前可购买的物品，示例：{"type":"shop","title":"神秘商店","items":[{"icon":"剑","name":"物品名","desc":"描述","price":100}]} - ranking: 实力排行榜，反映当前世界格局，items中每个对象必须有name/value字段，不要在name中加"NO.1"等排名前缀（排名由系统自动生成），必须包含玩家本人条目（name用玩家设定的名字），示例：{"type":"ranking","title":"实力榜","items":[{"name":"角色名","value":"999分"},{"name":"玩家名","value":"500分"}]} - cards: 任务/线索卡片，示例：{"type":"cards","title":"可接任务","items":[{"icon":"任务","title":"任务名","content":"任务描述"}]} - diary: NPC私密日记，偷看某个NPC今天写下的内心独白。每回合至少为1-2个与剧情强相关的NPC生成日记条目，items中每个对象必须有npc（角色名）/date（日期）/content（日记正文，2-4段第一人称内心独白）/mood（情绪词如"忐忑""释然""心酸"）/memos（可选备忘列表）。示例：{"type":"diary","title":"私密日记","items":[{"npc":"林小满","date":"四月初七","content":"今天在图书馆又遇到那个人了。ta似乎在找什么书。我假装低头看书，心跳得厉害。\n我应该主动搭话吗？","mood":"忐忑","memos":["ta喜欢看推理小说","ta总是坐在靠窗位置"]}]} 3. 【强制要求】world模块内容必须和当前剧情紧密联动！例如： - 玩家刚和NPC聊天 → 该NPC的朋友圈要发相关动态 - 玩家获得重要物品 → 商店出现相关商品，邮件收到系统奖励 - 剧情有重要转折 → 论坛出现讨论帖，排行榜发生变化 - 玩家身份提升 → 收到更多邮件，解锁更高级商店商品 4. world模块类型由预设控制！后续每回合更新内容！ 5. 每种类型都要给具体内容，不要只给空数组！ 【characters的details】根据世界观设计字段 【quests任务规则】 1. 根据剧情自动生成和更新任务列表 2. type分三种：主线（推动核心剧情）、支线（可选任务）、隐藏（特殊触发） 3. status分三种：进行中、已完成、失败 4. progress用"当前/总数"格式，如"2/5"，没有明确进度的可以省略 5. hint是给玩家的下一步提示，简短一句话 6. 完成或失败的任务保留1-2回合后可以移除 7. 同时存在的任务不超过5个 8. 第一回合就应该根据剧情给出至少1个主线任务 【relationships关系网规则】 1. 记录当前所有重要角色之间的关系 2. from和to用角色名，主角用"主角"二字 3. type必须是以下之一：暧昧、恋人、敌对、仇恨、友好、盟友、师徒、上下级、亲人、家族、对手、中立 4. desc用一句短话说明关系现状或变化原因 5. 每回合更新关系网，反映最新的关系状态 6. 只记重要关系，上限10条 7. 包括NPC之间的关系，不仅仅是主角和NPC的关系 【bag背包规则】 1. usable为true表示可以使用的消耗品（药品、食物等），effect描述使用后的效果 2. equippable为true表示可以装备的物品，slot表示装备位（weapon/armor/accessory/head） 3. equipped为true表示当前已装备 4. 同一个slot只能装备一件，装备新的自动替换旧的 5. 使用消耗品后count减1，为0时从背包移除 6. 非消耗品非装备的普通物品usable和equippable都为false 7. 当玩家说"使用XX"或"装备XX"时，在下一回合的bag中更新对应状态 【重要约束】hud最多4个,${gameState.generateChoices ? 'choices数量由预设控制,所有选项必须从主角(玩家)视角出发,描述主角下一步行动/对话/反应(用"我"或主角名),绝对不要写成NPC的行为,' : '不要输出choices字段,'}每次推进剧情,favorability -100到100,rarity可选普通/精良/珍稀/传说 【格式约束】直接输出JSON，不要用\`\`\`json包裹，story字段中用\\n表示换行 【滚动摘要】contextSummary字段非常重要！每次回复必须包含，把之前的摘要内容融合本回合新剧情，形成持续更新的剧情档案 【输出顺序】story必须是JSON的第一个字段，先写完剧情再写其他数据`;
     return _prompt;
+}
+
+/**
+ * 【聊天->剧情 实时互通】收集玩家最近与各 NPC 的私聊消息，
+ * 格式化为「最近私聊」文本块，注入到 buildSystemPrompt 中。
+ * 这样 AI 在生成下一段剧情时能感知玩家在私聊中做出的约定/承诺/情绪，
+ * 让私聊真正影响剧情走向，而不是独立的孤岛。
+ */
+function buildRecentChatContext() {
+    try {
+        if (!gameState._chatLogs) return '';
+        var logs = gameState._chatLogs;
+        var names = Object.keys(logs);
+        if (names.length === 0) return '';
+
+        // 限制每个 NPC 最多取最近 4 条消息，避免 prompt 过长
+        var MAX_PER_NPC = 4;
+        // 限制总 NPC 数量，避免 prompt 爆炸
+        var MAX_NPCS = 4;
+        var blocks = [];
+        var n = 0;
+        for (var i = 0; i < names.length && n < MAX_NPCS; i++) {
+            var npcName = names[i];
+            var msgs = logs[npcName] || [];
+            if (msgs.length === 0) continue;
+            // 只取最近 MAX_PER_NPC 条
+            var tail = msgs.slice(-MAX_PER_NPC);
+            // 跳过全是玩家独自自言自语的情况
+            var hasContent = tail.some(function(m) { return m && m.text && m.text.trim(); });
+            if (!hasContent) continue;
+            var lines = tail.map(function(m) {
+                var who = (m.from === 'player' || m.from === 'me' || m.from === 'playerName') ? '主角' : npcName;
+                return '  ' + who + '：' + (m.text || '');
+            });
+            blocks.push('【与 ' + npcName + ' 的最近私聊】\n' + lines.join('\n'));
+            n++;
+        }
+        if (blocks.length === 0) return '';
+        return '\n【玩家最近私聊记录 - 剧情必须呼应】\n' +
+            '玩家在剧情之外与部分 NPC 通过手机私聊过，以下是最近对话：\n' +
+            blocks.join('\n\n') + '\n' +
+            '【私聊影响剧情规则】\n' +
+            '1. 私聊中玩家与 NPC 做出的【约定、承诺、求助、表白、警告、情报分享、吵架】必须在本回合剧情中产生实际后果（兑现/回应/作用/后果）。\n' +
+            '2. 私聊的情绪会影响该 NPC 在本回合的 favorability、relation、npcMessages 措辞、diary 内容、moments 措辞。\n' +
+            '3. 不要在剧情中直接复述私聊原话（除非剧情需要），而是用剧情事件自然体现私聊的影响。\n';
+    } catch (e) {
+        console.warn('[buildRecentChatContext] 失败：', e);
+        return '';
+    }
 }
 // 开始游戏时自动记住当前填写内容
 var _origStartBtn = document.getElementById('btnCreateWorld');
