@@ -1170,6 +1170,9 @@ function _openPresetApp(tag) {
     if (logSubTitle) logSubTitle.textContent = title;
     var subContainer = document.getElementById('logSubContainer');
     if (!subContainer) return;
+    // 【修复】.hidden class 用了 display:none !important，会压住 style.display。
+    // 必须移除 class 才能让 inline style 生效。
+    subContainer.classList.remove('hidden');
     subContainer.style.display = 'block';
     subContainer.style.animation = 'slideInRight .3s ease';
     var logMainContent = document.getElementById('logMainContent');
@@ -1275,6 +1278,9 @@ function openLogSubPage(type) {
     if (logSubTitle) logSubTitle.textContent = title;
     var subContainer = document.getElementById('logSubContainer');
     if (!subContainer) return;
+    // 【修复】.hidden class 用了 display:none !important，会压住 style.display。
+    // 必须移除 class 才能让 inline style 生效。
+    subContainer.classList.remove('hidden');
     subContainer.style.display = 'block';
     subContainer.style.animation = 'slideInRight .3s ease';
     var logMainContent = document.getElementById('logMainContent');
