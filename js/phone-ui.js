@@ -2854,8 +2854,6 @@ function loadWorldPreset(idx) {
     if (!presets[idx]) return;
     var gpEl = document.getElementById('worldDescription');
     if (gpEl) gpEl.value = presets[idx].prompt || '';
-    var ssEl = document.getElementById('setupStyle');
-    if (ssEl) ssEl.value = presets[idx].style || '';
     var mcFields = ['mcName', 'mcGender', 'mcAge', 'mcIdentity', 'mcPersonality', 'mcAppearance',
         'mcAbility', 'mcExtra'
     ];
@@ -2974,8 +2972,6 @@ function showPresetAction(idx) {
         gameState._currentPresetName = preset.name;
         // 填充设定并跳转到世界设定页
         document.getElementById('worldDescription').value = preset.prompt || '';
-        var styleEl = document.getElementById('setupStyle');
-        if (styleEl) styleEl.value = preset.style || '';
         var mc = preset.mc || {};
         if (mc.mcName) document.getElementById('setupPlayerName').value = mc.mcName;
         if (mc.mcGender) document.getElementById('setupPlayerGender').value = mc.mcGender;
@@ -3273,8 +3269,6 @@ function bindEvents() {
             return;
         }
         var prompt = document.getElementById('worldDescription').value.trim();
-        var styleEl = document.getElementById('setupStyle');
-        var style = styleEl ? styleEl.value.trim() : '';
         var mc = {};
         var mcFields = ['setupPlayerName', 'setupPlayerGender', 'setupPlayerIdentity',
             'setupPlayerDesc'
@@ -3293,7 +3287,6 @@ function bindEvents() {
         presets.unshift({
             name: name,
             prompt: prompt,
-            style: style,
             mc: mc,
             time: new Date().toLocaleString()
         });
@@ -3325,9 +3318,6 @@ function bindEvents() {
     });
     bindEvent('btnContinueGen', 'click', function() {
         continueStory();
-    });
-    bindEvent('btnRefreshPanels', 'click', function() {
-        refreshAllPanels();
     });
 
     // 自定义行动输入
@@ -4183,36 +4173,6 @@ async function continueStory() {
         console.warn('[continueStory] 获取 continue_nudge_prompt 失败:', e);
     }
     sendAIRequest(continuePrompt);
-}
-function refreshAllPanels() {
-    // 只刷新面板显示，不调用AI
-    try {
-        renderPlayerStats();
-    } catch (e) {
-        console.warn('renderPlayerStats error:', e);
-    }
-    try {
-        renderNpcList();
-    } catch (e) {
-        console.warn('renderNpcList error:', e);
-    }
-    try {
-        renderQuests();
-    } catch (e) {
-        console.warn('renderQuests error:', e);
-    }
-    try {
-        renderBag();
-    } catch (e) {
-        console.warn('renderBag error:', e);
-    }
-    try {
-        if (typeof QuestSystem !== 'undefined' && QuestSystem.renderAchievements) QuestSystem
-            .renderAchievements();
-    } catch (e) {
-        console.warn('AchievementSystem error:', e);
-    }
-    UI.toast('面板已刷新');
 }
 function deleteLastTurn() {
     // 检查撤销历史

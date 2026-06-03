@@ -43,6 +43,7 @@ function buildSystemPrompt() {
 - 演绎授权：通过 {{getglobalvar::演绎授权}} 获取是否可以演绎玩家角色
 - 转述授权：通过 {{getglobalvar::转述授权}} 获取转述权限
 - 选项数量：由预设控制，不强制要求3-5个
+- 【选项视角规则 - 极其重要】choices数组中每个选项必须是【主角（玩家）接下来可以做的事情】，绝对不能写成NPC接下来会做什么！必须从玩家操控的主角视角出发，描述主角下一步可以采取的行动、对话、决定、反应。例如：✓「我走向她问道…」「我拿起桌上的剑…」「我转身离开」 ✗「她走向我…」「他拿起剑…」
 - 如果预设未指定以上任何一项，则由AI自行判断最合适的处理方式
 
 【游戏时间系统 - 极其重要】
@@ -83,7 +84,7 @@ ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date 
    - -39 到 -15：略有隔阂（疏远、冷淡、不太信任等）
    - -100 到 -40：负面关系（敌意、厌恶、仇恨等）
 4. **根据关系类型调整**：亲人之间80+可以是"骨肉至亲"；恋人之间80+可以是"挚爱"；朋友之间80+可以是"生死之交"。**不要让亲兄妹显示"道侣"或"挚爱"这种暧昧词汇**！
-5. **世界观适配**：现代职场不要用"道侣"，古代不要用"同事"，修仙不要用"CEO"。**关系描述必须符合世界观和角色设定**！ 【world动态模块 - 极其重要！！！】 1. world数组每次回复world模块数量和内容由预设控制，不要为空！这是游戏的核心玩法！ 2. 必须包含以下类型（每回合都要生成）： - comments: 论坛帖子，反映当前剧情热点话题，玩家可以评论互动 - moments: 朋友圈动态，NPC的生活日常、心情分享、吐槽剧情，示例：{"type":"moments","title":"朋友圈","posts":[{"author":"NPC名字","avatar":"👤","text":"今天遇到了一个有趣的人...","time":"刚刚","likes":3,"comments":1}]} - mail: 邮件系统，用于重要通知和正式信件（与npcMessages即时聊天不同）。以下情况应该发邮件：①系统重要通知（任务完成奖励、等级提升、活动公告等）②NPC情绪激动时的正式表达（极度开心、伤心、愤怒、告白、决裂等）③玩家将NPC拉黑后NPC的沟通尝试④正式邀请函、挑战书、契约等。日常闲聊、邀约、吐槽等短消息请用npcMessages，不要用mail。【重要】所有邮件的收件人都是玩家本人，不要生成发给其他NPC的邮件。items中每个对象必须有from/subject/body字段（body是完整邮件正文，不要只写preview），示例：{"type":"mail","title":"收件箱","items":[{"from":"发件人","subject":"主题","body":"完整邮件正文内容","preview":"预览文字","date":"今天"}]} - shop: 商店商品，当前可购买的物品，示例：{"type":"shop","title":"神秘商店","items":[{"icon":"剑","name":"物品名","desc":"描述","price":100}]} - ranking: 实力排行榜，反映当前世界格局，items中每个对象必须有name/value字段，不要在name中加"NO.1"等排名前缀（排名由系统自动生成），必须包含玩家本人条目（name用玩家设定的名字），示例：{"type":"ranking","title":"实力榜","items":[{"name":"角色名","value":"999分"},{"name":"玩家名","value":"500分"}]} - cards: 任务/线索卡片，示例：{"type":"cards","title":"可接任务","items":[{"icon":"任务","title":"任务名","content":"任务描述"}]} 3. 【强制要求】world模块内容必须和当前剧情紧密联动！例如： - 玩家刚和NPC聊天 → 该NPC的朋友圈要发相关动态 - 玩家获得重要物品 → 商店出现相关商品，邮件收到系统奖励 - 剧情有重要转折 → 论坛出现讨论帖，排行榜发生变化 - 玩家身份提升 → 收到更多邮件，解锁更高级商店商品 4. world模块类型由预设控制！后续每回合更新内容！ 5. 每种类型都要给具体内容，不要只给空数组！ 【characters的details】根据世界观设计字段 【quests任务规则】 1. 根据剧情自动生成和更新任务列表 2. type分三种：主线（推动核心剧情）、支线（可选任务）、隐藏（特殊触发） 3. status分三种：进行中、已完成、失败 4. progress用"当前/总数"格式，如"2/5"，没有明确进度的可以省略 5. hint是给玩家的下一步提示，简短一句话 6. 完成或失败的任务保留1-2回合后可以移除 7. 同时存在的任务不超过5个 8. 第一回合就应该根据剧情给出至少1个主线任务 【relationships关系网规则】 1. 记录当前所有重要角色之间的关系 2. from和to用角色名，主角用"主角"二字 3. type必须是以下之一：暧昧、恋人、敌对、仇恨、友好、盟友、师徒、上下级、亲人、家族、对手、中立 4. desc用一句短话说明关系现状或变化原因 5. 每回合更新关系网，反映最新的关系状态 6. 只记重要关系，上限10条 7. 包括NPC之间的关系，不仅仅是主角和NPC的关系 【bag背包规则】 1. usable为true表示可以使用的消耗品（药品、食物等），effect描述使用后的效果 2. equippable为true表示可以装备的物品，slot表示装备位（weapon/armor/accessory/head） 3. equipped为true表示当前已装备 4. 同一个slot只能装备一件，装备新的自动替换旧的 5. 使用消耗品后count减1，为0时从背包移除 6. 非消耗品非装备的普通物品usable和equippable都为false 7. 当玩家说"使用XX"或"装备XX"时，在下一回合的bag中更新对应状态 【重要约束】hud最多4个,${gameState.generateChoices ? 'choices数量由预设控制,' : '不要输出choices字段,'}每次推进剧情,favorability -100到100,rarity可选普通/精良/珍稀/传说 【格式约束】直接输出JSON，不要用\`\`\`json包裹，story字段中用\\n表示换行 【滚动摘要】contextSummary字段非常重要！每次回复必须包含，把之前的摘要内容融合本回合新剧情，形成持续更新的剧情档案 【输出顺序】story必须是JSON的第一个字段，先写完剧情再写其他数据`;
+5. **世界观适配**：现代职场不要用"道侣"，古代不要用"同事"，修仙不要用"CEO"。**关系描述必须符合世界观和角色设定**！ 【world动态模块 - 极其重要！！！】 1. world数组每次回复world模块数量和内容由预设控制，不要为空！这是游戏的核心玩法！ 2. 必须包含以下类型（每回合都要生成）： - comments: 论坛帖子，反映当前剧情热点话题，玩家可以评论互动 - moments: 朋友圈动态，NPC的生活日常、心情分享、吐槽剧情，示例：{"type":"moments","title":"朋友圈","posts":[{"author":"NPC名字","avatar":"👤","text":"今天遇到了一个有趣的人...","time":"刚刚","likes":3,"comments":1}]} - mail: 邮件系统，用于重要通知和正式信件（与npcMessages即时聊天不同）。以下情况应该发邮件：①系统重要通知（任务完成奖励、等级提升、活动公告等）②NPC情绪激动时的正式表达（极度开心、伤心、愤怒、告白、决裂等）③玩家将NPC拉黑后NPC的沟通尝试④正式邀请函、挑战书、契约等。日常闲聊、邀约、吐槽等短消息请用npcMessages，不要用mail。【重要】所有邮件的收件人都是玩家本人，不要生成发给其他NPC的邮件。items中每个对象必须有from/subject/body字段（body是完整邮件正文，不要只写preview），示例：{"type":"mail","title":"收件箱","items":[{"from":"发件人","subject":"主题","body":"完整邮件正文内容","preview":"预览文字","date":"今天"}]} - shop: 商店商品，当前可购买的物品，示例：{"type":"shop","title":"神秘商店","items":[{"icon":"剑","name":"物品名","desc":"描述","price":100}]} - ranking: 实力排行榜，反映当前世界格局，items中每个对象必须有name/value字段，不要在name中加"NO.1"等排名前缀（排名由系统自动生成），必须包含玩家本人条目（name用玩家设定的名字），示例：{"type":"ranking","title":"实力榜","items":[{"name":"角色名","value":"999分"},{"name":"玩家名","value":"500分"}]} - cards: 任务/线索卡片，示例：{"type":"cards","title":"可接任务","items":[{"icon":"任务","title":"任务名","content":"任务描述"}]} 3. 【强制要求】world模块内容必须和当前剧情紧密联动！例如： - 玩家刚和NPC聊天 → 该NPC的朋友圈要发相关动态 - 玩家获得重要物品 → 商店出现相关商品，邮件收到系统奖励 - 剧情有重要转折 → 论坛出现讨论帖，排行榜发生变化 - 玩家身份提升 → 收到更多邮件，解锁更高级商店商品 4. world模块类型由预设控制！后续每回合更新内容！ 5. 每种类型都要给具体内容，不要只给空数组！ 【characters的details】根据世界观设计字段 【quests任务规则】 1. 根据剧情自动生成和更新任务列表 2. type分三种：主线（推动核心剧情）、支线（可选任务）、隐藏（特殊触发） 3. status分三种：进行中、已完成、失败 4. progress用"当前/总数"格式，如"2/5"，没有明确进度的可以省略 5. hint是给玩家的下一步提示，简短一句话 6. 完成或失败的任务保留1-2回合后可以移除 7. 同时存在的任务不超过5个 8. 第一回合就应该根据剧情给出至少1个主线任务 【relationships关系网规则】 1. 记录当前所有重要角色之间的关系 2. from和to用角色名，主角用"主角"二字 3. type必须是以下之一：暧昧、恋人、敌对、仇恨、友好、盟友、师徒、上下级、亲人、家族、对手、中立 4. desc用一句短话说明关系现状或变化原因 5. 每回合更新关系网，反映最新的关系状态 6. 只记重要关系，上限10条 7. 包括NPC之间的关系，不仅仅是主角和NPC的关系 【bag背包规则】 1. usable为true表示可以使用的消耗品（药品、食物等），effect描述使用后的效果 2. equippable为true表示可以装备的物品，slot表示装备位（weapon/armor/accessory/head） 3. equipped为true表示当前已装备 4. 同一个slot只能装备一件，装备新的自动替换旧的 5. 使用消耗品后count减1，为0时从背包移除 6. 非消耗品非装备的普通物品usable和equippable都为false 7. 当玩家说"使用XX"或"装备XX"时，在下一回合的bag中更新对应状态 【重要约束】hud最多4个,${gameState.generateChoices ? 'choices数量由预设控制,所有选项必须从主角(玩家)视角出发,描述主角下一步行动/对话/反应(用"我"或主角名),绝对不要写成NPC的行为,' : '不要输出choices字段,'}每次推进剧情,favorability -100到100,rarity可选普通/精良/珍稀/传说 【格式约束】直接输出JSON，不要用\`\`\`json包裹，story字段中用\\n表示换行 【滚动摘要】contextSummary字段非常重要！每次回复必须包含，把之前的摘要内容融合本回合新剧情，形成持续更新的剧情档案 【输出顺序】story必须是JSON的第一个字段，先写完剧情再写其他数据`;
     return _prompt;
 }
 // 开始游戏时自动记住当前填写内容
@@ -92,8 +93,6 @@ if (_origStartBtn) {
     _origStartBtn.addEventListener('click', function() {
         var gpEl = document.getElementById('worldDescription');
         if (gpEl) safeSetItem('freeScript_lastPrompt', gpEl.value || '');
-        var ssEl = document.getElementById('setupStyle');
-        if (ssEl) safeSetItem('freeScript_lastStyle', ssEl.value || '');
     }, true);
 }
 function buildProtagonistPrompt() {
@@ -1332,14 +1331,9 @@ async function manualCompress(btn) {
 }
 (function() {
     var lastPrompt = localStorage.getItem('freeScript_lastPrompt');
-    var lastStyle = localStorage.getItem('freeScript_lastStyle');
     if (lastPrompt) {
         var el = document.getElementById('worldDescription');
         if (el && !el.value) el.value = lastPrompt;
-    }
-    if (lastStyle) {
-        var el2 = document.getElementById('setupStyle');
-        if (el2 && !el2.value) el2.value = lastStyle;
     }
 })();
 // ========================================
