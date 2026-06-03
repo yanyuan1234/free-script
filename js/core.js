@@ -31,6 +31,7 @@ var UI = {
         if (el) el.classList.add('active');
     },
     _modalStack: [],
+    _pendingResolvers: {},
     showModal: function(id) {
         var el = document.getElementById(id);
         if (el) {
@@ -50,6 +51,13 @@ var UI = {
             var idx = this._modalStack.indexOf(id);
             if (idx !== -1) this._modalStack.splice(idx, 1);
         }
+        // 自动 resolve 未完成的 Promise（如 confirm/prompt 的关闭按钮或点击背景关闭）
+        if (this._pendingResolvers[id]) {
+            var resolve = this._pendingResolvers[id];
+            delete this._pendingResolvers[id];
+            // confirmModal 默认 resolve false，promptModal 默认 resolve null
+            resolve(id === 'confirmModal' ? false : null);
+        }
     },
     confirm: function(title, message) {
         return new Promise(function(resolve) {
@@ -61,27 +69,43 @@ var UI = {
             }
         titleEl.textContent = title;
         msgEl.textContent = message;
+        // 注册 resolver，确保任何关闭方式都能 resolve Promise
+        UI._pendingResolvers['confirmModal'] = function(val) { resolve(val); };
         UI.showModal('confirmModal');
         var yesBtn = document.getElementById('confirmYes');
         if (!yesBtn) {
+            delete UI._pendingResolvers['confirmModal'];
             resolve(false);
             return;
         }
         var newYes = yesBtn.cloneNode(true);
         yesBtn.parentNode.replaceChild(newYes, yesBtn);
         newYes.addEventListener('click', function() {
+            delete UI._pendingResolvers['confirmModal'];
             UI.hideModal('confirmModal');
             resolve(true);
             });
-        // 绑定"否"按钮，防止Promise永远悬挂
+        // 绑定"否"按钮
         var noBtn = document.getElementById('confirmNo');
         if (noBtn) {
             var newNo = noBtn.cloneNode(true);
             noBtn.parentNode.replaceChild(newNo, noBtn);
             newNo.addEventListener('click', function() {
+                delete UI._pendingResolvers['confirmModal'];
                 UI.hideModal('confirmModal');
                 resolve(false);
                 });
+        }
+        // 绑定右上角关闭按钮（circle-btn）
+        var closeBtn = document.querySelector('#confirmModal .modal-header [data-close="confirmModal"]');
+        if (closeBtn) {
+            var newCloseBtn = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+            newCloseBtn.addEventListener('click', function() {
+                delete UI._pendingResolvers['confirmModal'];
+                UI.hideModal('confirmModal');
+                resolve(false);
+            });
         }
     });
     },
@@ -95,17 +119,21 @@ var UI = {
             }
         titleEl.textContent = title;
         inputEl.value = defaultValue || '';
+        // 注册 resolver，确保任何关闭方式都能 resolve Promise
+        UI._pendingResolvers['promptModal'] = function(val) { resolve(val); };
         UI.showModal('promptModal');
         inputEl.focus();
         var okBtn = document.getElementById('promptOk');
         var cancelBtn = document.getElementById('promptCancel');
         if (!okBtn) {
+            delete UI._pendingResolvers['promptModal'];
             resolve(null);
             return;
         }
         var newOk = okBtn.cloneNode(true);
         okBtn.parentNode.replaceChild(newOk, okBtn);
         newOk.addEventListener('click', function() {
+            delete UI._pendingResolvers['promptModal'];
             UI.hideModal('promptModal');
             resolve(inputEl.value || null);
             });
@@ -113,14 +141,27 @@ var UI = {
             var newCancel = cancelBtn.cloneNode(true);
             cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
             newCancel.addEventListener('click', function() {
+                delete UI._pendingResolvers['promptModal'];
                 UI.hideModal('promptModal');
                 resolve(null);
                 });
+        }
+        // 绑定右上角关闭按钮（circle-btn）
+        var closeBtn = document.querySelector('#promptModal .modal-header [data-close="promptModal"]');
+        if (closeBtn) {
+            var newCloseBtn = closeBtn.cloneNode(true);
+            closeBtn.parentNode.replaceChild(newCloseBtn, closeBtn);
+            newCloseBtn.addEventListener('click', function() {
+                delete UI._pendingResolvers['promptModal'];
+                UI.hideModal('promptModal');
+                resolve(null);
+            });
         }
     // 回车确认
     inputEl.onkeydown = function(e) {
         if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
             e.preventDefault();
+            delete UI._pendingResolvers['promptModal'];
             UI.hideModal('promptModal');
             resolve(inputEl.value || null);
         }

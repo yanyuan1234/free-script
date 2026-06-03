@@ -3621,8 +3621,19 @@ function bindEvents() {
 
     // 关闭弹窗按钮
     document.querySelectorAll('[data-close]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
             UI.hideModal(this.dataset.close);
+        });
+    });
+
+    // 点击模态框背景（overlay）关闭模态框
+    document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+        overlay.addEventListener('click', function(e) {
+            // 只在点击 overlay 背景时关闭，点击 modal-content 内部不关闭
+            if (e.target === overlay) {
+                UI.hideModal(overlay.id);
+            }
         });
     });
 
