@@ -350,16 +350,33 @@
     // 6. 移动端触摸优化
     // ============================================================================
     (function() {
-        // 防止双击缩放
+        // 防止双击缩放（不对交互元素阻止默认行为，避免阻止 click 事件）
         let lastTouchEnd = 0;
         GlobalCleanup.registerListener(document, 'touchend', (e) => {
             const now = Date.now();
-            if (now - lastTouchEnd <= 300) {
+            // 交互元素（按钮、链接等）已有 touch-action: manipulation，不需要 JS 防缩放
+            // 对这些元素调用 preventDefault 会阻止 click 事件触发，导致按钮无法点击
+            const isInteractive = e.target.closest('button, a, [role="button"], [data-close], input, select, textarea, .circle-btn, .crystal-btn, .wi-toolbar-btn');
+            if (now - lastTouchEnd <= 300 && !isInteractive) {
                 e.preventDefault();
             }
             lastTouchEnd = now;
         }, { passive: false });
-        
+
+        // 事件委托：[data-close] 关闭按钮（兜底机制，确保即使 bindEvents 未执行也能关闭模态框）
+        GlobalCleanup.registerListener(document, 'click', function(e) {
+            var closeBtn = e.target.closest('[data-close]');
+            if (closeBtn && closeBtn.dataset.close) {
+                e.stopPropagation();
+                UI.hideModal(closeBtn.dataset.close);
+                return;
+            }
+            // 模态框背景点击关闭
+            if (e.target.classList.contains('modal-overlay') && e.target.id) {
+                UI.hideModal(e.target.id);
+            }
+        });
+
         // 优化滚动性能
         TimerManager.setTimeout('scrollOptimize', function() {
             const scrollables = document.querySelectorAll('.scrollable, .page, .modal-body, #gameContent');
