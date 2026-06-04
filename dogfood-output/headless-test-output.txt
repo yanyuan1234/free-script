@@ -1,0 +1,38 @@
+--- 抽取到的 saveGameSettings 头 10 行 ---
+function saveGameSettings() {
+    var fontSizeMap = {
+        small: 14,
+        medium: 16,
+        large: 20
+    };
+    var activeFont = document.querySelector('[data-fontsize].active');
+    gameState.fontSize = activeFont ? (fontSizeMap[activeFont.dataset.fontsize] || 16) : 16;
+    // 【修复S1】读取剧情长度设置并同步到gameState.maxTokens
+    var storyLengthEl = document.getElementById('settingStoryLength');
+✅ A1. 初始加载：wcMin 默认为 1500  → actual=1500
+✅ A2. 初始加载：settingStoryLength 默认为 2048  → actual=2048
+  [B1] dispatching input, listeners: {
+  change: [ [Function: saveGameSettings] ],
+  input: [ [Function: saveGameSettings] ]
+}
+✅ B1. 改 wcMin 后 localStorage.wordCountConfig.min === 800  → saved={"enabled":true,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"medium","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
+✅ C1. 取消 wcEnabled 后 wordCountConfig.enabled === false  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"medium","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
+✅ D1. 切换段落风格为 long → paragraphStyle === "long"  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"long","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
+✅ E1. 改 settingStoryLength → maxTokens === 4096  → saved.maxTokens=4096
+✅ E2. 改 settingStoryLength → PresetManager.currentParams.max_tokens === 4096  → PresetManager.currentParams.max_tokens=4096
+✅ F1. 重开后 wcMin 恢复为 800（用户保存的值）  → actual=800
+✅ F2. 重开后 wcMax 保持 3000（未改）  → actual=3000
+✅ F3. 重开后 wcParagraphStyle 恢复为 long  → actual=long
+✅ F4. 重开后 settingStoryLength 恢复为 4096  → actual=4096
+✅ G1. wcMax 清空时落回默认 3000  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"long","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
+✅ H1. 切换叙述视角 → wordCountConfig.perspective === "first_person_limited"  → perspective=first_person_limited
+✅ H2. 切换演绎授权为 open → wordCountConfig.takeover === "open"  → takeover=open
+❌ H3. 切换长度预设为 long → wordCountConfig.lengthPreset === "long"  → lengthPreset=undefined
+✅ I1. 连续 input 5 次后落盘值为最终值 1300  → min=1300
+✅ J1. wcMin(5000) > wcMax(2000) 时仍照单全收（UI 层未做交叉校验）  → min=5000 max=2000
+✅ K1. 重开后 wcPerspective 恢复为 first_person_limited  → actual=first_person_limited
+✅ K2. 重开后 wcTakeover 恢复为 open  → actual=open
+❌ K3. 重开后 wcLengthPreset 恢复为 long  → actual=medium
+
+=== 汇总 ===
+total=20 passed=18 failed=2
