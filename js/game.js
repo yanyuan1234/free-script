@@ -879,6 +879,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 snapshot.quests = gameState.currentQuests;
             }
             // 从累积的allCharacters取最新NPC列表
+            // 【防御】gameState.allCharacters 可能为 undefined（旧存档/首次开局）
+            if (!gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
+                gameState.allCharacters = {};
+            }
             var charKeys = Object.keys(gameState.allCharacters);
             if (charKeys.length > 0) {
                 snapshot.characters = charKeys.map(function(key) {
@@ -918,7 +922,15 @@ async function sendAIRequest(userMessage, isInit = false) {
             try { refreshNotificationBadge(); } catch (e) {}
         }
         // 剧情推入打字机
-        var finalStory = (storyText && storyText.trim()) ? storyText : response;
+        // 【防御】finalStory 必须始终是字符串
+        var finalStory = '';
+        try {
+            finalStory = (storyText && typeof storyText === 'string' && storyText.trim()) ? storyText : (response || '');
+            if (typeof finalStory !== 'string') finalStory = String(finalStory || '');
+        } catch (e) {
+            finalStory = response || '';
+            if (typeof finalStory !== 'string') finalStory = String(finalStory || '');
+        }
         // 对最终story文本也应用输出端正则，确保与流式显示一致
         if (typeof RegexManager !== 'undefined') {
             finalStory = RegexManager.apply(finalStory, 'output');
@@ -1812,6 +1824,10 @@ function fillChoiceToInput(text) {
 // ========================================
 function mergeCharacters(chars) {
     if (!chars || chars.length === 0) return;
+    // 【防御】gameState.allCharacters 可能为 undefined
+    if (!gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
+        gameState.allCharacters = {};
+    }
     // 获取主角名
     var playerName = '';
     if (gameState.playerData && gameState.playerData.name) {
