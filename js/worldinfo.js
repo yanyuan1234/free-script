@@ -1351,12 +1351,6 @@ var WorldInfo = {
         return this._currentTurn;
         },
 
-    // 【修复ISSUE-017】重置轮次计数器（存档加载时调用）
-    _resetTurnCounter: function() {
-        this._currentTurn = 0;
-        this._turnTracker = {};
-    },
-
     // 【修复12】获取角色卡字段内容用于 WI 匹配
     _getCharacterCardFields: function() {
         var fields = {
@@ -1419,16 +1413,14 @@ var WorldInfo = {
         }
         var scanDepth = this.settings.scanDepth;
 
-        // 【修复ISSUE-008】不再每次scan都读取DOM，只在DOM元素存在且值变化时更新settings
-        // 这样避免频繁DOM读取影响性能，且在非浏览器环境中不会报错
-        try {
-            var depthEl = document.getElementById('wiScanDepth');
-            var budgetEl = document.getElementById('wiTokenBudget');
-            var recursiveEl = document.getElementById('wiRecursive');
-            if (depthEl && depthEl.value) this.settings.scanDepth = parseInt(depthEl.value) || 2;
-            if (budgetEl && budgetEl.value) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
-            if (recursiveEl) this.settings.recursive = recursiveEl.checked;
-        } catch(e) { /* 非浏览器环境忽略 */ }
+        // 读取UI设置
+        var depthEl = document.getElementById('wiScanDepth');
+        var budgetEl = document.getElementById('wiTokenBudget');
+        var recursiveEl = document.getElementById('wiRecursive');
+        // scanDepth默认值统一为2（与酒馆一致）
+        if (depthEl) this.settings.scanDepth = parseInt(depthEl.value) || 2;
+        if (budgetEl) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
+        if (recursiveEl) this.settings.recursive = recursiveEl.checked;
 
         // 递增轮次
         this._currentTurn++;

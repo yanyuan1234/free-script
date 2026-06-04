@@ -15,24 +15,6 @@ var DOMCache = {
             if (permanent) this._permanent[id] = el;
             else this._cache[id] = { el: el, t: Date.now() };
         }
-    // 【修复ISSUE-013】添加缓存容量限制，防止无限增长
-    if (Object.keys(this._cache).length > 200) {
-        // 清理过期的和最旧的一半缓存
-        var now = Date.now();
-        var keys = Object.keys(this._cache);
-        keys.forEach(function(k) {
-            if (now - this._cache[k].t > 30000) delete this._cache[k];
-        }.bind(this));
-        // 如果仍然过大，删除最旧的一半
-        if (Object.keys(this._cache).length > 100) {
-            var sorted = Object.keys(this._cache).sort(function(a, b) {
-                return this._cache[a].t - this._cache[b].t;
-            }.bind(this));
-            sorted.slice(0, Math.floor(sorted.length / 2)).forEach(function(k) {
-                delete this._cache[k];
-            });
-        }
-    }
     return el;
 },
 query(sel, permanent) {
