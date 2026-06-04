@@ -1030,9 +1030,17 @@ var EnhancedMemory = {
             var nameMatch = content.match(/^([一-鿿A-Za-z·]{1,6})/);
             if (nameMatch) {
                 var name = nameMatch[1];
-                var dup = self.longTermMemory.worldAnchors.some(function(a) {
+                // 找到所有同名 anchor
+                var existing = self.longTermMemory.worldAnchors.filter(function(a) {
                     return a.type === 'npc_profile' && a.content.indexOf(name) === 0;
                 });
+                // 如果有手动编辑过的（source==='manual'），不动它
+                var hasManual = existing.some(function(a) { return a.source === 'manual'; });
+                if (existing.length > 0 && hasManual) {
+                    // 已有手动版本，跳过自动更新
+                    return null;
+                }
+                var dup = existing.length > 0;
                 if (dup) {
                     // 已经有同名角色锚点，更新它（用更新的描述）
                     var newAnchors = [];
@@ -2699,6 +2707,12 @@ var MemoryManagerUI = {
             case 'overview':
             content.innerHTML = this.renderOverview(em);
             break;
+            case 'anchors':
+            content.innerHTML = this.renderAnchors(em);
+            break;
+            case 'quests':
+            content.innerHTML = this.renderQuests(em);
+            break;
             case 'timeline':
             content.innerHTML = this.renderTimeline(em);
             break;
@@ -2779,6 +2793,16 @@ var MemoryManagerUI = {
         + '<div style="font-size:12px;color:var(--text-tertiary);">长期记忆</div>'
         + '<div style="font-size:20px;font-weight:600;">' + stats.totalEvents + ' 事件</div>'
         + '<div style="font-size:11px;color:var(--text-tertiary);">永久保存</div>'
+        + '</div>'
+        + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;">'
+        + '<div style="font-size:12px;color:var(--text-tertiary);">永久事实</div>'
+        + '<div style="font-size:20px;font-weight:600;">' + (em.longTermMemory.worldAnchors ? em.longTermMemory.worldAnchors.length : 0) + ' 条</div>'
+        + '<div style="font-size:11px;color:var(--text-tertiary);">永不丢失</div>'
+        + '</div>'
+        + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;">'
+        + '<div style="font-size:12px;color:var(--text-tertiary);">进行中约定</div>'
+        + '<div style="font-size:20px;font-weight:600;">' + (em.longTermMemory.activeQuests ? em.longTermMemory.activeQuests.filter(function(q){return q.status==='pending';}).length : 0) + ' 待办</div>'
+        + '<div style="font-size:11px;color:var(--text-tertiary);">AI 必须遵守</div>'
         + '</div>'
         + '</div>'
         + '</div>'
@@ -3881,6 +3905,304 @@ var MemoryManagerUI = {
 };
 
 window.MemoryManagerUI = MemoryManagerUI;
+
+// === 永久事实（worldAnchors）编辑面板 ===
+MemoryManagerUI.renderAnchors = function(em) {
+    var self = this;
+    var anchors = (em.longTermMemory && em.longTermMemory.worldAnchors) || [];
+    var typeLabels = {
+        pc_identity: '🎭 主角',
+        setting: '🌍 世界设定',
+        world_rule: '📜 设定规则',
+        npc_profile: '👤 关键角色',
+        promise: '🤝 玩家承诺'
+    };
+    // 按 type 分组
+    var byType = {};
+    anchors.forEach(function(a, i) {
+        if (!byType[a.type]) byType[a.type] = [];
+        byType[a.type].push({ a: a, idx: i });
+    });
+    var typeOrder = ['pc_identity', 'setting', 'world_rule', 'npc_profile', 'promise'];
+
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+        + '<div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到。AI 记错就改这里。</div>'
+        + '<button onclick="MemoryManagerUI.addWorldAnchor()" style="font-size:12px;color:white;background:var(--accent);border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">+ 手动添加</button>'
+        + '</div>';
+
+    if (anchors.length === 0) {
+        html += '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">还没有永久事实。开始游戏后会自动从世界设定提取，你也可以手动添加。</div>';
+    }
+
+    typeOrder.forEach(function(t) {
+        var list = byType[t];
+        if (!list || list.length === 0) return;
+        html += '<div class="memory-card">'
+            + '<div class="memory-card-title">' + (typeLabels[t] || t) + ' <span style="font-weight:normal;font-size:11px;color:var(--text-tertiary);">' + list.length + ' 条</span></div>';
+        list.forEach(function(entry) {
+            var a = entry.a;
+            var i = entry.idx;
+            var sourceTag = a.source === 'manual' ? '<span style="font-size:10px;background:#4a4;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">手动</span>' :
+                            a.source === 'auto' ? '<span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">自动</span>' : '';
+            html += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
+                + '<div style="flex:1;font-size:13px;line-height:1.6;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div>'
+                + '<div style="display:flex;gap:4px;flex-shrink:0;">'
+                + '<button onclick="MemoryManagerUI.editWorldAnchor(' + i + ')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;">编辑</button>'
+                + '<button onclick="MemoryManagerUI.deleteWorldAnchor(' + i + ')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;">删除</button>'
+                + '</div>'
+                + '</div>';
+        });
+        html += '</div>';
+    });
+    return html;
+};
+
+MemoryManagerUI.addWorldAnchor = function() {
+    var self = this;
+    var container = document.getElementById('memoryManagerContent');
+    if (!container) return;
+    container.innerHTML = '<div class="memory-card">'
+        + '<div class="memory-card-title">添加永久事实</div>'
+        + '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;">添加后 AI 在任何情况下都会优先看到这条信息。</div>'
+        + '<div style="margin-bottom:10px;">'
+        + '<label style="font-size:12px;color:var(--text-secondary);">类型</label>'
+        + '<select id="newAnchorType" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;">'
+        + '<option value="pc_identity">🎭 主角身份</option>'
+        + '<option value="setting">🌍 世界设定</option>'
+        + '<option value="world_rule">📜 设定规则</option>'
+        + '<option value="npc_profile">👤 关键角色</option>'
+        + '<option value="promise" selected>🤝 玩家承诺/约定</option>'
+        + '</select></div>'
+        + '<div style="margin-bottom:10px;">'
+        + '<label style="font-size:12px;color:var(--text-secondary);">内容</label>'
+        + '<textarea id="newAnchorContent" rows="4" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;" placeholder="例如：主角楚风是剑修少年，自幼在青云宗长大"></textarea>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button onclick="MemoryManagerUI.switchTab(\'anchors\')" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">取消</button>'
+        + '<button onclick="MemoryManagerUI.saveNewWorldAnchor()" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;">添加</button>'
+        + '</div>'
+        + '</div>';
+};
+
+MemoryManagerUI.saveNewWorldAnchor = function() {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var type = document.getElementById('newAnchorType').value;
+    var content = (document.getElementById('newAnchorContent').value || '').trim();
+    if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
+    var result = em.addWorldAnchor(type, content, 'manual', em.stats.totalMessages);
+    if (result) {
+        em.saveToStorage();
+        UI.toast && UI.toast('已添加');
+    } else {
+        UI.toast && UI.toast('已存在（重复内容）');
+    }
+    this.switchTab('anchors');
+};
+
+MemoryManagerUI.editWorldAnchor = function(idx) {
+    var self = this;
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var anchor = em.longTermMemory.worldAnchors[idx];
+    if (!anchor) return;
+    var container = document.getElementById('memoryManagerContent');
+    container.innerHTML = '<div class="memory-card">'
+        + '<div class="memory-card-title">编辑永久事实</div>'
+        + '<div style="margin-bottom:10px;">'
+        + '<label style="font-size:12px;color:var(--text-secondary);">类型</label>'
+        + '<select id="editAnchorType" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;">'
+        + '<option value="pc_identity"' + (anchor.type==='pc_identity'?' selected':'') + '>🎭 主角身份</option>'
+        + '<option value="setting"' + (anchor.type==='setting'?' selected':'') + '>🌍 世界设定</option>'
+        + '<option value="world_rule"' + (anchor.type==='world_rule'?' selected':'') + '>📜 设定规则</option>'
+        + '<option value="npc_profile"' + (anchor.type==='npc_profile'?' selected':'') + '>👤 关键角色</option>'
+        + '<option value="promise"' + (anchor.type==='promise'?' selected':'') + '>🤝 玩家承诺/约定</option>'
+        + '</select></div>'
+        + '<div style="margin-bottom:10px;">'
+        + '<label style="font-size:12px;color:var(--text-secondary);">内容</label>'
+        + '<textarea id="editAnchorContent" rows="4" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;">' + self._esc(anchor.content) + '</textarea>'
+        + '</div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button onclick="MemoryManagerUI.switchTab(\'anchors\')" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">取消</button>'
+        + '<button onclick="MemoryManagerUI.saveWorldAnchor(' + idx + ')" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;">保存</button>'
+        + '</div>'
+        + '</div>';
+};
+
+MemoryManagerUI.saveWorldAnchor = function(idx) {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var anchor = em.longTermMemory.worldAnchors[idx];
+    if (!anchor) return;
+    var type = document.getElementById('editAnchorType').value;
+    var content = (document.getElementById('editAnchorContent').value || '').trim();
+    if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
+    anchor.type = type;
+    anchor.content = content;
+    anchor.source = 'manual';  // 标记为手动
+    em.saveToStorage();
+    UI.toast && UI.toast('已保存');
+    this.switchTab('anchors');
+};
+
+MemoryManagerUI.deleteWorldAnchor = function(idx) {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    if (!confirm('确定要删除这条永久事实吗？删除后 AI 将不再看到它。')) return;
+    em.longTermMemory.worldAnchors.splice(idx, 1);
+    em.saveToStorage();
+    UI.toast && UI.toast('已删除');
+    this.switchTab('anchors');
+};
+
+// === 进行中约定（activeQuests）编辑面板 ===
+MemoryManagerUI.renderQuests = function(em) {
+    var self = this;
+    var quests = (em.longTermMemory && em.longTermMemory.activeQuests) || [];
+    var pending = quests.filter(function(q) { return q.status === 'pending'; });
+    var resolved = quests.filter(function(q) { return q.status === 'resolved'; });
+    var broken = quests.filter(function(q) { return q.status === 'broken'; });
+    var typeIcons = { promise: '🤝', quest: '📜', threat: '⚠️', mystery: '❓' };
+
+    var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">'
+        + '<div style="font-size:13px;color:var(--text-tertiary);">约定/任务——AI 必须在剧情中遵守。状态: pending=进行中 / resolved=已兑现 / broken=已违反</div>'
+        + '<button onclick="MemoryManagerUI.addActiveQuest()" style="font-size:12px;color:white;background:var(--accent);border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">+ 手动添加</button>'
+        + '</div>';
+
+    function renderSection(title, list, color) {
+        if (list.length === 0) return '';
+        var section = '<div class="memory-card">'
+            + '<div class="memory-card-title" style="color:' + color + ';">' + title + ' <span style="font-weight:normal;font-size:11px;color:var(--text-tertiary);">' + list.length + ' 条</span></div>';
+        list.forEach(function(q) {
+            var realIdx = quests.indexOf(q);
+            var icon = typeIcons[q.type] || '📌';
+            var typeLabel = q.type === 'promise' ? '承诺' : (q.type === 'quest' ? '任务' : (q.type === 'threat' ? '威胁' : '悬念'));
+            var fromTo = '';
+            if (q.from) fromTo = '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + (q.from === 'player' ? '来自：玩家' : '来自：AI') + '</div>';
+            section += '<div style="padding:10px 12px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">'
+                + '<div style="flex:1;">'
+                + '<div style="font-size:13px;line-height:1.6;word-break:break-all;">' + icon + ' <span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;">' + typeLabel + '</span> ' + self._esc(q.content) + '</div>'
+                + fromTo
+                + '</div>'
+                + '<div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;">';
+            if (q.status === 'pending') {
+                section += '<button onclick="MemoryManagerUI.resolveQuestByIdx(' + realIdx + ',\'resolved\')" style="font-size:11px;color:#080;background:none;border:1px solid #4a4;padding:3px 8px;border-radius:6px;cursor:pointer;">✓兑现</button>'
+                    + '<button onclick="MemoryManagerUI.resolveQuestByIdx(' + realIdx + ',\'broken\')" style="font-size:11px;color:#f44;background:none;border:1px solid #f44;padding:3px 8px;border-radius:6px;cursor:pointer;">✗违反</button>';
+            }
+            section += '<button onclick="MemoryManagerUI.editActiveQuest(' + realIdx + ')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;">编辑</button>'
+                + '<button onclick="MemoryManagerUI.deleteActiveQuest(' + realIdx + ')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:3px 8px;border-radius:6px;cursor:pointer;">删除</button>'
+                + '</div>'
+                + '</div>';
+        });
+        section += '</div>';
+        return section;
+    }
+
+    html += renderSection('⏳ 进行中', pending, 'var(--accent)');
+    html += renderSection('✅ 已兑现', resolved, '#4a4');
+    html += renderSection('❌ 已违反', broken, '#f44');
+
+    if (quests.length === 0) {
+        html += '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">还没有约定。开始对话后 AI 提取的承诺会出现在这里，你也可以手动添加任务/承诺。</div>';
+    }
+    return html;
+};
+
+MemoryManagerUI.addActiveQuest = function() {
+    var self = this;
+    var container = document.getElementById('memoryManagerContent');
+    container.innerHTML = '<div class="memory-card">'
+        + '<div class="memory-card-title">添加约定/任务</div>'
+        + '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-secondary);">类型</label>'
+        + '<select id="newQuestType" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;">'
+        + '<option value="promise" selected>🤝 玩家承诺</option>'
+        + '<option value="quest">📜 任务</option>'
+        + '<option value="threat">⚠️ 威胁/复仇</option>'
+        + '<option value="mystery">❓ 未解悬念</option>'
+        + '</select></div>'
+        + '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-secondary);">内容</label>'
+        + '<textarea id="newQuestContent" rows="3" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;" placeholder="例如：主角承诺会去找苏婉儿"></textarea></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button onclick="MemoryManagerUI.switchTab(\'quests\')" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">取消</button>'
+        + '<button onclick="MemoryManagerUI.saveNewActiveQuest()" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;">添加</button>'
+        + '</div></div>';
+};
+
+MemoryManagerUI.saveNewActiveQuest = function() {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var type = document.getElementById('newQuestType').value;
+    var content = (document.getElementById('newQuestContent').value || '').trim();
+    if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
+    var result = em.addActiveQuest({ type: type, content: content, from: 'manual', status: 'pending' });
+    if (result) {
+        em.saveToStorage();
+        UI.toast && UI.toast('已添加');
+    } else {
+        UI.toast && UI.toast('已存在相同内容');
+    }
+    this.switchTab('quests');
+};
+
+MemoryManagerUI.editActiveQuest = function(idx) {
+    var self = this;
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var quest = em.longTermMemory.activeQuests[idx];
+    if (!quest) return;
+    var container = document.getElementById('memoryManagerContent');
+    container.innerHTML = '<div class="memory-card">'
+        + '<div class="memory-card-title">编辑约定/任务</div>'
+        + '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-secondary);">类型</label>'
+        + '<select id="editQuestType" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;">'
+        + '<option value="promise"' + (quest.type==='promise'?' selected':'') + '>🤝 玩家承诺</option>'
+        + '<option value="quest"' + (quest.type==='quest'?' selected':'') + '>📜 任务</option>'
+        + '<option value="threat"' + (quest.type==='threat'?' selected':'') + '>⚠️ 威胁/复仇</option>'
+        + '<option value="mystery"' + (quest.type==='mystery'?' selected':'') + '>❓ 未解悬念</option>'
+        + '</select></div>'
+        + '<div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-secondary);">内容</label>'
+        + '<textarea id="editQuestContent" rows="3" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;">' + self._esc(quest.content) + '</textarea></div>'
+        + '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+        + '<button onclick="MemoryManagerUI.switchTab(\'quests\')" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">取消</button>'
+        + '<button onclick="MemoryManagerUI.saveActiveQuest(' + idx + ')" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;">保存</button>'
+        + '</div></div>';
+};
+
+MemoryManagerUI.saveActiveQuest = function(idx) {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var quest = em.longTermMemory.activeQuests[idx];
+    if (!quest) return;
+    quest.type = document.getElementById('editQuestType').value;
+    quest.content = (document.getElementById('editQuestContent').value || '').trim();
+    if (!quest.content) { UI.toast && UI.toast('内容不能为空'); return; }
+    em.saveToStorage();
+    UI.toast && UI.toast('已保存');
+    this.switchTab('quests');
+};
+
+MemoryManagerUI.deleteActiveQuest = function(idx) {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    if (!confirm('确定要删除这条约定吗？')) return;
+    em.longTermMemory.activeQuests.splice(idx, 1);
+    em.saveToStorage();
+    UI.toast && UI.toast('已删除');
+    this.switchTab('quests');
+};
+
+MemoryManagerUI.resolveQuestByIdx = function(idx, newStatus) {
+    var em = window.EnhancedMemory;
+    if (!em) return;
+    var q = em.longTermMemory.activeQuests[idx];
+    if (!q) return;
+    q.status = newStatus;
+    q.resolvedAt = Date.now();
+    em.saveToStorage();
+    UI.toast && UI.toast(newStatus === 'resolved' ? '已标记为兑现' : '已标记为违反');
+    this.switchTab('quests');
+};
+
 
 
 /**
