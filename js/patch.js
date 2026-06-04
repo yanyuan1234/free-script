@@ -24,6 +24,9 @@
             // 调用原始加载
             var result = origLoadPreset.call(this, idx);
 
+            // 【修复ISSUE-020】gameAdapter null guard
+            if (!window.gameAdapter) return result;
+
             // 激活STscript引擎
             var preset = this.presets[idx];
             if (preset && window.gameAdapter) {
@@ -62,6 +65,9 @@
 
             injectPresetGlobalVars = function() {
                 origInject.call(this);
+
+                // 【修复ISSUE-020】gameAdapter null guard
+                if (!window.gameAdapter) return;
 
                 // 额外：处理当前预设中的 setvar/getvar（带缓存）
                 if (window.gameAdapter && window.gameAdapter.currentPreset) {
@@ -102,6 +108,9 @@
                     // 先用游戏原始正则处理
                     text = origApplyToOutput.call(this, text);
 
+                    // 【修复ISSUE-020】gameAdapter null guard
+                    if (!window.gameAdapter) return text;
+
                     // 再用STscript引擎处理（兼容月读/蛾摩拉格式）
                     if (window.gameAdapter && window.gameAdapter.currentPreset) {
                         text = window.gameAdapter.processResponse(text, {
@@ -119,6 +128,9 @@
             if (origApplyToInput) {
                 RegexManager.applyToInput = function(text) {
                     text = origApplyToInput.call(this, text);
+
+                    // 【修复ISSUE-020】gameAdapter null guard
+                    if (!window.gameAdapter) return text;
 
                     if (window.gameAdapter && window.gameAdapter.currentPreset) {
                         text = window.gameAdapter.processUserInput(text);

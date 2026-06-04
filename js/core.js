@@ -257,9 +257,8 @@ var LocalGameAPI = {
                     });
                 console.log('[API] 检测到旧模型配置，已更新配置（保留API密钥）');
                 this.save();
-                return;
-            }
-            if (data.configs && data.configs.length > 0) {
+                // 【修复ISSUE-001】不再提前return，继续加载其他配置字段
+                } else if (data.configs && data.configs.length > 0) {
                 this._configs = data.configs;
             }
         this._currentSlot = data.currentSlot || 0;
@@ -747,6 +746,10 @@ var SaveDB = {
         }
     } catch (e) {}
     safeSetItem('_idb_migrated', '1');
+    // 【修复ISSUE-014】迁移成功后删除旧localStorage数据，释放空间
+    if (migrated > 0) {
+        try { localStorage.removeItem('freeScript_localSaves'); } catch(e) {}
+    }
     },
     // ── localStorage fallback 方法 ──
     _lsGetAll() {
@@ -775,8 +778,9 @@ var SaveDB = {
     _lsSet(slot, data) {
         try {
             var saves = this._lsGetAll();
-            if (data === null) delete saves[slot];
-            else saves[slot] = data;
+            var key = String(slot); // 【修复ISSUE-006】统一使用字符串键，避免number/string不匹配
+            if (data === null) delete saves[key];
+            else saves[key] = data;
             var jsonStr = JSON.stringify(saves);
             // 检查容量
             if (jsonStr.length > 4.5 * 1024 * 1024) {
@@ -789,8 +793,9 @@ var SaveDB = {
                 localStorage.removeItem('__autoSaveBackup');
                 localStorage.removeItem('_idb_migrated');
                 var saves = this._lsGetAll();
-                if (data === null) delete saves[slot];
-                else saves[slot] = data;
+                var key2 = String(slot);
+                if (data === null) delete saves[key2];
+                else saves[key2] = data;
                 safeSetItem('freeScript_localSaves', JSON.stringify(saves));
                 } catch (e2) {
                 console.error('❌ 清理后仍无法写入，存档可能丢失:', e2);
@@ -1179,7 +1184,8 @@ var TypewriterBuffer = {
     destroy() {
         this.stop();
         if (this._visibilityHandler) {
-            document.removeEventListener('visibilitychange', this._visibilityHandler);
+            // 【修复ISSUE-004】通过GlobalCleanup统一注销，避免绕过管理器直接移除
+            try { GlobalCleanup.cleanup(); } catch(e) {}
             this._visibilityHandler = null;
         }
     },
@@ -1626,20 +1632,31 @@ if (!storyText || storyText.trim() === '') {
             // 尝试从纯文本中提取可能的JSON数据
             if (!data) {
                 try {
-                    // 尝试从文本末尾提取JSON块
-                    var jsonBlockMatch = cleanedReply.match(/\{[\s\S]*\}/);
-                    if (jsonBlockMatch) {
-                        var extracted = safeJSONParse(jsonBlockMatch[0]);
+                    // 【修复ISSUE-009】使用非贪婪匹配+平衡括号策略，避免误匹配多个JSON对象
+                    // 从文本末尾向前查找最后一个完整的JSON对象
+                    var lastBrace = cleanedReply.lastIndexOf('}');
+                    var firstBrace = -1;
+                    if (lastBrace !== -1) {
+                        // 从最后一个}向前找匹配的{
+                        var depth = 0;
+                        for (var ci = lastBrace; ci >= 0; ci--) {
+                            if (cleanedReply[ci] === '}') depth++;
+                            else if (cleanedReply[ci] === '{') depth--;
+                            if (depth === 0) { firstBrace = ci; break; }
+                        }
+                    }
+                    if (firstBrace !== -1 && lastBrace !== -1) {
+                        var jsonCandidate = cleanedReply.substring(firstBrace, lastBrace + 1);
+                        var extracted = safeJSONParse(jsonCandidate);
                         if (extracted && typeof extracted === 'object') {
                             data = extracted;
-                            // 从文本中移除JSON块
-                            storyText = cleanedReply.replace(jsonBlockMatch[0], '').trim();
+                            storyText = cleanedReply.replace(jsonCandidate, '').trim();
                         }
-                }
-        } catch(e) {}
-}
-}
-}
+                    }
+                } catch(e) {}
+            }
+        }
+    }
 }
 
 // 【小剧场融合】提取小剧场内容
@@ -2911,6 +2928,31 @@ let fullText = '';
 let rawBody = '';
 let sseBuffer = '';
 let streamError = null; // 【修复】捕获流中的错误响应
+// 【修复ISSUE-007】提取SSE行处理为独立函数，消除重复代码
+function _processSSELine(line) {
+    if (!line.startsWith('data: ') || line === 'data: [DONE]') return;
+    try {
+        const json = JSON.parse(line.slice(6));
+        if (json.error && !streamError) {
+            var errObj = json.error;
+            streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
+            console.error('[callAI] 流式错误:', streamError);
+            return;
+        }
+        const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+        fullText += content;
+        if (options.onChunk) {
+            try { options.onChunk(fullText); } catch (chunkErr) {
+                console.warn('[callAI] onChunk 回调异常:', chunkErr);
+            }
+        }
+    } catch (e) {
+        var lineContent = line.slice(6).trim();
+        if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
+            console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
+        }
+    }
+}
 while (true) {
     const {
         done,
@@ -2920,37 +2962,9 @@ if (done) {
     // 流结束时，处理剩余的buffer
     if (sseBuffer && sseBuffer.trim()) {
         const lines = sseBuffer.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                try {
-                    const json = JSON.parse(line.slice(6));
-                    // 【修复】检测流中的错误响应
-                    if (json.error && !streamError) {
-                        var errObj = json.error;
-                        streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                        console.error('[callAI] 流式错误:', streamError);
-                        continue;
-                    }
-                const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
-                fullText += content;
-                if (options.onChunk) {
-                    try {
-                        options.onChunk(fullText);
-                    } catch (chunkErr) {
-                    console.warn('[callAI] onChunk 回调异常:', chunkErr);
-                }
-        }
-} catch (e) {
-// 【修复】JSON解析失败时，检查是否是错误格式的数据
-var lineContent = line.slice(6).trim();
-if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
-    console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
-}
-}
-}
-}
-}
-break;
+        for (const line of lines) { _processSSELine(line); }
+    }
+    break;
 }
 const chunk = decoder.decode(value, {
     stream: true
@@ -2964,35 +2978,7 @@ const events = sseBuffer.split(/\r?\n\r?\n/);
 sseBuffer = events.pop() || '';
 for (const event of events) {
     const lines = event.split('\n');
-    for (const line of lines) {
-        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-            try {
-                const json = JSON.parse(line.slice(6));
-                // 【修复】检测流中的错误响应
-                if (json.error && !streamError) {
-                    var errObj = json.error;
-                    streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                    console.error('[callAI] 流式错误:', streamError);
-                    continue;
-                }
-            const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
-            fullText += content;
-            if (options.onChunk) {
-                try {
-                    options.onChunk(fullText);
-                } catch (chunkErr) {
-                console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
-            }
-    }
-} catch (e) {
-// 【修复】JSON解析失败时，检查是否是错误格式的数据
-var lineContent = line.slice(6).trim();
-if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
-    console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
-}
-}
-}
-}
+    for (const line of lines) { _processSSELine(line); }
 }
 }
 // 【修复】如果流中检测到错误且没有收到任何有效内容，抛出错误

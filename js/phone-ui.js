@@ -490,6 +490,9 @@ function deleteMail(index) {
 // --- 世界模块渲染 ---
 // 【修复X1】所有AI返回的数据必须经过escapeHtml转义，防止XSS
 function buildModuleHTML(mod) {
+    // 【修复ISSUE-021】确保mod.items始终为数组，防止AI返回非数组数据时崩溃
+    if (mod && !Array.isArray(mod.items)) mod.items = [];
+    if (mod && mod.items) mod.items = mod.items.filter(Boolean);
     var type = mod.type || 'text';
     var title = escapeHtml(mod.title || '');
     var content = escapeHtml(mod.content || '');
