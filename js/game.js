@@ -12,7 +12,8 @@ function _sanitizePromptInput(str) {
         .replace(/【回复格式[\s\S]*?$/gi, '');  // 移除试图覆盖回复格式的注入
 }
 
-function buildSystemPrompt() {
+function buildSystemPrompt(includeFormatRules) {
+    if (includeFormatRules === undefined) includeFormatRules = true;
     var _wiResult = gameState._wiCachedResult || WorldInfo.buildInjection(gameState.conversationHistory || []);
     gameState._wiCachedResult = _wiResult;
     var _wiText = (typeof _wiResult === 'object' && _wiResult !== null) ? (_wiResult.text || '') : (_wiResult || '');
@@ -35,6 +36,15 @@ function buildSystemPrompt() {
 
     // 【新】收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
     var _chatContextText = buildRecentChatContext();
+
+    // 【关键】有预设时，只返回游戏上下文（玩家设定/记忆/私聊），格式规则由预设完全控制
+    // 预设的 system_prompt=true 条目会追加在此上下文之后，预设才是最高优先级
+    if (!includeFormatRules) {
+        return `你是一个高自由度的文字游戏AI引擎。
+
+玩家想玩的游戏："${_safeUserPrompt}"
+${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}`;
+    }
 
     var _maxTokens = gameState.maxTokens || 4096;
     var _prompt = `你是一个高自由度的文字游戏AI引擎。

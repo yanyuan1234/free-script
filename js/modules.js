@@ -1701,10 +1701,12 @@ var PresetManager = {
     },
 
     _applyPromptsToSystemPrompt: function(preset) {
+        // 【关键】有预设时只取游戏上下文（玩家设定/记忆/私聊），不包含默认格式规则
+        // 预设才是最高优先级，格式规则由预设的 system_prompt=true 条目完全控制
         var basePrompt = '';
-        try { basePrompt = buildSystemPrompt(); } catch(e) { basePrompt = (gameState && gameState.systemPrompt) || ''; }
+        try { basePrompt = buildSystemPrompt(false); } catch(e) { basePrompt = (gameState && gameState.systemPrompt) || ''; }
 
-        gameState.systemPrompt = basePrompt; // system prompt 只包含游戏基础规则
+        gameState.systemPrompt = basePrompt; // system prompt 只包含游戏上下文，格式规则由预设追加
 
         if (!preset || !preset.prompts || preset.prompts.length === 0) {
             gameState._jailbreakPrompt = '';
