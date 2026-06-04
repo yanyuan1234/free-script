@@ -1848,6 +1848,10 @@ function mergeCharacters(chars) {
         }
     });
     renderNpcList();
+    // 联动：广播角色数据变更，刷新其他依赖页面
+    if (window.GameLinker) {
+        GameLinker.refreshByDataChange('allCharacters');
+    }
 }
 function deleteCharacter(name) {
     UI.confirm('确定删除角色「' + escapeHtml(name) + '」？此操作不可撤回').then(function(ok) {
@@ -2395,6 +2399,10 @@ function mergeQuests(newQuests) {
     // 最多保留3个已完成的
     if (done.length > 3) done = done.slice(-3);
     gameState.currentQuests = active.concat(done);
+    // 联动：广播任务数据变更
+    if (window.GameLinker) {
+        GameLinker.refreshByDataChange('currentQuests');
+    }
 }
 // ========================================
 // 角色关系网
@@ -2424,6 +2432,10 @@ function mergeRelationships(newRels) {
     // 上限10条
     if (gameState.relationships.length > 10) {
         gameState.relationships = gameState.relationships.slice(-10);
+    }
+    // 联动：广播关系数据变更
+    if (window.GameLinker) {
+        GameLinker.refreshByDataChange('relationships');
     }
 }
 function renderRelationships() {
@@ -3301,6 +3313,25 @@ async function requestNpcReply(playerText) {
                 gameState.allCharacters[name].favorability = parsed.favorability;
                 renderNpcList();
             }
+        }
+        // 联动1：把这次私聊摘要加入剧情记忆（避免剧情AI忘记NPC私聊内容）
+        if (replies.length > 0) {
+            var chatSummary = name + '与玩家私聊：' + replies.slice(0, 3).join(' / ');
+            if (window.EnhancedMemory && EnhancedMemory.addImportantEvent) {
+                try {
+                    EnhancedMemory.addImportantEvent({
+                        content: chatSummary,
+                        importance: 4,
+                        source: 'npc_chat',
+                        type: 'private_chat'
+                    });
+                } catch (e) { /* 静默失败，不影响聊天 */ }
+            }
+        }
+        // 联动2：广播聊天日志更新
+        if (window.GameLinker) {
+            GameLinker.refreshByDataChange('_chatLogs');
+            GameLinker.refreshByDataChange('allCharacters');
         }
     } catch (e) {
         if (e.name === 'AbortError') return;

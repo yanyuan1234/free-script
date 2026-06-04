@@ -1027,6 +1027,42 @@ function renderLogPage() {
     }
     updateLogFeatureVisibility();
 
+    // 联动：在日志页顶部显示"近期重要事件"摘要（来自记忆系统）
+    var summaryEl = document.getElementById('logMemorySummary');
+    if (!summaryEl) {
+        summaryEl = document.createElement('div');
+        summaryEl.id = 'logMemorySummary';
+        summaryEl.style.cssText = 'margin:10px 16px 0;padding:12px 14px;background:linear-gradient(135deg,#fff3e0 0%,#fce4ec 100%);border-radius:10px;font-size:12px;line-height:1.7;cursor:pointer;';
+        var mainC = document.getElementById('logMainContent');
+        if (mainC) mainC.insertBefore(summaryEl, mainC.firstChild);
+        summaryEl.addEventListener('click', function() {
+            if (window.MemoryManagerUI) {
+                MemoryManagerUI.show();
+                if (window.UI) UI.showPage('memoryPage');
+            }
+        });
+    }
+    try {
+        if (window.EnhancedMemory && EnhancedMemory.longTermMemory) {
+            var events = EnhancedMemory.longTermMemory.importantEvents || [];
+            var recent3 = events.slice(-3).reverse();
+            if (recent3.length > 0) {
+                var html = '🧠 <b>近期记忆</b> · 点击查看全部<br>';
+                recent3.forEach(function(e) {
+                    var imp = e.importance || 5;
+                    var dot = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
+                    html += dot + ' ' + escapeHtml((e.content || '').substring(0, 40)) + (e.content && e.content.length > 40 ? '…' : '') + '<br>';
+                });
+                summaryEl.innerHTML = html;
+                summaryEl.style.display = '';
+            } else {
+                summaryEl.style.display = 'none';
+            }
+        } else {
+            summaryEl.style.display = 'none';
+        }
+    } catch (e) { console.warn('[LogPage] 记忆摘要渲染失败:', e); }
+
     // 事件委托
     var logFeatureGrid = document.getElementById('logFeatureGrid');
     if (logFeatureGrid && !logFeatureGrid._hasDelegatedClick) {
@@ -2849,6 +2885,57 @@ function renderPlayerPage() {
     // 【修复】移除对已删除的 playerEvents 元素的检查（已改为 relationNet）
     if (!nameEl || !subEl || !avatarFallback || !staticFields || !dynamicFields) return;
 
+    // === 联动1：个人页面显示"记忆锚点"提示（让玩家知道AI记得什么）===
+    var anchorHintEl = document.getElementById('playerAnchorHint');
+    if (!anchorHintEl) {
+        anchorHintEl = document.createElement('div');
+        anchorHintEl.id = 'playerAnchorHint';
+        anchorHintEl.style.cssText = 'margin-top:12px;padding:10px 12px;background:linear-gradient(135deg,#e3f2fd 0%,#f3e5f5 100%);border-radius:8px;font-size:12px;color:#555;line-height:1.6;';
+        var dynAfter = dynamicFields.parentNode;
+        if (dynAfter) dynAfter.insertBefore(anchorHintEl, dynamicFields.nextSibling);
+    }
+    try {
+        if (window.EnhancedMemory && EnhancedMemory.longTermMemory) {
+            var anchors = EnhancedMemory.longTermMemory.worldAnchors || [];
+            var pcId = anchors.filter(function(a) { return a.type === 'pc_identity'; });
+            var setting = anchors.filter(function(a) { return a.type === 'setting' || a.type === 'world_rule'; });
+            var hintHtml = '🧠 <b>AI记忆锚点</b>（永不忘）：<br>';
+            if (pcId.length > 0) hintHtml += '<b>你的设定：</b>' + escapeHtml(pcId[0].content) + '<br>';
+            if (setting.length > 0) hintHtml += '<b>世界：</b>' + escapeHtml(setting[0].content.substring(0, 60)) + (setting[0].content.length > 60 ? '...' : '');
+            if (pcId.length === 0 && setting.length === 0) {
+                hintHtml += '<span style="color:#999;">暂无永久事实（首次剧情后自动建立）</span>';
+            }
+            anchorHintEl.innerHTML = hintHtml;
+        }
+    } catch (e) { console.warn('[PlayerPage] 锚点提示渲染失败:', e); }
+
+    // === 联动2：与最近的NPC关系摘要 ===
+    var relationSummaryEl = document.getElementById('playerRelationSummary');
+    if (!relationSummaryEl) {
+        relationSummaryEl = document.createElement('div');
+        relationSummaryEl.id = 'playerRelationSummary';
+        relationSummaryEl.style.cssText = 'margin-top:10px;padding:10px 12px;background:#f9fbe7;border-radius:8px;font-size:12px;line-height:1.6;';
+        var relNet = document.getElementById('relationNet');
+        if (relNet && relNet.parentNode) relNet.parentNode.insertBefore(relationSummaryEl, relNet);
+    }
+    try {
+        var chars = Object.values(gameState.allCharacters || {});
+        if (chars.length > 0) {
+            var topChars = chars.slice().sort(function(a, b) {
+                return (b.favorability || 0) - (a.favorability || 0);
+            }).slice(0, 3);
+            var rsHtml = '💞 <b>最近的人际关系：</b><br>';
+            topChars.forEach(function(c) {
+                var fav = Math.round(c.favorability || 0);
+                var emoji = fav >= 60 ? '❤️' : (fav >= 30 ? '💚' : (fav <= -20 ? '💔' : '💬'));
+                rsHtml += emoji + ' ' + escapeHtml(c.name) + (c.relation ? '（' + escapeHtml(c.relation) + '）' : '') + ' 好感 ' + fav + '<br>';
+            });
+            relationSummaryEl.innerHTML = rsHtml;
+        } else {
+            relationSummaryEl.innerHTML = '<span style="color:#999;">尚未遇见任何角色</span>';
+        }
+    } catch (e) { console.warn('[PlayerPage] 关系摘要渲染失败:', e); }
+
     if (!data) {
         nameEl.textContent = '未命名';
         subEl.textContent = '等待AI分配...';
@@ -3077,10 +3164,26 @@ function exportStoryText() {
 function renderRecapPage() {
     var container = document.getElementById('recapList');
     if (!container) return;
+    // 联动：用记忆里的最近剧情摘要补全回顾
     var stories = getStoryList();
     if (stories.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
+        // 联动：如果故事列表为空但记忆里有剧情大纲，显示"从记忆中恢复"
+        var memSummary = '';
+        if (window.EnhancedMemory && EnhancedMemory.longTermMemory) {
+            var m = EnhancedMemory.longTermMemory;
+            if (m.worldSetting) memSummary += '【世界观】' + m.worldSetting + '\n';
+            if (m.currentChapterSummary) memSummary += '【当前进展】' + m.currentChapterSummary + '\n';
+        }
+        if (memSummary) {
+            container.innerHTML =
+                '<div class="recap-timeline"><div class="timeline-item current">' +
+                '<div class="timeline-item-head"><span class="timeline-item-title">从记忆恢复</span></div>' +
+                '<div class="timeline-item-summary" style="white-space:pre-wrap;line-height:1.6;">' +
+                escapeHtml(memSummary.substring(0, 500)) + '</div></div></div>';
+        } else {
+            container.innerHTML =
+                '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
+        }
     } else {
         // 【修复X7】剧情回顾摘要需要转义
         container.innerHTML = '<div class="recap-timeline">' + stories.map(function(s, i) {

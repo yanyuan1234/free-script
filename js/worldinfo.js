@@ -61,7 +61,27 @@ var WorldInfo = {
     init: function() {
         this.load();
         this.bindEvents();
+        // 【世界书↔记忆联动】首次启动时一次性收割已存在条目
+        // 避免老玩家世界书里的核心设定没进永久事实区
+        this._harvestAllEntriesToMemory();
         },
+
+    // 【世界书↔记忆联动】把当前所有世界书条目收割到永久事实区
+    // 仅收割：constant 标记的 + 命中核心关键词的
+    _harvestAllEntriesToMemory: function() {
+        try {
+            if (!window.EnhancedMemory || !EnhancedMemory.syncWorldInfoEntry) return;
+            for (var i = 0; i < this.books.length; i++) {
+                var book = this.books[i];
+                if (!book || !book.entries) continue;
+                var uids = Object.keys(book.entries);
+                for (var j = 0; j < uids.length; j++) {
+                    var uid = uids[j];
+                    EnhancedMemory.syncWorldInfoEntry(book.entries[uid], String(uid), book.id);
+                }
+            }
+        } catch (e) { console.warn('[WorldInfo] 收割世界书到记忆失败:', e); }
+    },
 
     // 从localStorage加载
     load: function() {
@@ -639,6 +659,12 @@ var WorldInfo = {
     deleteBook: async function(bookId) {
         var ok = await UI.confirm('删除世界书', '确定要删除这本书及其所有条目吗？');
         if (!ok) return;
+        // 【世界书↔记忆联动】删除前清理该书所有永久事实
+        try {
+            if (window.EnhancedMemory && EnhancedMemory.removeWorldAnchorsBySource) {
+                EnhancedMemory.removeWorldAnchorsBySource('worldInfo:' + bookId + ':');
+            }
+        } catch (e) { console.warn('[WorldInfo] 删除书清理记忆失败:', e); }
         this.books = this.books.filter(function(b) { return b.id !== bookId; });
         if (this.currentBookId === bookId) {
             this.currentView = 'books';
@@ -748,6 +774,18 @@ var WorldInfo = {
         };
     this.books.push(newBook);
     this.save();
+
+    // 【世界书↔记忆联动】批量同步导入的条目到永久事实区
+    try {
+        if (window.EnhancedMemory && EnhancedMemory.syncWorldInfoEntry) {
+            var newUids = Object.keys(convertedEntries);
+            for (var i = 0; i < newUids.length; i++) {
+                var entryUid = newUids[i];
+                EnhancedMemory.syncWorldInfoEntry(convertedEntries[entryUid], String(entryUid), newBook.id);
+            }
+        }
+    } catch (e) { console.warn('[WorldInfo] 导入后批量同步到记忆失败:', e); }
+
     return count;
     },
 
@@ -1112,6 +1150,13 @@ var WorldInfo = {
     UI.hideModal('wiEntryModal');
     this.renderCurrentView();
     UI.toast('条目已保存');
+
+    // 【世界书↔记忆联动】同步到永久事实区（核心设定不丢失）
+    try {
+        if (window.EnhancedMemory && EnhancedMemory.syncWorldInfoEntry) {
+            EnhancedMemory.syncWorldInfoEntry(entry, String(uid), book.id);
+        }
+    } catch (e) { console.warn('[WorldInfo] 同步到记忆失败:', e); }
     },
 
     // 删除条目
@@ -1121,6 +1166,12 @@ var WorldInfo = {
         if (!uid || !book || !book.entries[uid]) return;
         var ok = await UI.confirm('删除条目', '确定删除这条目？');
         if (!ok) return;
+        // 【世界书↔记忆联动】删除前清理对应的永久事实
+        try {
+            if (window.EnhancedMemory && EnhancedMemory.removeWorldAnchorsBySource) {
+                EnhancedMemory.removeWorldAnchorsBySource('worldInfo:' + book.id + ':' + uid);
+            }
+        } catch (e) { console.warn('[WorldInfo] 清理记忆锚点失败:', e); }
         delete book.entries[uid];
         this.save();
         UI.hideModal('wiEntryModal');

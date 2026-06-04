@@ -2558,6 +2558,14 @@ const _navBarClickHandler = function(e) {
     else if (page === 'recapPage') renderRecapPage();
     else if (page === 'logPage') renderLogPage();
     else if (page === 'memoryPage' && typeof MemoryManagerUI !== 'undefined') { MemoryManagerUI.show(); UI.showPage('memoryPage'); }
+    // 联动：刷新所有页面的数据缓存（让切换回其他页面时显示最新）
+    if (window.GameLinker) {
+        GameLinker.refreshByDataChange('playerData');
+        GameLinker.refreshByDataChange('allCharacters');
+        GameLinker.refreshByDataChange('currentQuests');
+        GameLinker.refreshByDataChange('currentBag');
+        GameLinker.refreshByDataChange('keyEvents');
+    }
 };
 function renderNavBar(containerId, tabs, activeIndex) {
     var container = document.getElementById(containerId);

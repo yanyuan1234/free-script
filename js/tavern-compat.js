@@ -1121,6 +1121,73 @@ var EnhancedMemory = {
     },
 
     /**
+     * 根据 source 批量删除世界锚点（世界书删除条目时联动清理）
+     * @param {string} sourcePrefix - 源标识前缀，如 'worldInfo:book_xxx:uid_yyy'
+     * @returns {number} 删除数量
+     */
+    removeWorldAnchorsBySource: function(sourcePrefix) {
+        var self = this;
+        if (!self.longTermMemory.worldAnchors) return 0;
+        var before = self.longTermMemory.worldAnchors.length;
+        self.longTermMemory.worldAnchors = self.longTermMemory.worldAnchors.filter(function(a) {
+            return !(a && a.source && a.source.indexOf(sourcePrefix) === 0);
+        });
+        var removed = before - self.longTermMemory.worldAnchors.length;
+        if (removed > 0) {
+            try { if (self.saveToStorage) self.saveToStorage(); } catch (e) {}
+        }
+        return removed;
+    },
+
+    /**
+     * 把世界书条目同步到永久事实区
+     * 判定规则（满足任一即同步）：
+     *   1. 标记为 constant（常驻/绿灯条目）
+     *   2. content / comment 命中核心设定关键词
+     * @param {object} entry - 世界书条目
+     * @param {string} uid - 条目 UID
+     * @param {string} bookId - 所属书 ID
+     * @returns {object|null} 同步的锚点（未同步返回 null）
+     */
+    syncWorldInfoEntry: function(entry, uid, bookId) {
+        var self = this;
+        if (!entry) return null;
+        // 未启用或空内容不参与同步
+        if (entry.enabled === false) {
+            self.removeWorldAnchorsBySource('worldInfo:' + bookId + ':' + uid);
+            return null;
+        }
+        var content = (entry.content || '').trim();
+        if (!content) {
+            // 空内容：清理之前可能同步的锚点
+            self.removeWorldAnchorsBySource('worldInfo:' + bookId + ':' + uid);
+            return null;
+        }
+        // 决定是否同步：constant 标记 OR 关键词命中
+        var shouldSync = !!entry.constant;
+        var anchorType = 'world_rule';
+        if (!shouldSync) {
+            // 关键词检测：包含"设定/规则/世界观/铁律/守则/不变/永远/不可/角色/主角/境界/等级"
+            var ruleRe = /(设定|规则|世界观|铁律|守则|不变|永远|永不|不可|严禁|禁止|角色|主角|境界|等级|天道|法则)/;
+            if (ruleRe.test(content) || ruleRe.test(entry.comment || '')) {
+                shouldSync = true;
+                anchorType = 'setting';
+            }
+        }
+        if (!shouldSync) return null;
+        // 重新同步前先清理旧的同源锚点（避免重复）
+        var sourceTag = 'worldInfo:' + bookId + ':' + uid;
+        self.removeWorldAnchorsBySource(sourceTag);
+        // 拼接同步内容（带标题便于追溯）
+        var label = entry.comment ? '【' + entry.comment + '】' : '';
+        var syncContent = label ? label + ' ' + content : content;
+        if (syncContent.length > 300) syncContent = syncContent.substring(0, 300) + '...';
+        var created = self.addWorldAnchor(anchorType, syncContent, sourceTag, self.stats ? self.stats.totalMessages : 0);
+        try { if (created && self.saveToStorage) self.saveToStorage(); } catch (e) {}
+        return created;
+    },
+
+    /**
      * 手动添加/更新进行中的约定
      */
     addActiveQuest: function(quest) {
@@ -2797,6 +2864,39 @@ var EnhancedMemory = {
         });
 
         return injection;
+    },
+
+    /**
+     * 外部添加重要事件的接口（剧情/私聊联动使用）
+     * @param {string|object} eventOrContent - 事件字符串或 {content, importance, source, type}
+     */
+    addImportantEvent: function(eventOrContent) {
+        if (!this.longTermMemory) this.longTermMemory = {};
+        if (!this.longTermMemory.importantEvents) this.longTermMemory.importantEvents = [];
+        var evt = (typeof eventOrContent === 'string')
+            ? { content: eventOrContent, importance: 5 }
+            : eventOrContent;
+        if (!evt || !evt.content) return false;
+        var currentTurn = (this.stats && this.stats.totalMessages) || 0;
+        // 去重
+        var exists = this.longTermMemory.importantEvents.some(function(e) {
+            return e.content === evt.content;
+        });
+        if (exists) return false;
+        this.longTermMemory.importantEvents.push({
+            content: evt.content,
+            turn: currentTurn,
+            timestamp: Date.now(),
+            importance: evt.importance || 5,
+            source: evt.source || 'external',
+            type: evt.type || 'event',
+            decayScore: evt.importance || 5
+        });
+        // 触发裁剪
+        if (this._pruneImportantEvents) this._pruneImportantEvents(50);
+        // 持久化
+        try { if (this.saveToStorage) this.saveToStorage(); } catch (e) {}
+        return true;
     }
 };
 
