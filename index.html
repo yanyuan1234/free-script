@@ -1568,32 +1568,36 @@
                     <button class="circle-btn" id="memoryBackBtn">
                         <svg class="icon"><use href="#icon-back" /></svg>
                     </button>
-                    <h2 class="page-title">记忆管理中心</h2>
+                    <h2 class="page-title">记忆</h2>
                     <div style="width:40px;"></div>
                 </div>
-                
+
                 <!-- 方案C记忆管理UI - 全屏嵌入 -->
                 <div id="memoryManagerContainer" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-                    <!-- 标签页 -->
-                    <div class="memory-tabs" style="
-                        display:flex;
-                        gap:4px;
-                        padding:12px 16px;
-                        border-bottom:1px solid var(--border);
-                        background:var(--bg-secondary);
-                        overflow-x:auto;
-                    ">
-                        <button class="memory-tab active" data-tab="overview" onclick="MemoryManagerUI.switchTab('overview')">总览</button>
-                        <button class="memory-tab" data-tab="anchors" onclick="MemoryManagerUI.switchTab('anchors')">永久事实</button>
-                        <button class="memory-tab" data-tab="quests" onclick="MemoryManagerUI.switchTab('quests')">约定任务</button>
-                        <button class="memory-tab" data-tab="timeline" onclick="MemoryManagerUI.switchTab('timeline')">时间线</button>
-                        <button class="memory-tab" data-tab="characters" onclick="MemoryManagerUI.switchTab('characters')">角色</button>
-                        <button class="memory-tab" data-tab="items" onclick="MemoryManagerUI.switchTab('items')">物品</button>
-                        <button class="memory-tab" data-tab="locations" onclick="MemoryManagerUI.switchTab('locations')">地点</button>
-                        <button class="memory-tab" data-tab="events" onclick="MemoryManagerUI.switchTab('events')">事件</button>
-                        <button class="memory-tab" data-tab="world" onclick="MemoryManagerUI.switchTab('world')">世界</button>
-                        <button class="memory-tab" data-tab="search" onclick="MemoryManagerUI.switchTab('search')">搜索</button>
-                        <button class="memory-tab" data-tab="injection" onclick="MemoryManagerUI.switchTab('injection')">注入预览</button>
+                    <!-- 标签页 - 分类折叠设计 -->
+                    <div class="memory-tabs" id="memoryTabsBar">
+                        <div class="memory-tab-group active" data-group="core">
+                            <button class="memory-tab active" data-tab="overview" onclick="MemoryManagerUI.switchTab('overview')">总览</button>
+                            <button class="memory-tab" data-tab="injection" onclick="MemoryManagerUI.switchTab('injection')">注入</button>
+                        </div>
+                        <div class="memory-tab-divider"></div>
+                        <div class="memory-tab-group" data-group="data">
+                            <button class="memory-tab" data-tab="anchors" onclick="MemoryManagerUI.switchTab('anchors')">事实</button>
+                            <button class="memory-tab" data-tab="quests" onclick="MemoryManagerUI.switchTab('quests')">任务</button>
+                            <button class="memory-tab" data-tab="events" onclick="MemoryManagerUI.switchTab('events')">事件</button>
+                        </div>
+                        <div class="memory-tab-divider"></div>
+                        <div class="memory-tab-group" data-group="world">
+                            <button class="memory-tab" data-tab="characters" onclick="MemoryManagerUI.switchTab('characters')">角色</button>
+                            <button class="memory-tab" data-tab="items" onclick="MemoryManagerUI.switchTab('items')">物品</button>
+                            <button class="memory-tab" data-tab="locations" onclick="MemoryManagerUI.switchTab('locations')">地点</button>
+                            <button class="memory-tab" data-tab="world" onclick="MemoryManagerUI.switchTab('world')">世界</button>
+                        </div>
+                        <div class="memory-tab-divider"></div>
+                        <div class="memory-tab-group" data-group="tools">
+                            <button class="memory-tab" data-tab="timeline" onclick="MemoryManagerUI.switchTab('timeline')">时间线</button>
+                            <button class="memory-tab" data-tab="search" onclick="MemoryManagerUI.switchTab('search')">搜索</button>
+                        </div>
                     </div>
                     
                     <!-- 内容区 -->
