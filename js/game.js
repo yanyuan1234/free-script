@@ -6,7 +6,8 @@
 /**
  * 检测当前游戏的世界观主题
  * 基于 gameState.userPrompt 中的关键词判断
- * 返回: 'modern' | 'ancient' | 'xianxia' | 'wasteland' | 'fantasy' | 'default'
+ * 返回: 'modern' | 'ancient' | 'xianxia' | 'wasteland' | 'fantasy' | 'other'
+ * 'other' 表示未匹配到预设主题，由 AI 自行决定术语
  */
 function detectWorldTheme() {
     var prompt = (gameState && gameState.userPrompt) || '';
@@ -19,15 +20,15 @@ function detectWorldTheme() {
     if (/末世|废土|丧尸|末日|幸存|避难|变异|辐射|物资|避难所|丧尸世界/.test(text)) return 'wasteland';
     // 西幻/奇幻
     if (/魔法|精灵|龙族|骑士|冒险者|公会|魔王|勇者|矮人|哥布林|地下城|中世纪/.test(text)) return 'fantasy';
-    // 现代（默认）
+    // 现代
     if (/现代|都市|职场|学校|校园|公司|总裁|同事|微信|手机|网络/.test(text)) return 'modern';
-    // 无法判断时用 default
-    return 'default';
+    // 无法匹配时返回 other，表示由 AI 自行决定术语
+    return 'other';
 }
 
 /**
- * 根据世界观主题返回动态术语映射
- * 用于提示词和 UI 中的硬编码术语替换
+ * 根据世界观主题返回术语映射
+ * 预设主题提供快速匹配；'other' 主题返回 null，由提示词中的规则让 AI 自行决定
  */
 function getWorldTerms(theme) {
     if (!theme) theme = detectWorldTheme();
@@ -36,14 +37,15 @@ function getWorldTerms(theme) {
         ancient:  { mail: '飞鸽传书', moments: '江湖传闻', shop: '集市', comments: '茶馆', ranking: '英雄榜', diary: '手札', cards: '密信', currency: '银两', npcMsg: '传话', bag: '行囊', quest: '差事' },
         xianxia:  { mail: '传音符', moments: '修士手札', shop: '灵宝阁', comments: '论道台', ranking: '天道碑', diary: '修炼日志', cards: '机缘', currency: '灵石', npcMsg: '传音', bag: '储物袋', quest: '历练' },
         wasteland:{ mail: '无线电', moments: '幸存者广播', shop: '补给站', comments: '幸存者频道', ranking: '战力榜', diary: '生存记录', cards: '线索', currency: '物资', npcMsg: '对讲机', bag: '背包', quest: '行动' },
-        fantasy:  { mail: '魔法信函', moments: '冒险者留言', shop: '杂货铺', comments: '冒险者公会', ranking: '勇者榜', diary: '冒险日志', cards: '委托', currency: '金币', npcMsg: '传讯', bag: '行囊', quest: '委托' },
-        default:  { mail: '邮件', moments: '朋友圈', shop: '商店', comments: '论坛', ranking: '排行榜', diary: '日记', cards: '任务卡片', currency: '货币', npcMsg: '消息', bag: '背包', quest: '任务' }
+        fantasy:  { mail: '魔法信函', moments: '冒险者留言', shop: '杂货铺', comments: '冒险者公会', ranking: '勇者榜', diary: '冒险日志', cards: '委托', currency: '金币', npcMsg: '传讯', bag: '行囊', quest: '委托' }
     };
-    return terms[theme] || terms['default'];
+    // 'other' 主题不提供预设术语，由 AI 根据世界观自行决定
+    return terms[theme] || null;
 }
 
 /**
  * 获取当前世界观的术语（缓存版，避免重复检测）
+ * 返回 null 表示未匹配预设主题，需要 AI 自行决定
  */
 var _cachedWorldTheme = null;
 var _cachedWorldTerms = null;
@@ -54,6 +56,39 @@ function getCurrentWorldTerms() {
         _cachedWorldTerms = getWorldTerms(theme);
     }
     return _cachedWorldTerms;
+}
+
+/**
+ * 生成世界观术语提示词片段
+ * 有预设术语时直接列出；无预设时让 AI 自行决定并给出示例
+ */
+function buildWorldTermsPrompt(_terms) {
+    if (_terms) {
+        // 预设主题：直接给出术语映射
+        return '【世界观术语 - 必须遵守】\n' +
+            '当前世界观对应术语：' +
+            '消息=' + _terms.npcMsg + '、' +
+            '邮件=' + _terms.mail + '、' +
+            '朋友圈=' + _terms.moments + '、' +
+            '商店=' + _terms.shop + '、' +
+            '论坛=' + _terms.comments + '、' +
+            '排行榜=' + _terms.ranking + '、' +
+            '日记=' + _terms.diary + '、' +
+            '任务卡片=' + _terms.cards + '、' +
+            '货币=' + _terms.currency + '、' +
+            '背包=' + _terms.bag + '、' +
+            '任务=' + _terms.quest +
+            '\nworld模块的title字段、npcMessages描述、currencyName等必须使用以上术语，不要用现代词汇！';
+    }
+    // 未匹配预设主题：让 AI 根据世界观自行决定所有术语
+    return '【世界观术语 - 极其重要】\n' +
+        '当前世界观不属于常见类型，你必须自行决定所有术语！所有模块标题、货币名称、通讯方式等必须完全适配当前世界观，绝对禁止出现不符合世界观的现代词汇（如古代世界出现"微信""邮件"，修仙世界出现"商店""论坛"等）。\n' +
+        '术语适配示例：\n' +
+        '- 赛博朋克：消息→全息通讯、邮件→数据包、朋友圈→暗网动态、商店→义体诊所、论坛→黑客频道、货币→信用点、背包→存储芯片、任务→委托\n' +
+        '- 蒸汽朋克：消息→电报、邮件→信件、朋友圈→绅士俱乐部、商店→工坊、论坛→发明家集会、货币→齿轮币、背包→工具箱、任务→合约\n' +
+        '- 太空歌剧：消息→星际通讯、邮件→量子信标、朋友圈→星网动态、商店→空间站市集、论坛→星际议会、货币→星币、背包→货舱、任务→远征\n' +
+        '- 民国：消息→传话、邮件→信笺、朋友圈→舞会传闻、商店→洋行、论坛→茶楼、货币→大洋、背包→皮箱、任务→差事\n' +
+        '请在第一回合的 world 模块 title 中体现你选定的术语，后续回合保持一致。';
 }
 
 // 【修复A P1-4】清理用户输入中的潜在prompt injection内容
@@ -105,10 +140,15 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
 
     var _maxTokens = gameState.maxTokens || 4096;
     var _terms = getCurrentWorldTerms();
+    var _termsPrompt = buildWorldTermsPrompt(_terms);
+    // 安全取术语，null 时用通用词
+    var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
     var _prompt = `你是一个高自由度的文字游戏AI引擎。
 
 玩家想玩的游戏："${_safeUserPrompt}"
 ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}
+
+${_termsPrompt}
 
 【核心规则】
 1. 根据玩家描述创造沉浸式游戏世界
@@ -165,20 +205,20 @@ ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date 
 5. 心声要自然融入正文节奏，在情绪转折、关键抉择、暧昧时刻等峰值处插入
 6. 不同 NPC 心声风格必须差异化，体现各自性格
 
-【${_terms.npcMsg} - 由性格决定频率】
-npcMessages 数组是 NPC 主动给玩家发${_terms.npcMsg}。【频率由 NPC 性格严格决定】：
+【${_t('npcMsg', '消息')} - 由性格决定频率】
+npcMessages 数组是 NPC 主动给玩家发${_t('npcMsg', '消息')}。【频率由 NPC 性格严格决定】：
 - 高频型（黏人/热情/外向/暗恋/崇拜/恋人/亲人/挚友/担心你/情绪波动中）→ 几乎每回合都要发 1-3 条
 - 中频型（友好/同事/同门/温和/中好感/日常关心）→ 隔 1-2 回合发 1 条，或在剧情触发时发
 - 低频型（内向/沉默/高冷/傲娇/陌生/淡漠/警戒）→ 隔 2-4 回合才发 1 条，且往往只在剧情相关时
 - 几乎不发（敌对/仇恨/恐惧/已拉黑/已断联/完全不熟）→ 极少发，重大剧情转折才可能发
 重要原则：①根据 characters 中每个 NPC 的 personality/relation/favorability 综合判断；②同一 NPC 不要每条消息都重复发，关键剧情点才值得发；③消息内容要符合该 NPC 当下的心情和与主角的关系；④当主角刚和某 NPC 在剧情中互动过，该 NPC 本回合发消息的概率显著提升。
-【重要区分】npcMessages 是即时${_terms.npcMsg}（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在 mail（${_terms.mail}）中。
+【重要区分】npcMessages 是即时${_t('npcMsg', '消息')}（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在 mail（${_t('mail', '邮件')}）中。
 
 【章节标记】
 章节结尾可使用 [章节结束|章节标题] 标记，如 [章节结束|幸福之愿·无伤的相遇]
 
 【回复格式 - 纯JSON，不要用代码块包裹】
-{ "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "${_terms.ranking}", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "${_terms.cards}", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "${_terms.comments}", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "${_terms.moments}", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_terms.mail}", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "${_terms.shop}", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "${_terms.diary}", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "${_terms.quest}名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的${_terms.npcMsg}内容"}], "currency": 0, "currencyName": "${_terms.currency}", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" }
+{ "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "${_t('ranking', '排行榜')}", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "${_t('cards', '任务卡片')}", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "${_t('comments', '论坛')}", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "${_t('moments', '朋友圈')}", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_t('mail', '邮件')}", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "${_t('shop', '商店')}", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "${_t('diary', '日记')}", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "${_t('quest', '任务')}名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的${_t('npcMsg', '消息')}内容"}], "currency": 0, "currencyName": "${_t('currency', '货币')}", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" }
 
 【keyEvents规则 - 极其重要】
 1. 每回合检查是否发生了"重要事件"，有则写入 keyEvents 数组
@@ -204,19 +244,19 @@ player 是主角（玩家自己），是玩家操控的唯一角色！必须包�
 
 【world动态模块 - 核心玩法】
 1. world 数组每次回复的模块数量和类型由预设控制（无预设时见【字数与格式控制-无预设默认值】，默认 2-3 个）
-2. 模块必须和当前剧情紧密联动：玩家刚和 NPC 聊天 → 该 NPC 的${_terms.moments}要发相关动态；玩家获得重要物品 → ${_terms.shop}出现相关商品；剧情有重要转折 → ${_terms.comments}出现讨论帖、${_terms.ranking}发生变化
+2. 模块必须和当前剧情紧密联动：玩家刚和 NPC 聊天 → 该 NPC 的${_t('moments', '朋友圈')}要发相关动态；玩家获得重要物品 → ${_t('shop', '商店')}出现相关商品；剧情有重要转折 → ${_t('comments', '论坛')}出现讨论帖、${_t('ranking', '排行榜')}发生变化
 3. 每种类型都要给具体内容，不要只给空数组
-4. 可用 type：text(纯文本) / list(列表) / ranking(${_terms.ranking},name+value) / key_value(键值对) / cards(${_terms.cards},icon+title+content) / comments(${_terms.comments},main+comments) / moments(${_terms.moments},posts) / mail(${_terms.mail},from+subject+body) / shop(${_terms.shop},icon+name+desc+price) / diary(${_terms.diary},npc+date+content+mood)
+4. 可用 type：text(纯文本) / list(列表) / ranking(${_t('ranking', '排行榜')},name+value) / key_value(键值对) / cards(${_t('cards', '任务卡片')},icon+title+content) / comments(${_t('comments', '论坛')},main+comments) / moments(${_t('moments', '朋友圈')},posts) / mail(${_t('mail', '邮件')},from+subject+body) / shop(${_t('shop', '商店')},icon+name+desc+price) / diary(${_t('diary', '日记')},npc+date+content+mood)
 
-【${_terms.quest}规则】
-1. 根据剧情自动生成和更新${_terms.quest}列表
-2. type 分三种：主线（推动核心剧情）、支线（可选${_terms.quest}）、隐藏（特殊触发）
+【${_t('quest', '任务')}规则】
+1. 根据剧情自动生成和更新${_t('quest', '任务')}列表
+2. type 分三种：主线（推动核心剧情）、支线（可选${_t('quest', '任务')}）、隐藏（特殊触发）
 3. status 分三种：进行中、已完成、失败
 4. progress 用"当前/总数"格式，如"2/5"，没有明确进度的可以省略
 5. hint 是给玩家的下一步提示，简短一句话
-6. 完成或失败的${_terms.quest}保留 1-2 回合后可以移除
-7. 同时存在的${_terms.quest}不超过 5 个
-8. 第一回合就应该根据剧情给出至少 1 个主线${_terms.quest}
+6. 完成或失败的${_t('quest', '任务')}保留 1-2 回合后可以移除
+7. 同时存在的${_t('quest', '任务')}不超过 5 个
+8. 第一回合就应该根据剧情给出至少 1 个主线${_t('quest', '任务')}
 
 【relationships关系网规则】
 1. 记录当前所有重要角色之间的关系
@@ -227,7 +267,7 @@ player 是主角（玩家自己），是玩家操控的唯一角色！必须包�
 6. 只记重要关系，上限 10 条
 7. 包括 NPC 之间的关系，不仅仅是主角和 NPC 的关系
 
-【${_terms.bag}规则】
+【${_t('bag', '背包')}规则】
 1. usable 为 true 表示可以使用的消耗品（药品、食物等），effect 描述使用后的效果
 2. equippable 为 true 表示可以装备的物品，slot 表示装备位（weapon/armor/accessory/head）
 3. equipped 为 true 表示当前已装备
