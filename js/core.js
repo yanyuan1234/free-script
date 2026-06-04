@@ -2618,13 +2618,33 @@ function showError(msg) {
     TimerManager.clearInterval('loadingTimer');
     var el = document.getElementById('storyText');
     if (!el) return;
-    // 错误消息需要转义，并提供更友好的中文提示
-    el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--danger);">' +
-    '<div style="font-size:16px;margin-bottom:8px;">⚠️ 生成失败</div>' +
-    '<div style="font-size:14px;color:#666;margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
-    '<div style="font-size:11px;color:#bbb;margin-bottom:12px;word-break:break-all;">原始错误: ' + escapeHtml(msg) + '</div>' +
-    '<div style="font-size:12px;color:#999;">请检查网络连接和API设置后重试</div>' +
-    '</div>';
+    // 【修复】不要清空剧情区，避免覆盖流式已渲染的内容
+    // 仅在没有内容时覆盖；否则在底部追加错误提示条
+    var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
+    var errBanner = '<div class="api-error-banner" style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;margin:12px 0;color:#856404;font-size:13px;">' +
+        '<div style="font-weight:600;margin-bottom:4px;">⚠️ 生成失败</div>' +
+        '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
+        '<div style="font-size:11px;color:#666;word-break:break-all;">原始: ' + escapeHtml(msg) + '</div>' +
+        '<div style="font-size:11px;color:#999;margin-top:6px;">可在浏览器 Console 查看完整堆栈（F12 → Console）</div>' +
+        '</div>';
+    if (hasContent) {
+        el.insertAdjacentHTML('beforeend', errBanner);
+    } else {
+        // 真正空时才覆盖
+        el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--danger);">' +
+            '<div style="font-size:16px;margin-bottom:8px;">⚠️ 生成失败</div>' +
+            '<div style="font-size:14px;color:#666;margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
+            '<div style="font-size:11px;color:#bbb;margin-bottom:12px;word-break:break-all;">原始错误: ' + escapeHtml(msg) + '</div>' +
+            '<div style="font-size:12px;color:#999;">请检查网络连接和API设置后重试</div>' +
+            '</div>';
+    }
+    // 同步记录到 localStorage 方便排查
+    try {
+        var errs = JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');
+        errs.push({ msg: msg, time: Date.now() });
+        if (errs.length > 20) errs = errs.slice(-20);
+        localStorage.setItem('free_script_api_errors', JSON.stringify(errs));
+    } catch (e) {}
 }
 // --- 章节标题更新 ---
 function updateSceneTitle(title) {
@@ -2673,6 +2693,17 @@ if (progressBar) {
     else progressBar.classList.remove('active');
 }
 }
+// 获取最近 API 错误历史（用于调试面板）
+function getRecentApiErrors() {
+    try {
+        return JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');
+    } catch (e) { return []; }
+}
+// 清空 API 错误历史
+function clearRecentApiErrors() {
+    try { localStorage.removeItem('free_script_api_errors'); } catch (e) {}
+}
+
 
 
 
