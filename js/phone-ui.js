@@ -1402,6 +1402,142 @@ function renderChatPage() {
         '</div></div>';
     return html;
 }
+// =================================================================
+// 通知中心：刷新红点 + 打开/关闭弹窗
+// =================================================================
+function computeNotificationCounts() {
+    try {
+        // 邮件未读
+        var unreadMail = 0;
+        var mailModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'mail'; });
+        mailModules.forEach(function(mod) {
+            (mod.items || []).forEach(function(m) { if (m && !m.read) unreadMail++; });
+        });
+        if ((gameState._mails || []).length) {
+            (gameState._mails || []).forEach(function(m) { if (m && !m.read) unreadMail++; });
+        }
+        // 聊天未读（NPC 主动消息，已读快照差值）
+        var unreadChat = 0;
+        var seen = (gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat) || {};
+        var logs = gameState._chatLogs || {};
+        Object.keys(logs).forEach(function(name) {
+            var arr = logs[name] || [];
+            var npcSent = arr.filter(function(m) {
+                if (!m) return false;
+                if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
+                return (m.text || '').trim();
+            }).length;
+            var seenCount = seen[name] || 0;
+            unreadChat += Math.max(0, npcSent - seenCount);
+        });
+        var total = unreadMail + unreadChat;
+        return { unreadMail: unreadMail, unreadChat: unreadChat, total: total };
+    } catch (e) {
+        console.warn('[notif] computeNotificationCounts failed:', e);
+        return { unreadMail: 0, unreadChat: 0, total: 0 };
+    }
+}
+function refreshNotificationBadge() {
+    try {
+        var counts = computeNotificationCounts();
+        var badge = document.getElementById('notifBadge');
+        if (badge) {
+            if (counts.total > 0) {
+                badge.style.display = 'inline-flex';
+                badge.textContent = counts.total > 99 ? '99+' : String(counts.total);
+            } else {
+                badge.style.display = 'none';
+                badge.textContent = '0';
+            }
+        }
+        // 同步菜单/通知徽章（如有）
+        var menuBadge = document.getElementById('menuNotifBadge');
+        if (menuBadge) {
+            if (counts.total > 0) {
+                menuBadge.style.display = 'inline-flex';
+                menuBadge.textContent = counts.total > 99 ? '99+' : String(counts.total);
+            } else {
+                menuBadge.style.display = 'none';
+            }
+        }
+        return counts;
+    } catch (e) {
+        console.warn('[notif] refreshNotificationBadge failed:', e);
+        return { unreadMail: 0, unreadChat: 0, total: 0 };
+    }
+}
+function openNotificationCenter() {
+    try {
+        var counts = computeNotificationCounts();
+        var list = document.getElementById('notificationCenterList');
+        var titleEl = document.getElementById('notificationCenterTitle');
+        if (titleEl) titleEl.textContent = '通知中心 (' + counts.total + ')';
+        if (list) {
+            var html = '';
+            // 邮件
+            var mailModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'mail'; });
+            var allMails = [];
+            mailModules.forEach(function(mod) { (mod.items || []).forEach(function(it) { allMails.push(it); }); });
+            if (allMails.length === 0) allMails = gameState._mails || [];
+            var unreadMails = allMails.filter(function(m) { return m && !m.read; });
+            unreadMails.forEach(function(m) {
+                var sender = m.from || m.sender || '未知';
+                var subject = m.subject || '无主题';
+                html += '<div class="pearl-card" style="padding:10px 12px;margin-bottom:8px;cursor:pointer;" onclick="openMailDetail(' + allMails.indexOf(m) + ');closeNotificationCenter();">' +
+                    '<div style="font-size:13px;font-weight:600;color:#1a73e8;">' + escapeHtml(sender) + '</div>' +
+                    '<div style="font-size:14px;color:#333;margin-top:2px;">' + escapeHtml(subject) + '</div>' +
+                    '<div style="font-size:11px;color:#999;margin-top:4px;">' + escapeHtml(m.time || m.date || '') + '</div></div>';
+            });
+            // 聊天（NPC 主动消息）
+            var seen = (gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat) || {};
+            var logs = gameState._chatLogs || {};
+            Object.keys(logs).forEach(function(name) {
+                var arr = logs[name] || [];
+                var npcSent = arr.filter(function(m) {
+                    if (!m) return false;
+                    if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
+                    return (m.text || '').trim();
+                });
+                var seenCount = seen[name] || 0;
+                var unreadNpc = Math.max(0, npcSent.length - seenCount);
+                if (unreadNpc > 0) {
+                    var last = npcSent[npcSent.length - 1];
+                    var preview = (last && last.text) ? last.text : '';
+                    if (preview.length > 30) preview = preview.substring(0, 30) + '...';
+                    html += '<div class="pearl-card" style="padding:10px 12px;margin-bottom:8px;cursor:pointer;" onclick="closeNotificationCenter();openNpcChat(\'' + name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\');">' +
+                        '<div style="font-size:13px;font-weight:600;color:#07C160;">' + escapeHtml(name) + '</div>' +
+                        '<div style="font-size:14px;color:#333;margin-top:2px;">' + escapeHtml(preview) + '</div>' +
+                        '<div style="font-size:11px;color:#999;margin-top:4px;">' + unreadNpc + ' 条未读</div></div>';
+                }
+            });
+            if (!html) {
+                html = '<div style="padding:40px 20px;text-align:center;color:#999;font-size:13px;">暂无未读通知</div>';
+            }
+            list.innerHTML = html;
+        }
+        if (typeof UI !== 'undefined' && UI.showModal) {
+            UI.showModal('notificationCenterModal');
+        } else {
+            var m = document.getElementById('notificationCenterModal');
+            if (m) m.style.display = 'flex';
+        }
+    } catch (e) {
+        console.warn('[notif] openNotificationCenter failed:', e);
+    }
+}
+function closeNotificationCenter() {
+    try {
+        if (typeof UI !== 'undefined' && UI.hideModal) {
+            UI.hideModal('notificationCenterModal');
+        } else {
+            var m = document.getElementById('notificationCenterModal');
+            if (m) m.style.display = 'none';
+        }
+    } catch (e) {}
+}
+// 兼容旧调用名
+function toggleNotifCenter() { openNotificationCenter(); }
+
 function renderQuestsPage() {
     return null;
 }
@@ -3496,6 +3632,19 @@ function bindEvents() {
     bindEvent('btnSettingsHeader', 'click', function() {
         openSettingsModal();
     });
+    // 通知中心按钮
+    bindEvent('btnNotifCenter', 'click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (typeof openNotificationCenter === 'function') {
+            openNotificationCenter();
+        } else if (typeof toggleNotifCenter === 'function') {
+            toggleNotifCenter();
+        }
+    });
+    // 通知中心关闭按钮
+    var notifCloseBtn = document.getElementById('notificationCenterClose');
+    if (notifCloseBtn) notifCloseBtn.addEventListener('click', closeNotificationCenter);
     // 世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
     // 预设按钮
     // 预设按钮（已由 PresetManager.bindEvents 绑定，此处不再重复）
@@ -4340,7 +4489,18 @@ async function retryStory() {
     gameState.conversationHistory.pop();
     var lastUserMsg = gameState.conversationHistory.pop();
     if (lastUserMsg) {
-        sendAIRequest(lastUserMsg.content);
+        // 防 unhandledrejection：捕获异步错误
+        try {
+            var p = sendAIRequest(lastUserMsg.content);
+            if (p && typeof p.catch === 'function') {
+                p.catch(function(e) {
+                    if (e && e.name === 'AbortError') return;
+                    console.error('[重新生成] 异步操作失败:', e);
+                });
+            }
+        } catch (e) {
+            console.error('[重新生成] 同步错误:', e);
+        }
     }
 }
 async function continueStory() {
@@ -4357,7 +4517,18 @@ async function continueStory() {
     } catch(e) {
         console.warn('[continueStory] 获取 continue_nudge_prompt 失败:', e);
     }
-    sendAIRequest(continuePrompt);
+    // 防 unhandledrejection：捕获异步错误
+    try {
+        var p = sendAIRequest(continuePrompt);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[继续剧情] 异步操作失败:', e);
+            });
+        }
+    } catch (e) {
+        console.error('[继续剧情] 同步错误:', e);
+    }
 }
 function deleteLastTurn() {
     // 检查撤销历史

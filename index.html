@@ -455,6 +455,14 @@
                                 <button class="circle-btn" id="btnContinueGen" title="继续剧情"><svg class="icon icon-sm">
                                         <use href="#icon-play" />
                                     </svg></button>
+                                <button class="circle-btn" id="btnSaveHeader" title="存档/读档"><svg class="icon icon-sm">
+                                        <use href="#icon-save" />
+                                    </svg></button>
+                                <button class="circle-btn" id="btnNotifCenter" title="通知中心" style="position:relative;"><svg class="icon icon-sm">
+                                        <use href="#icon-bell" />
+                                    </svg>
+                                    <div id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;background:#f44336;color:#fff;border-radius:9px;font-size:11px;font-weight:600;align-items:center;justify-content:center;padding:0 5px;line-height:1;">0</div>
+                                </button>
                             </div>
                         </div>
                         <div class="story-text" id="storyText" aria-live="polite">
@@ -473,14 +481,6 @@
                         <button class="send-btn" id="btnSendAction"><svg class="icon icon-sm" style="stroke:white;">
                                 <use href="#icon-send" />
                             </svg></button>
-                        <button class="action-bar-btn" id="btnSaveHeader" title="存档/读档"><svg class="icon icon-sm">
-                                <use href="#icon-save" />
-                            </svg></button>
-                        <button class="action-bar-btn" id="btnNotifCenter" title="通知中心" style="position:relative;"><svg class="icon icon-sm">
-                                <use href="#icon-bell" />
-                            </svg>
-                            <div id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;min-width:18px;height:18px;background:#f44336;color:#fff;border-radius:9px;font-size:11px;font-weight:600;align-items:center;justify-content:center;padding:0 5px;line-height:1;">0</div>
-                        </button>
                     </div>
                 </div>
                 <nav class="game-nav" id="gameNav"></nav>

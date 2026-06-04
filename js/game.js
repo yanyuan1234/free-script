@@ -3064,8 +3064,24 @@ function sendNpcChat() {
     input.value = '';
     // 显示玩家气泡
     addNpcChatBubble('player', text);
-    // 请求NPC回复
-    requestNpcReply(text);
+    // 请求NPC回复（防 unhandledrejection：捕获异步错误）
+    try {
+        var p = requestNpcReply(text);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[NPC聊天] 异步操作失败:', e);
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+                }
+            });
+        }
+    } catch (e) {
+        console.error('[NPC聊天] 同步错误:', e);
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+        }
+    }
 }
 function selectNpcChatChoice(text) {
     if (npcChatState.isSending) return;
@@ -3073,8 +3089,24 @@ function selectNpcChatChoice(text) {
     document.getElementById('npcChatChoices').innerHTML = '';
     // 显示玩家气泡
     addNpcChatBubble('player', text);
-    // 请求NPC回复
-    requestNpcReply(text);
+    // 请求NPC回复（防 unhandledrejection）
+    try {
+        var p = requestNpcReply(text);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[NPC聊天] 异步操作失败:', e);
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+                }
+            });
+        }
+    } catch (e) {
+        console.error('[NPC聊天] 同步错误:', e);
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+        }
+    }
 }
 function renderRichMessage(text) {
     if (!text) return '';
