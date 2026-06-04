@@ -2276,26 +2276,10 @@ var PresetManager = {
     // 从 PresetEngine 合并的方法
     // ========================================
 
-    // 构建基础游戏规则（原 PresetEngine._buildBaseGameRules）
+    // 构建基础游戏规则：委托给 game.js 的 buildSystemPrompt()，避免硬编码副本不同步
     buildBaseGameRules: function() {
-        var _wiResult = WorldInfo.buildInjection(gameState.conversationHistory || []);
-        var _wiText = (typeof _wiResult === 'object' && _wiResult !== null) ? (_wiResult.text || '') : (_wiResult || '');
-
-        gameState._wiPositionTexts = (typeof _wiResult === 'object' && _wiResult !== null && _wiResult.positionTexts) ? _wiResult.positionTexts : null;
-
-        var _memoryText = '';
-        if (typeof EnhancedMemory !== 'undefined') {
-            _memoryText = EnhancedMemory.buildSmartInjection();
-        }
-
-        var _safeUserPrompt = typeof _sanitizePromptInput === 'function' ? _sanitizePromptInput(gameState.userPrompt) : (gameState.userPrompt || '');
-        var _safeCustomStyle = typeof _sanitizePromptInput === 'function' ? _sanitizePromptInput(gameState.customStyle) : (gameState.customStyle || '');
-
-        return '你是一个高自由度的文字游戏AI引擎。\n玩家想玩的游戏： "' + _safeUserPrompt + '"\n' +
-        (_safeCustomStyle ? '【写作风格】\n' + _safeCustomStyle + '\n' : '') +
-        buildProtagonistPrompt() +
-        (_memoryText ? '【剧情记忆】\n' + _memoryText + '\n' : '') +
-        '【核心规则】\n1. 根据玩家描述创造沉浸式游戏世界\n2. 每次回复必须是一个完整的JSON对象，不要包裹在代码块中\n3. 剧情要有画面感和代入感，像沉浸式小说段落，由预设控制字数（通过{{getglobalvar::字数总要求}}获取）\n4. 选项数量由预设控制，不强制要求固定数量\n5. 根据世界观在world中创造性设计信息模块\n6. 【极其重要】所有输出必须是纯中文！story、choices、player、characters、world等所有字段的值都必须用中文书写，绝对禁止出现英文！\n7. 【选项视角规则 - 极其重要】choices数组中每个选项必须是【主角(玩家)接下来可以做的事情】，绝对不能写成NPC接下来会做什么！必须从玩家操控的主角视角出发，描述主角下一步可以采取的行动、对话、决定、反应。例如：✓「我走向她问道…」「我拿起桌上的剑…」「我转身离开」 ✗「她走向我…」「他拿起剑…」\n\n【心声系统规则 - 极其重要】\n1. 每次回复在正文情绪峰值处插入次数由预设控制单独成段的 <giggle>角色名称：心声内容</giggle> 包裹的第一人称独白（<200字/去翻译化），从未来视角（比如和主角在一起后）看待在当前时刻自己的表现，可以是诙谐的、幽默的、怀旧的\n2. 心声格式：<giggle>角色名称：心声内容</giggle>，使用HTML标签包裹，单独成段\n3. 心声是NPC角色的内心独白，严守全知盲区，仅能基于主角的对话/动作产生反应，绝对禁止窥探或回应主角未出口的心理活动\n4. 禁止写主角角度的心声，仅限非主角角色\n5. 心声要自然融入正文节奏，在情绪转折、关键抉择、暧昧时刻等峰值处插入\n6. 不同NPC心声风格必须差异化，体现各自性格\n9. 【NPC主动消息】npcMessages数组用于NPC主动给玩家发消息（类似微信私聊）。根据NPC性格决定是否发消息：黏人型NPC可能每回合都发，冷漠型可能几回合才发一次。没有NPC要发消息时就输出空数组[]。消息内容要符合NPC性格和当前剧情情境，字数由预设控制。【重要区分】npcMessages是即时聊天消息（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在mail（邮箱）中。\n8. 章节结尾可使用[章节结束|章节标题]标记，如[章节结束|幸福之愿·无伤的相遇]\n\n【回复格式 - 纯JSON，不要用代码块包裹】\n{\n    "title": "当前章节标题，如\'新的开始\'、\'暗流涌动\'等，4-8个字",\n    "story": "剧情正文，用\\n换行。对话用「」包裹。由预设控制字数。心声标记数量由预设控制，格式：<giggle>NPC角色名：该NPC的内心想法</giggle>，单独成段。心声只能写NPC的，绝对不能写主角的！",\n    "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如\'生\'\'力\'\'智\'等，不要用emoji"}],\n    "choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],\n    "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] },\n    "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 50, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}],\n    "world": [\n        {"type": "text", "title": "标题", "content": "内容"},\n        {"type": "list", "title": "标题", "items": ["条目"]},\n        {"type": "ranking", "title": "标题", "items": ["第一名"]},\n        {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]},\n        {"type": "cards", "title": "标题", "items": [{"icon": "单字图标如\'剑\'\'药\'\'书\'等，不要用emoji", "title": "子标题", "content": "内容"}]},\n        {"type": "comments", "title": "标题", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}\n    ],\n    "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}],\n    "quests": [{"title": "任务名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}],\n    "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}],\n    "keyEvents": ["本回合发生的重要事件，只记真正关键的"],\n    "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的消息内容"}],\n    "currency": 0,\n    "currencyName": "根据世界观设定货币名称（修仙世界用灵石，现代用元/余额，古代用银两等）",\n    "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息"\n}\n\n【keyEvents规则 - 极其重要】\n1. 每回合检查是否发生了"重要事件"，有则写入keyEvents数组\n2. 什么算重要事件：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露\n3. 每条用简短一句话描述，包含人物名和具体内容\n4. 日常对话、普通移动、无关紧要的小事不要写入\n5. 每回合0-3条，没有重要事件就写空数组 []\n6. 示例："苏婉儿与主角约定今晚在咖啡厅见面"、"发现李铁柱是卧底"、"获得传说级宝剑"\n\n【player规则 - 绝对核心，违反会导致游戏崩溃】\n1. player.name 必须严格等于主角名字，绝对禁止改名！\n2. player对象只能在根级别的player字段，绝对禁止把主角放进characters数组！\n3. 主角身份、性格等必须与玩家设定一致，禁止擅自修改！\n4. 如果玩家只提供了名字，其他字段可以根据世界观合理补全，但名字必须完全一致！\n\n【characters规则】\n1. 除了主角之外的NPC才放进characters数组\n2. 每个NPC必须有name、title、relation、favorability字段\n3. favorability是-100到100的整数，表示对主角的好感度\n4. relation用简短词描述，如"朋友"、"敌人"、"恋人"、"陌生人"等';
+        if (typeof buildSystemPrompt === 'function') return buildSystemPrompt();
+        return '';
     },
 
 };

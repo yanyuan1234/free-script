@@ -4417,14 +4417,31 @@ async function generateEnding() {
         }).join('\n\n');
         if (allText.length > 15000) allText = allText.substring(0, 15000) + '\n\n...（后续内容省略）';
 
+        // 构建角色信息
+        var charInfo = '';
+        if (gameState.worldSnapshot && gameState.worldSnapshot.characters) {
+            charInfo = gameState.worldSnapshot.characters.map(function(c) {
+                return c.name + (c.relation ? '（' + c.relation + '）' : '');
+            }).join('、');
+        }
+        var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
+        var worldTheme = (gameState.userPrompt || '').substring(0, 100);
+
         var prompt = '你是一个游戏结局生成器。根据以下游戏剧情，生成一个完整的结局。\n\n' +
+            '【世界观】' + worldTheme + '\n' +
+            '【主角】' + playerName + '\n' +
+            '【主要角色】' + (charInfo || '未知') + '\n\n' +
             '【要求】\n' +
-            '1. 用JSON格式回复：{"title":"结局标题","summary":"结局概述（200字）","epilogue":"后记（300字）","names":"相关角色名"}\n' +
+            '1. 用JSON格式回复：{"title":"结局标题","summary":"结局概述（200字）","epilogue":"后记（300字）","names":"相关角色名，用顿号分隔"}\n' +
             '2. 结局要符合剧情发展，有始有终\n' +
-            '3. 直接输出JSON，不要代码块包裹\n\n' +
+            '3. 直接输出JSON，不要代码块包裹\n' +
+            '4. names字段中的角色名用顿号（、）分隔\n\n' +
             '【剧情】\n' + allText;
 
         var result = await callAI([{
+            role: 'system',
+            content: '你是专业的游戏结局编剧，擅长为文字冒险游戏创作有深度、有画面感的结局。所有输出必须用中文。'
+        }, {
             role: 'user',
             content: prompt
         }], {

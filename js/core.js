@@ -3071,7 +3071,8 @@ gameState.conversationHistory = [{
         role: 'system',
         content: gameState.systemPrompt
     }];
-if (gameState.customStyle) {
+if (gameState.customStyle && PresetManager.currentPresetIndex < 0) {
+    // 仅在无预设时注入写作风格；有预设时由预设完全控制
     gameState.conversationHistory.push({
         role: 'user',
         content: '【写作风格要求】请在所有输出中遵循：\n' + gameState.customStyle + '\n\n回复"明白"确认。'

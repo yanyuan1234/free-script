@@ -1,4 +1,61 @@
 
+// ========================================
+// 世界观主题检测 + 动态术语系统
+// ========================================
+
+/**
+ * 检测当前游戏的世界观主题
+ * 基于 gameState.userPrompt 中的关键词判断
+ * 返回: 'modern' | 'ancient' | 'xianxia' | 'wasteland' | 'fantasy' | 'default'
+ */
+function detectWorldTheme() {
+    var prompt = (gameState && gameState.userPrompt) || '';
+    var text = prompt.toLowerCase();
+    // 修仙/仙侠（优先检测，因为可能包含"古代"关键词）
+    if (/修仙|仙侠|灵气|灵石|宗门|道侣|元婴|金丹|筑基|飞升|天劫|仙界|修真|道友|师尊/.test(text)) return 'xianxia';
+    // 古代
+    if (/古代|古风|朝代|皇帝|宫廷|江湖|武侠|侠客|县令|将军|公主|王爷|宫斗|科举|银两/.test(text)) return 'ancient';
+    // 末世/废土
+    if (/末世|废土|丧尸|末日|幸存|避难|变异|辐射|物资|避难所|丧尸世界/.test(text)) return 'wasteland';
+    // 西幻/奇幻
+    if (/魔法|精灵|龙族|骑士|冒险者|公会|魔王|勇者|矮人|哥布林|地下城|中世纪/.test(text)) return 'fantasy';
+    // 现代（默认）
+    if (/现代|都市|职场|学校|校园|公司|总裁|同事|微信|手机|网络/.test(text)) return 'modern';
+    // 无法判断时用 default
+    return 'default';
+}
+
+/**
+ * 根据世界观主题返回动态术语映射
+ * 用于提示词和 UI 中的硬编码术语替换
+ */
+function getWorldTerms(theme) {
+    if (!theme) theme = detectWorldTheme();
+    var terms = {
+        modern:   { mail: '邮件', moments: '朋友圈', shop: '商店', comments: '论坛', ranking: '排行榜', diary: '日记', cards: '任务卡片', currency: '元', npcMsg: '消息', bag: '背包', quest: '任务' },
+        ancient:  { mail: '飞鸽传书', moments: '江湖传闻', shop: '集市', comments: '茶馆', ranking: '英雄榜', diary: '手札', cards: '密信', currency: '银两', npcMsg: '传话', bag: '行囊', quest: '差事' },
+        xianxia:  { mail: '传音符', moments: '修士手札', shop: '灵宝阁', comments: '论道台', ranking: '天道碑', diary: '修炼日志', cards: '机缘', currency: '灵石', npcMsg: '传音', bag: '储物袋', quest: '历练' },
+        wasteland:{ mail: '无线电', moments: '幸存者广播', shop: '补给站', comments: '幸存者频道', ranking: '战力榜', diary: '生存记录', cards: '线索', currency: '物资', npcMsg: '对讲机', bag: '背包', quest: '行动' },
+        fantasy:  { mail: '魔法信函', moments: '冒险者留言', shop: '杂货铺', comments: '冒险者公会', ranking: '勇者榜', diary: '冒险日志', cards: '委托', currency: '金币', npcMsg: '传讯', bag: '行囊', quest: '委托' },
+        default:  { mail: '邮件', moments: '朋友圈', shop: '商店', comments: '论坛', ranking: '排行榜', diary: '日记', cards: '任务卡片', currency: '货币', npcMsg: '消息', bag: '背包', quest: '任务' }
+    };
+    return terms[theme] || terms['default'];
+}
+
+/**
+ * 获取当前世界观的术语（缓存版，避免重复检测）
+ */
+var _cachedWorldTheme = null;
+var _cachedWorldTerms = null;
+function getCurrentWorldTerms() {
+    var theme = detectWorldTheme();
+    if (theme !== _cachedWorldTheme) {
+        _cachedWorldTheme = theme;
+        _cachedWorldTerms = getWorldTerms(theme);
+    }
+    return _cachedWorldTerms;
+}
+
 // 【修复A P1-4】清理用户输入中的潜在prompt injection内容
 function _sanitizePromptInput(str) {
     if (!str) return '';
@@ -47,6 +104,7 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
     }
 
     var _maxTokens = gameState.maxTokens || 4096;
+    var _terms = getCurrentWorldTerms();
     var _prompt = `你是一个高自由度的文字游戏AI引擎。
 
 玩家想玩的游戏："${_safeUserPrompt}"
@@ -107,20 +165,20 @@ ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date 
 5. 心声要自然融入正文节奏，在情绪转折、关键抉择、暧昧时刻等峰值处插入
 6. 不同 NPC 心声风格必须差异化，体现各自性格
 
-【NPC主动消息 - 由性格决定频率】
-npcMessages 数组是 NPC 主动给玩家发即时消息（类似微信私聊）。【频率由 NPC 性格严格决定】：
+【${_terms.npcMsg} - 由性格决定频率】
+npcMessages 数组是 NPC 主动给玩家发${_terms.npcMsg}。【频率由 NPC 性格严格决定】：
 - 高频型（黏人/热情/外向/暗恋/崇拜/恋人/亲人/挚友/担心你/情绪波动中）→ 几乎每回合都要发 1-3 条
 - 中频型（友好/同事/同门/温和/中好感/日常关心）→ 隔 1-2 回合发 1 条，或在剧情触发时发
 - 低频型（内向/沉默/高冷/傲娇/陌生/淡漠/警戒）→ 隔 2-4 回合才发 1 条，且往往只在剧情相关时
 - 几乎不发（敌对/仇恨/恐惧/已拉黑/已断联/完全不熟）→ 极少发，重大剧情转折才可能发
 重要原则：①根据 characters 中每个 NPC 的 personality/relation/favorability 综合判断；②同一 NPC 不要每条消息都重复发，关键剧情点才值得发；③消息内容要符合该 NPC 当下的心情和与主角的关系；④当主角刚和某 NPC 在剧情中互动过，该 NPC 本回合发消息的概率显著提升。
-【重要区分】npcMessages 是即时聊天消息（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在 mail（邮箱）中。
+【重要区分】npcMessages 是即时${_terms.npcMsg}（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在 mail（${_terms.mail}）中。
 
 【章节标记】
 章节结尾可使用 [章节结束|章节标题] 标记，如 [章节结束|幸福之愿·无伤的相遇]
 
 【回复格式 - 纯JSON，不要用代码块包裹】
-{ "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "标题", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "标题", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "标题", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "朋友圈", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "收件箱", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "商店", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "私密日记", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "任务名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的消息内容"}], "currency": 0, "currencyName": "根据世界观设定货币名称（修仙世界用灵石，现代用元/余额，古代用银两等）", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" }
+{ "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "${_terms.ranking}", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "${_terms.cards}", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "${_terms.comments}", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "${_terms.moments}", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_terms.mail}", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "${_terms.shop}", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "${_terms.diary}", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "${_terms.quest}名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的${_terms.npcMsg}内容"}], "currency": 0, "currencyName": "${_terms.currency}", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" }
 
 【keyEvents规则 - 极其重要】
 1. 每回合检查是否发生了"重要事件"，有则写入 keyEvents 数组
@@ -146,19 +204,19 @@ player 是主角（玩家自己），是玩家操控的唯一角色！必须包�
 
 【world动态模块 - 核心玩法】
 1. world 数组每次回复的模块数量和类型由预设控制（无预设时见【字数与格式控制-无预设默认值】，默认 2-3 个）
-2. 模块必须和当前剧情紧密联动：玩家刚和 NPC 聊天 → 该 NPC 的朋友圈(moments)要发相关动态；玩家获得重要物品 → 商店(shop)出现相关商品；剧情有重要转折 → 论坛(comments)出现讨论帖、排行榜(ranking)发生变化
+2. 模块必须和当前剧情紧密联动：玩家刚和 NPC 聊天 → 该 NPC 的${_terms.moments}要发相关动态；玩家获得重要物品 → ${_terms.shop}出现相关商品；剧情有重要转折 → ${_terms.comments}出现讨论帖、${_terms.ranking}发生变化
 3. 每种类型都要给具体内容，不要只给空数组
-4. 可用 type：text(纯文本) / list(列表) / ranking(排行榜,name+value) / key_value(键值对) / cards(任务/线索卡片,icon+title+content) / comments(论坛,main+comments) / moments(朋友圈,posts) / mail(邮件,from+subject+body) / shop(商店,icon+name+desc+price) / diary(日记,npc+date+content+mood)
+4. 可用 type：text(纯文本) / list(列表) / ranking(${_terms.ranking},name+value) / key_value(键值对) / cards(${_terms.cards},icon+title+content) / comments(${_terms.comments},main+comments) / moments(${_terms.moments},posts) / mail(${_terms.mail},from+subject+body) / shop(${_terms.shop},icon+name+desc+price) / diary(${_terms.diary},npc+date+content+mood)
 
-【quests任务规则】
-1. 根据剧情自动生成和更新任务列表
-2. type 分三种：主线（推动核心剧情）、支线（可选任务）、隐藏（特殊触发）
+【${_terms.quest}规则】
+1. 根据剧情自动生成和更新${_terms.quest}列表
+2. type 分三种：主线（推动核心剧情）、支线（可选${_terms.quest}）、隐藏（特殊触发）
 3. status 分三种：进行中、已完成、失败
 4. progress 用"当前/总数"格式，如"2/5"，没有明确进度的可以省略
 5. hint 是给玩家的下一步提示，简短一句话
-6. 完成或失败的任务保留 1-2 回合后可以移除
-7. 同时存在的任务不超过 5 个
-8. 第一回合就应该根据剧情给出至少 1 个主线任务
+6. 完成或失败的${_terms.quest}保留 1-2 回合后可以移除
+7. 同时存在的${_terms.quest}不超过 5 个
+8. 第一回合就应该根据剧情给出至少 1 个主线${_terms.quest}
 
 【relationships关系网规则】
 1. 记录当前所有重要角色之间的关系
@@ -169,7 +227,7 @@ player 是主角（玩家自己），是玩家操控的唯一角色！必须包�
 6. 只记重要关系，上限 10 条
 7. 包括 NPC 之间的关系，不仅仅是主角和 NPC 的关系
 
-【bag背包规则】
+【${_terms.bag}规则】
 1. usable 为 true 表示可以使用的消耗品（药品、食物等），effect 描述使用后的效果
 2. equippable 为 true 表示可以装备的物品，slot 表示装备位（weapon/armor/accessory/head）
 3. equipped 为 true 表示当前已装备
@@ -1306,7 +1364,7 @@ async function _compressConversation(removed, sys) {
             var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你是专业的剧情记忆管理专家。现在需要增量更新剧情摘要。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n## 任务要求\n请将新增内容整合到已有摘要中，生成更新后的简洁摘要。\n- 保留已有摘要中的关键信息\n- 添加新增内容中的重要事件\n- 删除冗余和重复内容\n- 保持摘要简洁（控制在500字以内）\n\n## 输出格式\n直接输出更新后的摘要内容，无需额外格式标记。';
+        summaryPrompt = '你是专业的剧情记忆管理专家。现在需要增量更新剧情摘要。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n## 任务要求\n请将新增内容整合到已有摘要中，生成更新后的结构化摘要。\n\n## 输出格式要求\n请按以下结构输出，每个部分用【】标记：\n\n【剧情主线】\n用2-3句话概括核心剧情走向，突出关键转折点。\n\n【角色动态】\n列出出场角色的状态变化（新登场、关系变化、情绪变化、获得/失去物品等）。\n格式：角色名 - 变化描述\n\n【重要事件】\n提取关键事件（战斗、对话、发现、决策等），按时间顺序排列。\n\n【当前状态】\n玩家当前位置、持有物品、主要目标、面临的挑战。\n\n【待解决悬念】\n未完成的任务、未解答的问题、潜在的危机。\n\n## 注意事项\n- 保留已有摘要中的关键信息，添加新增内容中的重要事件\n- 删除冗余和重复内容\n- 区分"已解决"和"待解决"的事项\n- 关注角色的心理变化和关系演变\n- 突出剧情的因果关系\n- 摘要总字数控制在500字以内';
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
@@ -3315,13 +3373,16 @@ async function requestNpcReply(playerText) {
         // 构建对话上下文
         var systemMsg = '你现在扮演「' + name + '」这个角色，与玩家进行一对一对话。\n\n' + '【角色信息】\n' + '姓名: ' + name + '\n' +
             (c.title ? '身份: ' + c.title + '\n' : '') + (c.relation ? '与主角关系: ' + c.relation + '\n' :
-            '') + (c.favorability !== undefined ? '对主角好感度: ' + c.favorability + '/100\n' : '') + (c
+            '') + (c.favorability !== undefined ? '对主角好感度: ' + c.favorability + '（范围-100到100，0为中立）\n' : '') + (c
                 .desc ? '当前状态: ' + c.desc + '\n' : '');
         if (c.details && c.details.length > 0) {
             systemMsg += c.details.map(function(d) {
                 return d.key + ': ' + d.value;
             }).join('\n') + '\n';
         }
+        // 注入主角名字，让 NPC 能正确称呼玩家
+        var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
+        systemMsg += '【玩家信息】名字: ' + playerName + '\n';
         // 加上剧情背景
         if (gameState.rollingSummary) {
             systemMsg += '\n【剧情背景】\n' + gameState.rollingSummary + '\n';
