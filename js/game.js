@@ -1631,6 +1631,13 @@ function extractStoryStreaming(text) {
     var result = '';
     while (i < text.length) {
         var ch = text[i];
+        // 【修复ISSUE-012】跳过代理对的后半部分，防止emoji/罕见CJK被拆开
+        var code = text.charCodeAt(i);
+        if (code >= 0xDC00 && code <= 0xDFFF && i > 0) {
+            // 这是代理对的后半部分（low surrogate），跳过
+            i++;
+            continue;
+        }
         if (inEscape) {
             switch (ch) {
                 case 'n':
@@ -1687,8 +1694,7 @@ function onStreamChunk(chunk) {
     streamBuffer += chunk;
     var story = extractStoryStreaming(streamBuffer);
     if (story && story.length > 0) {
-        // 应用正则脚本到AI输出
-        story = RegexManager.applyToOutput(story);
+        // 【修复ISSUE-015】流式阶段不执行正则处理（O(n²)性能问题），延迟到流结束后处理
         TypewriterBuffer.push(story);
     }
 }
@@ -1702,12 +1708,7 @@ function renderStory(text) {
     var storyEl = document.getElementById('storyText');
     var contentEl = document.getElementById('gameContent');
     
-    // 【修复】应用正则表达式处理（用于显示）
-    if (typeof RegexEngine !== 'undefined' && RegexEngine.regexScripts.length > 0) {
-        // 计算当前消息深度
-        var depth = (gameState.conversationHistory || []).length;
-        text = RegexEngine.processAIResponse(text, depth);
-    }
+    // 【修复ISSUE-016】移除引用不存在RegexEngine的死代码
     
     // 【修复C P2-2】在设置innerHTML前进行HTML净化，防止XSS
     var formatted = sanitizeHtml(formatStory(text));
@@ -1719,18 +1720,32 @@ var globalThoughtId = 0;
 function formatStory(text) {
     if (!text) return '';
 
-    // 【修复】反转义 HTML 实体，防止 <giggle> 和 「」被转义后无法匹配
-    // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
-    text = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-    // 同时处理数字字符实体（如 &#12300; → 「）
-    text = text.replace(/&#(\d+);/g, function(_, code) {
-        return String.fromCharCode(parseInt(code, 10));
-    }).replace(/&#x([0-9a-fA-F]+);/g, function(_, hex) {
-        return String.fromCharCode(parseInt(hex, 16));
-    });
-
-    // 【新增兼容】处理AI错误返回的中文方括号格式 【giggle】→<giggle>
+    // 【修复ISSUE-003】不再盲目反转义所有HTML实体（有XSS风险），
+    // 改为只还原 <giggle> 标签和中文引号等必要实体，其他保持转义状态
+    // 先将 &amp; 临时替换为占位符，防止双重反转义
+    var _ampHolder = '\x00AMP\x00';
+    text = text.replace(/&amp;/g, _ampHolder);
+    // 只还原 <giggle> 和 </giggle> 标签
+    text = text.replace(/&lt;giggle&gt;/gi, '<giggle>').replace(/&lt;\/giggle&gt;/gi, '</giggle>');
+    // 还原中文方括号格式的 giggle 标签
     text = text.replace(/【giggle】/g, '<giggle>').replace(/【\/giggle】/g, '</giggle>');
+    // 还原数字字符实体中的中文引号等必要字符
+    text = text.replace(/&#(\d+);/g, function(_, code) {
+        var cp = parseInt(code, 10);
+        // 只还原中文标点（「」『』等）和常见符号，不还原 < > " 等
+        if ((cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF00 && cp <= 0xFFEF)) {
+            return String.fromCharCode(cp);
+        }
+        return '&#' + code + ';';
+    }).replace(/&#x([0-9a-fA-F]+);/g, function(_, hex) {
+        var cp = parseInt(hex, 16);
+        if ((cp >= 0x3000 && cp <= 0x303F) || (cp >= 0xFF00 && cp <= 0xFFEF)) {
+            return String.fromCharCode(cp);
+        }
+        return '&#x' + hex + ';';
+    });
+    // 恢复 &amp;
+    text = text.replace(new RegExp(_ampHolder, 'g'), '&amp;');
 
     // 先解析装饰标签，提取到 PresetAppManager
     if (typeof PresetAppManager !== 'undefined') {
@@ -1743,7 +1758,7 @@ function formatStory(text) {
     }
 
     // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）
-    var oldBubbles = document.querySelectorAll('body > .thought-bubble:not([data-persistent])');
+    var oldBubbles = document.querySelectorAll('#thoughtBubbleContainer > .thought-bubble:not([data-persistent])');
     oldBubbles.forEach(function(b) { b.remove(); });
 
     // 检查是否包含章节结束标记
@@ -1879,7 +1894,14 @@ function createThoughtTriggerHTML(id, thoughts) {
         return '<div class="thought-item"><span class="thought-char">' + escapeHtml(t.character) +
             ':</span> ' + escapeHtml(t.text) + '</div>';
     }).join('');
-    // 气泡直接append到body
+    // 【修复ISSUE-019】气泡append到专用容器，避免污染body
+    var bubbleContainer = document.getElementById('thoughtBubbleContainer') || (function() {
+        var c = document.createElement('div');
+        c.id = 'thoughtBubbleContainer';
+        c.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999;';
+        document.body.appendChild(c);
+        return c;
+    })();
     var bubble = document.createElement('div');
     bubble.className = 'thought-bubble';
     bubble.id = 'thought-' + id;
@@ -1888,7 +1910,7 @@ function createThoughtTriggerHTML(id, thoughts) {
     // 清理已存在的同名气泡
     var oldBubble = document.getElementById('thought-' + id);
     if (oldBubble) oldBubble.remove();
-    document.body.appendChild(bubble);
+    bubbleContainer.appendChild(bubble);
 
     return '<span class="thought-trigger" data-target="thought-' + id +
         '" onclick="toggleThought(this)" title="查看心声">' +
@@ -2193,16 +2215,19 @@ async function loadFromSlot(slot) {
         // Fix Issue 43: Merge instead of replace to preserve runtime references
         Object.keys(parsed).forEach(function(k) { gameState[k] = parsed[k]; });
         
+        // 【修复ISSUE-026】用默认值填充缺失字段，确保旧存档兼容
+        var _defaults = createDefaultGameState();
+        Object.keys(_defaults).forEach(function(key) {
+            if (gameState[key] === undefined) gameState[key] = _defaults[key];
+        });
+        
         // 读档后重置临时字段，防止旧数据残留
         gameState._depthPrompts = {};
         gameState._positionPrompts = {};
         gameState._afterChatPrompts = [];
         gameState._wiCachedResult = null;
         // 重置世界书轮次追踪器，防止cooldown/delay状态异常
-        if (typeof WorldInfo !== 'undefined') {
-            WorldInfo._turnTracker = {};
-            WorldInfo._currentTurn = 0;
-        }
+        if (typeof WorldInfo !== 'undefined' && WorldInfo._resetTurnCounter) WorldInfo._resetTurnCounter();
         
         // 确保版本号更新
         gameState._version = GAME_VERSION;
@@ -2922,13 +2947,14 @@ function closeNpcChat() {
 function toggleChatMenu() {
     var existing = document.getElementById('chatMenuPanel');
     if (existing) {
+        // 【修复ISSUE-018】移除菜单时同时清理关联的click监听器，防止泄漏
         existing.remove();
         return;
     }
     var menu = document.createElement('div');
     menu.id = 'chatMenuPanel';
     menu.style.cssText =
-        'position:absolute;top:44px;right:8px;background:#fff;border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:4px 0;z-index:200;min-width:130px;overflow:hidden';
+        'position:absolute;top:44px;right:8px;background:var(--bg-card,#fff);color:var(--text-primary,#333);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:4px 0;z-index:200;min-width:130px;overflow:hidden';
     var items = [{
             text: '编辑备注',
             action: 'editChatRemark'
@@ -2949,17 +2975,24 @@ function toggleChatMenu() {
     items.forEach(function(item) {
         var row = document.createElement('div');
         row.style.cssText =
-            'padding:12px 16px;font-size:14px;color:#333;cursor:pointer;transition:background .15s';
+            'padding:12px 16px;font-size:14px;color:var(--text-primary,#333);cursor:pointer;transition:background .15s';
         row.textContent = item.text;
         row.onmouseenter = function() {
-            this.style.background = '#f5f5f5';
+            this.style.background = 'var(--bg-hover,#f5f5f5)';
         };
         row.onmouseleave = function() {
             this.style.background = '';
         };
         row.onclick = function() {
             menu.remove();
-            window[item.action]();
+            // 【修复ISSUE-010】使用函数映射表替代window[]动态调用，防止原型污染
+            var actionMap = {
+                'editChatRemark': editChatRemark,
+                'changeNpcAvatar': changeNpcAvatar,
+                'blockNpc': blockNpc,
+                'deleteNpcChat': deleteNpcChat
+            };
+            if (typeof actionMap[item.action] === 'function') actionMap[item.action]();
         };
         menu.appendChild(row);
     });
@@ -2969,9 +3002,8 @@ function toggleChatMenu() {
         document.addEventListener('click', function closeMenu(e) {
             if (!menu.contains(e.target) && e.target.id !== 'chatDetailMore') {
                 menu.remove();
-                document.removeEventListener('click', closeMenu);
             }
-        });
+        }, { once: true });
     }, 10);
 }
 function editChatRemark() {
@@ -3502,15 +3534,18 @@ async function requestNpcReply(playerText) {
                 // 最后一条消息显示完后，渲染选项
                 if (i === replies.length - 1) {
                     if (choices.length > 0) {
-                        // 【修复X5】NPC聊天选项需要转义
-                        var choicesHtml = choices.map(function(ch) {
-                            var safe = String(ch).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(
-                                /"/g, '&quot;').replace(/\n/g, ' ');
-                            return '<button class="npc-chat-choice" onclick="selectNpcChatChoice(\'' +
-                                safe + '\')">' + escapeHtml(ch) + '</button>';
-                        }).join('');
-                        document.getElementById('npcChatChoices').innerHTML =
-                            choicesHtml;
+                        // 【修复ISSUE-005】使用data属性+事件委托替代onclick字符串拼接，防止注入
+                        var choicesContainer = document.getElementById('npcChatChoices');
+                        choicesContainer.innerHTML = '';
+                        choices.forEach(function(ch) {
+                            var btn = document.createElement('button');
+                            btn.className = 'npc-chat-choice';
+                            btn.textContent = String(ch);
+                            btn.addEventListener('click', function() {
+                                selectNpcChatChoice(String(ch));
+                            });
+                            choicesContainer.appendChild(btn);
+                        });
                     } else {
                         document.getElementById('npcChatChoices').innerHTML = '';
                     }
@@ -3592,7 +3627,7 @@ function saveNpcEdit() {
     var favor = parseInt(document.getElementById('npcEditFavor').value) || 50;
     var desc = document.getElementById('npcEditDesc').value.trim();
     var extra = document.getElementById('npcEditExtra').value.trim();
-    favor = Math.max(0, Math.min(100, favor));
+    favor = Math.max(-100, Math.min(100, favor)); // 【修复ISSUE-002】统一好感度范围为-100~100
     var details = [];
     if (extra) {
         extra.split('\n').forEach(function(line) {
@@ -3693,7 +3728,7 @@ function renderNpcPage() {
                 '<div class="char-tags">' + tagsHtml + '</div>' +
                 '<div class="char-stats">' +
                 '<div class="char-stat-row"><span>好感</span><div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' +
-                fav + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
+                Math.max(0, (fav + 100) / 2) + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
                 (c.desc ?
                     '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
