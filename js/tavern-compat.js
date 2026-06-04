@@ -857,7 +857,15 @@ var EnhancedMemory = {
     
     // 长期记忆：重要事件 + 结构化表格
     longTermMemory: {
-        masterSummary: '',           // 整体剧情大纲
+        // === 分层剧情大纲（替代纯文本 masterSummary）===
+        // 世界观/开场设定：永久保留，不截断
+        worldSetting: '',
+        // 主线剧情：按章节分段，保留最近N章 + 第一章
+        mainPlot: [],
+        // 当前章节详细摘要
+        currentChapterSummary: '',
+        // 兼容旧存档
+        masterSummary: '',
         importantEvents: [],         // 重要事件列表（按 importance 排序）
         characterTable: {},          // 角色状态表
         itemTable: {},               // 物品追踪表
@@ -865,15 +873,39 @@ var EnhancedMemory = {
         timeline: [],                // 时间线
         relationships: {},            // 关系网
         worldNotes: [],              // 世界观设定
-        // === 新增：永久事实区（永不压缩、永远注入）===
-        // 每条形如 { type, content, locked, createdTurn, source }
-        // type ∈ 'setting' | 'pc_identity' | 'npc_profile' | 'promise' | 'world_rule'
+        // === 永久事实区（永不压缩、永远注入）===
         worldAnchors: [],
-        // === 新增：进行中的约定（玩家承诺/任务/未解悬念）===
-        // 每条形如 { type, content, from, to, deadline, status, createdTurn }
-        // type ∈ 'promise' | 'quest' | 'mystery' | 'threat'
-        // status ∈ 'pending' | 'resolved' | 'broken'
+        // === 进行中的约定 ===
         activeQuests: []
+    },
+
+    // ========================================
+    // 1.1 记忆注入预算配置（核心防膨胀机制）
+    // ========================================
+    injectionBudget: {
+        // 总字符预算（约等于 token 上限的 60%，留余量给对话历史）
+        // 按模型上下文自适应：8K模型约4000字，16K约8000字，32K约12000字
+        maxChars: 4000,
+        // 各模块最小保证预算（即使超总预算也至少保留这些）
+        minBudget: {
+            worldAnchors: 600,      // 永久事实必须保留
+            activeQuests: 200,      // 进行中的约定
+            currentPlot: 400,       // 当前章节 + 近期主线
+            characters: 400,        // 角色状态
+            events: 300,            // 重要事件
+            items: 150,             // 持有物品
+            workingMemory: 400      // 最近对话
+        },
+        // 各模块理想预算（优先满足，剩余再分配）
+        idealBudget: {
+            worldAnchors: 800,
+            activeQuests: 300,
+            currentPlot: 600,
+            characters: 600,
+            events: 500,
+            items: 200,
+            workingMemory: 600
+        }
     },
     
     // 记忆统计
@@ -1125,6 +1157,28 @@ var EnhancedMemory = {
     },
 
     /**
+     * 清理过期约定：resolved/broken 超过30回合的自动归档
+     * 长期 pending（>50回合）的保留但标记为 stale
+     */
+    cleanupQuests: function() {
+        var self = this;
+        if (!self.longTermMemory.activeQuests) return;
+        var currentTurn = self.stats.totalMessages;
+        self.longTermMemory.activeQuests = self.longTermMemory.activeQuests.filter(function(q) {
+            if (q.status === 'resolved' || q.status === 'broken') {
+                // 已关闭的约定：30回合后彻底删除
+                var age = currentTurn - (q.resolvedAt ? q.resolvedTurn || currentTurn : currentTurn);
+                if (age > 30) return false;
+            }
+            if (q.status === 'pending') {
+                // 长期 pending 标记
+                q.stale = (currentTurn - (q.createdTurn || 0)) > 50;
+            }
+            return true;
+        });
+    },
+
+    /**
      * 在 processMessage 时调用：扫描用户消息和 AI 回复，提取承诺并加入永久区
      */
     extractAndRegisterPromises: function(message, gameData) {
@@ -1277,7 +1331,12 @@ var EnhancedMemory = {
             self._harvestWorldAnchors(gameData);
         }
 
-        // 9. 更新统计
+        // 9. 定期清理过期约定
+        if (self.stats.totalMessages % 10 === 0) {
+            self.cleanupQuests();
+        }
+
+        // 10. 更新统计
         self.stats.totalMessages++;
         self.stats.lastUpdateTime = Date.now();
     },
@@ -1614,29 +1673,68 @@ var EnhancedMemory = {
         },
     
     /**
-    * 更新长期记忆
+    * 更新长期记忆（重构：分层大纲 + 时间衰减事件）
     */
     _updateLongTermMemory: function(summary, extractedInfo) {
         var self = this;
+        var currentTurn = self.stats.totalMessages + 1;
 
-        // 更新整体大纲
+        // === 1. 更新分层剧情大纲 ===
         if (summary.storySummary) {
-            if (self.longTermMemory.masterSummary) {
-                self.longTermMemory.masterSummary += '\n' + summary.storySummary;
+            // 首次：提取世界观设定（前3回合的摘要视为世界观）
+            if (currentTurn <= 3 && !self.longTermMemory.worldSetting) {
+                self.longTermMemory.worldSetting = summary.storySummary;
+            }
+            // 章节检测：如果 title 变化或重要度>=8，视为新章节
+            var lastPlot = self.longTermMemory.mainPlot.length > 0
+                ? self.longTermMemory.mainPlot[self.longTermMemory.mainPlot.length - 1]
+                : null;
+            var isNewChapter = false;
+            if (extractedInfo.importance >= 8) isNewChapter = true;
+            if (lastPlot && summary.title && lastPlot.title !== summary.title) isNewChapter = true;
+            // 每10回合强制分章
+            if (!lastPlot || currentTurn - lastPlot.startTurn >= 10) isNewChapter = true;
+
+            if (isNewChapter || !lastPlot) {
+                // 保存上一章摘要到 mainPlot
+                if (self.longTermMemory.currentChapterSummary && lastPlot) {
+                    lastPlot.summary = self.longTermMemory.currentChapterSummary;
+                    lastPlot.endTurn = currentTurn - 1;
+                }
+                // 开新章
+                self.longTermMemory.mainPlot.push({
+                    title: summary.title || ('第' + (self.longTermMemory.mainPlot.length + 1) + '章'),
+                    summary: summary.storySummary,
+                    startTurn: currentTurn,
+                    endTurn: currentTurn,
+                    importance: extractedInfo.importance || 5
+                });
+                // 限制章节数：保留第一章 + 最近4章
+                if (self.longTermMemory.mainPlot.length > 5) {
+                    var first = self.longTermMemory.mainPlot[0];
+                    var recent = self.longTermMemory.mainPlot.slice(-4);
+                    self.longTermMemory.mainPlot = [first].concat(recent);
+                }
+                self.longTermMemory.currentChapterSummary = summary.storySummary;
             } else {
-                self.longTermMemory.masterSummary = summary.storySummary;
+                // 追加到当前章节
+                self.longTermMemory.currentChapterSummary += '\n' + summary.storySummary;
+                // 限制当前章节长度
+                if (Array.from(self.longTermMemory.currentChapterSummary).length > 800) {
+                    self.longTermMemory.currentChapterSummary = self._smartTruncateSummary(
+                        self.longTermMemory.currentChapterSummary, 600
+                    );
+                }
+                // 同步更新最后一章
+                lastPlot.summary = self.longTermMemory.currentChapterSummary;
+                lastPlot.endTurn = currentTurn;
             }
 
-            // 限制长度：保留"开头 30% + 近期 70%"，避免砍掉世界观/主角身份等关键前缀
-            // 使用 Array.from 按 code point 计算长度（中文不踩坑）
-            if (Array.from(self.longTermMemory.masterSummary).length > 2000) {
-                self.longTermMemory.masterSummary = self._smartTruncateSummary(
-                    self.longTermMemory.masterSummary, 1800
-                );
-            }
+            // 兼容旧字段
+            self.longTermMemory.masterSummary = self._buildLegacyMasterSummary();
         }
 
-        // 添加重要事件（按 importance 评分去重；不再 FIFO）
+        // === 2. 添加重要事件（带时间衰减评分）===
         if (extractedInfo.events.length > 0) {
             extractedInfo.events.forEach(function(event) {
                 var content = (typeof event === 'string') ? event : event.content;
@@ -1648,46 +1746,98 @@ var EnhancedMemory = {
                 if (!exists) {
                     self.longTermMemory.importantEvents.push({
                         content: content,
-                        turn: summary.turn,
+                        turn: currentTurn,
                         timestamp: Date.now(),
-                        importance: imp
+                        importance: imp,
+                        // 衰减评分：初始=importance，随时间下降
+                        decayScore: imp
                     });
                 }
             });
-            // 限制：按 importance 排序，保留 top 50（高分的不被挤掉）
+            // 重新计算所有事件的衰减评分，然后裁剪
+            self._recalcEventDecayScores(currentTurn);
             self._pruneImportantEvents(50);
         }
     },
 
     /**
-     * 按 importance 评分裁剪 importantEvents
-     * 高分（≥9）的事件永不被裁；普通事件按 score 排序
+     * 构建兼容旧版本的 masterSummary（首章世界观 + 最近章节）
+     */
+    _buildLegacyMasterSummary: function() {
+        var parts = [];
+        if (this.longTermMemory.worldSetting) {
+            parts.push('【世界观】' + this.longTermMemory.worldSetting);
+        }
+        var plot = this.longTermMemory.mainPlot;
+        if (plot && plot.length > 0) {
+            // 保留第一章 + 最近2章
+            var keep = [plot[0]];
+            if (plot.length > 1) {
+                keep = keep.concat(plot.slice(-2));
+            }
+            keep.forEach(function(ch) {
+                parts.push('【' + ch.title + '】' + ch.summary);
+            });
+        }
+        return parts.join('\n');
+    },
+
+    /**
+     * 重新计算所有事件的衰减评分
+     * 公式：decayScore = importance * max(0.3, 1 - age/80)
+     * 80回合后衰减到30%，保证早期高分事件不会永远霸榜
+     */
+    _recalcEventDecayScores: function(currentTurn) {
+        var self = this;
+        self.longTermMemory.importantEvents.forEach(function(e) {
+            var age = Math.max(0, currentTurn - (e.turn || 0));
+            var decay = Math.max(0.3, 1 - age / 80);
+            e.decayScore = (e.importance || 5) * decay;
+            // 超高分事件（>=9）衰减更慢
+            if (e.importance >= 9) {
+                e.decayScore = (e.importance || 5) * Math.max(0.6, 1 - age / 150);
+            }
+        });
+    },
+
+    /**
+     * 按 decayScore 裁剪 importantEvents（替代旧版的纯 importance 排序）
+     * 高分（importance>=9）事件最多保留15条，避免无限堆积
      */
     _pruneImportantEvents: function(maxCount) {
         var self = this;
         if (!self.longTermMemory.importantEvents) return;
         if (self.longTermMemory.importantEvents.length <= maxCount) return;
-        // 高分（≥8）的事件标记为 locked
-        self.longTermMemory.importantEvents.forEach(function(e) {
-            if (typeof e.importance !== 'number') e.importance = 5;
-            if (e.importance >= 8) e.locked = true;
+
+        // 确保所有事件都有 decayScore
+        var currentTurn = self.stats.totalMessages;
+        self._recalcEventDecayScores(currentTurn);
+
+        // importance>=9 的"史诗事件"单独处理：最多保留15条，按 decayScore 排序
+        var epic = self.longTermMemory.importantEvents.filter(function(e) {
+            return e.importance >= 9;
         });
-        var locked = self.longTermMemory.importantEvents.filter(function(e) { return e.locked; });
-        var unlocked = self.longTermMemory.importantEvents.filter(function(e) { return !e.locked; });
-        unlocked.sort(function(a, b) {
-            // importance 高 + turn 新 的优先
-            if (a.importance !== b.importance) return b.importance - a.importance;
-            return (b.turn || 0) - (a.turn || 0);
+        var normal = self.longTermMemory.importantEvents.filter(function(e) {
+            return e.importance < 9;
         });
-        var budget = Math.max(0, maxCount - locked.length);
-        var keptUnlocked = unlocked.slice(0, budget);
-        // 合并回（locked 在前，按 turn 升序；unlocked 按 importance 降序）
-        locked.sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
-        self.longTermMemory.importantEvents = locked.concat(keptUnlocked);
+
+        // 史诗事件按 decayScore 排序，保留 top 15
+        epic.sort(function(a, b) { return b.decayScore - a.decayScore; });
+        var keptEpic = epic.slice(0, 15);
+
+        // 普通事件按 decayScore 排序，填满剩余预算
+        normal.sort(function(a, b) { return b.decayScore - a.decayScore; });
+        var budget = Math.max(0, maxCount - keptEpic.length);
+        var keptNormal = normal.slice(0, budget);
+
+        // 合并后按 turn 升序排列（输出时更自然）
+        self.longTermMemory.importantEvents = keptEpic.concat(keptNormal).sort(function(a, b) {
+            return (a.turn || 0) - (b.turn || 0);
+        });
     },
 
     /**
-    * 智能截断 masterSummary：保留"开头的世界观/主角身份"和"近期发展"
+    * 智能截断：保留"开头的世界观/主角身份"和"近期发展"
     * 策略：按段落/换行分割，优先丢弃中间较早的段落
     */
     _smartTruncateSummary: function(text, maxChars) {
@@ -2339,89 +2489,149 @@ var EnhancedMemory = {
             });
         return topic;
         },
+    /**
+     * 自适应预算：根据模型上下文大小调整注入预算
+     */
+    _adaptBudget: function() {
+        var ctxSize = (gameState && gameState.contextSize) || 8000;
+        var base = 4000;
+        if (ctxSize >= 32000) base = 12000;
+        else if (ctxSize >= 16000) base = 8000;
+        else if (ctxSize >= 12000) base = 6000;
+        this.injectionBudget.maxChars = base;
+        // 最小预算按比例缩放
+        var ratio = base / 4000;
+        var minB = this.injectionBudget.minBudget;
+        var idealB = this.injectionBudget.idealBudget;
+        Object.keys(minB).forEach(function(k) { minB[k] = Math.floor(minB[k] * ratio); });
+        Object.keys(idealB).forEach(function(k) { idealB[k] = Math.floor(idealB[k] * ratio); });
+    },
+
+    /**
+     * 带预算控制的字符串构建器
+     */
+    _buildSection: function(header, footer, lines, maxChars) {
+        if (!lines || lines.length === 0) return '';
+        var content = lines.join('\n');
+        var total = header.length + footer.length + content.length;
+        if (total <= maxChars) return header + content + footer;
+        // 超预算：逐行截断
+        var budget = maxChars - header.length - footer.length - 3; // 预留 "..."
+        var kept = [];
+        var used = 0;
+        for (var i = 0; i < lines.length; i++) {
+            if (used + lines[i].length + 1 <= budget) {
+                kept.push(lines[i]);
+                used += lines[i].length + 1;
+            } else {
+                break;
+            }
+        }
+        return header + kept.join('\n') + '...' + footer;
+    },
+
     buildSmartInjection: function() {
         var self = this;
-        var injection = '';
+        self._adaptBudget();
         var topic = self.detectCurrentTopic();
+        var currentTurn = self.stats.totalMessages;
+        var budget = self.injectionBudget;
 
-        // === 0. 永久事实区（世界锚点）—— 永不丢失的核心设定 ===
-        // 这是反"AI 遗忘"最关键的一段，开头就喂给 AI
+        // ===== 阶段1：收集各模块原始数据 =====
+        var modules = {
+            worldAnchors: { priority: 10, lines: [], used: 0 },
+            activeQuests: { priority: 9, lines: [], used: 0 },
+            currentPlot: { priority: 8, lines: [], used: 0 },
+            characters: { priority: 7, lines: [], used: 0 },
+            events: { priority: 6, lines: [], used: 0 },
+            items: { priority: 4, lines: [], used: 0 },
+            workingMemory: { priority: 5, lines: [], used: 0 }
+        };
+
+        // --- 0. 永久事实区 ---
         if (self.longTermMemory.worldAnchors && self.longTermMemory.worldAnchors.length > 0) {
-            injection += '<永久事实(任何情况下不可违背)>\n';
-            // 按 type 分组
             var byType = {};
             self.longTermMemory.worldAnchors.forEach(function(a) {
                 if (!byType[a.type]) byType[a.type] = [];
                 byType[a.type].push(a);
             });
-            // 渲染顺序：pc_identity > setting > world_rule > npc_profile > promise
             var order = ['pc_identity', 'setting', 'world_rule', 'npc_profile', 'promise'];
             var typeLabels = {
-                pc_identity: '主角',
-                setting: '世界设定',
-                world_rule: '设定规则',
-                npc_profile: '关键角色',
-                promise: '玩家承诺/约定'
+                pc_identity: '主角', setting: '世界设定', world_rule: '设定规则',
+                npc_profile: '关键角色', promise: '玩家承诺/约定'
             };
             order.forEach(function(t) {
                 if (byType[t] && byType[t].length > 0) {
-                    injection += '【' + typeLabels[t] + '】\n';
+                    modules.worldAnchors.lines.push('【' + typeLabels[t] + '】');
                     byType[t].forEach(function(a) {
-                        injection += '• ' + truncateByChars(a.content, 150, '...') + '\n';
+                        modules.worldAnchors.lines.push('• ' + a.content);
                     });
                 }
             });
-            injection += '</永久事实>\n\n';
         }
 
-        // === 1. 进行中的约定（玩家承诺/任务/未解悬念）===
+        // --- 1. 进行中的约定 ---
         if (self.longTermMemory.activeQuests && self.longTermMemory.activeQuests.length > 0) {
-            var pendingQuests = self.longTermMemory.activeQuests.filter(function(q) {
+            var pending = self.longTermMemory.activeQuests.filter(function(q) {
                 return q.status === 'pending';
             });
-            if (pendingQuests.length > 0) {
-                injection += '<进行中的约定(AI 必须在剧情中遵守)>\n';
-                pendingQuests.forEach(function(q) {
-                    var icon = q.type === 'promise' ? '🤝' : (q.type === 'quest' ? '📜' : (q.type === 'threat' ? '⚠️' : '❓'));
-                    injection += icon + ' ' + truncateByChars(q.content, 100, '...') + '\n';
+            pending.forEach(function(q) {
+                var age = currentTurn - (q.createdTurn || 0);
+                var warn = age > 20 ? '[长期未兑现] ' : '';
+                modules.activeQuests.lines.push('• ' + warn + q.content);
+            });
+        }
+
+        // --- 2. 分层剧情大纲 ---
+        if (self.longTermMemory.worldSetting) {
+            modules.currentPlot.lines.push('【世界观】' + self.longTermMemory.worldSetting);
+        }
+        var plot = self.longTermMemory.mainPlot;
+        if (plot && plot.length > 0) {
+            // 第一章
+            modules.currentPlot.lines.push('【' + plot[0].title + '】' + plot[0].summary);
+            // 最近章节
+            if (plot.length > 1) {
+                var recent = plot.slice(-2);
+                recent.forEach(function(ch) {
+                    modules.currentPlot.lines.push('【' + ch.title + '】' + ch.summary);
                 });
-                injection += '</进行中的约定>\n\n';
             }
         }
-
-        // === 2. 剧情大纲（masterSummary 摘要） ===
-        if (self.longTermMemory.masterSummary) {
-            injection += '<剧情大纲>\n';
-            // 永久事实里的"世界设定"已经单独注入过，这里只给主线剧情部分
-            var ms = self.longTermMemory.masterSummary;
-            // 截断用 Array.from 按 code point
-            var arr = Array.from(ms);
-            if (arr.length > 500) {
-                // 保留首段（开场世界观可能还有） + 近期若干段
-                injection += truncateByChars(ms, 500, '...') + '\n';
-            } else {
-                injection += ms + '\n';
-            }
-            injection += '</剧情大纲>\n\n';
+        if (self.longTermMemory.currentChapterSummary) {
+            modules.currentPlot.lines.push('【当前进展】' + self.longTermMemory.currentChapterSummary);
         }
 
-        // === 3. 角色状态（按 importance 排序）===
+        // --- 3. 角色状态（带场景相关性权重）---
         if (self.longTermMemory.characterTable && Object.keys(self.longTermMemory.characterTable).length > 0) {
-            injection += '<角色状态(全量)>\n';
-            // 按 "重要度" 排序：important 标志 > 最近出现 > 好感度绝对值
-            var chars = Object.keys(self.longTermMemory.characterTable).map(function(name) {
+            var allChars = Object.keys(self.longTermMemory.characterTable).map(function(name) {
                 return self.longTermMemory.characterTable[name];
             });
-            chars.sort(function(a, b) {
-                var aScore = (a.important ? 1000 : 0) + (a.history ? a.history.length : 0) +
-                             (typeof a.favorability === 'number' ? Math.abs(a.favorability - 50) : 0);
-                var bScore = (b.important ? 1000 : 0) + (b.history ? b.history.length : 0) +
-                             (typeof b.favorability === 'number' ? Math.abs(b.favorability - 50) : 0);
-                return bScore - aScore;
+            // 计算综合分数：important + history + favorability + 场景相关性
+            allChars.forEach(function(c) {
+                var score = (c.important ? 1000 : 0) +
+                            (c.history ? c.history.length : 0) * 10 +
+                            (typeof c.favorability === 'number' ? Math.abs(c.favorability - 50) : 0);
+                // 场景相关性：当前对话中提到的角色 +500
+                if (topic.characters.indexOf(c.name) >= 0) score += 500;
+                // 最近出现：3回合内 +300
+                var lastSeen = c.lastSeen || 0;
+                if (Date.now() - lastSeen < 10 * 60 * 1000) score += 300;
+                c._injectScore = score;
             });
-            // 最多注入 5 个角色（避免 token 爆炸），重要角色优先
+            allChars.sort(function(a, b) { return b._injectScore - a._injectScore; });
+            // 场景相关角色强制标记
+            var sceneChars = allChars.filter(function(c) {
+                return topic.characters.indexOf(c.name) >= 0;
+            });
+            // 取 top 5，但保证场景相关角色至少出现
             var maxChars = 5;
-            chars.slice(0, maxChars).forEach(function(c) {
+            var selected = sceneChars.slice();
+            allChars.forEach(function(c) {
+                if (selected.length >= maxChars) return;
+                if (selected.indexOf(c) < 0) selected.push(c);
+            });
+            selected.forEach(function(c) {
                 var name = c.name || '?';
                 var line = '• ' + name;
                 if (c.title) line += '（' + c.title + '）';
@@ -2429,68 +2639,162 @@ var EnhancedMemory = {
                 if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
                 if (c.mood) line += ' | 心情:' + c.mood;
                 if (c.location) line += ' | 位置:' + c.location;
-                // 最近一次 desc
                 if (c.history && c.history.length > 0) {
                     var lastDesc = c.history[c.history.length - 1];
                     if (lastDesc.desc) line += ' | 近况:' + truncateByChars(lastDesc.desc, 40, '...');
                 }
-                injection += line + '\n';
+                modules.characters.lines.push(line);
             });
-            injection += '</角色状态>\n\n';
         }
 
-        // === 4. 重要事件（按 importance 排序，不是 FIFO）===
+        // --- 4. 重要事件（按 decayScore 排序）---
         if (self.longTermMemory.importantEvents && self.longTermMemory.importantEvents.length > 0) {
-            // 排序：importance DESC, 然后 turn DESC
-            var sorted = self.longTermMemory.importantEvents.slice().sort(function(a, b) {
-                var ai = (typeof a.importance === 'number') ? a.importance : 5;
-                var bi = (typeof b.importance === 'number') ? b.importance : 5;
-                if (ai !== bi) return bi - ai;
-                return (b.turn || 0) - (a.turn || 0);
+            self._recalcEventDecayScores(currentTurn);
+            var sortedEvents = self.longTermMemory.importantEvents.slice().sort(function(a, b) {
+                return (b.decayScore || 0) - (a.decayScore || 0);
             });
-            var topN = sorted.slice(0, 10);  // 取 top 10
-            if (topN.length > 0) {
-                injection += '<重要事件TOP' + topN.length + '>\n';
-                topN.forEach(function(e) {
-                    var imp = (typeof e.importance === 'number') ? e.importance : 5;
-                    var icon = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
-                    injection += icon + '[重要度' + imp + '] ' + truncateByChars(e.content, 100, '...') + '\n';
+            // 取 top 10，但保证有场景相关事件
+            var sceneEventContents = [];
+            topic.characters.forEach(function(name) {
+                sortedEvents.forEach(function(e) {
+                    if (e.content && e.content.indexOf(name) >= 0 && sceneEventContents.indexOf(e.content) < 0) {
+                        sceneEventContents.push(e.content);
+                    }
                 });
-                injection += '</重要事件>\n\n';
-            }
+            });
+            var selectedEvents = [];
+            var seen = {};
+            // 先加场景相关
+            sceneEventContents.forEach(function(content) {
+                sortedEvents.forEach(function(e) {
+                    if (e.content === content && !seen[e.content]) {
+                        seen[e.content] = true;
+                        selectedEvents.push(e);
+                    }
+                });
+            });
+            // 再补 decayScore 高的
+            sortedEvents.forEach(function(e) {
+                if (selectedEvents.length >= 10) return;
+                if (!seen[e.content]) {
+                    seen[e.content] = true;
+                    selectedEvents.push(e);
+                }
+            });
+            selectedEvents.forEach(function(e) {
+                var imp = e.importance || 5;
+                var icon = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
+                modules.events.lines.push(icon + '[重要度' + imp + '] ' + e.content);
+            });
         }
 
-        // === 5. 物品状态（仅显示当前持有且重要的）===
+        // --- 5. 物品状态 ---
         if (self.longTermMemory.itemTable && Object.keys(self.longTermMemory.itemTable).length > 0) {
             var items = Object.keys(self.longTermMemory.itemTable).map(function(k) {
                 return self.longTermMemory.itemTable[k];
+            }).filter(function(it) { return it && (it.count || 0) > 0; });
+            // 场景相关物品优先
+            items.sort(function(a, b) {
+                var aScene = topic.items.indexOf(a.name) >= 0 ? 1000 : 0;
+                var bScene = topic.items.indexOf(b.name) >= 0 ? 1000 : 0;
+                return (bScene + (b.rarity ? 1 : 0)) - (aScene + (a.rarity ? 1 : 0));
             });
-            // 按出现次数或稀有度排
-            items = items.filter(function(it) { return it && (it.count || 0) > 0; });
-            if (items.length > 0) {
-                injection += '<持有物品>\n';
-                items.slice(0, 8).forEach(function(it) {
-                    var name = it.name || '?';
-                    var line = '• ' + name;
-                    if (it.count && it.count > 1) line += ' x' + it.count;
-                    if (it.rarity) line += ' [' + it.rarity + ']';
-                    if (it.desc) line += ' - ' + truncateByChars(it.desc, 30, '...');
-                    injection += line + '\n';
-                });
-                injection += '</持有物品>\n\n';
-            }
+            items.slice(0, 8).forEach(function(it) {
+                var line = '• ' + it.name;
+                if (it.count && it.count > 1) line += ' x' + it.count;
+                if (it.rarity) line += ' [' + it.rarity + ']';
+                if (it.desc) line += ' - ' + truncateByChars(it.desc, 30, '...');
+                modules.items.lines.push(line);
+            });
         }
 
-        // === 6. 工作记忆（最近 3 回合原文）===
+        // --- 6. 工作记忆 ---
         if (self.workingMemory.messages && self.workingMemory.messages.length > 0) {
-            injection += '<最近3回合对话>\n';
             var recent = self.workingMemory.messages.slice(-6);
             recent.forEach(function(msg) {
-                injection += (msg.role === 'user' ? '玩家' : 'AI') + ': ' +
-                    truncateByChars(msg.content, 200, '...') + '\n';
+                modules.workingMemory.lines.push(
+                    (msg.role === 'user' ? '玩家' : 'AI') + ': ' + msg.content
+                );
             });
-            injection += '</最近3回合对话>\n';
         }
+
+        // ===== 阶段2：预算分配与渲染 =====
+        // 计算各模块 header+footer 开销
+        var headers = {
+            worldAnchors: '<永久事实(任何情况下不可违背)>\n',
+            activeQuests: '<进行中的约定(AI必须在剧情中遵守)>\n',
+            currentPlot: '<剧情大纲>\n',
+            characters: '<角色状态>\n',
+            events: '<重要事件>\n',
+            items: '<持有物品>\n',
+            workingMemory: '<最近对话>\n'
+        };
+        var footers = {
+            worldAnchors: '\n</永久事实>\n\n',
+            activeQuests: '\n</进行中的约定>\n\n',
+            currentPlot: '\n</剧情大纲>\n\n',
+            characters: '\n</角色状态>\n\n',
+            events: '\n</重要事件>\n\n',
+            items: '\n</持有物品>\n\n',
+            workingMemory: '\n</最近对话>\n'
+        };
+
+        // 先满足最小预算
+        var remaining = budget.maxChars;
+        var allocated = {};
+        var keys = Object.keys(modules);
+        keys.forEach(function(k) {
+            var mod = modules[k];
+            var min = budget.minBudget[k] || 100;
+            var need = headers[k].length + footers[k].length;
+            var linesChars = mod.lines.join('\n').length;
+            var actual = Math.min(min - need, linesChars);
+            if (actual < 0) actual = 0;
+            allocated[k] = actual + need;
+            remaining -= allocated[k];
+        });
+
+        // 剩余预算按优先级分配
+        if (remaining > 0) {
+            // 按优先级排序
+            var prioKeys = keys.slice().sort(function(a, b) {
+                return modules[b].priority - modules[a].priority;
+            });
+            prioKeys.forEach(function(k) {
+                var mod = modules[k];
+                var ideal = (budget.idealBudget[k] || 200) - allocated[k];
+                if (ideal <= 0) return;
+                var linesChars = mod.lines.join('\n').length;
+                var want = Math.min(ideal, linesChars);
+                var give = Math.min(want, remaining);
+                allocated[k] += give;
+                remaining -= give;
+            });
+        }
+
+        // 渲染各模块（带截断）
+        var injection = '';
+        keys.forEach(function(k) {
+            var mod = modules[k];
+            if (mod.lines.length === 0) return;
+            var alloc = allocated[k] || 0;
+            var header = headers[k];
+            var footer = footers[k];
+            var contentBudget = alloc - header.length - footer.length;
+            if (contentBudget <= 0) return;
+            var section = self._buildSection(header, footer, mod.lines, alloc);
+            injection += section;
+        });
+
+        // 记录本次注入统计
+        self._lastInjectionStats = {
+            totalChars: injection.length,
+            budget: budget.maxChars,
+            moduleChars: {}
+        };
+        keys.forEach(function(k) {
+            self._lastInjectionStats.moduleChars[k] = allocated[k] || 0;
+        });
 
         return injection;
     }
@@ -2734,6 +3038,9 @@ var MemoryManagerUI = {
             case 'search':
             content.innerHTML = this.renderSearch(em);
             break;
+            case 'injection':
+            content.innerHTML = this.renderInjectionPreview(em);
+            break;
         }
     },
     
@@ -2817,6 +3124,31 @@ var MemoryManagerUI = {
         + '</div>'
         + '<div id="masterSummaryDisplay" style="padding:12px;background:var(--bg);border-radius:8px;max-height:200px;overflow-y:auto;white-space:pre-wrap;line-height:1.6;">'
         + safeSummary
+        + '</div>'
+        + '</div>'
+
+        + '<div class="memory-card">'
+        + '<div class="memory-card-title" style="justify-content:space-between;">'
+        + '<span>🧠 当前注入预览</span>'
+        + '<button onclick="MemoryManagerUI.switchTab(\'injection\')" style="'
+        + 'font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);'
+        + 'padding:4px 10px;border-radius:6px;cursor:pointer;'
+        + '">查看详情</button>'
+        + '</div>'
+        + '<div style="padding:12px;background:var(--bg);border-radius:8px;">'
+        + '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;">'
+        + '本回合实际发送给AI的记忆内容（已按预算截断）'
+        + '</div>'
+        + '<div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
+        + (em._lastInjectionStats
+            ? '总字符: ' + em._lastInjectionStats.totalChars + ' / 预算: ' + em._lastInjectionStats.budget
+              + '<br>永久事实: ' + (em._lastInjectionStats.moduleChars.worldAnchors || 0) + '字'
+              + ' | 约定: ' + (em._lastInjectionStats.moduleChars.activeQuests || 0) + '字'
+              + ' | 剧情: ' + (em._lastInjectionStats.moduleChars.currentPlot || 0) + '字'
+              + ' | 角色: ' + (em._lastInjectionStats.moduleChars.characters || 0) + '字'
+              + ' | 事件: ' + (em._lastInjectionStats.moduleChars.events || 0) + '字'
+            : '尚未生成注入内容，发送一条消息后可见')
+        + '</div>'
         + '</div>'
         + '</div>';
         },
@@ -3901,7 +4233,84 @@ var MemoryManagerUI = {
 
         em.saveToStorage();
         this.switchTab('locations');
+        },
+
+    /**
+     * 渲染注入预览调试面板
+     */
+    renderInjectionPreview: function(em) {
+        var injection = em.buildSmartInjection ? em.buildSmartInjection() : '';
+        var stats = em._lastInjectionStats || { totalChars: 0, budget: 0, moduleChars: {} };
+        var mc = stats.moduleChars || {};
+
+        var html = '<div class="memory-card">'
+            + '<div class="memory-card-title" style="justify-content:space-between;">'
+            + '<span>🧠 记忆注入预览</span>'
+            + '<span style="font-size:12px;color:var(--text-tertiary);">'
+            + '总字符: ' + stats.totalChars + ' / 预算: ' + stats.budget
+            + ' (' + (stats.budget > 0 ? Math.round(stats.totalChars / stats.budget * 100) : 0) + '%)'
+            + '</span>'
+            + '</div>'
+            + '<div style="margin-bottom:12px;font-size:12px;color:var(--text-secondary);line-height:1.6;">'
+            + '这是本回合实际发送给AI的记忆内容。如果AI忘记设定，检查"永久事实"是否包含；如果AI忘记近期剧情，检查"最近对话"和"当前进展"。'
+            + '</div>'
+            + '<div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:8px;margin-bottom:16px;">'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">永久事实</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.worldAnchors || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">约定</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.activeQuests || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">剧情</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.currentPlot || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">角色</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.characters || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">事件</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.events || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">物品</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.items || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">最近对话</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + (mc.workingMemory || 0) + '字</div>'
+            + '</div>'
+            + '<div style="padding:8px;background:var(--bg);border-radius:6px;text-align:center;">'
+            + '<div style="font-size:11px;color:var(--text-tertiary);">剩余预算</div>'
+            + '<div style="font-size:14px;font-weight:600;">' + Math.max(0, stats.budget - stats.totalChars) + '字</div>'
+            + '</div>'
+            + '</div>'
+            + '<div style="padding:12px;background:#1a1a2e;border-radius:8px;max-height:500px;overflow-y:auto;">'
+            + '<pre style="margin:0;font-size:12px;line-height:1.6;white-space:pre-wrap;word-break:break-all;color:#e0e0e0;font-family:monospace;">'
+            + this._esc(injection || '（暂无注入内容）')
+            + '</pre>'
+            + '</div>'
+            + '</div>';
+
+        // 场景相关性提示
+        var topic = em.detectCurrentTopic ? em.detectCurrentTopic() : { characters: [], items: [], locations: [] };
+        if (topic.characters.length > 0 || topic.items.length > 0 || topic.locations.length > 0) {
+            html += '<div class="memory-card">'
+                + '<div class="memory-card-title">🔍 当前场景检测</div>'
+                + '<div style="font-size:12px;color:var(--text-secondary);line-height:1.6;">'
+                + '以下角色/物品/地点在当前对话中被检测到，已优先注入：<br>'
+                + (topic.characters.length > 0 ? '角色: ' + topic.characters.join(', ') + '<br>' : '')
+                + (topic.items.length > 0 ? '物品: ' + topic.items.join(', ') + '<br>' : '')
+                + (topic.locations.length > 0 ? '地点: ' + topic.locations.join(', ') + '<br>' : '')
+                + '</div>'
+                + '</div>';
         }
+
+        return html;
+    }
 };
 
 window.MemoryManagerUI = MemoryManagerUI;
