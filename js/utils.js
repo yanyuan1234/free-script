@@ -64,6 +64,36 @@ function debounce(fn, delay) { var t = null; return function() { var a = argumen
 function throttle(fn, interval) { var last = 0, t = null; return function() { var a = arguments, c = this, now = Date.now(), r = interval - (now - last); if (r <= 0) { if (t) { clearTimeout(t); t = null; } last = now; fn.apply(c, a); } else if (!t) { t = setTimeout(function() { last = Date.now(); t = null; fn.apply(c, a); }, r); } }; }
 
 function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fallback; } }
+
+// CJK 安全的按字截断（避免按 code unit 截断时把中文字符切坏）
+// maxChars 是"可见字符数"，CJK/全角按 1 算，emoji/组合字符按 1 算
+function truncateByChars(text, maxChars, suffix) {
+    if (text === null || text === undefined) return '';
+    var s = String(text);
+    suffix = suffix || '';
+    // Array.from 能正确按 code point 切，emoji 和 CJK 都安全
+    var arr = Array.from(s);
+    if (arr.length <= maxChars) return s;
+    if (maxChars <= 0) return suffix;
+    return arr.slice(0, maxChars).join('') + suffix;
+}
+
+// 统一的 token 估算函数（与 game.js updateTokenCount 保持一致）
+// 经验上中文 1.5 字符/token，英文 4 字符/token。统一取 1.7 字符/token
+// 注意：函数名带 _Util 后缀，避免与 game.js 中的 estimateTokens 顶层声明冲突
+function estimateTokensUtil(text) {
+    return Math.ceil((text || '').length / 1.7);
+}
+
+// 估算一组消息的 token 数
+function estimateTokensForMessagesUtil(messages) {
+    var total = 0;
+    if (!messages) return 0;
+    for (var i = 0; i < messages.length; i++) {
+        total += (messages[i].content || '').length;
+    }
+    return Math.ceil(total / 1.7);
+}
 function safeSetItem(key, value) {
     try {
         var dataSize = (key.length + value.length) * 2;

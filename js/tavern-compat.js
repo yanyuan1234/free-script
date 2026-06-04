@@ -907,54 +907,74 @@ var EnhancedMemory = {
     * @param {Object} gameData - AI返回的完整数据
     */
     processMessage: function(message, gameData) {
-        const self = this;
+        var self = this;
 
         // 1. 添加到工作记忆
-        this._addToWorkingMemory(message, gameData);
+        self._addToWorkingMemory(message, gameData);
 
         // 2. 提取重要信息
-        var extractedInfo = this._extractImportantInfo(gameData);
+        var extractedInfo = self._extractImportantInfo(gameData);
 
         // 3. 更新结构化表格
-        this._updateTables(gameData, extractedInfo);
+        self._updateTables(gameData, extractedInfo);
 
         // 4. 生成摘要
-        var summary = this._generateSummary(message, gameData, extractedInfo);
+        var summary = self._generateSummary(message, gameData, extractedInfo);
 
         // 5. 更新短期记忆
-        this._updateShortTermMemory(summary, extractedInfo);
+        self._updateShortTermMemory(summary, extractedInfo);
 
         // 6. 更新长期记忆（每5回合或遇到重要事件时）
-        if (this._shouldUpdateLongTerm(extractedInfo)) {
-            this._updateLongTermMemory(summary, extractedInfo);
+        if (self._shouldUpdateLongTerm(extractedInfo)) {
+            self._updateLongTermMemory(summary, extractedInfo);
         }
 
         // 7. 更新时间线
-        this._updateTimeline(message, gameData, extractedInfo);
+        self._updateTimeline(message, gameData, extractedInfo);
 
         // 8. 更新统计
-        this.stats.totalMessages++;
-        this.stats.lastUpdateTime = Date.now();
+        self.stats.totalMessages++;
+        self.stats.lastUpdateTime = Date.now();
     },
-    
+
     /**
     * 添加到工作记忆
+    * 改为按"回合"成对保留，确保不会出现只有 user 没有 assistant 的破碎回合
     */
     _addToWorkingMemory: function(message, gameData) {
-        // 工作记忆只保留最近3回合
-        if (this.workingMemory.messages.length >= 6) {  // 3回合 = 6条消息（用户+AI）
-            this.workingMemory.messages.shift();
-            this.workingMemory.messages.shift();
+        var self = this;
+        var MAX_TURNS = 3;
+        if (!self.workingMemory.turns) self.workingMemory.turns = [];
+
+        // 找到当前回合（最后一个还没填完 assistant 的回合），否则新建
+        var currentTurn = self.workingMemory.turns[self.workingMemory.turns.length - 1];
+        if (!currentTurn || currentTurn.assistant !== null) {
+            currentTurn = { user: null, assistant: null, turn: self.stats.totalMessages + 1, timestamp: Date.now() };
+            self.workingMemory.turns.push(currentTurn);
+        }
+        if (message.role === 'user') {
+            currentTurn.user = message.content;
+        } else if (message.role === 'assistant') {
+            currentTurn.assistant = message.content;
         }
 
-        this.workingMemory.messages.push({
-            role: message.role,
-            content: message.content,
-            timestamp: Date.now(),
-            turn: this.stats.totalMessages + 1
-            });
+        // 保留最近 MAX_TURNS 回合
+        while (self.workingMemory.turns.length > MAX_TURNS) {
+            self.workingMemory.turns.shift();
+        }
 
-        this.workingMemory.timestamp = Date.now();
+        // 同步到 messages 数组（向后兼容 buildMemoryInjection 的读取方式）
+        self.workingMemory.messages = [];
+        for (var i = 0; i < self.workingMemory.turns.length; i++) {
+            var t = self.workingMemory.turns[i];
+            if (t.user !== null && t.user !== undefined) {
+                self.workingMemory.messages.push({ role: 'user', content: t.user, timestamp: t.timestamp, turn: t.turn });
+            }
+            if (t.assistant !== null && t.assistant !== undefined) {
+                self.workingMemory.messages.push({ role: 'assistant', content: t.assistant, timestamp: t.timestamp, turn: t.turn });
+            }
+        }
+        self.workingMemory.timestamp = Date.now();
     },
     
     /**
@@ -1023,8 +1043,10 @@ var EnhancedMemory = {
     * 更新结构化表格
     */
     _updateTables: function(gameData, extractedInfo) {
-        const self = this;
+        var self = this;
         var timestamp = Date.now();
+        if (!gameData) return;
+        if (!extractedInfo) extractedInfo = { characters: [], items: [], events: [], relationships: [] };
 
         // 更新角色表
         if (extractedInfo.characters.length > 0) {
@@ -1124,28 +1146,35 @@ var EnhancedMemory = {
     
     /**
     * 从剧情文本中提取地点
+    * 注意：必须在方法内 new RegExp，否则全局正则的 lastIndex 会保留
     */
     _extractLocations: function(story) {
         var locations = [];
+        if (!story) return locations;
         // 简单规则：寻找"在..."、"来到..."等模式
         var patterns = [
-        /在([^，。！？]{2,10})(?:里|内|中|上|下)/g,
-        /来到([^，。！？]{2,10})/g,
-        /前往([^，。！？]{2,10})/g,
-        /进入([^，。！？]{2,10})/g
+            /在([^，。！？\s]{2,10})(?:里|内|中|上|下)/g,
+            /来到([^，。！？\s]{2,10})/g,
+            /前往([^，。！？\s]{2,10})/g,
+            /进入([^，。！？\s]{2,10})/g
         ];
 
         patterns.forEach(function(pattern) {
+            pattern.lastIndex = 0;  // 防御性重置
             var match;
             while ((match = pattern.exec(story)) !== null) {
                 var loc = match[1].trim();
                 if (loc.length > 1 && loc.length < 15 && locations.indexOf(loc) === -1) {
                     locations.push(loc);
                 }
-        }
+                // 防御 0 长度匹配导致死循环
+                if (match.index === pattern.lastIndex) {
+                    pattern.lastIndex++;
+                }
+            }
         });
 
-    return locations;
+        return locations;
     },
     
     /**
@@ -1232,45 +1261,71 @@ var EnhancedMemory = {
     * 更新长期记忆
     */
     _updateLongTermMemory: function(summary, extractedInfo) {
-        const self = this;
+        var self = this;
 
         // 更新整体大纲
         if (summary.storySummary) {
-            if (this.longTermMemory.masterSummary) {
-                this.longTermMemory.masterSummary += '\n' + summary.storySummary;
-                } else {
-                this.longTermMemory.masterSummary = summary.storySummary;
+            if (self.longTermMemory.masterSummary) {
+                self.longTermMemory.masterSummary += '\n' + summary.storySummary;
+            } else {
+                self.longTermMemory.masterSummary = summary.storySummary;
             }
 
-        // 限制长度
-        if (this.longTermMemory.masterSummary.length > 2000) {
-            this.longTermMemory.masterSummary = '...' +
-            this.longTermMemory.masterSummary.slice(-1800);
+            // 限制长度：保留"开头 30% + 近期 70%"，避免砍掉世界观/主角身份等关键前缀
+            // 使用 Array.from 按 code point 计算长度（中文不踩坑）
+            if (Array.from(self.longTermMemory.masterSummary).length > 2000) {
+                self.longTermMemory.masterSummary = self._smartTruncateSummary(
+                    self.longTermMemory.masterSummary, 1800
+                );
+            }
         }
-    }
 
-    // 添加重要事件
-    if (extractedInfo.events.length > 0) {
-        extractedInfo.events.forEach(function(event) {
-            // 检查是否已存在
-            var exists = self.longTermMemory.importantEvents.some(function(e) {
-                return e.content === event;
+        // 添加重要事件
+        if (extractedInfo.events.length > 0) {
+            extractedInfo.events.forEach(function(event) {
+                // 检查是否已存在
+                var exists = self.longTermMemory.importantEvents.some(function(e) {
+                    return e.content === event;
                 });
-    
-            if (!exists) {
-                self.longTermMemory.importantEvents.push({
-                    content: event,
-                    turn: summary.turn,
-                    timestamp: Date.now(),
-                    importance: extractedInfo.importance
+
+                if (!exists) {
+                    self.longTermMemory.importantEvents.push({
+                        content: event,
+                        turn: summary.turn,
+                        timestamp: Date.now(),
+                        importance: extractedInfo.importance
                     });
-                // 【修复】限制重要事件数量，防止无限增长
-                if (self.longTermMemory.importantEvents.length > 50) {
-                    self.longTermMemory.importantEvents = self.longTermMemory.importantEvents.slice(-50);
+                    // 【修复】限制重要事件数量，防止无限增长
+                    if (self.longTermMemory.importantEvents.length > 50) {
+                        self.longTermMemory.importantEvents = self.longTermMemory.importantEvents.slice(-50);
+                    }
                 }
+            });
         }
-    });
-    }
+    },
+
+    /**
+    * 智能截断 masterSummary：保留"开头的世界观/主角身份"和"近期发展"
+    * 策略：按段落/换行分割，优先丢弃中间较早的段落
+    */
+    _smartTruncateSummary: function(text, maxChars) {
+        if (!text) return '';
+        var arr = Array.from(text);
+        if (arr.length <= maxChars) return text;
+
+        // 按换行切成段落
+        var paragraphs = text.split(/\n+/);
+        // 保留首段（通常是开场/世界观）+ 末尾若干段
+        var keepHead = paragraphs[0] || '';
+        var tail = paragraphs.slice(1).join('\n');
+        var headArr = Array.from(keepHead);
+        var tailBudget = maxChars - headArr.length - 20;  // 预留 "…(早期剧情已省略)…\n" 标记
+        if (tailBudget < 100) tailBudget = 100;
+        var tailArr = Array.from(tail);
+        var keptTail = tailArr.length > tailBudget
+            ? tailArr.slice(tailArr.length - tailBudget).join('')
+            : tail;
+        return keepHead + '\n…(早期剧情已省略)…\n' + keptTail;
     },
     
     /**
@@ -1358,6 +1413,7 @@ var EnhancedMemory = {
     
     /**
     * 构建记忆注入内容（发送给AI）
+    * 截断处用 CJK 安全的 truncateByChars，避免把汉字切一半
     */
     buildMemoryInjection: function() {
         var parts = [];
@@ -1369,53 +1425,53 @@ var EnhancedMemory = {
             var recent = this.workingMemory.messages.slice(-4);
             recent.forEach(function(msg) {
                 parts.push((msg.role === 'user' ? '玩家' : 'AI') + ': ' +
-                msg.content.substring(0, 100) + '...');
-                });
+                truncateByChars(msg.content, 100, '...'));
+            });
         }
 
         // 2. 短期记忆摘要
         if (this.shortTermMemory.summaries.length > 0) {
             parts.push('【近期剧情】');
             this.shortTermMemory.summaries.slice(-3).forEach(function(s) {
-                parts.push('第' + s.turn + '回合: ' + s.storySummary.substring(0, 80) + '...');
-                });
+                parts.push('第' + s.turn + '回合: ' + truncateByChars(s.storySummary, 80, '...'));
+            });
         }
 
-    // 3. 长期记忆大纲
-    if (this.longTermMemory.masterSummary) {
-        parts.push('【剧情大纲】');
-        parts.push(this.longTermMemory.masterSummary.substring(0, 300) + '...');
-    }
+        // 3. 长期记忆大纲
+        if (this.longTermMemory.masterSummary) {
+            parts.push('【剧情大纲】');
+            parts.push(truncateByChars(this.longTermMemory.masterSummary, 300, '...'));
+        }
 
-    // 4. 变化驱动（只发送有变化的部分）
-    if (changes.length > 0) {
-        parts.push('【最新变化】');
-        changes.forEach(function(change) {
-            parts.push(change);
+        // 4. 变化驱动（只发送有变化的部分）
+        if (changes.length > 0) {
+            parts.push('【最新变化】');
+            changes.forEach(function(change) {
+                parts.push(change);
             });
-    }
+        }
 
-    // 5. 重要事件提醒
-    var recentImportant = this.longTermMemory.importantEvents
-    .filter(function(e) { return e.importance >= 7; })
-    .slice(-3);
-    if (recentImportant.length > 0) {
-        parts.push('【重要事件】');
-        recentImportant.forEach(function(e) {
-            parts.push('• ' + e.content);
+        // 5. 重要事件提醒
+        var recentImportant = this.longTermMemory.importantEvents
+        .filter(function(e) { return e.importance >= 7; })
+        .slice(-3);
+        if (recentImportant.length > 0) {
+            parts.push('【重要事件】');
+            recentImportant.forEach(function(e) {
+                parts.push('• ' + e.content);
             });
-    }
+        }
 
-    // 6. 角色状态（只发送有变化的）
-    var characterUpdates = this._getCharacterUpdates();
-    if (characterUpdates.length > 0) {
-        parts.push('【角色状态更新】');
-        characterUpdates.forEach(function(update) {
-            parts.push(update);
+        // 6. 角色状态（只发送有变化的）
+        var characterUpdates = this._getCharacterUpdates();
+        if (characterUpdates.length > 0) {
+            parts.push('【角色状态更新】');
+            characterUpdates.forEach(function(update) {
+                parts.push(update);
             });
-    }
+        }
 
-    return parts.join('\n');
+        return parts.join('\n');
     },
     
     /**
@@ -1566,45 +1622,124 @@ var EnhancedMemory = {
     // ========================================
     
     saveToStorage: function() {
+        var self = this;
+        // 防止与 autoSave 之类的并发写入打架
+        if (self._saving) {
+            self._pendingSave = true;
+            return;
+        }
+        self._saving = true;
         try {
+            // 每次写入前裁剪：summaryHistory 单次 snapshot 会深拷贝整个 characterTable，
+            // 反复压缩后会出现"历史嵌套膨胀"导致 localStorage 爆掉。
+            // 1. characterSnapshot 只保留核心字段
+            // 2. 历史快照按 size 估算，超过 MAX_HISTORY_BYTES 就丢最旧
+            var MAX_HISTORY_BYTES = 64 * 1024;  // 64KB 上限
+            var histCharSnapshot = null;
+            if (self.longTermMemory && self.longTermMemory.characterTable) {
+                histCharSnapshot = {};
+                Object.keys(self.longTermMemory.characterTable).forEach(function(name) {
+                    var c = self.longTermMemory.characterTable[name];
+                    histCharSnapshot[name] = {
+                        name: c.name,
+                        title: c.title,
+                        relation: c.relation,
+                        favorability: c.favorability,
+                        desc: c.desc,
+                        firstSeen: c.firstSeen,
+                        lastSeen: c.lastSeen
+                    };
+                });
+            }
+            // 计算历史大小，按需裁剪
+            var totalHistBytes = 0;
+            var trimmedHistory = [];
+            for (var i = self.summaryHistory.length - 1; i >= 0; i--) {
+                var h = self.summaryHistory[i];
+                var hSize = (h.summary || '').length + JSON.stringify(h.importantEvents || []).length +
+                            JSON.stringify(h.characterSnapshot || {}).length;
+                if (totalHistBytes + hSize > MAX_HISTORY_BYTES && trimmedHistory.length > 0) break;
+                totalHistBytes += hSize;
+                trimmedHistory.unshift(h);
+            }
+            if (trimmedHistory.length !== self.summaryHistory.length) {
+                self.summaryHistory = trimmedHistory;
+                if (self.currentSummaryIndex >= self.summaryHistory.length) {
+                    self.currentSummaryIndex = self.summaryHistory.length - 1;
+                }
+            }
+
             var data = {
+                workingMemory: self.workingMemory,
+                shortTermMemory: self.shortTermMemory,
+                longTermMemory: self.longTermMemory,
+                stats: self.stats,
+                compressionConfig: self.compressionConfig,
+                summaryHistory: self.summaryHistory,
+                currentSummaryIndex: self.currentSummaryIndex,
+                savedAt: Date.now()
+            };
+            var serialized = JSON.stringify(data);
+            // 【修复】safeSetItem 不抛异常而是返回 {success:false}，必须检查返回值
+            var result = safeSetItem('freeScript_enhancedMemory', serialized);
+            if (!result || result.success === false) {
+                self._handleSaveFailure(result, data);
+            }
+        } catch(e) {
+            // JSON 序列化异常时尝试降级保存
+            self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null);
+        } finally {
+            self._saving = false;
+            if (self._pendingSave) {
+                self._pendingSave = false;
+                // 延后一拍再写，避免递归
+                TimerManager.setTimeout('enhancedMemoryDeferredSave', function() {
+                    self.saveToStorage();
+                }, 50);
+            }
+        }
+    },
+
+    /**
+     * 降级保存：先裁掉大字段再写
+     */
+    _handleSaveFailure: function(result, originalData) {
+        try {
+            if (!this.longTermMemory) return;
+            console.warn('[EnhancedMemory] 保存失败，降级处理:', (result && result.message) || 'unknown');
+            // 1. 裁掉 timeline 和 importantEvents 中最旧的一半
+            if (this.longTermMemory.timeline && this.longTermMemory.timeline.length > 20) {
+                this.longTermMemory.timeline = this.longTermMemory.timeline.slice(-20);
+            }
+            if (this.longTermMemory.importantEvents && this.longTermMemory.importantEvents.length > 20) {
+                this.longTermMemory.importantEvents = this.longTermMemory.importantEvents.slice(-20);
+            }
+            // 2. 清空 summaryHistory（最占空间的大户）
+            this.summaryHistory = [];
+            this.currentSummaryIndex = -1;
+            // 3. 裁短 masterSummary
+            if (this.longTermMemory.masterSummary && Array.from(this.longTermMemory.masterSummary).length > 1500) {
+                this.longTermMemory.masterSummary = this._smartTruncateSummary(
+                    this.longTermMemory.masterSummary, 1200
+                );
+            }
+            // 4. 再试一次
+            var reduced = {
                 workingMemory: this.workingMemory,
                 shortTermMemory: this.shortTermMemory,
                 longTermMemory: this.longTermMemory,
                 stats: this.stats,
-                compressionConfig: this.compressionConfig,
-                summaryHistory: this.summaryHistory,
-                currentSummaryIndex: this.currentSummaryIndex,
                 savedAt: Date.now()
-                };
-
-            safeSetItem('freeScript_enhancedMemory', JSON.stringify(data));
-            } catch(e) {
-                // 尝试清理长期记忆中过多的条目后重试
-                try {
-                    if (this.longTermMemory) {
-                        var events = this.longTermMemory.importantEvents;
-                        if (events && events.length > 50) {
-                            console.log('[EnhancedMemory] 重要事件过多，清理旧数据...');
-                            this.longTermMemory.importantEvents = events.slice(-30);
-                        }
-                    var timeline = this.longTermMemory.timeline;
-                    if (timeline && timeline.length > 50) {
-                        this.longTermMemory.timeline = timeline.slice(-30);
-                    }
-                    var reduced = {
-                        workingMemory: this.workingMemory,
-                        shortTermMemory: this.shortTermMemory,
-                        longTermMemory: this.longTermMemory,
-                        stats: this.stats,
-                        savedAt: Date.now()
-                        };
-                    safeSetItem('freeScript_enhancedMemory', JSON.stringify(reduced));
-                    console.log('[EnhancedMemory] 清理后重新保存成功');
-                }
-            } catch(e2) {
+            };
+            var r2 = safeSetItem('freeScript_enhancedMemory', JSON.stringify(reduced));
+            if (r2 && r2.success) {
+                console.log('[EnhancedMemory] 降级保存成功');
+            } else {
+                console.error('[EnhancedMemory] 降级保存仍然失败：', r2);
+            }
+        } catch (e2) {
+            console.error('[EnhancedMemory] 降级保存异常：', e2);
         }
-    }
     },
     
     loadFromStorage: function() {
@@ -1697,19 +1832,37 @@ var EnhancedMemory = {
     // 10. 摘要历史管理
     // ========================================
     saveSummaryHistory: function(summary, messageCount) {
-        this.summaryHistory.push({
+        var self = this;
+        // 浅拷贝 characterTable 的核心字段，避免反复压缩时整张表被嵌套到 history 里
+        var characterSnapshot = {};
+        if (self.longTermMemory && self.longTermMemory.characterTable) {
+            Object.keys(self.longTermMemory.characterTable).forEach(function(name) {
+                var c = self.longTermMemory.characterTable[name];
+                characterSnapshot[name] = {
+                    name: c.name,
+                    title: c.title,
+                    relation: c.relation,
+                    favorability: c.favorability,
+                    desc: c.desc,
+                    firstSeen: c.firstSeen,
+                    lastSeen: c.lastSeen
+                };
+            });
+        }
+        self.summaryHistory.push({
             summary: summary,
             timestamp: Date.now(),
             messageCount: messageCount,
-            importantEvents: JSON.parse(JSON.stringify(this.longTermMemory.importantEvents.slice(-10))),
-            characterSnapshot: JSON.parse(JSON.stringify(this.longTermMemory.characterTable))
-            });
-        this.currentSummaryIndex = this.summaryHistory.length - 1;
-        if (this.summaryHistory.length > 10) {
-            this.summaryHistory.shift();
-            this.currentSummaryIndex--;
+            importantEvents: JSON.parse(JSON.stringify(self.longTermMemory.importantEvents.slice(-10))),
+            characterSnapshot: characterSnapshot
+        });
+        self.currentSummaryIndex = self.summaryHistory.length - 1;
+        if (self.summaryHistory.length > 10) {
+            self.summaryHistory.shift();
+            self.currentSummaryIndex--;
         }
-        this.saveToStorage();
+        // 持久化交给 saveToStorage（里面会按字节再次裁剪）
+        self.saveToStorage();
     },
     rollbackSummary: function() {
         if (this.currentSummaryIndex <= 0) return false;
@@ -1780,57 +1933,56 @@ var EnhancedMemory = {
     buildSmartInjection: function() {
         var injection = '';
         var topic = this.detectCurrentTopic();
-        if (this.longTermMemory.masterSummary) {
+        var self = this;
+        if (self.longTermMemory.masterSummary) {
             injection += '<剧情摘要>\n';
-            var st = this.longTermMemory.masterSummary;
-            if (st.length > 500) st = st.slice(-500);
-            injection += st + '\n</剧情摘要>\n\n';
+            injection += truncateByChars(self.longTermMemory.masterSummary, 500, '...') + '\n</剧情摘要>\n\n';
         }
         if (topic.characters.length > 0) {
             injection += '<相关角色状态>\n';
-            const self = this;
             topic.characters.forEach(function(name) {
                 var ch = self.longTermMemory.characterTable[name];
                 if (ch && ch.history) {
                     var rc = ch.history.slice(-3).map(function(c) { return c.desc || ''; }).filter(Boolean).join('; ');
-                    injection += name + ': ' + rc + '\n';
+                    injection += name + ': ' + truncateByChars(rc, 200, '...') + '\n';
                 }
             });
-        injection += '</相关角色状态>\n\n';
-    }
-    if (topic.items.length > 0) {
-        injection += '<相关物品>\n';
-        var self2 = this;
-        topic.items.forEach(function(name) {
-            var it = self2.longTermMemory.itemTable[name];
-            if (it) injection += name + ': ' + (it.desc || '持有中') + '\n';
-            });
-        injection += '</相关物品>\n\n';
-    }
-    if (this.longTermMemory.importantEvents.length > 0) {
-        injection += '<关键事件记录>\n';
-        this.longTermMemory.importantEvents.slice(-5).forEach(function(e) {
-            injection += '- ' + (e.content || e.event || '') + '\n';
-            });
-        injection += '</关键事件记录>\n\n';
-    }
-    if (gameState.worldSnapshot && gameState.worldSnapshot.summary) {
-        injection += '<当前状态>\n' + gameState.worldSnapshot.summary + '\n</当前状态>\n';
-    }
-
-    // 注入世界观设定（仅注入非世界书来源的本地笔记，世界书由WorldInfo系统自动注入）
-    if (this.longTermMemory.worldNotes && this.longTermMemory.worldNotes.length > 0) {
-        var localNotes = this.longTermMemory.worldNotes.filter(function(n) { return n.source !== 'auto'; });
-        if (localNotes.length > 0) {
-            injection += '<世界观笔记>\n';
-            localNotes.forEach(function(note) {
-                injection += '【' + (note.category || '其他') + '】' + (note.title || '') + ': ' + (note.content || '') + '\n';
-                });
-            injection += '</世界观笔记>\n';
+            injection += '</相关角色状态>\n\n';
         }
-    }
+        if (topic.items.length > 0) {
+            injection += '<相关物品>\n';
+            topic.items.forEach(function(name) {
+                var it = self.longTermMemory.itemTable[name];
+                if (it) injection += name + ': ' + truncateByChars(it.desc || '持有中', 80, '...') + '\n';
+            });
+            injection += '</相关物品>\n\n';
+        }
+        if (self.longTermMemory.importantEvents.length > 0) {
+            injection += '<关键事件记录>\n';
+            self.longTermMemory.importantEvents.slice(-5).forEach(function(e) {
+                injection += '- ' + truncateByChars(e.content || e.event || '', 120, '...') + '\n';
+            });
+            injection += '</关键事件记录>\n\n';
+        }
+        if (gameState.worldSnapshot && gameState.worldSnapshot.summary) {
+            injection += '<当前状态>\n' + gameState.worldSnapshot.summary + '\n</当前状态>\n';
+        }
 
-    return injection;
+        // 注入世界观设定（仅注入非世界书来源的本地笔记，世界书由WorldInfo系统自动注入）
+        if (self.longTermMemory.worldNotes && self.longTermMemory.worldNotes.length > 0) {
+            var localNotes = self.longTermMemory.worldNotes.filter(function(n) { return n.source !== 'auto'; });
+            if (localNotes.length > 0) {
+                injection += '<世界观笔记>\n';
+                localNotes.forEach(function(note) {
+                    injection += '【' + (note.category || '其他') + '】' +
+                        truncateByChars(note.title || '', 30) + ': ' +
+                        truncateByChars(note.content || '', 200, '...') + '\n';
+                });
+                injection += '</世界观笔记>\n';
+            }
+        }
+
+        return injection;
     }
 };
 

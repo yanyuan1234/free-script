@@ -1032,26 +1032,22 @@ async function sendAIRequest(userMessage, isInit = false) {
     }
 }
 function updateTokenCount(currentResponseLength) {
-    var total = 0;
     if (!gameState.conversationHistory) return;
-    gameState.conversationHistory.forEach(function(m) {
-        total += (m.content || '').length;
-    });
-    var estimated = Math.round(total * 1.5);
+    // 统一用 utils 里的 token 估算（1 token ≈ 1.7 字符，含中英文混合）
+    var estimated = estimateTokensForMessagesUtil(gameState.conversationHistory);
     gameState.tokenCount = estimated;
-    
+
     // 更新故事头部Token显示
     var currentTokenEl = document.getElementById('currentTokenCount');
     var totalTokenEl = document.getElementById('totalTokenCount');
-    
+
     if (currentResponseLength && currentTokenEl) {
-        var currentTokens = Math.round(currentResponseLength / 1.5);
-        currentTokenEl.textContent = currentTokens > 1000 ? 
+        var currentTokens = Math.round(currentResponseLength / 1.7);
+        currentTokenEl.textContent = currentTokens > 1000 ?
             (currentTokens / 1000).toFixed(1) + 'k' : currentTokens;
     } else if (currentTokenEl) {
         currentTokenEl.textContent = '0';
     }
-    
     if (totalTokenEl) {
         totalTokenEl.textContent = estimated > 1000 ? 
             (estimated / 1000).toFixed(1) + 'k' : estimated;
@@ -1157,16 +1153,37 @@ function exportAsNovel() {
 async function _compressConversation(removed, sys) {
     var config = (typeof EnhancedMemory !== 'undefined') ? EnhancedMemory.compressionConfig : { incrementalUpdate: true };
     // Step 1: 识别重要消息
+    // 旧实现用关键词命中（"首次""登场""获得"...），AI 剧情里几乎每条都包含，导致 100% 命中，"分步压缩"失效。
+    // 改用：1) AI 返回的 keyEvents 全文匹配（最准）；2) 玩家消息（玩家行为始终是剧情关键）。
     var importantMessages = [];
     var normalMessages = [];
+    // 收集 gameState 里累计的 keyEvents 文本，做大小写不敏感的子串匹配
+    var keyEventStrs = (gameState && Array.isArray(gameState.keyEvents)) ? gameState.keyEvents : [];
+    var hasKeyEvents = keyEventStrs.length > 0;
     removed.forEach(function(m) {
         var content = m.content || '';
         var isImportant = false;
-        if (content.includes('首次') || content.includes('登场') || content.includes('出现')) isImportant = true;
-        if (content.includes('获得') || content.includes('失去') || content.includes('拿到')) isImportant = true;
-        if (content.includes('重要') || content.includes('关键') || content.includes('转折')) isImportant = true;
-        if (content.includes('关系') || content.includes('好感') || content.includes('信任')) isImportant = true;
-        if (content.includes('决定') || content.includes('选择') || content.includes('决策')) isImportant = true;
+        if (m.role === 'user') {
+            // 玩家行为/选择/发言是剧情关键
+            isImportant = true;
+        } else if (hasKeyEvents && content) {
+            // 命中任意一条 keyEvent 子串（取 8 字以上避免误命中"我"等单字）
+            for (var i = 0; i < keyEventStrs.length; i++) {
+                var ev = String(keyEventStrs[i] || '').trim();
+                if (ev.length >= 6 && content.indexOf(ev) !== -1) {
+                    isImportant = true;
+                    break;
+                }
+                // 子串过长导致命中不到时，回退用前 12 字做模糊匹配
+                if (ev.length >= 12) {
+                    var prefix = ev.substring(0, 12);
+                    if (content.indexOf(prefix) !== -1) {
+                        isImportant = true;
+                        break;
+                    }
+                }
+            }
+        }
         if (isImportant) importantMessages.push(m);
         else normalMessages.push(m);
     });
@@ -1202,11 +1219,11 @@ async function _compressConversation(removed, sys) {
         EnhancedMemory.saveToStorage();
         console.log('[智能总结] 已同步到EnhancedMemory');
     }
-    // 统计Token节省
-    var originalTokens = estimateTokensForMessages(removed);
-    var summaryTokens = estimateTokens(summary);
+    // 统计Token节省（用统一估算口径，避免与触发阈值算法不一致）
+    var originalTokens = estimateTokensForMessagesUtil(removed);
+    var summaryTokens = estimateTokensUtil(summary);
     var savedTokens = originalTokens - summaryTokens;
-    if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.stats.tokenSaved += savedTokens;
+    if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.stats.tokenSaved += Math.max(0, savedTokens);
     console.log('[压缩统计] 原始:', originalTokens, 'token → 摘要:', summaryTokens, 'token → 节省:', savedTokens, 'token');
     return summary;
 }
@@ -1294,12 +1311,10 @@ function _extractAndStoreImportantInfo(message) {
     });
 }
 function estimateTokensForMessages(messages) {
-    var total = 0;
-    messages.forEach(function(m) { total += (m.content || '').length; });
-    return Math.ceil(total / 2);
+    return estimateTokensForMessagesUtil(messages);
 }
 function estimateTokens(text) {
-    return Math.ceil((text || '').length / 2);
+    return estimateTokensUtil(text);
 }
 async function autoCompressContext() {
     if (isCompressing) return;
