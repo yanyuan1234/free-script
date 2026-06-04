@@ -28,13 +28,21 @@ jobs:
           TS=$(date -u +"%Y-%m-%d %H:%M UTC")
           SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
           VERSION="b${SHA}-${TS// /_}"
-          # Replace placeholder; if absent, leave file untouched.
+          echo "Build version: ${VERSION}"
+          # 1) Replace placeholder for the visible version badge
           if grep -q "__BUILD_VERSION__" index.html; then
             sed -i "s|__BUILD_VERSION__|${VERSION}|g" index.html
-            echo "Injected build version: ${VERSION}"
+            echo "Injected __BUILD_VERSION__ -> ${VERSION}"
           else
-            echo "No __BUILD_VERSION__ placeholder found, skipping injection."
+            echo "No __BUILD_VERSION__ placeholder, skipping."
           fi
+          # 2) Cache-busting: append ?v=<version> to every js/css asset
+          #    so browsers will refetch instead of serving stale JS/CSS.
+          sed -i -E "s|(src=\"js/[a-zA-Z0-9_.-]+\\.js)(\")|\\1?v=${VERSION}\\2|g" index.html
+          sed -i -E "s|(href=\"css/[a-zA-Z0-9_.-]+\\.css)(\")|\\1?v=${VERSION}\\2|g" index.html
+          echo "Cache-busting query ?v=${VERSION} injected into all asset URLs."
+          # Sanity: show the first few asset lines
+          grep -E "script src=|link rel=\"stylesheet\"" index.html | head -5
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact

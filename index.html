@@ -6,6 +6,9 @@
         <meta name="theme-color" content="#f5f5f0">
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+        <meta http-equiv="Pragma" content="no-cache">
+        <meta http-equiv="Expires" content="0">
         <title>自由剧本 · FREE SCRIPT</title>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap"
             rel="stylesheet">
@@ -176,9 +179,10 @@
 
             <!-- ==================== 主菜单页面（极简手机桌面风格） ==================== -->
             <div class="page active" id="menuPage">
-                <!-- 版本/更新时间标注（每次部署时由 deploy.yml 自动更新） -->
+                <!-- 版本/更新时间标注（每次部署时由 deploy.yml 自动更新）；点击 = 强制刷新清缓存 -->
                 <div id="buildVersionBadge"
-                    style="position:absolute;top:6px;right:8px;z-index:50;font-size:10px;line-height:1;color:#888;background:rgba(255,255,255,0.6);padding:3px 6px;border-radius:8px;pointer-events:none;user-select:none;font-family:monospace;">
+                    title="点击强制刷新（清缓存）"
+                    style="position:absolute;top:6px;right:8px;z-index:50;font-size:10px;line-height:1;color:#888;background:rgba(255,255,255,0.6);padding:3px 6px;border-radius:8px;cursor:pointer;user-select:none;font-family:monospace;pointer-events:auto;">
                     v__BUILD_VERSION__
                 </div>
                 <!-- 顶部用户信息卡片 -->
@@ -2598,6 +2602,42 @@
     <script src="js/tavern-compat.js"></script>
     <script src="js/init.js"></script>
     <script src="js/patch.js"></script>
+
+    <script>
+    // 版本徽章：点击 = 清缓存 + 硬刷，避免浏览器加载旧 JS
+    (function () {
+        function bind() {
+            var badge = document.getElementById('buildVersionBadge');
+            if (!badge || badge.__bound) return;
+            badge.__bound = true;
+            badge.addEventListener('click', async function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    if (window.caches && caches.keys) {
+                        var keys = await caches.keys();
+                        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                    }
+                } catch (err) { /* ignore */ }
+                try {
+                    if (window.localStorage) {
+                        // 不清用户的游戏存档，只清"导航历史/会话"类缓存
+                        // 这里不动 localStorage，避免误删游戏数据
+                    }
+                } catch (err) { /* ignore */ }
+                // 硬刷（绕过 HTTP 缓存）
+                var u = new URL(window.location.href);
+                u.searchParams.set('_', Date.now().toString(36));
+                window.location.replace(u.toString());
+            });
+        }
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', bind);
+        } else {
+            bind();
+        }
+    })();
+    </script>
 
 </body>
 </html>
