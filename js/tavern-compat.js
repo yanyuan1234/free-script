@@ -858,13 +858,22 @@ var EnhancedMemory = {
     // 长期记忆：重要事件 + 结构化表格
     longTermMemory: {
         masterSummary: '',           // 整体剧情大纲
-        importantEvents: [],         // 重要事件列表
+        importantEvents: [],         // 重要事件列表（按 importance 排序）
         characterTable: {},          // 角色状态表
         itemTable: {},               // 物品追踪表
         locationTable: {},           // 地点记录表
         timeline: [],                // 时间线
         relationships: {},            // 关系网
-        worldNotes: []                // 世界观设定
+        worldNotes: [],              // 世界观设定
+        // === 新增：永久事实区（永不压缩、永远注入）===
+        // 每条形如 { type, content, locked, createdTurn, source }
+        // type ∈ 'setting' | 'pc_identity' | 'npc_profile' | 'promise' | 'world_rule'
+        worldAnchors: [],
+        // === 新增：进行中的约定（玩家承诺/任务/未解悬念）===
+        // 每条形如 { type, content, from, to, deadline, status, createdTurn }
+        // type ∈ 'promise' | 'quest' | 'mystery' | 'threat'
+        // status ∈ 'pending' | 'resolved' | 'broken'
+        activeQuests: []
     },
     
     // 记忆统计
@@ -890,12 +899,332 @@ var EnhancedMemory = {
     // ========================================
     // 2. 初始化
     // ========================================
-    
+
     init: function() {
         this.loadFromStorage();
         this.startAutoSave();
         return this;
-        },
+    },
+
+    // ========================================
+    // 1.5 永久事实 & 约定系统（核心反"AI 遗忘"机制）
+    // ========================================
+
+    /**
+     * 承诺/约定关键词识别（重要性 10）
+     * 命中后自动进 worldAnchors（永久区）和 activeQuests（待办区）
+     */
+    PROMISE_KEYWORDS: [
+        // 承诺
+        /我(答应|承诺|发誓|保证|担保|立誓|发誓|向你)/g,
+        /(答应|承诺|发誓|保证|担保|立誓)你/g,
+        /我(一定|必定|决|定要|绝不|无论如何|无论如何都|誓死)([一-龥]{0,8})/g,
+        /(我们|你我)(约定|说定|一言为定|一言为定|一言)/g,
+        /我(不会|不能|永不|决不)(让|允许|让.{0,4}受伤|让.{0,4}死|让.{0,4}受到)/g,
+        // 玩家接受的任务
+        /我(接|领)了?这个?(任务|委托|请求)/g,
+        // 复仇/未解
+        /我(一定要|必须|迟早会)([一-龥]{1,8}(报仇|血债|偿命|复仇))/g
+    ],
+
+    /**
+     * 重要事件关键词权重（用于评分）
+     */
+    HIGH_IMPORTANCE_KEYWORDS: [
+        /死|亡|牺牲|陨落|献祭/g,         // 9
+        /背叛|决裂|反目|断绝/g,             // 9
+        /婚礼|结拜|拜师|收徒|入赘/g,        // 8
+        /突破|渡劫|飞升|成仙/g,              // 8
+        /获得|得到|夺得|继承|传承/g,         // 8
+        /失去|丢失|被盗|被夺/g,              // 8
+        /告白|表白|拒绝|接受/g,              // 8
+        /决战|生死|搏斗|战斗|死斗/g          // 7
+    ],
+
+    /**
+     * 从一段文本中提取承诺，返回匹配的承诺数组
+     */
+    extractPromisesFromText: function(text) {
+        if (!text || typeof text !== 'string') return [];
+        var promises = [];
+        var seen = {};
+        for (var i = 0; i < this.PROMISE_KEYWORDS.length; i++) {
+            var re = this.PROMISE_KEYWORDS[i];
+            // 每次用 new 避免 lastIndex 残留
+            var localRe = new RegExp(re.source, 'g');
+            var m;
+            while ((m = localRe.exec(text)) !== null) {
+                var idx = m.index;
+                // 取前后各 25 字作为上下文
+                var start = Math.max(0, idx - 15);
+                var end = Math.min(text.length, idx + m[0].length + 25);
+                var context = text.substring(start, end).replace(/\s+/g, ' ').trim();
+                // 去重：以 m[0] + 中心 5 字为 key
+                var center = text.substring(idx, idx + m[0].length);
+                var key = center;
+                if (!seen[key]) {
+                    seen[key] = true;
+                    promises.push({
+                        type: 'promise',
+                        content: context,
+                        fullMatch: m[0],
+                        importance: 10
+                    });
+                }
+                if (m.index === localRe.lastIndex) localRe.lastIndex++;
+            }
+        }
+        return promises;
+    },
+
+    /**
+     * 评估事件重要性（1-10）
+     */
+    scoreEventImportance: function(text) {
+        if (!text) return 5;
+        var score = 5;
+        // 承诺/约定类直接拉满
+        if (/约定|承诺|发誓|答应|保证|一言为定/.test(text)) {
+            score = 10;
+        }
+        // 死亡/背叛/决裂
+        if (/(死|亡|牺牲|陨落|献祭|背叛|决裂|反目|断绝)/.test(text)) {
+            score = Math.max(score, 9);
+        }
+        // 修为/突破
+        if (/(突破|渡劫|飞升|成仙|婚礼|结拜|拜师|收徒)/.test(text)) {
+            score = Math.max(score, 8);
+        }
+        // 获得/失去/告白
+        if (/(获得|得到|夺得|继承|传承|失去|丢失|告白|表白|拒绝|接受)/.test(text)) {
+            score = Math.max(score, 8);
+        }
+        // 战斗
+        if (/(决战|生死|搏斗|战斗|死斗)/.test(text)) {
+            score = Math.max(score, 7);
+        }
+        // 长度惩罚
+        if (text.length < 8) score = Math.min(score, 4);
+        // 包含数字（境界、修为等级）→ 重要
+        if (/\d/.test(text) && (text.indexOf('境界') >= 0 || text.indexOf('级') >= 0 || text.indexOf('层') >= 0)) {
+            score = Math.max(score, 7);
+        }
+        return score;
+    },
+
+    /**
+     * 添加永久事实（不可删除除非手动重置）
+     * @param {string} type - setting/pc_identity/npc_profile/promise/world_rule
+     */
+    addWorldAnchor: function(type, content, source, createdTurn) {
+        var self = this;
+        if (!self.longTermMemory.worldAnchors) self.longTermMemory.worldAnchors = [];
+        // 去重：同 type + 同 content 已有则跳过
+        var exists = self.longTermMemory.worldAnchors.some(function(a) {
+            return a.type === type && a.content === content;
+        });
+        if (exists) return null;
+        // 角色类特殊去重：同 type=npc_profile 且 content 以同名开头则认为是同一人
+        if (type === 'npc_profile' && content) {
+            // 提取名字：name 是中文字符（不含全角标点）
+            var nameMatch = content.match(/^([一-鿿A-Za-z·]{1,6})/);
+            if (nameMatch) {
+                var name = nameMatch[1];
+                var dup = self.longTermMemory.worldAnchors.some(function(a) {
+                    return a.type === 'npc_profile' && a.content.indexOf(name) === 0;
+                });
+                if (dup) {
+                    // 已经有同名角色锚点，更新它（用更新的描述）
+                    var newAnchors = [];
+                    for (var ai = 0; ai < self.longTermMemory.worldAnchors.length; ai++) {
+                        var a = self.longTermMemory.worldAnchors[ai];
+                        if (a.type === 'npc_profile' && a.content.indexOf(name) === 0) {
+                            newAnchors.push({
+                                type: a.type,
+                                content: content,
+                                locked: a.locked,
+                                createdTurn: a.createdTurn,
+                                source: source,
+                                createdAt: Date.now()
+                            });
+                        } else {
+                            newAnchors.push(a);
+                        }
+                    }
+                    self.longTermMemory.worldAnchors = newAnchors;
+                    return null;
+                }
+            }
+        }
+        var anchor = {
+            type: type,            // setting / pc_identity / npc_profile / promise / world_rule
+            content: content,
+            locked: true,
+            createdTurn: createdTurn || self.stats.totalMessages,
+            source: source || 'auto',
+            createdAt: Date.now()
+        };
+        self.longTermMemory.worldAnchors.push(anchor);
+        // 限制总数量（避免无限增长导致 localStorage 爆掉）
+        if (self.longTermMemory.worldAnchors.length > 50) {
+            // 保留所有 promise + pc_identity + setting + world_rule；
+            // 对 npc_profile 保留最近 15 条
+            var preserved = self.longTermMemory.worldAnchors.filter(function(a) {
+                return a.type !== 'npc_profile';
+            });
+            var npcs = self.longTermMemory.worldAnchors.filter(function(a) {
+                return a.type === 'npc_profile';
+            }).slice(-15);
+            self.longTermMemory.worldAnchors = preserved.concat(npcs);
+        }
+        return anchor;
+    },
+
+    /**
+     * 手动添加/更新进行中的约定
+     */
+    addActiveQuest: function(quest) {
+        var self = this;
+        if (!self.longTermMemory.activeQuests) self.longTermMemory.activeQuests = [];
+        // 同内容的 pending 任务不重复添加
+        var exists = self.longTermMemory.activeQuests.some(function(q) {
+            return q.content === quest.content && q.status === 'pending';
+        });
+        if (exists) return null;
+        if (!quest.createdTurn) quest.createdTurn = self.stats.totalMessages;
+        if (!quest.status) quest.status = 'pending';
+        if (!quest.type) quest.type = 'promise';
+        if (!quest.createdAt) quest.createdAt = Date.now();
+        self.longTermMemory.activeQuests.push(quest);
+        return quest;
+    },
+
+    /**
+     * 标记约定为已解决/已违反
+     */
+    resolveQuest: function(contentFragment, newStatus) {
+        var self = this;
+        if (!self.longTermMemory.activeQuests) return 0;
+        var count = 0;
+        self.longTermMemory.activeQuests.forEach(function(q) {
+            if (q.status === 'pending' && q.content.indexOf(contentFragment) >= 0) {
+                q.status = newStatus || 'resolved';
+                q.resolvedAt = Date.now();
+                count++;
+            }
+        });
+        return count;
+    },
+
+    /**
+     * 在 processMessage 时调用：扫描用户消息和 AI 回复，提取承诺并加入永久区
+     */
+    extractAndRegisterPromises: function(message, gameData) {
+        var self = this;
+        if (!self.longTermMemory.worldAnchors) self.longTermMemory.worldAnchors = [];
+        if (!self.longTermMemory.activeQuests) self.longTermMemory.activeQuests = [];
+        var content = (message && message.content) || '';
+        if (!content) return [];
+
+        var registered = [];
+        var promises = self.extractPromisesFromText(content);
+        promises.forEach(function(p) {
+            // 写入永久区
+            var anchor = self.addWorldAnchor(
+                'promise',
+                p.content,
+                message.role === 'user' ? 'player' : 'ai',
+                self.stats.totalMessages
+            );
+            if (anchor) registered.push(anchor);
+            // 写入待办
+            var quest = self.addActiveQuest({
+                type: 'promise',
+                content: p.content,
+                from: message.role === 'user' ? 'player' : 'ai',
+                status: 'pending'
+            });
+            if (quest) registered.push(quest);
+        });
+        return registered;
+    },
+
+    /**
+     * 从 gameState.worldSnapshot / worldNotes / 早期对话里收割世界锚点
+     * 触发时机：首回合 + 每 5 回合
+     */
+    _harvestWorldAnchors: function(gameData) {
+        var self = this;
+        if (!self.longTermMemory.worldAnchors) self.longTermMemory.worldAnchors = [];
+        if (!self.longTermMemory.worldAnchorsInitialized) self.longTermMemory.worldAnchorsInitialized = false;
+
+        // 1) 从 worldSnapshot 收割
+        if (typeof gameState !== 'undefined' && gameState.worldSnapshot) {
+            var snap = gameState.worldSnapshot;
+            // PC 身份
+            if (snap.summary) {
+                self.addWorldAnchor('pc_identity', snap.summary, 'worldSnapshot', self.stats.totalMessages);
+            }
+            // NPC profile
+            if (Array.isArray(snap.characters)) {
+                snap.characters.forEach(function(c) {
+                    if (c && c.name) {
+                        var desc = c.desc ? c.name + '：' + c.desc : c.name;
+                        if (c.relation) desc += '（与玩家关系：' + c.relation + '）';
+                        if (typeof c.favorability === 'number') desc += '，好感度' + c.favorability;
+                        self.addWorldAnchor('npc_profile', desc, 'worldSnapshot', self.stats.totalMessages);
+                    }
+                });
+            }
+        }
+
+        // 2) 从 worldNotes 收割
+        if (Array.isArray(self.longTermMemory.worldNotes)) {
+            self.longTermMemory.worldNotes.forEach(function(n) {
+                if (n && n.content && n.source !== 'auto') {
+                    self.addWorldAnchor('world_rule', '【' + (n.category || '设定') + '】' + n.title + ': ' + n.content, 'worldNote', self.stats.totalMessages);
+                }
+            });
+        }
+
+        // 3) 从 userPrompt 收割（玩家在游戏开始时写的开场设定）
+        if (typeof gameState !== 'undefined' && gameState.userPrompt && self.stats.totalMessages <= 2) {
+            self.addWorldAnchor('setting', '玩家开场设定：' + gameState.userPrompt, 'userPrompt', self.stats.totalMessages);
+        }
+        if (typeof gameState !== 'undefined' && gameState.customStyle && self.stats.totalMessages <= 2) {
+            self.addWorldAnchor('setting', '风格偏好：' + gameState.customStyle, 'userStyle', self.stats.totalMessages);
+        }
+
+        // 4) 从早期对话里收割关键 NPC（出现在前 6 条消息里、且后续被持续提及的角色）
+        self._harvestPersistentNPCs();
+    },
+
+    /**
+     * 从角色表里挑选"主线 NPC"（出现 ≥ 3 次 + 好感度 > 30 或 < -10）写入锚点
+     * 这些角色不会因为短期没提到就消失
+     */
+    _harvestPersistentNPCs: function() {
+        var self = this;
+        if (!self.longTermMemory.characterTable) return;
+        var chars = self.longTermMemory.characterTable;
+        Object.keys(chars).forEach(function(name) {
+            var c = chars[name];
+            if (c.important) return;  // 已注册
+            // 判定：提及 ≥ 3 次 且 (好感度有意义 或 有关系标签)
+            var appearance = c.history ? c.history.length : 0;
+            var isSignificant = appearance >= 3 ||
+                (typeof c.favorability === 'number' && (c.favorability >= 30 || c.favorability <= -10));
+            if (isSignificant) {
+                var desc = name;
+                if (c.title) desc += '（' + c.title + '）';
+                if (c.relation) desc += '，与玩家：' + c.relation;
+                if (typeof c.favorability === 'number') desc += '，好感度' + c.favorability;
+                if (c.desc) desc += '。' + truncateByChars(c.desc, 60, '...');
+                var anchor = self.addWorldAnchor('npc_profile', desc, 'persistent_npc', self.stats.totalMessages);
+                if (anchor) c.important = true;
+            }
+        });
+    },
     
     // ========================================
     // 3. 消息处理（每回合调用）
@@ -908,6 +1237,9 @@ var EnhancedMemory = {
     */
     processMessage: function(message, gameData) {
         var self = this;
+
+        // 0. 扫描承诺/约定，自动写入永久事实区（重要性 10，永不丢失）
+        self.extractAndRegisterPromises(message, gameData);
 
         // 1. 添加到工作记忆
         self._addToWorkingMemory(message, gameData);
@@ -932,7 +1264,12 @@ var EnhancedMemory = {
         // 7. 更新时间线
         self._updateTimeline(message, gameData, extractedInfo);
 
-        // 8. 更新统计
+        // 8. 提取世界锚点（首回合或定期触发）
+        if (self.stats.totalMessages <= 2 || (self.stats.totalMessages % 5 === 0)) {
+            self._harvestWorldAnchors(gameData);
+        }
+
+        // 9. 更新统计
         self.stats.totalMessages++;
         self.stats.lastUpdateTime = Date.now();
     },
@@ -981,6 +1318,7 @@ var EnhancedMemory = {
     * 提取重要信息
     */
     _extractImportantInfo: function(gameData) {
+        var self = this;
         var info = {
             characters: [],
             items: [],
@@ -1019,8 +1357,17 @@ var EnhancedMemory = {
 
     // 提取重要事件
     if (gameData.keyEvents && gameData.keyEvents.length > 0) {
-        info.events = gameData.keyEvents;
-        info.importance += gameData.keyEvents.length * 2;
+        // 对每个 event 单独打分
+        gameData.keyEvents.forEach(function(ev) {
+            info.events.push({
+                content: ev,
+                importance: self.scoreEventImportance(ev)
+            });
+        });
+        // 累计权重用最高值
+        var maxImp = 0;
+        info.events.forEach(function(e) { if (e.importance > maxImp) maxImp = e.importance; });
+        info.importance = Math.max(info.importance, maxImp);
     }
 
     // 提取关系变化
@@ -1215,30 +1562,31 @@ var EnhancedMemory = {
     * 更新短期记忆
     */
     _updateShortTermMemory: function(summary, extractedInfo) {
+        var self = this;
         // 添加到短期记忆
-        this.shortTermMemory.summaries.push(summary);
+        self.shortTermMemory.summaries.push(summary);
 
         // 只保留最近10回合
-        if (this.shortTermMemory.summaries.length > this.shortTermMemory.maxRounds) {
-            this.shortTermMemory.summaries.shift();
+        if (self.shortTermMemory.summaries.length > self.shortTermMemory.maxRounds) {
+            self.shortTermMemory.summaries.shift();
         }
 
-        // 添加事件
+        // 添加事件（兼容字符串和对象）
         if (extractedInfo.events.length > 0) {
-            const self = this;
             extractedInfo.events.forEach(function(event) {
+                var content = (typeof event === 'string') ? event : event.content;
                 self.shortTermMemory.events.push({
-                    content: event,
+                    content: content,
                     turn: summary.turn,
                     timestamp: summary.timestamp
-                    });
                 });
+            });
 
             // 只保留最近20个事件
-            if (this.shortTermMemory.events.length > 20) {
-                this.shortTermMemory.events = this.shortTermMemory.events.slice(-20);
+            if (self.shortTermMemory.events.length > 20) {
+                self.shortTermMemory.events = self.shortTermMemory.events.slice(-20);
             }
-    }
+        }
     },
     
     /**
@@ -1280,28 +1628,54 @@ var EnhancedMemory = {
             }
         }
 
-        // 添加重要事件
+        // 添加重要事件（按 importance 评分去重；不再 FIFO）
         if (extractedInfo.events.length > 0) {
             extractedInfo.events.forEach(function(event) {
-                // 检查是否已存在
+                var content = (typeof event === 'string') ? event : event.content;
+                var imp = (typeof event === 'object' && event.importance) ? event.importance : 5;
+                // 去重：同 content 不重复
                 var exists = self.longTermMemory.importantEvents.some(function(e) {
-                    return e.content === event;
+                    return e.content === content;
                 });
-
                 if (!exists) {
                     self.longTermMemory.importantEvents.push({
-                        content: event,
+                        content: content,
                         turn: summary.turn,
                         timestamp: Date.now(),
-                        importance: extractedInfo.importance
+                        importance: imp
                     });
-                    // 【修复】限制重要事件数量，防止无限增长
-                    if (self.longTermMemory.importantEvents.length > 50) {
-                        self.longTermMemory.importantEvents = self.longTermMemory.importantEvents.slice(-50);
-                    }
                 }
             });
+            // 限制：按 importance 排序，保留 top 50（高分的不被挤掉）
+            self._pruneImportantEvents(50);
         }
+    },
+
+    /**
+     * 按 importance 评分裁剪 importantEvents
+     * 高分（≥9）的事件永不被裁；普通事件按 score 排序
+     */
+    _pruneImportantEvents: function(maxCount) {
+        var self = this;
+        if (!self.longTermMemory.importantEvents) return;
+        if (self.longTermMemory.importantEvents.length <= maxCount) return;
+        // 高分（≥8）的事件标记为 locked
+        self.longTermMemory.importantEvents.forEach(function(e) {
+            if (typeof e.importance !== 'number') e.importance = 5;
+            if (e.importance >= 8) e.locked = true;
+        });
+        var locked = self.longTermMemory.importantEvents.filter(function(e) { return e.locked; });
+        var unlocked = self.longTermMemory.importantEvents.filter(function(e) { return !e.locked; });
+        unlocked.sort(function(a, b) {
+            // importance 高 + turn 新 的优先
+            if (a.importance !== b.importance) return b.importance - a.importance;
+            return (b.turn || 0) - (a.turn || 0);
+        });
+        var budget = Math.max(0, maxCount - locked.length);
+        var keptUnlocked = unlocked.slice(0, budget);
+        // 合并回（locked 在前，按 turn 升序；unlocked 按 importance 降序）
+        locked.sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
+        self.longTermMemory.importantEvents = locked.concat(keptUnlocked);
     },
 
     /**
@@ -1746,9 +2120,9 @@ var EnhancedMemory = {
         var data = {};
         try {
             data = JSON.parse(localStorage.getItem('freeScript_enhancedMemory') || '{}');
-            } catch(e) {
-                data = {};
-            }
+        } catch(e) {
+            data = {};
+        }
 
         if (data.workingMemory) this.workingMemory = data.workingMemory;
         if (data.shortTermMemory) this.shortTermMemory = data.shortTermMemory;
@@ -1757,7 +2131,33 @@ var EnhancedMemory = {
         if (data.compressionConfig) this.compressionConfig = data.compressionConfig;
         if (data.summaryHistory) this.summaryHistory = data.summaryHistory;
         if (typeof data.currentSummaryIndex === 'number') this.currentSummaryIndex = data.currentSummaryIndex;
-        },
+
+        // === 向后兼容：为旧存档补字段 ===
+        if (!this.longTermMemory.worldAnchors) this.longTermMemory.worldAnchors = [];
+        if (!this.longTermMemory.activeQuests) this.longTermMemory.activeQuests = [];
+        // 旧存档的 importantEvents 可能是字符串数组，迁移成对象
+        if (this.longTermMemory.importantEvents && this.longTermMemory.importantEvents.length > 0) {
+            var needsMigration = false;
+            this.longTermMemory.importantEvents.forEach(function(e) {
+                if (typeof e === 'string') needsMigration = true;
+            });
+            if (needsMigration) {
+                this.longTermMemory.importantEvents = this.longTermMemory.importantEvents.map(function(e, i) {
+                    if (typeof e === 'string') {
+                        return { content: e, turn: 0, importance: 5, timestamp: 0 };
+                    }
+                    return e;
+                });
+            }
+        }
+        // 旧存档的 characterTable 可能没有 important 字段
+        if (this.longTermMemory.characterTable) {
+            Object.keys(this.longTermMemory.characterTable).forEach(function(name) {
+                var c = this.longTermMemory.characterTable[name];
+                if (typeof c.important === 'undefined') c.important = false;
+            }, this);
+        }
+    },
     
     startAutoSave: function() {
         const self = this;
@@ -1810,7 +2210,7 @@ var EnhancedMemory = {
     // ========================================
     
     clear: function() {
-        this.workingMemory = { messages: [], summaries: [], timestamp: null };
+        this.workingMemory = { messages: [], summaries: [], timestamp: null, turns: [] };
         this.shortTermMemory = { summaries: [], events: [], maxRounds: 10 };
         this.longTermMemory = {
             masterSummary: '',
@@ -1820,14 +2220,15 @@ var EnhancedMemory = {
             locationTable: {},
             timeline: [],
             relationships: {},
-            worldNotes: []
-            };
+            worldNotes: [],
+            worldAnchors: [],
+            activeQuests: []
+        };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
         this.summaryHistory = [];
         this.currentSummaryIndex = -1;
         localStorage.removeItem('freeScript_enhancedMemory');
-        }
-    ,
+    },
     // ========================================
     // 10. 摘要历史管理
     // ========================================
@@ -1931,55 +2332,156 @@ var EnhancedMemory = {
         return topic;
         },
     buildSmartInjection: function() {
-        var injection = '';
-        var topic = this.detectCurrentTopic();
         var self = this;
-        if (self.longTermMemory.masterSummary) {
-            injection += '<剧情摘要>\n';
-            injection += truncateByChars(self.longTermMemory.masterSummary, 500, '...') + '\n</剧情摘要>\n\n';
-        }
-        if (topic.characters.length > 0) {
-            injection += '<相关角色状态>\n';
-            topic.characters.forEach(function(name) {
-                var ch = self.longTermMemory.characterTable[name];
-                if (ch && ch.history) {
-                    var rc = ch.history.slice(-3).map(function(c) { return c.desc || ''; }).filter(Boolean).join('; ');
-                    injection += name + ': ' + truncateByChars(rc, 200, '...') + '\n';
+        var injection = '';
+        var topic = self.detectCurrentTopic();
+
+        // === 0. 永久事实区（世界锚点）—— 永不丢失的核心设定 ===
+        // 这是反"AI 遗忘"最关键的一段，开头就喂给 AI
+        if (self.longTermMemory.worldAnchors && self.longTermMemory.worldAnchors.length > 0) {
+            injection += '<永久事实(任何情况下不可违背)>\n';
+            // 按 type 分组
+            var byType = {};
+            self.longTermMemory.worldAnchors.forEach(function(a) {
+                if (!byType[a.type]) byType[a.type] = [];
+                byType[a.type].push(a);
+            });
+            // 渲染顺序：pc_identity > setting > world_rule > npc_profile > promise
+            var order = ['pc_identity', 'setting', 'world_rule', 'npc_profile', 'promise'];
+            var typeLabels = {
+                pc_identity: '主角',
+                setting: '世界设定',
+                world_rule: '设定规则',
+                npc_profile: '关键角色',
+                promise: '玩家承诺/约定'
+            };
+            order.forEach(function(t) {
+                if (byType[t] && byType[t].length > 0) {
+                    injection += '【' + typeLabels[t] + '】\n';
+                    byType[t].forEach(function(a) {
+                        injection += '• ' + truncateByChars(a.content, 150, '...') + '\n';
+                    });
                 }
             });
-            injection += '</相关角色状态>\n\n';
-        }
-        if (topic.items.length > 0) {
-            injection += '<相关物品>\n';
-            topic.items.forEach(function(name) {
-                var it = self.longTermMemory.itemTable[name];
-                if (it) injection += name + ': ' + truncateByChars(it.desc || '持有中', 80, '...') + '\n';
-            });
-            injection += '</相关物品>\n\n';
-        }
-        if (self.longTermMemory.importantEvents.length > 0) {
-            injection += '<关键事件记录>\n';
-            self.longTermMemory.importantEvents.slice(-5).forEach(function(e) {
-                injection += '- ' + truncateByChars(e.content || e.event || '', 120, '...') + '\n';
-            });
-            injection += '</关键事件记录>\n\n';
-        }
-        if (gameState.worldSnapshot && gameState.worldSnapshot.summary) {
-            injection += '<当前状态>\n' + gameState.worldSnapshot.summary + '\n</当前状态>\n';
+            injection += '</永久事实>\n\n';
         }
 
-        // 注入世界观设定（仅注入非世界书来源的本地笔记，世界书由WorldInfo系统自动注入）
-        if (self.longTermMemory.worldNotes && self.longTermMemory.worldNotes.length > 0) {
-            var localNotes = self.longTermMemory.worldNotes.filter(function(n) { return n.source !== 'auto'; });
-            if (localNotes.length > 0) {
-                injection += '<世界观笔记>\n';
-                localNotes.forEach(function(note) {
-                    injection += '【' + (note.category || '其他') + '】' +
-                        truncateByChars(note.title || '', 30) + ': ' +
-                        truncateByChars(note.content || '', 200, '...') + '\n';
+        // === 1. 进行中的约定（玩家承诺/任务/未解悬念）===
+        if (self.longTermMemory.activeQuests && self.longTermMemory.activeQuests.length > 0) {
+            var pendingQuests = self.longTermMemory.activeQuests.filter(function(q) {
+                return q.status === 'pending';
+            });
+            if (pendingQuests.length > 0) {
+                injection += '<进行中的约定(AI 必须在剧情中遵守)>\n';
+                pendingQuests.forEach(function(q) {
+                    var icon = q.type === 'promise' ? '🤝' : (q.type === 'quest' ? '📜' : (q.type === 'threat' ? '⚠️' : '❓'));
+                    injection += icon + ' ' + truncateByChars(q.content, 100, '...') + '\n';
                 });
-                injection += '</世界观笔记>\n';
+                injection += '</进行中的约定>\n\n';
             }
+        }
+
+        // === 2. 剧情大纲（masterSummary 摘要） ===
+        if (self.longTermMemory.masterSummary) {
+            injection += '<剧情大纲>\n';
+            // 永久事实里的"世界设定"已经单独注入过，这里只给主线剧情部分
+            var ms = self.longTermMemory.masterSummary;
+            // 截断用 Array.from 按 code point
+            var arr = Array.from(ms);
+            if (arr.length > 500) {
+                // 保留首段（开场世界观可能还有） + 近期若干段
+                injection += truncateByChars(ms, 500, '...') + '\n';
+            } else {
+                injection += ms + '\n';
+            }
+            injection += '</剧情大纲>\n\n';
+        }
+
+        // === 3. 角色状态（按 importance 排序）===
+        if (self.longTermMemory.characterTable && Object.keys(self.longTermMemory.characterTable).length > 0) {
+            injection += '<角色状态(全量)>\n';
+            // 按 "重要度" 排序：important 标志 > 最近出现 > 好感度绝对值
+            var chars = Object.keys(self.longTermMemory.characterTable).map(function(name) {
+                return self.longTermMemory.characterTable[name];
+            });
+            chars.sort(function(a, b) {
+                var aScore = (a.important ? 1000 : 0) + (a.history ? a.history.length : 0) +
+                             (typeof a.favorability === 'number' ? Math.abs(a.favorability - 50) : 0);
+                var bScore = (b.important ? 1000 : 0) + (b.history ? b.history.length : 0) +
+                             (typeof b.favorability === 'number' ? Math.abs(b.favorability - 50) : 0);
+                return bScore - aScore;
+            });
+            // 最多注入 5 个角色（避免 token 爆炸），重要角色优先
+            var maxChars = 5;
+            chars.slice(0, maxChars).forEach(function(c) {
+                var name = c.name || '?';
+                var line = '• ' + name;
+                if (c.title) line += '（' + c.title + '）';
+                if (c.relation) line += ' | 与玩家:' + c.relation;
+                if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
+                if (c.mood) line += ' | 心情:' + c.mood;
+                if (c.location) line += ' | 位置:' + c.location;
+                // 最近一次 desc
+                if (c.history && c.history.length > 0) {
+                    var lastDesc = c.history[c.history.length - 1];
+                    if (lastDesc.desc) line += ' | 近况:' + truncateByChars(lastDesc.desc, 40, '...');
+                }
+                injection += line + '\n';
+            });
+            injection += '</角色状态>\n\n';
+        }
+
+        // === 4. 重要事件（按 importance 排序，不是 FIFO）===
+        if (self.longTermMemory.importantEvents && self.longTermMemory.importantEvents.length > 0) {
+            // 排序：importance DESC, 然后 turn DESC
+            var sorted = self.longTermMemory.importantEvents.slice().sort(function(a, b) {
+                var ai = (typeof a.importance === 'number') ? a.importance : 5;
+                var bi = (typeof b.importance === 'number') ? b.importance : 5;
+                if (ai !== bi) return bi - ai;
+                return (b.turn || 0) - (a.turn || 0);
+            });
+            var topN = sorted.slice(0, 10);  // 取 top 10
+            if (topN.length > 0) {
+                injection += '<重要事件TOP' + topN.length + '>\n';
+                topN.forEach(function(e) {
+                    var imp = (typeof e.importance === 'number') ? e.importance : 5;
+                    var icon = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
+                    injection += icon + '[重要度' + imp + '] ' + truncateByChars(e.content, 100, '...') + '\n';
+                });
+                injection += '</重要事件>\n\n';
+            }
+        }
+
+        // === 5. 物品状态（仅显示当前持有且重要的）===
+        if (self.longTermMemory.itemTable && Object.keys(self.longTermMemory.itemTable).length > 0) {
+            var items = Object.keys(self.longTermMemory.itemTable).map(function(k) {
+                return self.longTermMemory.itemTable[k];
+            });
+            // 按出现次数或稀有度排
+            items = items.filter(function(it) { return it && (it.count || 0) > 0; });
+            if (items.length > 0) {
+                injection += '<持有物品>\n';
+                items.slice(0, 8).forEach(function(it) {
+                    var name = it.name || '?';
+                    var line = '• ' + name;
+                    if (it.count && it.count > 1) line += ' x' + it.count;
+                    if (it.rarity) line += ' [' + it.rarity + ']';
+                    if (it.desc) line += ' - ' + truncateByChars(it.desc, 30, '...');
+                    injection += line + '\n';
+                });
+                injection += '</持有物品>\n\n';
+            }
+        }
+
+        // === 6. 工作记忆（最近 3 回合原文）===
+        if (self.workingMemory.messages && self.workingMemory.messages.length > 0) {
+            injection += '<最近3回合对话>\n';
+            var recent = self.workingMemory.messages.slice(-6);
+            recent.forEach(function(msg) {
+                injection += (msg.role === 'user' ? '玩家' : 'AI') + ': ' +
+                    truncateByChars(msg.content, 200, '...') + '\n';
+            });
+            injection += '</最近3回合对话>\n';
         }
 
         return injection;
