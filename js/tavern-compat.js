@@ -1366,7 +1366,9 @@ var EnhancedMemory = {
     */
     processMessage: function(message, gameData) {
         var self = this;
-
+        // 【防御】processMessage 自身容错：任何内部错误都不能让游戏崩溃
+        // 错误信息记录到 stats.lastError，下一次 save 时持久化
+        try {
         // 0. 扫描承诺/约定，自动写入永久事实区（重要性 10，永不丢失）
         self.extractAndRegisterPromises(message, gameData);
 
@@ -1406,6 +1408,15 @@ var EnhancedMemory = {
         // 10. 更新统计
         self.stats.totalMessages++;
         self.stats.lastUpdateTime = Date.now();
+        } catch (e) {
+            // 记忆系统错误不打断游戏
+            self.stats.lastError = {
+                msg: (e && e.message) || String(e),
+                stack: (e && e.stack) || '',
+                time: Date.now()
+            };
+            console.error('[EnhancedMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
+        }
     },
 
     /**

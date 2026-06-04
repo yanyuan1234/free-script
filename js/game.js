@@ -1024,7 +1024,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 确保异常路径也调用 hideStoryLoading
         hideStoryLoading();
         var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
-        showError(errDisplay);
+        // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
+        showError(errDisplay, error);
         console.error('请求出错:', error);
     } finally {
         window._currentAbort = null;
