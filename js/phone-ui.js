@@ -3870,6 +3870,14 @@ function bindEvents() {
         document.getElementById('autoCompressOn').classList.remove('active');
         saveGameSettings();
     });
+
+    // 字数控制设置 —— 任意一项变化都立即持久化
+    ['wcEnabled', 'wcMin', 'wcMax', 'wcParaMin', 'wcParaMax',
+     'wcParagraphStyle', 'wcPerspective', 'wcUserPronoun',
+     'wcTakeover', 'wcNarrate', 'wcLengthPreset', 'settingStoryLength'].forEach(function(id) {
+        bindEvent(id, 'change', saveGameSettings);
+        bindEvent(id, 'input', saveGameSettings);
+    });
     // 增量更新开关
     bindEvent('incrementalOn', 'click', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = true;
