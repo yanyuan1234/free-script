@@ -4623,6 +4623,12 @@ function saveUndoState() {
 // --- API配置渲染 ---
 function renderAPISettings() {
     UI.showModal('apiConfigModal');
+    _renderAPIListContent();
+}
+
+// 抽出列表渲染逻辑，供 renderAPISettings（打开弹窗时）和
+// _refreshCurrentApiIndicators（自动轮询后无刷新）共用
+function _renderAPIListContent() {
     var container = document.getElementById('apiListContainer');
     if (!container) return;
     var configs = LocalGameAPI._configs;
@@ -4706,9 +4712,32 @@ function renderAPISettings() {
         });
     }
 }
+
+// 自动轮询切到新 slot 后，UI 不主动重读 _currentSlot ——
+// 这个函数在轮询成功后被 core.js 调用，把打开中的列表/详情页徽章同步一下。
+window._refreshCurrentApiIndicators = function() {
+    // API 列表弹窗打开中：重新渲染列表（"使用中" 徽章会跟着 _currentSlot 走）
+    var apiModal = document.getElementById('apiConfigModal');
+    if (apiModal && apiModal.classList.contains('active')) {
+        _renderAPIListContent();
+    }
+    // API 详情弹窗打开中：只刷新"正在使用/未使用"徽章，不重渲染整个详情
+    var detailModal = document.getElementById('apiDetailModal');
+    var badge = document.getElementById('apiDetailStatusBadge');
+    if (detailModal && detailModal.classList.contains('active') && badge) {
+        var slot = LocalGameAPI._shownDetailSlot;
+        if (slot != null) {
+            var isCurrent = slot === LocalGameAPI._currentSlot;
+            badge.textContent = isCurrent ? '正在使用' : '未使用';
+            badge.className = 'badge ' + (isCurrent ? 'badge-primary' : 'badge-soft');
+        }
+    }
+};
 function showApiDetail(slot) {
     var cfg = LocalGameAPI._configs[slot];
     if (!cfg) return;
+    // 记录当前详情页显示的是哪个 slot，供自动轮询后的 _refreshCurrentApiIndicators 判断
+    LocalGameAPI._shownDetailSlot = slot;
     document.getElementById('apiDetailName').textContent = cfg.name || 'API ' + (slot + 1);
     document.getElementById('apiDetailUrl').textContent = cfg.baseUrl || '--';
     document.getElementById('detailApiName').value = cfg.name || '';

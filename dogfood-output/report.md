@@ -1,11 +1,11 @@
-# Dogfood Report: 自由剧本 — 字数控制保存回归测试
+# Dogfood Report: 自由剧本 — 字数控制保存 + API 自动轮询 UI 同步
 
 | Field | Value |
 |-------|-------|
 | **Date** | 2026-06-04 |
 | **App URL** | http://localhost:8765/index.html |
-| **Session** | wordcount-regression |
-| **Scope** | 设置弹窗「字数控制」11 个字段 + 剧情长度 持久化回归；附带发现 wcLengthPreset 数据流断裂、openSettingsModal 不重读 gameState、UI 无交叉校验 |
+| **Session** | wordcount-regression + api-rotation |
+| **Scope** | (1) 设置弹窗「字数控制」11 个字段 + 剧情长度 持久化回归；(2) wcLengthPreset 数据流断裂、openSettingsModal 不重读 gameState、UI 无交叉校验；(3) **API 自动轮询切 slot 后，UI 上的「使用中」徽章不跟着切** |
 | **Mode** | **Headless**（沙箱无 libatk/libcups 等系统库，agent-browser 启动失败；改为从真实 js/phone-ui.js 抽取 saveGameSettings / loadGameSettings，用 vm + FakeDOM 模拟用户操作） |
 
 ## Summary
@@ -18,7 +18,7 @@
 | Low | 0 |
 | **Total** | **0（全部修复）** |
 
-3 个发现已全部修好并验证。修复后的回归测试 **28/28 全部通过**，且**预设优先级**（切预设后 gameState 覆盖 UI，用户的设置被覆盖）行为 **未变**（P1/P2 用例明确验证）。
+3 个发现已全部修好并验证。修复后的回归测试 **28/28 + 14/14 全部通过**，且**预设优先级**（切预设后 gameState 覆盖 UI，用户的设置被覆盖）行为 **未变**（P1/P2 用例明确验证）。
 
 ### 修复清单
 
@@ -29,6 +29,7 @@
 | ISSUE-001 | [game.js:383-385](file:///workspace/js/game.js#L383-L385) | `applyLengthPreset()` 末尾回写 `wcLengthPreset.value` 自身 |
 | ISSUE-002 | [phone-ui.js:5514-5518](file:///workspace/js/phone-ui.js#L5514-L5518) | `openSettingsModal()` 末尾调 `_refreshWordCountUI(gameState.wordCountConfig)` |
 | ISSUE-003 | [phone-ui.js:3883-3893](file:///workspace/js/phone-ui.js#L3883-L3893) | `bindEvents` 里加 wcMin/wcMax 交叉校验（仅 toast，不改值） |
+| **ISSUE-004 (本次新加)** | [core.js:333-339](file:///workspace/js/core.js#L333-L339) · [phone-ui.js:4718-4735](file:///workspace/js/phone-ui.js#L4718-L4735) · [phone-ui.js:4624-4714](file:///workspace/js/phone-ui.js#L4624-L4714) · [phone-ui.js:4736-4740](file:///workspace/js/phone-ui.js#L4736-L4740) | 自动轮询切 slot 后调 `window._refreshCurrentApiIndicators()`；新增该函数同步「列表弹窗「使用中」徽章」+「详情弹窗「正在使用/未使用」徽章」；抽出 `_renderAPIListContent()` 供 `renderAPISettings` 和 `_refreshCurrentApiIndicators` 共用；`showApiDetail()` 开头记录 `_shownDetailSlot` 供后续判断 |
 
 > **关于预设优先级**：以上三处修复都只动了"持久化/UI 同步/校验"，**没有动** `_syncPresetWordCountToUI` 里的写入顺序——预设加载时仍先写 `gameState.wordCountConfig` 再调 `_refreshWordCountUI`，所以"切预设 → 弹窗显示新预设值"的链路完整保留。P1/P2 用例即为此设计意图的回归。
 
@@ -270,3 +271,103 @@ function _refreshWordCountUI(wc) {
 **降级方案**：从 [js/phone-ui.js](file:///workspace/js/phone-ui.js) 抽取**修复后的** `saveGameSettings` 和 `loadGameSettings` 函数（lines 5324-5374 和 5510-5545），用 `vm.runInContext` 注入到一个 FakeDOM（FakeElement + FakeDocument + localStorage polyfill）里跑。FakeElement 实现了 `addEventListener` / `dispatchEvent`，所以"用户改输入框 → 触发 change/input → 调 saveGameSettings → 写 localStorage"这条链路是真实可执行的，不是干跑断言。
 
 测试脚本：[dogfood-output/headless-test.js](file:///workspace/dogfood-output/headless-test.js) · 完整输出：[dogfood-output/headless-test-output.txt](file:///workspace/dogfood-output/headless-test-output.txt)
+
+---
+
+## ISSUE-004: API 自动轮询切到新 slot 后，UI 上的「使用中」徽章不跟着切
+
+| Field | Value |
+|-------|-------|
+| **Severity** | medium |
+| **Category** | functional |
+| **URL** | http://localhost:8765/index.html (设置 → API 配置) |
+| **Repro Video** | N/A（headless test 复现） |
+
+**Description**
+
+`LocalGameAPI.tryWithFallback()` 在某个 slot 失败、自动切到下一个 slot 时，**只在 `localStorage` 层面** 把 `_currentSlot` 改了 + 弹个 toast。**没有通知 UI 层**——所以：
+
+- 用户打开 API 列表弹窗看到「配置 1 在使用中」→ 后端 cfg0 失败、自动切到 cfg1 → **列表里依然显示「配置 1 在使用中」**（错的）
+- 用户打开 API 详情弹窗看 cfg0 → 后端自动切到 cfg1 → **「正在使用」徽章还亮着**（错的）
+
+数据层和 UI 脱节，看起来像"修了一半"。
+
+**根因**
+
+[core.js:316-341](file:///workspace/js/core.js#L316-L341) 的 `tryWithFallback` 切 slot 后只调了 `setCurrentSlot()` 和 `UI.toast()`，**没有**任何代码通知 UI 层"我换 slot 了"。
+
+[phone-ui.js](file:///workspace/js/phone-ui.js) 的 [renderAPISettings()](file:///workspace/js/phone-ui.js#L4624-L4627) 和 [showApiDetail()](file:///workspace/js/phone-ui.js#L4736-L4740) 是读 `LocalGameAPI._currentSlot` 来决定徽章的，但它们只在用户**打开弹窗那一刻**才被调用——后台改了 `_currentSlot`，UI 完全不知道。
+
+**修复**
+
+1. **core.js** 在切 slot 之后追加 `window._refreshCurrentApiIndicators()` 调用：
+
+   ```js
+   if (attempt > 0 && slotIdx !== this._currentSlot) {
+       this.setCurrentSlot(slotIdx);
+       UI.toast('已自动切换到配置 ' + (slotIdx + 1));
+       // 通知 UI 层：API 列表/详情页如果打开，"使用中" 徽章要跟着切
+       if (typeof window !== 'undefined' && typeof window._refreshCurrentApiIndicators === 'function') {
+           window._refreshCurrentApiIndicators();
+       }
+   }
+   ```
+
+2. **phone-ui.js** 新增 `window._refreshCurrentApiIndicators()`，根据当前打开的弹窗类型分别处理：
+
+   ```js
+   window._refreshCurrentApiIndicators = function() {
+       // 列表弹窗打开中：重新渲染（"使用中" 徽章按 _currentSlot 重画）
+       var apiModal = document.getElementById('apiConfigModal');
+       if (apiModal && apiModal.classList.contains('active')) {
+           _renderAPIListContent();
+       }
+       // 详情弹窗打开中：只刷 "正在使用/未使用" 徽章
+       var detailModal = document.getElementById('apiDetailModal');
+       var badge = document.getElementById('apiDetailStatusBadge');
+       if (detailModal && detailModal.classList.contains('active') && badge) {
+           var slot = LocalGameAPI._shownDetailSlot;
+           if (slot != null) {
+               var isCurrent = slot === LocalGameAPI._currentSlot;
+               badge.textContent = isCurrent ? '正在使用' : '未使用';
+               badge.className = 'badge ' + (isCurrent ? 'badge-primary' : 'badge-soft');
+           }
+       }
+   };
+   ```
+
+3. **phone-ui.js** 抽出 `_renderAPIListContent()`（[phone-ui.js:4631-4714](file:///workspace/js/phone-ui.js#L4631-L4714)），把原来写在 `renderAPISettings` 里的列表 HTML 拼装逻辑挪出来。`renderAPISettings` 改为先 showModal 再调它，`_refreshCurrentApiIndicators` 也调它。
+
+4. **phone-ui.js** `showApiDetail()` 开头记一下"这次详情页显示的是哪个 slot"：
+
+   ```js
+   function showApiDetail(slot) {
+       var cfg = LocalGameAPI._configs[slot];
+       if (!cfg) return;
+       LocalGameAPI._shownDetailSlot = slot;  // 记录给 _refreshCurrentApiIndicators 判断
+       ...
+   }
+   ```
+
+**修复验证（headless）**
+
+[dogfood-output/api-rotation-test.js](file:///workspace/dogfood-output/api-rotation-test.js) 构造 3 个 slot 的 mock，让 cfg0/1 失败、cfg2 成功，验证 4 个场景：
+
+| 用例 | 场景 | 结果 |
+|------|------|------|
+| T0 | 初始 _currentSlot === 0 | ✅ |
+| A1 | cfg0 失败、cfg1 成功 → 切到 slot 1 | ✅ |
+| A2 | 出现 "已自动切换到配置 2" toast | ✅ |
+| A3 | 列表弹窗未开时 _refreshCurrentApiIndicators 被调不报错 | ✅ |
+| B1 | 列表初始渲染包含 slot 0 卡片 | ✅ |
+| B2 | 列表初始渲染包含 slot 1 卡片（带「使用中」） | ✅ |
+| B3 | 二次轮询切到 slot 2 | ✅ |
+| B4 | 列表里「使用中」徽章数 === 1（只有当前 slot） | ✅ |
+| B5 | 「使用中」徽章出现在 slot 2 (API-3) 卡片附近 | ✅ |
+| C0 | 详情页初始状态：用户看 cfg0，徽章是「正在使用」 | ✅ |
+| C1 | 详情页打开时切到 slot 2 | ✅ |
+| C2 | **详情页徽章自动更新为「未使用」（cfg0 不再是 current）** | ✅ |
+| D1 | cfg2 仍在 _failedModels 之外，保持 current | ✅ |
+| D2 | **详情页徽章保持「正在使用」（cfg2 仍是 current）** | ✅ |
+
+**合计：14/14 通过**。修复前 D2/C2 等核心断言都会失败——徽章根本不会变。

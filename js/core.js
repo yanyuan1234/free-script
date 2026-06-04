@@ -333,6 +333,10 @@ var LocalGameAPI = {
         if (attempt > 0 && slotIdx !== this._currentSlot) {
             this.setCurrentSlot(slotIdx);
             UI.toast('已自动切换到配置 ' + (slotIdx + 1));
+            // 通知 UI 层：API 列表/详情页如果打开，"使用中" 徽章要跟着切
+            if (typeof window !== 'undefined' && typeof window._refreshCurrentApiIndicators === 'function') {
+                window._refreshCurrentApiIndicators();
+            }
         }
         return result;
         } catch (e) {
