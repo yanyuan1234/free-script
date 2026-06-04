@@ -7,6 +7,62 @@
 // ========================================
 
 // ========================================
+// 统一联动系统：数据变更广播 + 页面联动刷新
+// ========================================
+var GameLinker = {
+    // 注册各页面的刷新函数
+    _refreshers: {},
+    // 注册刷新函数：pageName -> function
+    register: function(pageName, refreshFn) {
+        this._refreshers[pageName] = refreshFn;
+    },
+    // 触发指定页面的刷新（如果该页面当前可见）
+    refresh: function(pageName) {
+        var fn = this._refreshers[pageName];
+        if (fn) {
+            try { fn(); } catch (e) { console.warn('[GameLinker] 刷新 ' + pageName + ' 失败:', e); }
+        }
+    },
+    // 触发所有页面的刷新（用于全局数据变更）
+    refreshAll: function() {
+        var self = this;
+        Object.keys(this._refreshers).forEach(function(page) {
+            self.refresh(page);
+        });
+    },
+    // 触发除当前页面外的所有页面刷新（避免当前页面重复刷新）
+    refreshOthers: function(exceptPage) {
+        var self = this;
+        Object.keys(this._refreshers).forEach(function(page) {
+            if (page !== exceptPage) self.refresh(page);
+        });
+    },
+    // 智能刷新：根据变更的数据类型，自动推断需要刷新的页面
+    refreshByDataChange: function(changeType) {
+        var map = {
+            playerData: ['playerPage'],
+            allCharacters: ['npcPage', 'playerPage'],
+            relationships: ['playerPage', 'npcPage'],
+            currentQuests: ['storyPage', 'logPage'],
+            currentBag: ['playerPage', 'logPage'],
+            keyEvents: ['recapPage', 'storyPage'],
+            rollingSummary: ['storyPage', 'recapPage'],
+            worldSnapshot: ['storyPage', 'playerPage', 'npcPage'],
+            conversationHistory: ['storyPage', 'recapPage'],
+            _chatLogs: ['npcPage', 'storyPage'],
+            _worldModules: ['logPage', 'storyPage'],
+            _memory: ['memoryPage'],
+            gameTime: ['storyPage', 'logPage']
+        };
+        var pages = map[changeType];
+        if (pages) {
+            var self = this;
+            pages.forEach(function(p) { self.refresh(p); });
+        }
+    }
+};
+
+// ========================================
 // UI工具
 // ========================================
 var UI = {
@@ -2496,7 +2552,7 @@ const _navBarClickHandler = function(e) {
     var page = btn.dataset.navPage;
     if (!page) return;
     UI.showPage(page);
-    // 触发页面渲染
+    // 触发页面渲染（同时通知 GameLinker 当前激活页面）
     if (page === 'playerPage') renderPlayerPage();
     else if (page === 'npcPage') renderNpcPage();
     else if (page === 'recapPage') renderRecapPage();
