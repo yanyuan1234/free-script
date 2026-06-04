@@ -4188,6 +4188,30 @@ function bindEvents() {
         document.getElementById('apiAutoRotateOn').classList.remove('active');
     });
 
+    // 【修复】重置 API 配置（清空 localStorage 并恢复默认配置）
+    var btnResetApi = document.getElementById('btnResetApiConfigs');
+    if (btnResetApi) {
+        btnResetApi.addEventListener('click', async function() {
+            var ok = await UI.confirm('重置API配置', '将清空所有 API 配置（包括 API Key），恢复为默认配置。\n\n确定继续？');
+            if (!ok) return;
+            try { localStorage.removeItem('free_script_api_config'); } catch (e) {}
+            try { localStorage.removeItem('free_script_api_errors'); } catch (e) {}
+            if (LocalGameAPI._failedModels) LocalGameAPI._failedModels = {};
+            // 重新初始化
+            LocalGameAPI._configs = [{
+                baseUrl: 'https://api.iamhc.cn/v1', apiKey: '', model: 'auto', models: []
+            },
+            { baseUrl: 'https://api.iamhc.cn/v1', apiKey: '', model: 'Qwen3.6-35B-A3B', models: [] },
+            { baseUrl: 'https://api.iamhc.cn/v1', apiKey: '', model: 'Qwen3.6-35B-A3B', models: [] },
+            { baseUrl: 'https://api.iamhc.cn/v1', apiKey: '', model: 'Qwen3.6-35B-A3B', models: [] },
+            { baseUrl: 'https://api.iamhc.cn/v1', apiKey: '', model: 'Qwen3.6-35B-A3B', models: [] }];
+            LocalGameAPI._currentSlot = 0;
+            LocalGameAPI.save();
+            renderAPISettings();
+            UI.toast('已重置为默认配置（请重新填入 API Key）');
+        });
+    }
+
     // 题材标签 - 点击后从THEME_LIBRARY选取题材填充描述
     var presetCategoryMap = {
         'xianxia': '修仙玄幻',

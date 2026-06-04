@@ -198,7 +198,7 @@ var LocalGameAPI = {
     {
         baseUrl: 'https://api.iamhc.cn/v1',
         apiKey: '',
-        model: 'moonshotai/kimi-k2.6',
+        model: 'Qwen3.6-35B-A3B',
         models: []
         },
     {
@@ -210,13 +210,13 @@ var LocalGameAPI = {
     {
         baseUrl: 'https://api.iamhc.cn/v1',
         apiKey: '',
-        model: 'meta/llama-3.3-70b-instruct',
+        model: 'Qwen3.6-35B-A3B',
         models: []
         },
     {
         baseUrl: 'https://api.iamhc.cn/v1',
         apiKey: '',
-        model: 'qwen/qwen3-coder-480b-a35b-instruct',
+        model: 'Qwen3.6-35B-A3B',
         models: []
         }
     ],
@@ -232,7 +232,13 @@ var LocalGameAPI = {
                 const data = JSON.parse(saved);
                 // 版本检查：如果旧配置包含已下线的模型，清除旧配置使用新默认值
                 // 【修复】清除旧配置时保留 apiKey 和 baseUrl，避免用户配置丢失
-                const oldModels = ['deepseek-v4-flash', 'gemini-2.5-flash'];
+                const oldModels = [
+                    'deepseek-v4-flash', 'gemini-2.5-flash',
+                    // 2026-06 排查：iamhc.cn 中转站下架的模型
+                    'moonshotai/kimi-k2.6',
+                    'meta/llama-3.3-70b-instruct',
+                    'qwen/qwen3-coder-480b-a35b-instruct'
+                ];
                 const hasOld = data.configs && data.configs.some(c => oldModels.includes(c.model));
                 if (hasOld) {
                     // 保留已有配置的 apiKey 和 baseUrl
@@ -394,9 +400,16 @@ var LocalGameAPI = {
         } catch (e) {
         var errMsg = translateError((e && e.message) ? e.message : String(e));
         this._logRequest(slotIdx, false, errMsg);
-        this._markModelFailed(slotIdx);
+        // 【修复】只有"临时性"错误（网络/限流）才标记模型失败 24h
+        // model_not_found / invalid_api_key / context_length_exceeded
+        // 这类错误不会因时间流逝而自愈，不能标记失败（否则会被永久跳过浪费配置）
+        var isPermanent = /model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg);
+        if (!isPermanent) this._markModelFailed(slotIdx);
         console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
-        if (attemptedCount < totalSlots) UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
+        // model_not_found 等"配置错误"静默跳过，不弹误导性 toast
+        if (attemptedCount < totalSlots && !isPermanent) {
+            UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
+        }
     }
     }
     // 更详细的错误信息

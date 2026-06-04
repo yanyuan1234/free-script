@@ -1719,6 +1719,13 @@
                                 <button class="tag-btn" id="apiAutoRotateOff">关闭</button>
                             </div>
                         </div>
+                        <!-- 重置 API 配置（清空 localStorage） -->
+                        <div class="settings-row" style="border-top:1px dashed var(--border-color);padding-top:12px;margin-top:12px;">
+                            <div>
+                                <div style="font-size:13px;color:var(--text-tertiary);">遇到「剧情里一直显示 API 错误」时点此恢复默认配置（会清空所有 API Key）</div>
+                            </div>
+                            <button class="tag-btn" id="btnResetApiConfigs" style="background:var(--warning-bg);color:var(--warning);border:1px solid var(--warning);">重置配置</button>
+                        </div>
                         <!-- 分组标签 -->
                         <div id="apiGroupTabs"
                             <div class="flex gap-8 p-10-20 border-b overflow-x-auto">
