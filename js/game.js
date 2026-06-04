@@ -370,7 +370,7 @@ function applyLengthPreset(preset) {
     };
     var p = presets[preset];
     if (!p) return;
-    
+
     var elMin = document.getElementById('wcMin');
     var elMax = document.getElementById('wcMax');
     var elParaMin = document.getElementById('wcParaMin');
@@ -379,6 +379,10 @@ function applyLengthPreset(preset) {
     if (elMax) elMax.value = p.max;
     if (elParaMin) elParaMin.value = p.paraMin;
     if (elParaMax) elParaMax.value = p.paraMax;
+    // 【ISSUE-001 修复】把下拉自身也回写，否则 UI 和数据不同步
+    // （切预设后下拉还停在旧值，下次 save 时会把旧值写进 localStorage）
+    var elSelf = document.getElementById('wcLengthPreset');
+    if (elSelf) elSelf.value = preset;
 }
 
 async function sendAIRequest(userMessage, isInit = false) {

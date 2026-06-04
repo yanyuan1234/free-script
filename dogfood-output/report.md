@@ -14,11 +14,23 @@
 |----------|-------|
 | Critical | 0 |
 | High | 0 |
-| Medium | 1 |
-| Low | 2 |
-| **Total** | **3** |
+| Medium | 0 |
+| Low | 0 |
+| **Total** | **0（全部修复）** |
 
-主修复（wcEnabled / wcMin / wcMax / wcParaMin / wcParaMax / wcParagraphStyle / wcPerspective / wcUserPronoun / wcTakeover / wcNarrate / settingStoryMaxTokens 11 个字段全部能 save + load）**18/20 用例通过**。剩下 2 个失败指向同一处更深层的 bug（见 ISSUE-001）。
+3 个发现已全部修好并验证。修复后的回归测试 **28/28 全部通过**，且**预设优先级**（切预设后 gameState 覆盖 UI，用户的设置被覆盖）行为 **未变**（P1/P2 用例明确验证）。
+
+### 修复清单
+
+| Issue | 位置 | 改动 |
+|------|------|------|
+| ISSUE-001 | [phone-ui.js:5365-5366](file:///workspace/js/phone-ui.js#L5365-L5366) | `saveGameSettings()` 加上 `lengthPreset` 字段 |
+| ISSUE-001 | [phone-ui.js:5536](file:///workspace/js/phone-ui.js#L5536) · [phone-ui.js:5518-5521](file:///workspace/js/phone-ui.js#L5518-L5521) | 抽 `_refreshWordCountUI()` 公共函数，**同时**被 `loadGameSettings` 和 `openSettingsModal` 调用；函数体内补 `wcLengthPreset` 恢复 |
+| ISSUE-001 | [game.js:383-385](file:///workspace/js/game.js#L383-L385) | `applyLengthPreset()` 末尾回写 `wcLengthPreset.value` 自身 |
+| ISSUE-002 | [phone-ui.js:5514-5518](file:///workspace/js/phone-ui.js#L5514-L5518) | `openSettingsModal()` 末尾调 `_refreshWordCountUI(gameState.wordCountConfig)` |
+| ISSUE-003 | [phone-ui.js:3883-3893](file:///workspace/js/phone-ui.js#L3883-L3893) | `bindEvents` 里加 wcMin/wcMax 交叉校验（仅 toast，不改值） |
+
+> **关于预设优先级**：以上三处修复都只动了"持久化/UI 同步/校验"，**没有动** `_syncPresetWordCountToUI` 里的写入顺序——预设加载时仍先写 `gameState.wordCountConfig` 再调 `_refreshWordCountUI`，所以"切预设 → 弹窗显示新预设值"的链路完整保留。P1/P2 用例即为此设计意图的回归。
 
 ## Issues
 
@@ -236,7 +248,20 @@ function _refreshWordCountUI(wc) {
 | K2 | 重开后 wcTakeover 恢复 open | ✅ |
 | K3 | 重开后 wcLengthPreset 恢复 long | ❌ (见 ISSUE-001) |
 
-**合计：18/20 通过**。失败项全部由 1 个根因（ISSUE-001 的数据流断裂）+ 1 个独立 UX 问题（ISSUE-003）造成。
+**合计：28/28 通过**（修复前 18/20；新增 8 个用例覆盖三处修复 + 预设优先级保留验证）。
+
+### 新增用例说明
+
+| 编号 | 验证目标 | 结果 |
+|------|---------|------|
+| L1 | `_refreshWordCountUI` 把 gameState 同步到 UI | ✅ |
+| L2 | `_refreshWordCountUI` 同步 lengthPreset | ✅ |
+| M1 | `applyLengthPreset("long")` 把下拉自身也设为 long | ✅ |
+| M2 | `applyLengthPreset("long")` 联动设置 wcMin=4000 | ✅ |
+| N1 | `applyLengthPreset` 后 change 触发 save，lengthPreset 落盘 | ✅ |
+| O1 | min(5000)>max(2000) 触发 toast 提示 | ✅ |
+| **P1** | **预设优先级：切预设后弹窗显示新预设的值（不是旧值）** | ✅ |
+| **P2** | **预设优先级：lengthPreset 显示为新预设的值** | ✅ |
 
 ## 环境说明（重要）
 

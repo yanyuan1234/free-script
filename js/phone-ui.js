@@ -3878,6 +3878,18 @@ function bindEvents() {
         bindEvent(id, 'change', saveGameSettings);
         bindEvent(id, 'input', saveGameSettings);
     });
+
+    // 【ISSUE-003 修复】min/max 交叉校验 —— 提示但不强行改值，
+    // 因为校验可能跟用户预期不符（比如用户就是想设大范围然后再回调）
+    ['wcMin', 'wcMax'].forEach(function(id) {
+        bindEvent(id, 'change', function() {
+            var mn = parseInt(document.getElementById('wcMin').value) || 1500;
+            var mx = parseInt(document.getElementById('wcMax').value) || 3000;
+            if (mn > mx && typeof UI !== 'undefined' && UI.toast) {
+                UI.toast('⚠️ 最少字数 (' + mn + ') 不能大于最多字数 (' + mx + ')');
+            }
+        });
+    });
     // 增量更新开关
     bindEvent('incrementalOn', 'click', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = true;
@@ -5362,7 +5374,8 @@ function saveGameSettings() {
         perspective: document.getElementById('wcPerspective') ? document.getElementById('wcPerspective').value : 'third_person_limited',
         userPronoun: document.getElementById('wcUserPronoun') ? document.getElementById('wcUserPronoun').value : 'second_person',
         takeover: document.getElementById('wcTakeover') ? document.getElementById('wcTakeover').value : 'closed',
-        narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed'
+        narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed',
+        lengthPreset: document.getElementById('wcLengthPreset') ? document.getElementById('wcLengthPreset').value : 'medium'
     };
     // 使用预设温度而非硬编码，避免覆盖预设设置
     gameState.temperature = (typeof PresetManager !== 'undefined') ? PresetManager.currentParams.temperature : 0.8;
@@ -5509,8 +5522,33 @@ function openSettingsModal() {
     var lengthEl = document.getElementById('settingStoryLength');
     if (lengthEl) lengthEl.value = gameState.maxTokens || 2048;
 
+    // 【ISSUE-002 修复】打开弹窗时从 gameState 重新同步字数控制字段，
+    // 避免"切预设后 gameState 已更新但弹窗仍显示旧值"。
+    // 注意：gameState.wordCountConfig 由 _syncPresetWordCountToUI 写入，
+    // 预设优先级仍然保留（预设会先写 gameState，再被这里读到）。
+    _refreshWordCountUI(gameState.wordCountConfig);
+
     // 显示设置弹窗
     UI.showModal('settingsModal');
+}
+
+// 【ISSUE-002 修复】把 gameState.wordCountConfig 同步到字数控制 UI 的公共函数。
+// 供 loadGameSettings（首次启动恢复）和 openSettingsModal（打开弹窗刷新）共用。
+function _refreshWordCountUI(wc) {
+    if (!wc) return;
+    var el = function(id) { return document.getElementById(id); };
+    if (el('wcEnabled')) el('wcEnabled').checked = wc.enabled !== false;
+    if (el('wcMin')) el('wcMin').value = wc.min || 1500;
+    if (el('wcMax')) el('wcMax').value = wc.max || 3000;
+    if (el('wcParaMin')) el('wcParaMin').value = wc.paragraphMin || 15;
+    if (el('wcParaMax')) el('wcParaMax').value = wc.paragraphMax || 17;
+    if (el('wcParagraphStyle')) el('wcParagraphStyle').value = wc.paragraphStyle || 'medium';
+    if (el('wcPerspective')) el('wcPerspective').value = wc.perspective || 'third_person_limited';
+    if (el('wcUserPronoun')) el('wcUserPronoun').value = wc.userPronoun || 'second_person';
+    if (el('wcTakeover')) el('wcTakeover').value = wc.takeover || 'closed';
+    if (el('wcNarrate')) el('wcNarrate').value = wc.narrate || 'closed';
+    // 【ISSUE-001 修复】wcLengthPreset 之前 save/load 都没处理，补上
+    if (el('wcLengthPreset')) el('wcLengthPreset').value = wc.lengthPreset || 'medium';
 }
 // --- saveGameSettings 适配（已删除，使用上方完整实现） ---
 
@@ -5528,20 +5566,8 @@ function loadGameSettings() {
             if (d.maxTokens) gameState.maxTokens = d.maxTokens;
             // 加载字数控制配置
             if (d.wordCountConfig) gameState.wordCountConfig = Object.assign(gameState.wordCountConfig || {}, d.wordCountConfig);
-            if (gameState.wordCountConfig) {
-                var wc = gameState.wordCountConfig;
-                var el = function(id) { return document.getElementById(id); };
-                if (el('wcEnabled')) el('wcEnabled').checked = wc.enabled !== false;
-                if (el('wcMin')) el('wcMin').value = wc.min || 1500;
-                if (el('wcMax')) el('wcMax').value = wc.max || 3000;
-                if (el('wcParaMin')) el('wcParaMin').value = wc.paragraphMin || 15;
-                if (el('wcParaMax')) el('wcParaMax').value = wc.paragraphMax || 17;
-                if (el('wcParagraphStyle')) el('wcParagraphStyle').value = wc.paragraphStyle || 'medium';
-                if (el('wcPerspective')) el('wcPerspective').value = wc.perspective || 'third_person_limited';
-                if (el('wcUserPronoun')) el('wcUserPronoun').value = wc.userPronoun || 'second_person';
-                if (el('wcTakeover')) el('wcTakeover').value = wc.takeover || 'closed';
-                if (el('wcNarrate')) el('wcNarrate').value = wc.narrate || 'closed';
-            }
+            // 【ISSUE-002 修复】统一走 _refreshWordCountUI，与 openSettingsModal 共享逻辑
+            _refreshWordCountUI(gameState.wordCountConfig);
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
         }

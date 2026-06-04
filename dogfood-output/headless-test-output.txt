@@ -15,24 +15,48 @@ function saveGameSettings() {
   change: [ [Function: saveGameSettings] ],
   input: [ [Function: saveGameSettings] ]
 }
-✅ B1. 改 wcMin 后 localStorage.wordCountConfig.min === 800  → saved={"enabled":true,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"medium","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
-✅ C1. 取消 wcEnabled 后 wordCountConfig.enabled === false  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"medium","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
-✅ D1. 切换段落风格为 long → paragraphStyle === "long"  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"long","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":t
+✅ B1. 改 wcMin 后 localStorage.wordCountConfig.min === 800  → saved={"enabled":true,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"medium","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed","lengthPreset":"medium"}
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+✅ C1. 取消 wcEnabled 后 wordCountConfig.enabled === false  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"medium","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed","lengthPreset":"medium"}
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+✅ D1. 切换段落风格为 long → paragraphStyle === "long"  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"long","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed","lengthPreset":"medium"}
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
 ✅ E1. 改 settingStoryLength → maxTokens === 4096  → saved.maxTokens=4096
 ✅ E2. 改 settingStoryLength → PresetManager.currentParams.max_tokens === 4096  → PresetManager.currentParams.max_tokens=4096
-✅ F1. 重开后 wcMin 恢复为 800（用户保存的值）  → actual=800
-✅ F2. 重开后 wcMax 保持 3000（未改）  → actual=3000
+✅ F1. 重开后 wcMin 恢复为 800（用户保存的值）  → actual="800"
+✅ F2. 重开后 wcMax 保持 3000（未改）  → actual="3000"
 ✅ F3. 重开后 wcParagraphStyle 恢复为 long  → actual=long
 ✅ F4. 重开后 settingStoryLength 恢复为 4096  → actual=4096
-✅ G1. wcMax 清空时落回默认 3000  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"long","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed"}
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+✅ G1. wcMax 清空时落回默认 3000  → saved={"enabled":false,"min":800,"max":3000,"paragraphMin":15,"paragraphMax":17,"paragraphStyle":"long","perspective":"third_person_limited","userPronoun":"second_person","takeover":"closed","narrate":"closed","lengthPreset":"medium"}
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
 ✅ H1. 切换叙述视角 → wordCountConfig.perspective === "first_person_limited"  → perspective=first_person_limited
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
 ✅ H2. 切换演绎授权为 open → wordCountConfig.takeover === "open"  → takeover=open
-❌ H3. 切换长度预设为 long → wordCountConfig.lengthPreset === "long"  → lengthPreset=undefined
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+✅ H3. 切换长度预设为 long → wordCountConfig.lengthPreset === "long"  → lengthPreset=long
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
 ✅ I1. 连续 input 5 次后落盘值为最终值 1300  → min=1300
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":f
 ✅ J1. wcMin(5000) > wcMax(2000) 时仍照单全收（UI 层未做交叉校验）  → min=5000 max=2000
 ✅ K1. 重开后 wcPerspective 恢复为 first_person_limited  → actual=first_person_limited
 ✅ K2. 重开后 wcTakeover 恢复为 open  → actual=open
-❌ K3. 重开后 wcLengthPreset 恢复为 long  → actual=medium
+✅ K3. 重开后 wcLengthPreset 恢复为 long  → actual=long
+✅ L1. _refreshWordCountUI 把 gameState 同步到 UI（min）  → actual=500
+✅ L2. _refreshWordCountUI 同步 lengthPreset  → actual=short
+✅ M1. applyLengthPreset("long") 把下拉自身也设为 long  → actual=long
+✅ M2. applyLengthPreset("long") 联动设置 wcMin=4000  → actual=4000
+  [setItem] freeScript_settings = {"useStream":true,"temperature":0.8,"fontSize":16,"wordCountConfig":{"enabled":t
+✅ N1. applyLengthPreset("short") 之后点 change 触发 save，lengthPreset === "short"  → lengthPreset=short
+✅ O1. min(5000) > max(2000) 触发 toast 提示  → toast="⚠️ 最少字数 (5000) 不能大于最多字数 (2000)"
+✅ P1. 预设优先级：弹窗打开时显示新预设 B 的值，不是旧值 9999  → min=500 max=1000
+✅ P2. 预设优先级：lengthPreset 显示为 short（预设 B 的值）  → actual=short
 
 === 汇总 ===
-total=20 passed=18 failed=2
+total=28 passed=28 failed=0

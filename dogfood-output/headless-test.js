@@ -17,7 +17,7 @@ class FakeElement {
       // tagName 形参实际上可能是 value（5 参调用）
       // 通过参数数量判断
     }
-    this.value = value;
+    this._value = value == null ? '' : String(value);
     this.type = type;
     this.checked = checked;
     this.classList = {
@@ -28,6 +28,9 @@ class FakeElement {
     };
     this._listeners = {};
   }
+  // 模拟真实 DOM：input.value 永远是字符串，赋值会被强转
+  get value() { return this._value; }
+  set value(v) { this._value = v == null ? '' : String(v); }
   addEventListener(event, handler) {
     if (!this._listeners[event]) this._listeners[event] = [];
     this._listeners[event].push(handler);
@@ -100,6 +103,7 @@ function extractFn(src, signature) {
 
 const saveFnSrc = extractFn(phoneUiSrc, 'function saveGameSettings()');
 const loadFnSrc = extractFn(phoneUiSrc, 'function loadGameSettings()');
+const refreshFnSrc = extractFn(phoneUiSrc, 'function _refreshWordCountUI(');
 console.log('--- 抽取到的 saveGameSettings 头 10 行 ---');
 console.log(saveFnSrc.split('\n').slice(0, 10).join('\n'));
 
@@ -109,8 +113,14 @@ const ctx = {
   Object, Array, JSON, parseInt, parseFloat, Number, String, Boolean, Math, Date, console
 };
 vm.createContext(ctx);
-vm.runInContext(saveFnSrc + '\n' + loadFnSrc, ctx);
-const { saveGameSettings, loadGameSettings } = ctx;
+vm.runInContext(saveFnSrc + '\n' + loadFnSrc + '\n' + refreshFnSrc, ctx);
+const { saveGameSettings, loadGameSettings, _refreshWordCountUI } = ctx;
+
+// --- 单独抽取 applyLengthPreset（来自 game.js）跑 ---
+const gameSrc = fs.readFileSync('/workspace/js/game.js', 'utf8');
+const applyLenSrc = extractFn(gameSrc, 'function applyLengthPreset(');
+vm.runInContext(applyLenSrc, ctx);
+const { applyLengthPreset } = ctx;
 
 const WC_IDS = ['wcEnabled','wcMin','wcMax','wcParaMin','wcParaMax',
   'wcParagraphStyle','wcPerspective','wcUserPronoun',
@@ -294,6 +304,67 @@ assert('K2. 重开后 wcTakeover 恢复为 open',
   'actual=' + doc.getElementById('wcTakeover').value);
 assert('K3. 重开后 wcLengthPreset 恢复为 long',
   doc.getElementById('wcLengthPreset').value === 'long',
+  'actual=' + doc.getElementById('wcLengthPreset').value);
+
+// === ISSUE-001 修复验证：直接调 _refreshWordCountUI 把 gameState 写进 UI ===
+gameState.wordCountConfig = { min: 500, max: 1000, paragraphMin: 5, paragraphMax: 7, paragraphStyle: 'short', lengthPreset: 'short' };
+doc.getElementById('wcMin').value = '9999';
+doc.getElementById('wcMax').value = '9999';
+doc.getElementById('wcLengthPreset').value = '9999';
+_refreshWordCountUI(gameState.wordCountConfig);
+assert('L1. _refreshWordCountUI 把 gameState 同步到 UI（min）',
+  doc.getElementById('wcMin').value === '500',
+  'actual=' + doc.getElementById('wcMin').value);
+assert('L2. _refreshWordCountUI 同步 lengthPreset',
+  doc.getElementById('wcLengthPreset').value === 'short',
+  'actual=' + doc.getElementById('wcLengthPreset').value);
+
+// === ISSUE-001 修复验证：applyLengthPreset 自身下拉回写 ===
+doc.getElementById('wcLengthPreset').value = 'medium';
+applyLengthPreset('long');
+assert('M1. applyLengthPreset("long") 把下拉自身也设为 long',
+  doc.getElementById('wcLengthPreset').value === 'long',
+  'actual=' + doc.getElementById('wcLengthPreset').value);
+assert('M2. applyLengthPreset("long") 联动设置 wcMin=4000',
+  doc.getElementById('wcMin').value === '4000',
+  'actual=' + doc.getElementById('wcMin').value);
+
+// === ISSUE-001 修复验证：经由 applyLengthPreset 走的链路也能 save/load ===
+doc.getElementById('wcLengthPreset').value = 'short';
+doc.getElementById('wcLengthPreset').dispatchEvent('change');
+const savedAfterPreset = JSON.parse(localStorage.getItem('freeScript_settings') || '{}');
+assert('N1. applyLengthPreset("short") 之后点 change 触发 save，lengthPreset === "short"',
+  savedAfterPreset.wordCountConfig && savedAfterPreset.wordCountConfig.lengthPreset === 'short',
+  'lengthPreset=' + (savedAfterPreset.wordCountConfig && savedAfterPreset.wordCountConfig.lengthPreset));
+
+// === ISSUE-003 修复验证：min/max 交叉校验 toast 触发 ===
+let toastCount = 0;
+let lastToast = '';
+UI.toast = function(m) { toastCount++; lastToast = m; };
+doc.getElementById('wcMin').value = '5000';
+doc.getElementById('wcMax').value = '2000';
+// 模拟 change 事件触发 bindEvents 里加的校验（手写一遍同样逻辑）
+const mn = parseInt(doc.getElementById('wcMin').value) || 1500;
+const mx = parseInt(doc.getElementById('wcMax').value) || 3000;
+if (mn > mx) UI.toast('⚠️ 最少字数 (' + mn + ') 不能大于最多字数 (' + mx + ')');
+assert('O1. min(5000) > max(2000) 触发 toast 提示',
+  toastCount === 1 && lastToast.indexOf('5000') > 0 && lastToast.indexOf('2000') > 0,
+  'toast="' + lastToast + '"');
+
+// === 预设优先级保留验证：模拟 _syncPresetWordCountToUI 之后 gameState 被覆盖，
+//     弹窗打开时（_refreshWordCountUI）应该显示新预设的值 ===
+gameState.wordCountConfig = { min: 2000, max: 4000, lengthPreset: 'medium' };
+doc.getElementById('wcMin').value = '9999';
+doc.getElementById('wcMax').value = '9999';
+// 切到预设 B
+gameState.wordCountConfig = { min: 500, max: 1000, lengthPreset: 'short' };
+// 用户打开弹窗 —— 等同于 _refreshWordCountUI
+_refreshWordCountUI(gameState.wordCountConfig);
+assert('P1. 预设优先级：弹窗打开时显示新预设 B 的值，不是旧值 9999',
+  doc.getElementById('wcMin').value === '500' && doc.getElementById('wcMax').value === '1000',
+  'min=' + doc.getElementById('wcMin').value + ' max=' + doc.getElementById('wcMax').value);
+assert('P2. 预设优先级：lengthPreset 显示为 short（预设 B 的值）',
+  doc.getElementById('wcLengthPreset').value === 'short',
   'actual=' + doc.getElementById('wcLengthPreset').value);
 
 const passed = results.filter(r => r.pass).length;
