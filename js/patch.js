@@ -204,54 +204,7 @@
     // ============================================================================
     // 1. 内存泄漏修复 - 定时器管理器
     // ============================================================================
-    if (!window.TimerManager) {
-        window.TimerManager = {
-            timers: new Map(),
-            intervals: new Map(),
-            
-            setTimeout(fn, delay, ...args) {
-                const id = setTimeout((...a) => {
-                    this.timers.delete(id);
-                    try {
-                        fn(...a);
-                    } catch(e) {
-                        console.error('[TimerManager] 错误:', e);
-                    }
-                }, delay, ...args);
-                this.timers.set(id, { fn, delay, args, time: Date.now() });
-                return id;
-            },
-            
-            setInterval(fn, delay, ...args) {
-                const id = setInterval((...a) => {
-                    try {
-                        fn(...a);
-                    } catch(e) {
-                        console.error('[TimerManager] 错误:', e);
-                    }
-                }, delay, ...args);
-                this.intervals.set(id, { fn, delay, args, time: Date.now() });
-                return id;
-            },
-            
-            clearTimeout(id) {
-                clearTimeout(id);
-                this.timers.delete(id);
-            },
-            
-            clearInterval(id) {
-                clearInterval(id);
-                this.intervals.delete(id);
-            },
-            
-            clearAll() {
-                this.timers.forEach((_, id) => clearTimeout(id));
-                this.intervals.forEach((_, id) => clearInterval(id));
-                this.timers.clear();
-                this.intervals.clear();
-            }
-        };
-    }
+    // TimerManager 已在 utils.js 中统一定义（带ID管理），此处不再重复声明
     
     // ============================================================================
     // 2. 安全的状态访问工具
@@ -297,28 +250,7 @@
     // ============================================================================
     // 3. 防抖/节流工具
     // ============================================================================
-    if (!window.debounce) {
-        window.debounce = function(fn, wait = 300) {
-            let timeout;
-            return function(...args) {
-                clearTimeout(timeout);
-                timeout = setTimeout(() => fn.apply(this, args), wait);
-            };
-        };
-    }
-    
-    if (!window.throttle) {
-        window.throttle = function(fn, limit = 300) {
-            let inThrottle;
-            return function(...args) {
-                if (!inThrottle) {
-                    fn.apply(this, args);
-                    inThrottle = true;
-                    setTimeout(() => inThrottle = false, limit);
-                }
-            };
-        };
-    }
+    // debounce/throttle 已在 utils.js 中统一定义，此处不再重复声明
     
     // ============================================================================
     // 4. 全局错误处理增强

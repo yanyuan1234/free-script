@@ -247,7 +247,7 @@ var LocalGameAPI = {
                         if (cfg.apiKey) savedKeys[idx] = { apiKey: cfg.apiKey };
                         if (cfg.baseUrl) savedKeys[idx] = savedKeys[idx] || {};
                         if (cfg.baseUrl) savedKeys[idx].baseUrl = cfg.baseUrl;
-                        });
+                    });
                     // 应用新默认值，但保留 apiKey 和 baseUrl
                     this._configs.forEach((cfg, idx) => {
                         if (savedKeys[idx]) {
@@ -255,23 +255,24 @@ var LocalGameAPI = {
                             if (savedKeys[idx].baseUrl) cfg.baseUrl = savedKeys[idx].baseUrl;
                         }
                     });
-                console.log('[API] 检测到旧模型配置，已更新配置（保留API密钥）');
-                this.save();
-                return;
+                    console.log('[API] 检测到旧模型配置，已更新配置（保留API密钥）');
+                    this.save();
+                } else {
+                    // 【修复】非旧模型情况：正常加载保存的配置
+                    if (data.configs && data.configs.length > 0) {
+                        this._configs = data.configs;
+                    }
+                    this._currentSlot = data.currentSlot || 0;
+                    this._autoRotate = data.autoRotate !== undefined ? data.autoRotate : this._autoRotate;
+                    this._groups = data.groups || [];
+                    this._currentGroup = data.currentGroup || 'all';
+                    this._requestLog = data.requestLog || [];
+                    this._failedModels = data.failedModels || {};
+                }
             }
-            if (data.configs && data.configs.length > 0) {
-                this._configs = data.configs;
-            }
-        this._currentSlot = data.currentSlot || 0;
-        this._autoRotate = data.autoRotate !== undefined ? data.autoRotate : this._autoRotate;
-        this._groups = data.groups || [];
-        this._currentGroup = data.currentGroup || 'all';
-        this._requestLog = data.requestLog || [];
-        this._failedModels = data.failedModels || {};
-    }
-    } catch (e) {
-    console.error('加载API配置失败:', e);
-    }
+        } catch (e) {
+            console.error('加载API配置失败:', e);
+        }
     },
     save() {
         try {
@@ -1040,7 +1041,6 @@ _theaterContent: {},
 _worldModules: [],
 _chatLogs: {},
 _chattedNpcs: {},
-_chatLogs: {},
 _lastAIReply: null,
 _depthPrompts: {},
 _positionPrompts: {},
@@ -1179,6 +1179,7 @@ var TypewriterBuffer = {
     destroy() {
         this.stop();
         if (this._visibilityHandler) {
+            // 使用 GlobalCleanup 的记录来移除，确保与注册方式一致
             document.removeEventListener('visibilitychange', this._visibilityHandler);
             this._visibilityHandler = null;
         }
@@ -2472,18 +2473,7 @@ function rebindBtn(btn, eventType, handler) {
     return clone;
 }
 
-function safeSetItem(key, value) {
-    try {
-        localStorage.setItem(key, value);
-        return true;
-    } catch (e) {
-    if (e.name === 'QuotaExceededError' || e.code === 22) {
-        try { localStorage.removeItem('__autoSaveBackup'); } catch (e2) {}
-        try { localStorage.setItem(key, value); return true; } catch (e3) {}
-    }
-return false;
-}
-}
+// safeSetItem 已在 utils.js 中统一定义，此处不再重复声明
 
 function escapeHtml(text) {
     if (!text) return '';
