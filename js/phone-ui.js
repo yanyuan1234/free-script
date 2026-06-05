@@ -5500,8 +5500,18 @@ function saveGameSettings() {
         takeover: document.getElementById('wcTakeover') ? document.getElementById('wcTakeover').value : 'closed',
         narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed'
     };
+    // 保存默认参数设置（预设会覆盖这些）
+    var defaultParams = {
+        contextLength: parseInt(document.getElementById('settingContextLength') ? document.getElementById('settingContextLength').value : 8192) || 8192,
+        temperature: parseFloat(document.getElementById('settingTemperature') ? document.getElementById('settingTemperature').value : 0.8) || 0.8,
+        topP: parseFloat(document.getElementById('settingTopP') ? document.getElementById('settingTopP').value : 0.9) || 0.9,
+        topK: parseInt(document.getElementById('settingTopK') ? document.getElementById('settingTopK').value : 0) || 0,
+        frequencyPenalty: parseFloat(document.getElementById('settingFreqPen') ? document.getElementById('settingFreqPen').value : 0) || 0,
+        presencePenalty: parseFloat(document.getElementById('settingPresPen') ? document.getElementById('settingPresPen').value : 0) || 0,
+        repeatPenalty: parseFloat(document.getElementById('settingRepeatPen') ? document.getElementById('settingRepeatPen').value : 1.1) || 1.1
+    };
     // 使用预设温度而非硬编码，避免覆盖预设设置
-    gameState.temperature = (typeof PresetManager !== 'undefined') ? PresetManager.currentParams.temperature : 0.8;
+    gameState.temperature = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams.temperature : defaultParams.temperature;
     gameState.autoCompress = document.getElementById('autoCompressOn') && document.getElementById(
         'autoCompressOn').classList.contains('active');
     gameState.generateChoices = true;
@@ -5512,7 +5522,8 @@ function saveGameSettings() {
         wordCountConfig: gameState.wordCountConfig,
         autoCompress: gameState.autoCompress,
         generateChoices: gameState.generateChoices,
-        maxTokens: gameState.maxTokens
+        maxTokens: gameState.maxTokens,
+        defaultParams: defaultParams
     }));
     applyFontSize();
 }
@@ -5645,6 +5656,19 @@ function openSettingsModal() {
     var lengthEl = document.getElementById('settingStoryLength');
     if (lengthEl) lengthEl.value = gameState.maxTokens || 2048;
 
+    // 同步预设参数到设置面板（预设 > 默认）
+    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        var p = PresetManager.currentParams;
+        var el = function(id) { return document.getElementById(id); };
+        if (el('settingContextLength') && p.context_length) el('settingContextLength').value = p.context_length;
+        if (el('settingTemperature') && p.temperature !== undefined) el('settingTemperature').value = p.temperature;
+        if (el('settingTopP') && p.top_p !== undefined) el('settingTopP').value = p.top_p;
+        if (el('settingTopK') && p.top_k !== undefined) el('settingTopK').value = p.top_k;
+        if (el('settingFreqPen') && p.frequency_penalty !== undefined) el('settingFreqPen').value = p.frequency_penalty;
+        if (el('settingPresPen') && p.presence_penalty !== undefined) el('settingPresPen').value = p.presence_penalty;
+        if (el('settingRepeatPen') && p.repeat_penalty !== undefined) el('settingRepeatPen').value = p.repeat_penalty;
+    }
+
     // 显示设置弹窗
     UI.showModal('settingsModal');
 }
@@ -5653,6 +5677,7 @@ function openSettingsModal() {
 // --- loadGameSettings 适配 ---
 function loadGameSettings() {
     var s = localStorage.getItem('freeScript_settings');
+    var defaultParams = null;
     if (s) {
         try {
             var d = JSON.parse(s);
@@ -5662,6 +5687,8 @@ function loadGameSettings() {
             gameState.useStream = d.useStream !== false;
             gameState.generateChoices = true;
             if (d.maxTokens) gameState.maxTokens = d.maxTokens;
+            // 加载默认参数设置
+            if (d.defaultParams) defaultParams = d.defaultParams;
             // 加载字数控制配置
             if (d.wordCountConfig) gameState.wordCountConfig = Object.assign(gameState.wordCountConfig || {}, d.wordCountConfig);
             if (gameState.wordCountConfig) {
@@ -5681,6 +5708,18 @@ function loadGameSettings() {
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
         }
+    }
+    // 恢复默认参数UI（预设未加载时生效）
+    var hasPresetLoaded = (typeof PresetManager !== 'undefined' && PresetManager.currentPresetIndex >= 0);
+    if (!hasPresetLoaded && defaultParams) {
+        var el2 = function(id) { return document.getElementById(id); };
+        if (el2('settingContextLength')) el2('settingContextLength').value = defaultParams.contextLength || 8192;
+        if (el2('settingTemperature')) el2('settingTemperature').value = defaultParams.temperature !== undefined ? defaultParams.temperature : 0.8;
+        if (el2('settingTopP')) el2('settingTopP').value = defaultParams.topP !== undefined ? defaultParams.topP : 0.9;
+        if (el2('settingTopK')) el2('settingTopK').value = defaultParams.topK !== undefined ? defaultParams.topK : 0;
+        if (el2('settingFreqPen')) el2('settingFreqPen').value = defaultParams.frequencyPenalty !== undefined ? defaultParams.frequencyPenalty : 0;
+        if (el2('settingPresPen')) el2('settingPresPen').value = defaultParams.presencePenalty !== undefined ? defaultParams.presencePenalty : 0;
+        if (el2('settingRepeatPen')) el2('settingRepeatPen').value = defaultParams.repeatPenalty !== undefined ? defaultParams.repeatPenalty : 1.1;
     }
     applyFontSize();
 }

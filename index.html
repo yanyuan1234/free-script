@@ -2222,15 +2222,59 @@
                                     <button class="tag-btn" data-fontsize="large">大</button>
                                 </div>
                             </div>
-                            <div>
-                                <label class="field-label">剧情长度（max_tokens）</label>
-                                <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
-                                    value="2048" placeholder="AI每轮最大生成字数">
-                            </div>
-                            <!-- 字数控制设置 -->
+                            <!-- 参数设置卡片（可折叠） -->
                             <div class="setting-group">
                                 <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">字数控制（预设兼容）</h3>
+                                    <h3 class="setting-title">参数设置</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div class="setting-row">
+                                        <label class="field-label">剧情长度（max_tokens）</label>
+                                        <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
+                                            value="2048" placeholder="AI每轮最大生成字数" style="max-width:120px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">上下文长度</label>
+                                        <input type="number" class="input-field" id="settingContextLength" min="256" max="128000"
+                                            value="8192" step="256" style="max-width:120px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Temperature</label>
+                                        <input type="number" class="input-field" id="settingTemperature" min="0" max="2"
+                                            value="0.8" step="0.1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Top P</label>
+                                        <input type="number" class="input-field" id="settingTopP" min="0" max="1"
+                                            value="0.9" step="0.05" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Top K</label>
+                                        <input type="number" class="input-field" id="settingTopK" min="0" max="100"
+                                            value="0" step="1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Freq Penalty</label>
+                                        <input type="number" class="input-field" id="settingFreqPen" min="-2" max="2"
+                                            value="0" step="0.1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Pres Penalty</label>
+                                        <input type="number" class="input-field" id="settingPresPen" min="-2" max="2"
+                                            value="0" step="0.1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Repeat Penalty</label>
+                                        <input type="number" class="input-field" id="settingRepeatPen" min="1" max="2"
+                                            value="1.1" step="0.05" style="max-width:80px;">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 字数控制卡片（可折叠） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">字数控制</h3>
                                     <span class="toggle-icon">▼</span>
                                 </div>
                                 <div class="setting-body" style="display:none;">
@@ -2249,19 +2293,19 @@
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最少字数</label>
-                                        <input type="number" class="input-field" id="wcMin" value="1500" min="100" max="10000">
+                                        <input type="number" class="input-field" id="wcMin" value="1500" min="100" max="10000" style="max-width:100px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最多字数</label>
-                                        <input type="number" class="input-field" id="wcMax" value="3000" min="100" max="30000">
+                                        <input type="number" class="input-field" id="wcMax" value="3000" min="100" max="30000" style="max-width:100px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最少段落数</label>
-                                        <input type="number" class="input-field" id="wcParaMin" value="15" min="1" max="100">
+                                        <input type="number" class="input-field" id="wcParaMin" value="15" min="1" max="100" style="max-width:80px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最多段落数</label>
-                                        <input type="number" class="input-field" id="wcParaMax" value="17" min="1" max="100">
+                                        <input type="number" class="input-field" id="wcParaMax" value="17" min="1" max="100" style="max-width:80px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">段落风格</label>
