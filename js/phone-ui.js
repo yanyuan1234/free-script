@@ -1028,6 +1028,7 @@ function renderLogPage() {
     updateLogFeatureVisibility();
 
     // 联动：在日志页顶部显示"近期重要事件"摘要（来自记忆系统）
+    // 【性能优化】summaryEl 只创建一次，后续渲染只更新内容
     var summaryEl = document.getElementById('logMemorySummary');
     if (!summaryEl) {
         summaryEl = document.createElement('div');
