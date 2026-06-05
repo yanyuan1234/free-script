@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: [master]
+    branches: [master, 'trae/**']
   workflow_dispatch:
 
 permissions:
@@ -23,12 +23,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install dependencies
+        run: npm install
+      - name: Build (minify JS/CSS)
+        run: npm run build
       - name: Inject build version & timestamp into index.html
         run: |
           TS=$(date -u +"%Y-%m-%d %H:%M UTC")
           SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
           VERSION="b${SHA}-${TS// /_}"
           echo "Build version: ${VERSION}"
+          cd dist
           # 1) Replace placeholder for the visible version badge
           if grep -q "__BUILD_VERSION__" index.html; then
             sed -i "s|__BUILD_VERSION__|${VERSION}|g" index.html
@@ -37,7 +46,6 @@ jobs:
             echo "No __BUILD_VERSION__ placeholder, skipping."
           fi
           # 2) Cache-busting: append ?v=<version> to every js/css asset
-          #    so browsers will refetch instead of serving stale JS/CSS.
           sed -i -E "s|(src=\"js/[a-zA-Z0-9_.-]+\\.js)(\")|\\1?v=${VERSION}\\2|g" index.html
           sed -i -E "s|(href=\"css/[a-zA-Z0-9_.-]+\\.css)(\")|\\1?v=${VERSION}\\2|g" index.html
           echo "Cache-busting query ?v=${VERSION} injected into all asset URLs."
@@ -48,7 +56,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: dist
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

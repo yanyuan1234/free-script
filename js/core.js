@@ -26,16 +26,29 @@ var GameLinker = {
     // 触发所有页面的刷新（用于全局数据变更）
     refreshAll: function() {
         var self = this;
-        Object.keys(this._refreshers).forEach(function(page) {
-            self.refresh(page);
-        });
+        // 使用 rAF 批量调度，避免多次重排
+        var pages = Object.keys(this._refreshers);
+        for (var i = 0; i < pages.length; i++) {
+            (function(page) {
+                requestAnimationFrame(function() {
+                    self.refresh(page);
+                });
+            })(pages[i]);
+        }
     },
     // 触发除当前页面外的所有页面刷新（避免当前页面重复刷新）
     refreshOthers: function(exceptPage) {
         var self = this;
-        Object.keys(this._refreshers).forEach(function(page) {
-            if (page !== exceptPage) self.refresh(page);
-        });
+        var pages = Object.keys(this._refreshers);
+        for (var i = 0; i < pages.length; i++) {
+            if (pages[i] !== exceptPage) {
+                (function(page) {
+                    requestAnimationFrame(function() {
+                        self.refresh(page);
+                    });
+                })(pages[i]);
+            }
+        }
     },
     // 智能刷新：根据变更的数据类型，自动推断需要刷新的页面
     refreshByDataChange: function(changeType) {
@@ -57,7 +70,13 @@ var GameLinker = {
         var pages = map[changeType];
         if (pages) {
             var self = this;
-            pages.forEach(function(p) { self.refresh(p); });
+            for (var i = 0; i < pages.length; i++) {
+                (function(page) {
+                    requestAnimationFrame(function() {
+                        self.refresh(page);
+                    });
+                })(pages[i]);
+            }
         }
     }
 };

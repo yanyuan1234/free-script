@@ -10,6 +10,8 @@
         <meta http-equiv="Pragma" content="no-cache">
         <meta http-equiv="Expires" content="0">
         <title>自由剧本 · FREE SCRIPT</title>
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap"
             rel="stylesheet">
         <link rel="stylesheet" href="css/base.css">
@@ -17,9 +19,13 @@
         <link rel="stylesheet" href="css/pages.css">
         <link rel="stylesheet" href="css/phone-ui.css">
         <link rel="stylesheet" href="css/systems.css">
-        <script src="js/utils.js"></script>
-    </head>
+        </head>
     <body>
+        <!-- 加载指示器：JS加载期间显示，initApp完成后隐藏 -->
+        <div class="app-loading" id="appLoading">
+            <div class="app-loading-spinner"></div>
+            <div class="app-loading-text">自由剧本</div>
+        </div>
 
         <!-- 流式输出进度条 -->
         <div class="gen-progress-bar" id="genProgressBar"></div>
@@ -2647,15 +2653,16 @@
 【修复补丁 v3.0】Bug修复与性能优化 - 安全版本
 ============================================================================ -->
 
-    <script src="js/core.js"></script>
-    <script src="js/worldinfo.js"></script>
-    <script src="js/modules.js"></script>
-    <script src="js/game.js"></script>
-    <script src="js/phone-ui.js"></script>
-    <script src="js/systems.js"></script>
-    <script src="js/tavern-compat.js"></script>
-    <script src="js/init.js"></script>
-    <script src="js/patch.js"></script>
+    <script src="js/utils.js" defer></script>
+    <script src="js/core.js" defer></script>
+    <script src="js/worldinfo.js" defer></script>
+    <script src="js/modules.js" defer></script>
+    <script src="js/game.js" defer></script>
+    <script src="js/phone-ui.js" defer></script>
+    <script src="js/systems.js" defer></script>
+    <script src="js/tavern-compat.js" defer></script>
+    <script src="js/init.js" defer></script>
+    <script src="js/patch.js" defer></script>
 
     <script>
     // 版本徽章：点击 = 清缓存 + 硬刷，避免浏览器加载旧 JS

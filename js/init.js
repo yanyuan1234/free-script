@@ -53,6 +53,15 @@ async function initApp() {
                 timestamp: Date.now()
             });
         }
+
+        // 隐藏加载指示器
+        var loadingEl = document.getElementById('appLoading');
+        if (loadingEl) {
+            loadingEl.classList.add('hidden');
+            TimerManager.setTimeout('hideLoading', function() {
+                if (loadingEl.parentNode) loadingEl.remove();
+            }, 400);
+        }
     } catch(initErr) {
         console.error('[INIT] 初始化失败:', initErr);
         // 即使初始化失败，也尝试渲染基本UI
