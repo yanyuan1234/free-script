@@ -4416,6 +4416,12 @@ async function generateEnding() {
     UI.hideModal('settingsModal');
     UI.showPage('endingPage');
 
+    // 延迟生成，让浏览器先渲染页面
+    requestAnimationFrame(function() {
+        _generateEndingRender(stories);
+    });
+}
+async function _generateEndingRender(stories) {
     document.getElementById('endingLabel').textContent = 'ENDING';
     document.getElementById('endingTitle').textContent = '正在生成结局...';
     document.getElementById('endingNames').textContent = '';
@@ -4485,6 +4491,18 @@ function restoreGame() {
     try {
         UI.showPage('storyPage');
 
+        // 延迟渲染，让浏览器先显示页面（避免页面切换卡顿）
+        requestAnimationFrame(function() {
+            _restoreGameRender();
+        });
+    } catch (e) {
+        console.error('恢复游戏界面失败:', e);
+        UI.toast('存档数据已加载，但界面恢复失败');
+        setWaiting(false);
+    }
+}
+function _restoreGameRender() {
+    try {
         // 恢复最后一条AI回复的剧情和选项
         var lastAI = null;
         for (var i = gameState.conversationHistory.length - 1; i >= 0; i--) {
@@ -4633,7 +4651,7 @@ function restoreGame() {
             }
         ], 0);
     } catch (e) {
-        console.error('恢复游戏界面失败:', e);
+        console.error('_restoreGameRender 渲染失败:', e);
         UI.toast('存档数据已加载，但界面恢复失败');
         setWaiting(false);
     }

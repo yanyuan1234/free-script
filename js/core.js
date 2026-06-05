@@ -2654,12 +2654,14 @@ const _navBarClickHandler = function(e) {
     var page = btn.dataset.navPage;
     if (!page) return;
     UI.showPage(page);
-    // 触发页面渲染（同时通知 GameLinker 当前激活页面）
-    if (page === 'playerPage') renderPlayerPage();
-    else if (page === 'npcPage') renderNpcPage();
-    else if (page === 'recapPage') renderRecapPage();
-    else if (page === 'logPage') renderLogPage();
-    else if (page === 'memoryPage' && typeof MemoryManagerUI !== 'undefined') { MemoryManagerUI.show(); UI.showPage('memoryPage'); }
+    // 延迟渲染，让浏览器先显示页面切换效果
+    var renderFn = null;
+    if (page === 'playerPage') renderFn = renderPlayerPage;
+    else if (page === 'npcPage') renderFn = renderNpcPage;
+    else if (page === 'recapPage') renderFn = renderRecapPage;
+    else if (page === 'logPage') renderFn = renderLogPage;
+    else if (page === 'memoryPage' && typeof MemoryManagerUI !== 'undefined') renderFn = function() { MemoryManagerUI.show(); UI.showPage('memoryPage'); };
+    if (renderFn) requestAnimationFrame(function() { renderFn(); });
     // 联动：刷新所有页面的数据缓存（让切换回其他页面时显示最新）
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('playerData');
