@@ -472,8 +472,14 @@ _evaluateCondition: function(condition) {
 },
 
 // 4. 事件系统
-on: function(event, cb) { if(!this._eventListeners[event])this._eventListeners[event]=[]; this._eventListeners[event].push(cb); },
-emit: function(event, data) { var l=this._eventListeners[event]; if(l)l.forEach(function(cb){cb(data);}); },
+// 【性能优化】on() 自动去重，相同函数引用不会重复注册
+on: function(event, cb) {
+    if(!this._eventListeners[event]) this._eventListeners[event] = [];
+    if(this._eventListeners[event].indexOf(cb) === -1) {
+        this._eventListeners[event].push(cb);
+    }
+},
+emit: function(event, data) { var l=this._eventListeners[event]; if(l)l.forEach(function(cb){try{cb(data);}catch(e){console.error('[TavernHelper] listener error:',e);}}); },
 
 // 5. Quick Reply 按钮（增强版 - 支持酒馆完整字段）
 parseQuickReplies: function(data) {

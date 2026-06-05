@@ -118,27 +118,32 @@ var UI = {
         titleEl.textContent = title;
         msgEl.textContent = message;
         UI.showModal('confirmModal');
-        var yesBtn = document.getElementById('confirmYes');
-        if (!yesBtn) {
-            resolve(false);
-            return;
-        }
-        var newYes = yesBtn.cloneNode(true);
-        yesBtn.parentNode.replaceChild(newYes, yesBtn);
-        newYes.addEventListener('click', function() {
+    var yesBtn = document.getElementById('confirmYes');
+    if (!yesBtn) {
+        resolve(false);
+        return;
+    }
+    // 【性能优化】用 _hasBound 标记代替 cloneNode，避免每次创建新元素
+    if (!yesBtn._confirmHandler) {
+        yesBtn._confirmHandler = function() {
             UI.hideModal('confirmModal');
-            resolve(true);
-            });
-        // 绑定"否"按钮，防止Promise永远悬挂
-        var noBtn = document.getElementById('confirmNo');
-        if (noBtn) {
-            var newNo = noBtn.cloneNode(true);
-            noBtn.parentNode.replaceChild(newNo, noBtn);
-            newNo.addEventListener('click', function() {
+            if (yesBtn._confirmResolve) yesBtn._confirmResolve(true);
+        };
+        yesBtn.addEventListener('click', yesBtn._confirmHandler);
+    }
+    yesBtn._confirmResolve = resolve;
+    // 绑定"否"按钮，防止Promise永远悬挂
+    var noBtn = document.getElementById('confirmNo');
+    if (noBtn) {
+        if (!noBtn._confirmHandler) {
+            noBtn._confirmHandler = function() {
                 UI.hideModal('confirmModal');
-                resolve(false);
-                });
+                if (noBtn._confirmResolve) noBtn._confirmResolve(false);
+            };
+            noBtn.addEventListener('click', noBtn._confirmHandler);
         }
+        noBtn._confirmResolve = resolve;
+    }
     });
     },
     prompt: function(title, defaultValue) {
@@ -153,26 +158,31 @@ var UI = {
         inputEl.value = defaultValue || '';
         UI.showModal('promptModal');
         inputEl.focus();
-        var okBtn = document.getElementById('promptOk');
-        var cancelBtn = document.getElementById('promptCancel');
-        if (!okBtn) {
-            resolve(null);
-            return;
-        }
-        var newOk = okBtn.cloneNode(true);
-        okBtn.parentNode.replaceChild(newOk, okBtn);
-        newOk.addEventListener('click', function() {
+    var okBtn = document.getElementById('promptOk');
+    var cancelBtn = document.getElementById('promptCancel');
+    if (!okBtn) {
+        resolve(null);
+        return;
+    }
+    // 【性能优化】用 _hasBound 标记代替 cloneNode
+    if (!okBtn._promptHandler) {
+        okBtn._promptHandler = function() {
             UI.hideModal('promptModal');
-            resolve(inputEl.value || null);
-            });
-        if (cancelBtn) {
-            var newCancel = cancelBtn.cloneNode(true);
-            cancelBtn.parentNode.replaceChild(newCancel, cancelBtn);
-            newCancel.addEventListener('click', function() {
+            if (okBtn._promptResolve) okBtn._promptResolve(inputEl.value || null);
+        };
+        okBtn.addEventListener('click', okBtn._promptHandler);
+    }
+    okBtn._promptResolve = resolve;
+    if (cancelBtn) {
+        if (!cancelBtn._promptHandler) {
+            cancelBtn._promptHandler = function() {
                 UI.hideModal('promptModal');
-                resolve(null);
-                });
+                if (cancelBtn._promptResolve) cancelBtn._promptResolve(null);
+            };
+            cancelBtn.addEventListener('click', cancelBtn._promptHandler);
         }
+        cancelBtn._promptResolve = resolve;
+    }
     // 回车确认
     inputEl.onkeydown = function(e) {
         if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {

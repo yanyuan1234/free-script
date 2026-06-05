@@ -3538,6 +3538,10 @@ function bindEvent(id, event, handler, opts) {
         }
         return false;
     }
+    // 【性能优化】防重复绑定：使用 _hasBound 标记，同一元素同一事件只绑定一次
+    var bindKey = '_bound_' + event;
+    if (el[bindKey]) return true;
+    el[bindKey] = true;
     el.addEventListener(event, handler, opts);
     return true;
 }
@@ -3549,6 +3553,10 @@ function bindEventQuery(selector, event, handler, opts) {
         }
         return false;
     }
+    // 【性能优化】防重复绑定
+    var bindKey = '_bound_' + event;
+    if (el[bindKey]) return true;
+    el[bindKey] = true;
     el.addEventListener(event, handler, opts);
     return true;
 }

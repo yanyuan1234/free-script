@@ -1103,6 +1103,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                         text: msg.text,
                         time: new Date().toLocaleTimeString()
                     });
+                    // 【性能优化】限制每个NPC聊天记录最多 50 条，防止长会话内存泄漏
+                    if (gameState._chatLogs[msg.from].length > 50) {
+                        gameState._chatLogs[msg.from] = gameState._chatLogs[msg.from].slice(-50);
+                    }
                     showNpcMessageNotification(msg.from, msg.text);
                 }
             });
@@ -2983,13 +2987,14 @@ function toggleChatMenu() {
     });
     var header = document.querySelector('.chat-detail-header');
     if (header) header.appendChild(menu);
+    // 【性能优化】用 once 选项监听器自动清理，防止重复打开菜单导致监听器累积
+    var closeMenu = function(e) {
+        if (!menu.contains(e.target) && e.target.id !== 'chatDetailMore') {
+            menu.remove();
+        }
+    };
     TimerManager.setTimeout('chatMenuClick', function() {
-        document.addEventListener('click', function closeMenu(e) {
-            if (!menu.contains(e.target) && e.target.id !== 'chatDetailMore') {
-                menu.remove();
-                document.removeEventListener('click', closeMenu);
-            }
-        });
+        document.addEventListener('click', closeMenu, { once: true });
     }, 10);
 }
 function editChatRemark() {
@@ -3397,7 +3402,6 @@ function addNpcChatBubble(role, text, skipPush) {
         if (npcChatState.chatHistory.length > 100) {
             npcChatState.chatHistory = npcChatState.chatHistory.slice(-50);
         }
-        // 同步到gameState._chatLogs（裁剪后也保持一致）
         if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
         gameState._chatLogs[npcChatState.npcName] = npcChatState.chatHistory.slice();
         // 自动保存聊天记录
