@@ -26,15 +26,9 @@ var GameLinker = {
     // 触发所有页面的刷新（用于全局数据变更）
     refreshAll: function() {
         var self = this;
-        // 使用 rAF 批量调度，避免多次重排
-        var pages = Object.keys(this._refreshers);
-        for (var i = 0; i < pages.length; i++) {
-            (function(page) {
-                requestAnimationFrame(function() {
-                    self.refresh(page);
-                });
-            })(pages[i]);
-        }
+        Object.keys(this._refreshers).forEach(function(page) {
+            self.refresh(page);
+        });
     },
     // 触发除当前页面外的所有页面刷新（避免当前页面重复刷新）
     refreshOthers: function(exceptPage) {
