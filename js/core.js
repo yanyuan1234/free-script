@@ -598,7 +598,8 @@ var LocalGameAPI = {
             message: '请填写完整配置'
             };
         try {
-            const url = this.normalizeUrl(config.baseUrl) + '/chat/completions';
+            // 【修复】使用 buildApiUrl 以支持代理配置
+            const url = this.buildApiUrl(config.baseUrl, '/chat/completions');
             const res = await fetch(url, {
                 method: 'POST',
                 headers: {
@@ -2799,27 +2800,35 @@ return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
         throw new Error('PresetManager 未初始化');
     }
 var presetParams = PresetManager.getParams();
-// 【增强】合并预设中的高级采样参数（如果预设有定义）
-// 【修复】添加类型校验，确保数值参数为Number类型
+
+// 【优化】用配置表驱动参数合并，替代逐个 if 判断
+// 高级参数定义：{ paramKey, defaultVal, coerce }
+var _advancedParams = [
+    { key: 'top_k', def: 0, fn: Number },
+    { key: 'top_a', def: 0, fn: Number },
+    { key: 'min_p', def: 0, fn: Number },
+    { key: 'repetition_penalty', def: 1, fn: Number },
+    { key: 'typical_p', def: 1, fn: Number },
+    { key: 'tail_free_sampling', def: 1, fn: Number },
+    { key: 'mirostat_mode', def: 0, fn: Number },
+    { key: 'mirostat_tau', def: 5.0, fn: Number },
+    { key: 'mirostat_eta', def: 0.1, fn: Number },
+    { key: 'dry_multiplier', def: 0, fn: Number },
+    { key: 'xtc_probability', def: 0, fn: Number },
+    { key: 'reasoning_effort', def: null, fn: String },
+    { key: 'seed', def: null, fn: function(v) { return Number(v) || null; } },
+    { key: 'max_tokens', def: 0, fn: Number }
+];
 if (PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
     var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
     if (_curPreset && _curPreset.params) {
         var _pp = _curPreset.params;
-        // 合并未在 getParams 中暴露的高级参数（带类型转换）
-        if (_pp.top_k != null && !presetParams.top_k) presetParams.top_k = Number(_pp.top_k) || 0;
-        if (_pp.top_a != null && !presetParams.top_a) presetParams.top_a = Number(_pp.top_a) || 0;
-        if (_pp.min_p != null && !presetParams.min_p) presetParams.min_p = Number(_pp.min_p) || 0;
-        if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
-        if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
-        if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;
-        if (_pp.mirostat_mode != null && _pp.mirostat_mode !== 0) presetParams.mirostat_mode = Number(_pp.mirostat_mode) || 0;
-        if (_pp.mirostat_tau != null && _pp.mirostat_tau !== 5.0) presetParams.mirostat_tau = Number(_pp.mirostat_tau) || 5.0;
-        if (_pp.mirostat_eta != null && _pp.mirostat_eta !== 0.1) presetParams.mirostat_eta = Number(_pp.mirostat_eta) || 0.1;
-        if (_pp.dry_multiplier != null && _pp.dry_multiplier !== 0) presetParams.dry_multiplier = Number(_pp.dry_multiplier) || 0;
-        if (_pp.xtc_probability != null && _pp.xtc_probability !== 0) presetParams.xtc_probability = Number(_pp.xtc_probability) || 0;
-        if (_pp.reasoning_effort != null) presetParams.reasoning_effort = String(_pp.reasoning_effort);
-        if (_pp.seed != null) presetParams.seed = Number(_pp.seed) || null;
-        // 确保max_tokens使用预设值（带类型转换）
+        _advancedParams.forEach(function(p) {
+            if (_pp[p.key] != null && _pp[p.key] !== p.def && !presetParams[p.key]) {
+                presetParams[p.key] = p.fn(_pp[p.key]) || p.def;
+            }
+        });
+        // max_tokens 特殊处理：需要 > 0
         if (_pp.max_tokens && Number(_pp.max_tokens) > 0) presetParams.max_tokens = Number(_pp.max_tokens);
     }
 }
@@ -2891,25 +2900,21 @@ if (options.frequency_penalty != null) params.frequency_penalty = options.freque
 if (options.presence_penalty != null) params.presence_penalty = options.presence_penalty;
 if (options.stop != null) params.stop = options.stop;
 
-// 过滤掉 null 和默认值参数，避免某些 API 后端报错
+// 【优化】用配置表驱动参数过滤，替代逐个 if 判断
+var _filterDefaults = {
+    top_k: 0, min_p: 0, top_a: 0,
+    repetition_penalty: 1, typical_p: 1,
+    mirostat_mode: 0, repetition_penalty_range: 0,
+    repetition_penalty_slope: 0, tfs: 1,
+    epsilon_cutoff: 0, eta_cutoff: 0,
+    dry_multiplier: 0, xtc_probability: 0,
+    tool_reasoning_mode: 'disabled'
+};
 var filteredParams = {};
 Object.keys(params).forEach(function(key) {
     var val = params[key];
     if (val !== null && val !== undefined) {
-        if (key === 'top_k' && val === 0) return;
-        if (key === 'min_p' && val === 0) return;
-        if (key === 'top_a' && val === 0) return;
-        if (key === 'repetition_penalty' && val === 1) return;
-        if (key === 'typical_p' && val === 1) return;
-        if (key === 'mirostat_mode' && val === 0) return;
-        if (key === 'repetition_penalty_range' && val === 0) return;
-        if (key === 'repetition_penalty_slope' && val === 0) return;
-        if (key === 'tfs' && val === 1) return;
-        if (key === 'epsilon_cutoff' && val === 0) return;
-        if (key === 'eta_cutoff' && val === 0) return;
-        if (key === 'dry_multiplier' && val === 0) return;
-        if (key === 'xtc_probability' && val === 0) return;
-        if (key === 'tool_reasoning_mode' && val === 'disabled') return;
+        if (key in _filterDefaults && val === _filterDefaults[key]) return;
         filteredParams[key] = val;
     }
 });
@@ -2929,6 +2934,29 @@ if (body.reasoning_effort) {
 // 【修复R1】支持自定义signal，避免NPC聊天与主游戏共享AbortController
 const signal = options.signal || (window._currentAbort ? window._currentAbort.signal : undefined);
 
+// 【优化】提取 SSE 事件解析为内部函数，消除重复代码
+function parseSseLine(line, onContent) {
+    if (!line.startsWith('data: ') || line === 'data: [DONE]') return false;
+    try {
+        const json = JSON.parse(line.slice(6));
+        if (json.error && !streamError) {
+            var errObj = json.error;
+            streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
+            console.error('[callAI] 流式错误:', streamError);
+            return false;
+        }
+        const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+        if (content) onContent(content);
+        return true;
+    } catch (e) {
+        var lineContent = line.slice(6).trim();
+        if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
+            console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
+        }
+        return false;
+    }
+}
+
 if (options.stream) {
     // 流式请求
     const res = await fetch(url, {
@@ -2944,7 +2972,6 @@ if (!res.ok) {
     let errMsg = translateError('API错误: ' + res.status);
     try {
         const errData = await res.json();
-        // 优先取 message，其次取 code/type，最后拼接所有字段
         var errObj = errData.error || errData;
         errMsg = translateError(errObj.message) ||
         translateError(errObj.code) ||
@@ -2959,7 +2986,7 @@ const decoder = new TextDecoder();
 let fullText = '';
 let rawBody = '';
 let sseBuffer = '';
-let streamError = null; // 【修复】捕获流中的错误响应
+let streamError = null;
 while (true) {
     const {
         done,
@@ -2969,37 +2996,18 @@ if (done) {
     // 流结束时，处理剩余的buffer
     if (sseBuffer && sseBuffer.trim()) {
         const lines = sseBuffer.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                try {
-                    const json = JSON.parse(line.slice(6));
-                    // 【修复】检测流中的错误响应
-                    if (json.error && !streamError) {
-                        var errObj = json.error;
-                        streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                        console.error('[callAI] 流式错误:', streamError);
-                        continue;
-                    }
-                const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+        lines.forEach(function(line) {
+            parseSseLine(line, function(content) {
                 fullText += content;
                 if (options.onChunk) {
-                    try {
-                        options.onChunk(fullText);
-                    } catch (chunkErr) {
-                    console.warn('[callAI] onChunk 回调异常:', chunkErr);
+                    try { options.onChunk(fullText); } catch (chunkErr) {
+                        console.warn('[callAI] onChunk 回调异常:', chunkErr);
+                    }
                 }
-        }
-} catch (e) {
-// 【修复】JSON解析失败时，检查是否是错误格式的数据
-var lineContent = line.slice(6).trim();
-if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
-    console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
-}
-}
-}
-}
-}
-break;
+            });
+        });
+    }
+    break;
 }
 const chunk = decoder.decode(value, {
     stream: true
@@ -3014,38 +3022,18 @@ sseBuffer = events.pop() || '';
 for (const event of events) {
     const lines = event.split('\n');
     for (const line of lines) {
-        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-            try {
-                const json = JSON.parse(line.slice(6));
-                // 【修复】检测流中的错误响应
-                if (json.error && !streamError) {
-                    var errObj = json.error;
-                    streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                    console.error('[callAI] 流式错误:', streamError);
-                    continue;
-                }
-            const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+        parseSseLine(line, function(content) {
             fullText += content;
             if (options.onChunk) {
-                try {
-                    options.onChunk(fullText);
-                } catch (chunkErr) {
-                console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
+                try { options.onChunk(fullText); } catch (chunkErr) {
+                    console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
+                }
             }
+        });
     }
-} catch (e) {
-// 【修复】JSON解析失败时，检查是否是错误格式的数据
-var lineContent = line.slice(6).trim();
-if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
-    console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
 }
 }
-}
-}
-}
-}
-// 【修复】如果流中检测到错误且没有收到任何有效内容，抛出错误
-// 如果已有部分内容，说明API可能先发了警告但仍正常返回，不中断
+// 如果流中检测到错误且没有收到任何有效内容，抛出错误
 if (streamError && !fullText) {
     throw new Error(streamError);
 } else if (streamError && fullText) {
@@ -3055,22 +3043,19 @@ console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:',
 if (!fullText && rawBody) {
     try {
         const jsonData = JSON.parse(rawBody);
-        // 【修复】检查兜底JSON中是否包含错误
         if (jsonData.error) {
             var errObj = jsonData.error;
             throw new Error(translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API错误: ' + JSON.stringify(errObj)));
         }
     fullText = (jsonData.choices && jsonData.choices[0] && jsonData.choices[
         0].message && jsonData.choices[0].message.content) || '';
-    // 【修复】如果依然没有有效内容且有usage信息（说明请求成功但无输出），返回空而非rawBody
     if (!fullText && jsonData.usage) {
         fullText = '';
     } else if (!fullText) {
     fullText = rawBody;
 }
 } catch (e) {
-if (e.message && e.message.indexOf('API') === 0) throw e; // 重新抛出我们的错误
-// 如果也不是JSON，直接用原始文本
+if (e.message && e.message.indexOf('API') === 0) throw e;
 fullText = rawBody;
 }
 }
