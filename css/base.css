@@ -114,6 +114,11 @@
 .modal-overlay {
     will-change: transform, opacity;
 }
+/* 【性能优化】故事文本区域GPU加速，减少打字机渲染时的重绘范围 */
+#storyText {
+    will-change: contents;
+    contain: layout style;
+}
 
 .setting-header {
     display: flex;

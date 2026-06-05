@@ -1753,9 +1753,16 @@ function formatStory(text) {
         text = PresetAppManager.stripDecorTags(text);
     }
 
-    // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）
-    var oldBubbles = document.querySelectorAll('body > .thought-bubble:not([data-persistent])');
-    oldBubbles.forEach(function(b) { b.remove(); });
+    // 【性能优化】延迟批量清理心声气泡，避免每次formatStory都querySelectorAll
+    // 使用 requestIdleCallback 在空闲时清理，不阻塞渲染
+    if (window._pendingBubbleCleanup) {
+        cancelIdleCallback(window._pendingBubbleCleanup);
+    }
+    window._pendingBubbleCleanup = requestIdleCallback(function() {
+        var oldBubbles = document.querySelectorAll('body > .thought-bubble:not([data-persistent])');
+        oldBubbles.forEach(function(b) { b.remove(); });
+        window._pendingBubbleCleanup = null;
+    }, { timeout: 100 });
 
     // 检查是否包含章节结束标记
     var chapterEndMatch = text.match(/\[章节结束\|([^\]]+)\]/);

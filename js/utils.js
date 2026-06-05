@@ -6,6 +6,7 @@ var DOMCache = {
     _cache: {},
     _permanent: {},
     _maxAge: 30000,
+    _maxSize: 100, // 【性能优化】限制缓存条目数，防止内存泄漏
     get(id, permanent) {
         if (permanent && this._permanent[id]) return this._permanent[id];
         var c = this._cache[id];
@@ -13,7 +14,10 @@ var DOMCache = {
         var el = document.getElementById(id);
         if (el) {
             if (permanent) this._permanent[id] = el;
-            else this._cache[id] = { el: el, t: Date.now() };
+            else {
+                this._cache[id] = { el: el, t: Date.now() };
+                this._evictIfNeeded();
+            }
         }
     return el;
 },
@@ -24,13 +28,27 @@ query(sel, permanent) {
     var el = document.querySelector(sel);
     if (el) {
         if (permanent) this._permanent[sel] = el;
-        else this._cache[sel] = { el: el, t: Date.now() };
+        else {
+            this._cache[sel] = { el: el, t: Date.now() };
+            this._evictIfNeeded();
+        }
     }
 return el;
 },
 setPermanent(id, el) { if (el) this._permanent[id] = el; },
 clear() { this._cache = {}; },
-clearAll() { this._cache = {}; this._permanent = {}; }
+clearAll() { this._cache = {}; this._permanent = {}; },
+// 【性能优化】超出容量时淘汰最旧的条目
+_evictIfNeeded() {
+    var keys = Object.keys(this._cache);
+    if (keys.length <= this._maxSize) return;
+    // 按时间排序，移除最旧的
+    var sorted = keys.sort(function(a, b) { return this._cache[a].t - this._cache[b].t; }.bind(this));
+    var removeCount = keys.length - this._maxSize + 10; // 多移除10个，减少频繁淘汰
+    for (var i = 0; i < removeCount && i < sorted.length; i++) {
+        delete this._cache[sorted[i]];
+    }
+}
 };
 
 var Logger = {
@@ -107,6 +125,8 @@ function safeSetItem(key, value) {
         return { success: false, error: 'quota_exceeded', message: '存储空间不足', required: dataSize, available: capacity.total - capacity.used };
     }
 localStorage.setItem(key, value);
+// 【性能优化】写入成功后使容量缓存失效
+if (typeof StorageMonitor !== 'undefined') StorageMonitor.invalidateCache();
 return { success: true, used: dataSize };
 } catch(e) {
 if (e.name === 'QuotaExceededError' || e.code === 22) {
@@ -122,6 +142,10 @@ function safeGetItem(key, defaultValue) { try { var v = localStorage.getItem(key
 var StorageMonitor = {
     DEFAULT_LIMIT: 5 * 1024 * 1024,
     MAX_LIMIT: 10 * 1024 * 1024,
+    // 【性能优化】缓存容量检查结果，避免每次写入都遍历整个localStorage
+    _capacityCache: null,
+    _capacityCacheTime: 0,
+    _CAPACITY_CACHE_TTL: 30000, // 30秒缓存
     getUsedSpace: function() {
         var used = 0;
         try {
@@ -143,9 +167,21 @@ getRemainingSpace: function() {
     return Math.max(0, total - used);
 },
 checkCapacity: function() {
+    // 【性能优化】使用缓存的容量检查结果
+    var now = Date.now();
+    if (this._capacityCache && (now - this._capacityCacheTime < this._CAPACITY_CACHE_TTL)) {
+        return this._capacityCache;
+    }
     var used = this.getUsedSpace();
     var total = this._estimateTotalSpace();
-    return { used: used, total: total, percentage: (used / total) * 100 };
+    this._capacityCache = { used: used, total: total, percentage: (used / total) * 100 };
+    this._capacityCacheTime = now;
+    return this._capacityCache;
+},
+// 【性能优化】写入后使缓存失效
+invalidateCache: function() {
+    this._capacityCache = null;
+    this._capacityCacheTime = 0;
 },
 warnIfFull: function(threshold) {
     threshold = threshold !== undefined ? threshold : 80;
