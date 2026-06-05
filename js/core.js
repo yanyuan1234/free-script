@@ -2987,6 +2987,77 @@ function _extractDeltaContent(rawLine) {
     return '';
 }
 
+// 暴力提取：从 rawBody 中扫描出所有 "content":"..." 的值（顺序拼接）
+// 完全不依赖 SSE 事件边界，兼容中转站的任何奇葩格式
+// 返回 { text, endPos }，text 为拼接后的所有 content，endPos 为已扫描到的位置
+function extractAllContentFromRawBody(rawBody, startPos) {
+    if (!rawBody) return { text: '', endPos: startPos || 0 };
+    var pos = startPos || 0;
+    var collected = '';
+    while (pos < rawBody.length) {
+        // 找到下一个 "content" 字段
+        var idx = rawBody.indexOf('"content"', pos);
+        if (idx === -1) break;
+        // 找到冒号
+        var colonIdx = idx + 9;
+        while (colonIdx < rawBody.length && /\s/.test(rawBody[colonIdx])) colonIdx++;
+        if (rawBody[colonIdx] !== ':') { pos = idx + 9; continue; }
+        colonIdx++;
+        while (colonIdx < rawBody.length && /\s/.test(rawBody[colonIdx])) colonIdx++;
+        if (colonIdx >= rawBody.length) break;
+        // 必须是字符串 "..." 开头
+        if (rawBody[colonIdx] !== '"') { pos = colonIdx; continue; }
+        // 开始解析字符串值（含转义）
+        var valueStart = colonIdx + 1;
+        var i = valueStart;
+        var inEscape = false;
+        var value = '';
+        var finished = false;
+        while (i < rawBody.length) {
+            var ch = rawBody[i];
+            if (inEscape) {
+                switch (ch) {
+                    case 'n': value += '\n'; break;
+                    case 'r': value += '\r'; break;
+                    case 't': value += '\t'; break;
+                    case 'b': value += '\b'; break;
+                    case 'f': value += '\f'; break;
+                    case '"': value += '"'; break;
+                    case '\\': value += '\\'; break;
+                    case '/': value += '/'; break;
+                    case 'u':
+                        var hex = rawBody.substring(i + 1, i + 5);
+                        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                            value += String.fromCharCode(parseInt(hex, 16));
+                            i += 4;
+                        } else {
+                            value += ch;
+                        }
+                        break;
+                    default: value += ch;
+                }
+                inEscape = false;
+            } else if (ch === '\\') {
+                inEscape = true;
+            } else if (ch === '"') {
+                // 字符串结束
+                collected += value;
+                pos = i + 1;
+                finished = true;
+                break;
+            } else {
+                value += ch;
+            }
+            i++;
+        }
+        if (!finished) {
+            // 没找到结束引号，说明还没收完整，留到下次再处理
+            break;
+        }
+    }
+    return { text: collected, endPos: pos };
+}
+
 // 检测 chunk 内容中是否含错误标记
 function lineContentHasErrorMarker(s) {
     if (!s) return false;
@@ -3034,48 +3105,25 @@ let fullText = '';
 let rawBody = '';
 let sseBuffer = '';
 let streamError = null; // 【修复】捕获流中的错误响应
+let _rawScanPos = 0; // 暴力扫描 rawBody 的位置（增量）
+console.log('[callAI-暴力修复] 启用暴力提取 v3（不依赖SSE边界）');
 while (true) {
     const {
         done,
         value
     } = await reader.read();
 if (done) {
-    // 流结束时，处理剩余的buffer
-    if (sseBuffer && sseBuffer.trim()) {
-        const lines = sseBuffer.split('\n');
-        for (const line of lines) {
-            if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                // 修复：先尝试严格 JSON 解析；失败用 _extractDeltaContent 兜底
-                var _lineContent = line.slice(6);
-                var _content = '';
-                try {
-                    const _json = JSON.parse(_lineContent);
-                    if (_json.error && !streamError) {
-                        var errObj = _json.error;
-                        streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                        console.error('[callAI] 流式错误:', streamError);
-                        continue;
-                    }
-                    _content = _json.choices && _json.choices[0] && _json.choices[0].delta && _json.choices[0].delta.content || '';
-                } catch (e) {
-                    // 严格解析失败，尝试宽松提取
-                    _content = _extractDeltaContent(_lineContent);
-                    if (_content && lineContentHasErrorMarker(_lineContent)) {
-                        console.warn('[callAI] 可能是错误响应（无法解析JSON）:', _lineContent.substring(0, 200));
-                    }
-                }
-                if (_content) {
-                    var _prevText = fullText;
-                    fullText += _content;
-                    var _delta = fullText.substring(_prevText.length);
-                    if (options.onChunk) {
-                        // 修复：传 (delta, fullText) — onStreamChunk 用 delta 增量 push
-                        try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
-                    }
-                }
-            }
+    // 流结束时，做最后一次暴力扫描
+    var _lastScan = extractAllContentFromRawBody(rawBody, _rawScanPos);
+    if (_lastScan.text) {
+        var _prevLast = fullText;
+        fullText += _lastScan.text;
+        var _deltaLast = fullText.substring(_prevLast.length);
+        if (options.onChunk) {
+            try { options.onChunk(_deltaLast, fullText); } catch (e) { console.warn('[callAI] onChunk异常(末尾):', e); }
         }
     }
+    _rawScanPos = _lastScan.endPos;
     break;
 }
 const chunk = decoder.decode(value, {
@@ -3084,8 +3132,43 @@ const chunk = decoder.decode(value, {
 rawBody += chunk;
 // 解析SSE
 sseBuffer += chunk;
+
+// === 【暴力修复 v3】主路径：完全抛弃 SSE 边界假设 ===
+// 直接扫描 rawBody 中所有 "content":"..." 字段，提取后立即增量推送
+// 这样即使中转站的 SSE 事件格式异常（如无 \n\n 分隔、字段错位）也能拿到内容
+if (rawBody.length > _rawScanPos) {
+    var _scan = extractAllContentFromRawBody(rawBody, _rawScanPos);
+    if (_scan.text) {
+        var _prevT = fullText;
+        fullText += _scan.text;
+        var _d = fullText.substring(_prevT.length);
+        if (options.onChunk) {
+            try { options.onChunk(_d, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
+        }
+    }
+    _rawScanPos = _scan.endPos;
+}
+
+// === 辅助：检测流中的错误响应（仅检测，不提取内容） ===
+if (!streamError && rawBody.indexOf('"error"') !== -1) {
+    try {
+        // 尝试从 rawBody 末尾截取一段做错误检测（避免每行 JSON.parse）
+        var _errIdx = rawBody.lastIndexOf('"error"');
+        var _errWindow = rawBody.substring(Math.max(0, _errIdx - 200), Math.min(rawBody.length, _errIdx + 500));
+        if (_errWindow.indexOf('"error"') !== -1) {
+            var _errJson = null;
+            try { _errJson = JSON.parse(_errWindow); } catch (e) { _errJson = null; }
+            if (_errJson && _errJson.error) {
+                var errObj = _errJson.error;
+                streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
+                console.error('[callAI] 流中检测到错误:', streamError);
+            }
+        }
+    } catch (e) { /* 静默 */ }
+}
+
+// === 保留旧的 SSE 行解析作为兜底（兼容标准 OpenAI 格式） ===
 // 修复：中转站（iamhc.cn 等）不写标准的 \n\n 事件分隔，只用单 \n
-// 必须按单 \n 分割 + 过滤 data: 行，否则分割不出来任何事件
 const lines = sseBuffer.split(/\r?\n/);
 // 保留最后一段在 buffer（可能是半截 data: 行，等下次 read 合并）
 const lastLine = lines.pop() || '';
@@ -3107,17 +3190,17 @@ for (const line of lines) {
         } catch (e) {
             // 严格解析失败，宽松提取 delta.content
             _content = _extractDeltaContent(_lineContent);
-            if (_content && lineContentHasErrorMarker(_lineContent)) {
-                console.warn('[callAI] 可能是错误响应（无法解析JSON）:', _lineContent.substring(0, 200));
-            }
         }
         if (_content) {
-            var _prevText = fullText;
-            fullText += _content;
-            var _delta = fullText.substring(_prevText.length);
-            if (options.onChunk) {
-                // 修复：传 (delta, fullText) — onStreamChunk 用 delta 增量 push
-                try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr); }
+            // 【修复】暴力提取可能已经处理过这段内容了，避免重复
+            // 检查 fullText 末尾是否已包含 _content（简单去重）
+            if (fullText.length < _content.length || fullText.substring(fullText.length - _content.length) !== _content) {
+                var _prevText = fullText;
+                fullText += _content;
+                var _delta = fullText.substring(_prevText.length);
+                if (options.onChunk) {
+                    try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr); }
+                }
             }
         }
     }
@@ -3130,28 +3213,40 @@ if (streamError && !fullText) {
 } else if (streamError && fullText) {
 console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', streamError);
 }
-// 兜底：如果SSE解析为空，尝试将rawBody作为普通JSON解析
+// 兜底：如果SSE解析为空，最后再做一次暴力扫描（确保已收到 rawBody 中所有 content）
 if (!fullText && rawBody) {
-    try {
-        const jsonData = JSON.parse(rawBody);
-        // 【修复】检查兜底JSON中是否包含错误
-        if (jsonData.error) {
-            var errObj = jsonData.error;
-            throw new Error(translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API错误: ' + JSON.stringify(errObj)));
+    var _finalScan = extractAllContentFromRawBody(rawBody, 0);
+    if (_finalScan.text) {
+        fullText = _finalScan.text;
+        console.log('[callAI-暴力修复] 兜底提取到内容，长度:', fullText.length);
+    } else {
+        // 仍然没有内容，尝试用 _extractDeltaContent 处理单行 SSE 格式
+        var _linesArr = rawBody.split(/\r?\n/);
+        for (var _li = 0; _li < _linesArr.length; _li++) {
+            var _ln = _linesArr[_li];
+            if (_ln.indexOf('data:') === 0 && _ln.indexOf('[DONE]') === -1) {
+                var _lc = _ln.replace(/^data:\s*/, '');
+                var _c2 = _extractDeltaContent(_lc);
+                if (_c2) fullText += _c2;
+            }
         }
-    fullText = (jsonData.choices && jsonData.choices[0] && jsonData.choices[
-        0].message && jsonData.choices[0].message.content) || '';
-    // 【修复】如果依然没有有效内容且有usage信息（说明请求成功但无输出），返回空而非rawBody
-    if (!fullText && jsonData.usage) {
-        fullText = '';
-    } else if (!fullText) {
-    fullText = rawBody;
-}
-} catch (e) {
-if (e.message && e.message.indexOf('API') === 0) throw e; // 重新抛出我们的错误
-// 如果也不是JSON，直接用原始文本
-fullText = rawBody;
-}
+    }
+    // 终极兜底：检查是否是非流式 JSON
+    if (!fullText) {
+        try {
+            const jsonData = JSON.parse(rawBody);
+            if (jsonData.error) {
+                var errObj2 = jsonData.error;
+                throw new Error(translateError(errObj2.message) || translateError(errObj2.code) || translateError(errObj2.msg) || ('API错误: ' + JSON.stringify(errObj2)));
+            }
+            fullText = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message && jsonData.choices[0].message.content) || '';
+        } catch (e) {
+            if (e.message && e.message.indexOf('API') === 0) throw e;
+            // 【暴力修复】绝不再把 rawBody 当作 fullText 返回
+            console.error('[callAI-暴力修复] 无法从响应中提取内容。rawBody前500字符:', rawBody.substring(0, 500));
+            throw new Error('API响应格式无法解析（既不是SSE流也不是非流式JSON）。请检查API配置或更换中转站。');
+        }
+    }
 }
 return fullText;
 } else {
