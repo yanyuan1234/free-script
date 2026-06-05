@@ -1399,11 +1399,17 @@ function _findMatching(str, startChar, endChar, startIdx) {
     }
 return -1;
 }
+// 【性能优化】safeJSONParse 预编译正则提到模块级，避免每次调用创建
+var _JSON_FIX_CONTROL_RE = /[\u0000-\u001F]+/g;
+var _JSON_FIX_TRAILING_COMMA_RE = /,(\s*[}\]])/g;
+var _JSON_FIX_MULTI_COMMA_RE = /,+/g;
+var _JSON_STRIP_JSON_FENCE_RE = /^```json\s*/i;
+var _JSON_STRIP_FENCE_RE = /^```/;
 function safeJSONParse(str) {
     if (!str || typeof str !== 'string') return null;
     try {
         let s = str.trim();
-        if (s.startsWith('```')) s = s.replace(/^```json\s*/i, '').replace(/^```/, '').trim();
+        if (s.startsWith('```')) s = s.replace(_JSON_STRIP_JSON_FENCE_RE, '').replace(_JSON_STRIP_FENCE_RE, '').trim();
         if (s.endsWith('```')) s = s.slice(0, -3).trim();
         const tryP = t => {
             try {
@@ -1424,13 +1430,13 @@ const fb = s.indexOf('{');
         }
 }
 // 修复常见错误
-let fx = s.replace(/[\u0000-\u001F]+/g, ' ').replace(/,(\s*[}\]])/g, '$1').replace(/,+/g, ',');
+let fx = s.replace(_JSON_FIX_CONTROL_RE, ' ').replace(_JSON_FIX_TRAILING_COMMA_RE, '$1').replace(_JSON_FIX_MULTI_COMMA_RE, ',');
 r = tryP(fx);
 if (r) return r;
 const js = s.indexOf('{'),
     je = s.lastIndexOf('}');
 if (js !== -1 && je > js) {
-    r = tryP(s.slice(js, je + 1).replace(/,(\s*[}\]])/g, '$1'));
+    r = tryP(s.slice(js, je + 1).replace(_JSON_FIX_TRAILING_COMMA_RE, '$1'));
 if (r) return r
 }
 return null;

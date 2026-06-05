@@ -580,6 +580,7 @@ async function sendAIRequest(userMessage, isInit = false) {
     setWaiting(true);
     showStoryLoading();
     streamBuffer = '';
+    if (typeof _resetStreamCache === 'function') _resetStreamCache();
     TypewriterBuffer.stop();
     
     // 保存撤销状态（在AI回复前）
@@ -1103,9 +1104,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                         text: msg.text,
                         time: new Date().toLocaleTimeString()
                     });
-                    // 【性能优化】限制每个NPC聊天记录最多 50 条，防止长会话内存泄漏
-                    if (gameState._chatLogs[msg.from].length > 50) {
-                        gameState._chatLogs[msg.from] = gameState._chatLogs[msg.from].slice(-50);
+                    // 【优化】仅做软上限提醒（每NPC 500条），不限制保存，保证NPC聊天记录完整
+                    if (gameState._chatLogs[msg.from].length > 500) {
+                        console.warn('[NPC聊天] ' + msg.from + ' 聊天记录超过500条，建议用户手动清理或导出存档');
                     }
                     showNpcMessageNotification(msg.from, msg.text);
                 }
@@ -1638,9 +1639,36 @@ async function manualCompress(btn) {
 // ========================================
 
 // --- 流式chunk处理 ---
+// 【性能优化】extractStoryStreaming 增量解析：记录上次找到 "story": 的位置
+// 避免每次都对完整 buffer 重新做正则匹配（O(n²) 退化）
+var _storyMatchCache = { lastIndex: 0, lastTextLength: 0, lastFound: false };
+// 预编译正则提到模块级，避免每次创建
+var _STORY_HEADER_RE = /"story"\s*:\s*"/;
+
 function extractStoryStreaming(text) {
-    var match = text.match(/"story"\s*:\s*"/);
-    if (!match) return null;
+    // 【性能优化】快速路径：如果 buffer 只在末尾追加，从上次位置继续查找
+    var match = null;
+    if (_storyMatchCache.lastFound && text.length > _storyMatchCache.lastTextLength) {
+        // 上次找到了，但本次 streamBuffer 增长。优先在增量部分匹配
+        var incText = text.substring(_storyMatchCache.lastTextLength);
+        if (incText.indexOf('"story"') !== -1) {
+            // 增量部分含 "story"，重新全文匹配（这种情况罕见，主要是边界检测）
+            match = _STORY_HEADER_RE.exec(text);
+        } else {
+            // 增量部分不含 "story"，上次找到的位置仍然有效
+            var startIdx = _storyMatchCache.lastIndex;
+            // 直接从上次位置 + 8 长度偏移开始（已知 match[0].length === 8~10）
+            match = { index: startIdx, 0: '"story":' };
+        }
+    } else {
+        match = _STORY_HEADER_RE.exec(text);
+    }
+
+    if (!match || match.index === undefined) return null;
+    _storyMatchCache.lastIndex = match.index;
+    _storyMatchCache.lastTextLength = text.length;
+    _storyMatchCache.lastFound = true;
+
     var i = match.index + match[0].length;
     var inEscape = false;
     var result = '';
@@ -1694,18 +1722,38 @@ function extractStoryStreaming(text) {
     }
     return result.length > 0 ? result : null;
 }
+
+// 重置流式解析缓存（开始新流时调用）
+function _resetStreamCache() {
+    _storyMatchCache.lastIndex = 0;
+    _storyMatchCache.lastTextLength = 0;
+    _storyMatchCache.lastFound = false;
+}
 // 流式模式锁定：一旦确定模式，不再切换（防止纯文本中偶然含"story"导致模式跳变）
 var _streamModeLocked = false;
 var _streamMode = null; // 'json' 或 'plaintext'
 
+// 【性能优化】流式响应 debounce：合并高频chunk，避免每帧都解析大buffer
+// SSE 每秒可能触发数十次，每次 extractStoryStreaming 都要遍历全文 → 严重卡顿
+// 用 rAF 把同一帧内的多次chunk合并为一次处理
+var _streamChunkPending = false;
+var _streamChunkDirty = false;
 function onStreamChunk(chunk) {
     streamBuffer += chunk;
-    var story = extractStoryStreaming(streamBuffer);
-    if (story && story.length > 0) {
-        // 应用正则脚本到AI输出
-        story = RegexManager.applyToOutput(story);
-        TypewriterBuffer.push(story);
-    }
+    _streamChunkDirty = true;
+    if (_streamChunkPending) return;
+    _streamChunkPending = true;
+    requestAnimationFrame(function() {
+        _streamChunkPending = false;
+        if (!_streamChunkDirty) return;
+        _streamChunkDirty = false;
+        var story = extractStoryStreaming(streamBuffer);
+        if (story && story.length > 0) {
+            // 应用正则脚本到AI输出
+            story = RegexManager.applyToOutput(story);
+            TypewriterBuffer.push(story);
+        }
+    });
 }
 
 // ========================================
@@ -1731,6 +1779,26 @@ function renderStory(text) {
 }
 // 全局心声计数器
 var globalThoughtId = 0;
+// 【性能优化】formatStory 频繁用到的正则预编译到模块级
+// 原代码每次调用都会重新创建正则对象，对长文本/频繁调用影响显著
+var _RE_HTML_ENTITIES = /&lt;/g;
+var _RE_GT_ENTITY = /&gt;/g;
+var _RE_QUOT_ENTITY = /&quot;/g;
+var _RE_AMP_ENTITY = /&amp;/g;
+var _RE_NUM_ENTITY = /&#(\d+);/g;
+var _RE_HEX_ENTITY = /&#x([0-9a-fA-F]+);/g;
+var _RE_GIGGLE_BRACKET = /【giggle】/g;
+var _RE_GIGGLE_BRACKET_END = /【\/giggle】/g;
+var _RE_CHAPTER_END = /\[章节结束\|([^\]]+)\]/;
+var _RE_GIGGLE_TAG = /<giggle>[\s\S]*?<\/giggle>/gi;
+var _RE_GIGGLE_CAPTURE = /<giggle>([\s\S]*?)<\/giggle>/gi;
+var _RE_GIGGLE_BRACKET_TAG = /【giggle】[\s\S]*?【\/giggle】/gi;
+var _RE_CN_QUOTE = /(\u300c[^\u300d]+\u300d)/g;
+var _RE_EN_QUOTE = /("[^"]+")/g;
+var _RE_PLACEHOLDER = /&lt;&lt;PH(\d+)PH&gt;&gt;/g;
+var _RE_MD_BOLD = /\*\*(.*?)\*\*/g;
+var _RE_MD_EM = /\*(.*?)\*/g;
+var _RE_HEX4 = /^[0-9a-fA-F]{4}$/;
 // 【性能优化】formatStory 整段文本级缓存：避免打字机每帧重复转换已渲染过的文本
 // 键：输入文本，值：转换后的HTML
 // 打字机每80ms调用一次，文本不断增长，但已处理过的前缀会一直被重复转换
@@ -1767,17 +1835,17 @@ function formatStory(text) {
     if (cached !== null) return cached;
 
     // 【修复】反转义 HTML 实体，防止 <giggle> 和 「」被转义后无法匹配
-    // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
-    text = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    // 【性能优化】使用预编译的正则对象
+    text = text.replace(_RE_HTML_ENTITIES, '<').replace(_RE_GT_ENTITY, '>').replace(_RE_QUOT_ENTITY, '"').replace(_RE_AMP_ENTITY, '&');
     // 同时处理数字字符实体（如 &#12300; → 「）
-    text = text.replace(/&#(\d+);/g, function(_, code) {
+    text = text.replace(_RE_NUM_ENTITY, function(_, code) {
         return String.fromCharCode(parseInt(code, 10));
-    }).replace(/&#x([0-9a-fA-F]+);/g, function(_, hex) {
+    }).replace(_RE_HEX_ENTITY, function(_, hex) {
         return String.fromCharCode(parseInt(hex, 16));
     });
 
     // 【新增兼容】处理AI错误返回的中文方括号格式 【giggle】→<giggle>
-    text = text.replace(/【giggle】/g, '<giggle>').replace(/【\/giggle】/g, '</giggle>');
+    text = text.replace(_RE_GIGGLE_BRACKET, '<giggle>').replace(_RE_GIGGLE_BRACKET_END, '</giggle>');
 
     // 先解析装饰标签，提取到 PresetAppManager
     if (typeof PresetAppManager !== 'undefined') {
@@ -1813,7 +1881,8 @@ function formatStory(text) {
     }, { timeout: 100 });
 
     // 检查是否包含章节结束标记
-    var chapterEndMatch = text.match(/\[章节结束\|([^\]]+)\]/);
+    // 【性能优化】使用模块级预编译正则
+    var chapterEndMatch = text.match(_RE_CHAPTER_END);
     var chapterEndHtml = '';
     if (chapterEndMatch) {
         chapterEndHtml = '<div class="chapter-end-title"><span class="flower">*</span>' + escapeHtml(
@@ -1871,7 +1940,8 @@ function formatStory(text) {
 
     paragraphs.forEach(function(p, pIdx) {
         // 移除所有心声标记（兼容中文方括号格式）
-        var cleanText = p.replace(/<giggle>[\s\S]*?<\/giggle>/gi, '').replace(/【giggle】[\s\S]*?【\/giggle】/gi, '').trim();
+        // 【性能优化】使用模块级预编译正则
+        var cleanText = p.replace(_RE_GIGGLE_TAG, '').replace(_RE_GIGGLE_BRACKET_TAG, '').trim();
 
         // 检查这个段落是否有对应的心声
         var hasThoughtInThisPara = false;
@@ -1897,24 +1967,25 @@ function formatStory(text) {
             if (hasDialogue) {
                 var placeholders = [];
                 // 先处理中文引号「」
-                var safeText = cleanText.replace(/(\u300c[^\u300d]+\u300d)/g, function(m) {
+                // 【性能优化】使用模块级预编译正则
+                var safeText = cleanText.replace(_RE_CN_QUOTE, function(m) {
                     var idx = placeholders.length;
                     placeholders.push('<span class="dialogue">' + escapeHtml(m) + '</span>');
                     return '<<PH' + idx + 'PH>>';
                 });
                 // 再处理英文引号""
-                safeText = safeText.replace(/("[^"]+")/g, function(m) {
+                safeText = safeText.replace(_RE_EN_QUOTE, function(m) {
                     var idx = placeholders.length;
                     placeholders.push('<span class="dialogue">' + escapeHtml(m) + '</span>');
                     return '<<PH' + idx + 'PH>>';
                 });
                 // 先转义HTML，然后替换占位符
-                html = '<p>' + escapeHtml(safeText).replace(/&lt;&lt;PH(\d+)PH&gt;&gt;/g, function(_, i) {
+                html = '<p>' + escapeHtml(safeText).replace(_RE_PLACEHOLDER, function(_, i) {
                     return placeholders[parseInt(i)];
                 }) + '</p>';
             } else {
-                html = '<p>' + escapeHtml(cleanText).replace(/\*\*(.*?)\*\*/g,
-                    '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>') + '</p>';
+                html = '<p>' + escapeHtml(cleanText).replace(_RE_MD_BOLD,
+                    '<strong>$1</strong>').replace(_RE_MD_EM, '<em>$1</em>') + '</p>';
             }
         }
 
