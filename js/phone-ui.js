@@ -4393,7 +4393,10 @@ function startNewGame() {
         }
     ], 0);
 
-    initializeGame();
+    // 延迟初始化游戏，让浏览器先渲染页面（避免页面切换卡顿）
+    requestAnimationFrame(function() {
+        initializeGame();
+    });
 
     // 触发事件：CHAT_CREATED（创建新聊天）
     if (typeof TavernHelperCompat !== 'undefined') {

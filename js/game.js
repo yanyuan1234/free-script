@@ -618,10 +618,13 @@ async function sendAIRequest(userMessage, isInit = false) {
                 var initPreset = PresetManager.presets[PresetManager.currentPresetIndex];
                 if (initPreset) {
                     PresetManager._applyPromptsToSystemPrompt(initPreset);
+                    // 同步更新 conversationHistory 中的系统提示词
+                    if (gameState.conversationHistory.length > 0 && gameState.conversationHistory[0].role === 'system') {
+                        gameState.conversationHistory[0].content = gameState.systemPrompt;
+                    }
                 }
-            } else {
-                try { gameState.systemPrompt = buildSystemPrompt(); } catch(e) {}
             }
+            // 无预设时，initializeGame() 已设置好 systemPrompt，无需重复构建
             messages = gameState.conversationHistory.concat([{
                 role: 'user',
                 content: userMessage
