@@ -3084,41 +3084,40 @@ const chunk = decoder.decode(value, {
 rawBody += chunk;
 // 解析SSE
 sseBuffer += chunk;
-// 按双换行分割完整SSE事件
-const events = sseBuffer.split(/\r?\n\r?\n/);
-// 最后一段可能不完整，保留在buffer中
-sseBuffer = events.pop() || '';
-for (const event of events) {
-    const lines = event.split('\n');
-    for (const line of lines) {
-        if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-            // 修复：先严格 JSON 解析；失败用 _extractDeltaContent 兜底
-            var _lineContent = line.slice(6);
-            var _content = '';
-            try {
-                const _json = JSON.parse(_lineContent);
-                if (_json.error && !streamError) {
-                    var errObj = _json.error;
-                    streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                    console.error('[callAI] 流式错误:', streamError);
-                    continue;
-                }
-                _content = _json.choices && _json.choices[0] && _json.choices[0].delta && _json.choices[0].delta.content || '';
-            } catch (e) {
-                // 严格解析失败，宽松提取 delta.content
-                _content = _extractDeltaContent(_lineContent);
-                if (_content && lineContentHasErrorMarker(_lineContent)) {
-                    console.warn('[callAI] 可能是错误响应（无法解析JSON）:', _lineContent.substring(0, 200));
-                }
+// 修复：中转站（iamhc.cn 等）不写标准的 \n\n 事件分隔，只用单 \n
+// 必须按单 \n 分割 + 过滤 data: 行，否则分割不出来任何事件
+const lines = sseBuffer.split(/\r?\n/);
+// 保留最后一段在 buffer（可能是半截 data: 行，等下次 read 合并）
+const lastLine = lines.pop() || '';
+sseBuffer = lastLine;
+for (const line of lines) {
+    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+        // 修复：先严格 JSON 解析；失败用 _extractDeltaContent 兜底
+        var _lineContent = line.slice(6);
+        var _content = '';
+        try {
+            const _json = JSON.parse(_lineContent);
+            if (_json.error && !streamError) {
+                var errObj = _json.error;
+                streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
+                console.error('[callAI] 流式错误:', streamError);
+                continue;
             }
-            if (_content) {
-                var _prevText = fullText;
-                fullText += _content;
-                var _delta = fullText.substring(_prevText.length);
-                if (options.onChunk) {
-                    // 修复：传 (delta, fullText) — onStreamChunk 用 delta 增量 push
-                    try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr); }
-                }
+            _content = _json.choices && _json.choices[0] && _json.choices[0].delta && _json.choices[0].delta.content || '';
+        } catch (e) {
+            // 严格解析失败，宽松提取 delta.content
+            _content = _extractDeltaContent(_lineContent);
+            if (_content && lineContentHasErrorMarker(_lineContent)) {
+                console.warn('[callAI] 可能是错误响应（无法解析JSON）:', _lineContent.substring(0, 200));
+            }
+        }
+        if (_content) {
+            var _prevText = fullText;
+            fullText += _content;
+            var _delta = fullText.substring(_prevText.length);
+            if (options.onChunk) {
+                // 修复：传 (delta, fullText) — onStreamChunk 用 delta 增量 push
+                try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr); }
             }
         }
     }
