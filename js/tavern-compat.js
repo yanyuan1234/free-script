@@ -2496,7 +2496,7 @@ var EnhancedMemory = {
             summary: summary,
             timestamp: Date.now(),
             messageCount: messageCount,
-            importantEvents: JSON.parse(JSON.stringify(self.longTermMemory.importantEvents.slice(-10))),
+            importantEvents: (typeof structuredClone === 'function' ? structuredClone(self.longTermMemory.importantEvents.slice(-10)) : JSON.parse(JSON.stringify(self.longTermMemory.importantEvents.slice(-10)))),
             characterSnapshot: characterSnapshot
         });
         self.currentSummaryIndex = self.summaryHistory.length - 1;

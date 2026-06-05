@@ -4754,16 +4754,16 @@ function saveUndoState() {
     if (gameState._undoHistory.length >= (gameState._MAX_UNDO_HISTORY || 50)) {
         gameState._undoHistory.shift(); // 移除最旧的
     }
-    // 保存当前状态快照
+    // 保存当前状态快照（使用 structuredClone 替代 JSON 深拷贝，快 2-5 倍）
+    var clone = typeof structuredClone === 'function' ? structuredClone : function(o) { return JSON.parse(JSON.stringify(o)); };
     gameState._undoHistory.push({
-        conversationHistory: JSON.parse(JSON.stringify(gameState.conversationHistory)),
-        // storyHistory 已合并到 conversationHistory
-        allCharacters: JSON.parse(JSON.stringify(gameState.allCharacters || {})),
-        worldSnapshot: JSON.parse(JSON.stringify(gameState.worldSnapshot || {})),
-        keyEvents: JSON.parse(JSON.stringify(gameState.keyEvents || [])),
-        currentQuests: JSON.parse(JSON.stringify(gameState.currentQuests || [])),
-        relationships: JSON.parse(JSON.stringify(gameState.relationships || [])),
-        currentBag: JSON.parse(JSON.stringify(gameState.currentBag || [])),
+        conversationHistory: clone(gameState.conversationHistory),
+        allCharacters: clone(gameState.allCharacters || {}),
+        worldSnapshot: clone(gameState.worldSnapshot || {}),
+        keyEvents: clone(gameState.keyEvents || []),
+        currentQuests: clone(gameState.currentQuests || []),
+        relationships: clone(gameState.relationships || []),
+        currentBag: clone(gameState.currentBag || []),
         timestamp: Date.now()
     });
 }
