@@ -580,6 +580,12 @@ async function sendAIRequest(userMessage, isInit = false) {
     setWaiting(true);
     showStoryLoading();
     streamBuffer = '';
+    // 修复：重置流式模式状态，让新请求重新判定 json/plaintext
+    if (typeof _streamMode !== 'undefined') {
+        _streamMode = null;
+        _streamModeLocked = false;
+        _streamFullText = '';
+    }
     TypewriterBuffer.stop();
     
     // 让浏览器先渲染 loading 动画，再执行重操作（避免点击后长时间无反馈）
@@ -932,8 +938,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         var options = {
             stream: gameState.useStream,
             temperature: gameState.temperature || 0.8,
-            onChunk: function(chunk) {
-                onStreamChunk(chunk);
+            onChunk: function(delta, fullText) {
+                onStreamChunk(delta, fullText);
             }
         };
         // 触发事件：GENERATION_AFTER_COMMANDS（生成前，命令执行后）
@@ -1644,6 +1650,8 @@ async function manualCompress(btn) {
 // ========================================
 
 // --- 流式chunk处理 ---
+// 从 JSON 包装的流式响应中提取 story 字段值
+// 用于 onStreamChunk 的 JSON 模式分支
 function extractStoryStreaming(text) {
     var match = text.match(/"story"\s*:\s*"/);
     if (!match) return null;
@@ -1654,29 +1662,14 @@ function extractStoryStreaming(text) {
         var ch = text[i];
         if (inEscape) {
             switch (ch) {
-                case 'n':
-                    result += '\n';
-                    break;
-                case '"':
-                    result += '"';
-                    break;
-                case '\\':
-                    result += '\\';
-                    break;
-                case 't':
-                    result += '\t';
-                    break;
-                case 'r':
-                    result += '\r';
-                    break;
-                case 'b':
-                    result += '\b';
-                    break;
-                case 'f':
-                    result += '\f';
-                    break;
+                case 'n': result += '\n'; break;
+                case '"': result += '"'; break;
+                case '\\': result += '\\'; break;
+                case 't': result += '\t'; break;
+                case 'r': result += '\r'; break;
+                case 'b': result += '\b'; break;
+                case 'f': result += '\f'; break;
                 case 'u':
-                    // Fix Issue 18: Handle \uXXXX Unicode escapes
                     var hexStr = text.substring(i + 1, i + 5);
                     if (/^[0-9a-fA-F]{4}$/.test(hexStr)) {
                         result += String.fromCharCode(parseInt(hexStr, 16));
@@ -1685,8 +1678,7 @@ function extractStoryStreaming(text) {
                         result += ch;
                     }
                     break;
-                default:
-                    result += ch;
+                default: result += ch;
             }
             inEscape = false;
         } else if (ch === '\\') {
@@ -1700,17 +1692,57 @@ function extractStoryStreaming(text) {
     }
     return result.length > 0 ? result : null;
 }
+
 // 流式模式锁定：一旦确定模式，不再切换（防止纯文本中偶然含"story"导致模式跳变）
 var _streamModeLocked = false;
 var _streamMode = null; // 'json' 或 'plaintext'
+var _streamFullText = ''; // 累积的全量文本，用于模式判定
 
-function onStreamChunk(chunk) {
-    streamBuffer += chunk;
-    var story = extractStoryStreaming(streamBuffer);
-    if (story && story.length > 0) {
-        // 应用正则脚本到AI输出
-        story = RegexManager.applyToOutput(story);
-        TypewriterBuffer.push(story);
+// 修复：支持 JSON 包装和纯文本两种流式响应
+// 1) JSON 包装：模型在 delta.content 里返回 "story":"正文" 结构 → 提取 story 字段
+// 2) 纯文本：模型直接逐字返回正文（最常见于 iamhc 等中转站）→ 增量 push delta
+// 用 _streamMode 锁定后避免中途切换模式
+function onStreamChunk(delta, fullText) {
+    // 兼容老签名：只传 1 个参数
+    if (typeof fullText !== 'string') {
+        fullText = (typeof delta === 'string') ? delta : '';
+        delta = fullText;
+    }
+    if (!delta) return;
+
+    // 用累积的 fullText 做模式判定（仅第一次）
+    if (!_streamModeLocked) {
+        _streamFullText = fullText;
+        if (_streamFullText.length >= 30) {
+            if (/[{[]/.test(_streamFullText.substring(0, Math.min(_streamFullText.length, 200)))) {
+                if (/"story"\s*:/.test(_streamFullText.substring(0, 500))) {
+                    _streamMode = 'json';
+                } else {
+                    _streamMode = 'plaintext';
+                }
+            } else {
+                _streamMode = 'plaintext';
+            }
+            _streamModeLocked = true;
+        }
+    }
+
+    var toPush = null;
+    if (_streamMode === 'json') {
+        // JSON 模式：尝试从累积的 fullText 提取 story
+        _streamFullText = fullText;
+        toPush = extractStoryStreaming(_streamFullText);
+    } else if (_streamMode === 'plaintext') {
+        // 纯文本模式：直接用 delta 增量 push（避免 O(n²) 字符串拼接）
+        toPush = delta;
+    } else {
+        // 模式未定（缓冲不足 30 字符），暂不渲染
+        return;
+    }
+
+    if (toPush && toPush.length > 0) {
+        toPush = RegexManager.applyToOutput(toPush);
+        TypewriterBuffer.push(toPush);
     }
 }
 

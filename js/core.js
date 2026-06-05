@@ -218,37 +218,15 @@ var UI = {
 // 功能：多API端点管理、分组、自动轮询、连接测试、模型列表获取
 
 var LocalGameAPI = {
+    // 修复：移除写死的中转站 URL 和模型名。
+    // 默认 1 个空白 slot，让用户自己在 API 设置页填"中转站 + Key + 模型"组合。
+    // 旧用户已保存的 localStorage 配置会在 init() 中恢复，不受影响。
     _configs: [{
-        baseUrl: 'https://api.iamhc.cn/v1',
+        baseUrl: '',
         apiKey: '',
-        model: 'auto',
+        model: '',
         models: []
-    },
-    {
-        baseUrl: 'https://api.iamhc.cn/v1',
-        apiKey: '',
-        model: 'Qwen3.6-35B-A3B',
-        models: []
-        },
-    {
-        baseUrl: 'https://api.iamhc.cn/v1',
-        apiKey: '',
-        model: 'Qwen3.6-35B-A3B',
-        models: []
-        },
-    {
-        baseUrl: 'https://api.iamhc.cn/v1',
-        apiKey: '',
-        model: 'Qwen3.6-35B-A3B',
-        models: []
-        },
-    {
-        baseUrl: 'https://api.iamhc.cn/v1',
-        apiKey: '',
-        model: 'Qwen3.6-35B-A3B',
-        models: []
-        }
-    ],
+    }],
     _currentSlot: 0,
     _autoRotate: true,
     _requestLog: [], // [{slot, model, time, success, error}]
@@ -2968,6 +2946,53 @@ if (options.stream) filteredParams.stream = true;
 
 const body = filteredParams;
 
+// 修复：兜底提取流式 chunk 中的 delta.content
+// 兼容中转站返回的异常 JSON 格式（如多余 {、字段错位、reasoning_content 混入等）
+// 先尝试 JSON.parse 严格解析；失败后用正则宽松提取
+function _extractDeltaContent(rawLine) {
+    if (!rawLine) return '';
+    var s = String(rawLine);
+    // 1) 严格 JSON 解析
+    try {
+        var j = JSON.parse(s);
+        if (j && j.choices && j.choices[0]) {
+            var delta = j.choices[0].delta;
+            if (delta) {
+                // OpenAI 格式：delta.content
+                if (typeof delta.content === 'string') return delta.content;
+                // 部分中转站：choices[0].message.content（非流式字段混入）
+                if (typeof j.choices[0].message === 'string') return j.choices[0].message;
+            }
+        }
+        if (j && j.choices && j.choices[0] && j.choices[0].text) {
+            return j.choices[0].text;
+        }
+        if (typeof j === 'string') return j;
+    } catch (e) {
+        // 继续走宽松解析
+    }
+    // 2) 宽松正则：直接找 "content":"..." 或 "content": "..."
+    // 支持字符串中含转义换行和转义引号
+    var m = s.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+    if (m) {
+        var v = m[1];
+        // 反转义
+        v = v.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
+             .replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+        return v;
+    }
+    // 3) 宽松正则：content 值为非字符串（如 null、数字）— 这种 chunk 没正文
+    if (/"content"\s*:\s*null/.test(s)) return '';
+    // 4) 实在提取不到，返回空
+    return '';
+}
+
+// 检测 chunk 内容中是否含错误标记
+function lineContentHasErrorMarker(s) {
+    if (!s) return false;
+    return s.indexOf('"error"') !== -1 || s.indexOf('"code"') !== -1;
+}
+
 // 如果预设中有 reasoning_effort 参数，传递给 API
 // reasoning_effort 支持: "low", "medium", "high", "auto" 等
 if (body.reasoning_effort) {
@@ -3020,35 +3045,38 @@ if (done) {
         const lines = sseBuffer.split('\n');
         for (const line of lines) {
             if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                // 修复：先尝试严格 JSON 解析；失败用 _extractDeltaContent 兜底
+                var _lineContent = line.slice(6);
+                var _content = '';
                 try {
-                    const json = JSON.parse(line.slice(6));
-                    // 【修复】检测流中的错误响应
-                    if (json.error && !streamError) {
-                        var errObj = json.error;
+                    const _json = JSON.parse(_lineContent);
+                    if (_json.error && !streamError) {
+                        var errObj = _json.error;
                         streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
                         console.error('[callAI] 流式错误:', streamError);
                         continue;
                     }
-                const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
-                fullText += content;
-                if (options.onChunk) {
-                    try {
-                        options.onChunk(fullText);
-                    } catch (chunkErr) {
-                    console.warn('[callAI] onChunk 回调异常:', chunkErr);
+                    _content = _json.choices && _json.choices[0] && _json.choices[0].delta && _json.choices[0].delta.content || '';
+                } catch (e) {
+                    // 严格解析失败，尝试宽松提取
+                    _content = _extractDeltaContent(_lineContent);
+                    if (_content && lineContentHasErrorMarker(_lineContent)) {
+                        console.warn('[callAI] 可能是错误响应（无法解析JSON）:', _lineContent.substring(0, 200));
+                    }
                 }
+                if (_content) {
+                    var _prevText = fullText;
+                    fullText += _content;
+                    var _delta = fullText.substring(_prevText.length);
+                    if (options.onChunk) {
+                        // 修复：传 (delta, fullText) — onStreamChunk 用 delta 增量 push
+                        try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
+                    }
+                }
+            }
         }
-} catch (e) {
-// 【修复】JSON解析失败时，检查是否是错误格式的数据
-var lineContent = line.slice(6).trim();
-if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
-    console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
-}
-}
-}
-}
-}
-break;
+    }
+    break;
 }
 const chunk = decoder.decode(value, {
     stream: true
@@ -3064,33 +3092,36 @@ for (const event of events) {
     const lines = event.split('\n');
     for (const line of lines) {
         if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            // 修复：先严格 JSON 解析；失败用 _extractDeltaContent 兜底
+            var _lineContent = line.slice(6);
+            var _content = '';
             try {
-                const json = JSON.parse(line.slice(6));
-                // 【修复】检测流中的错误响应
-                if (json.error && !streamError) {
-                    var errObj = json.error;
+                const _json = JSON.parse(_lineContent);
+                if (_json.error && !streamError) {
+                    var errObj = _json.error;
                     streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
                     console.error('[callAI] 流式错误:', streamError);
                     continue;
                 }
-            const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
-            fullText += content;
-            if (options.onChunk) {
-                try {
-                    options.onChunk(fullText);
-                } catch (chunkErr) {
-                console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
+                _content = _json.choices && _json.choices[0] && _json.choices[0].delta && _json.choices[0].delta.content || '';
+            } catch (e) {
+                // 严格解析失败，宽松提取 delta.content
+                _content = _extractDeltaContent(_lineContent);
+                if (_content && lineContentHasErrorMarker(_lineContent)) {
+                    console.warn('[callAI] 可能是错误响应（无法解析JSON）:', _lineContent.substring(0, 200));
+                }
             }
+            if (_content) {
+                var _prevText = fullText;
+                fullText += _content;
+                var _delta = fullText.substring(_prevText.length);
+                if (options.onChunk) {
+                    // 修复：传 (delta, fullText) — onStreamChunk 用 delta 增量 push
+                    try { options.onChunk(_delta, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr); }
+                }
+            }
+        }
     }
-} catch (e) {
-// 【修复】JSON解析失败时，检查是否是错误格式的数据
-var lineContent = line.slice(6).trim();
-if (lineContent.indexOf('"error"') !== -1 || lineContent.indexOf('"code"') !== -1) {
-    console.warn('[callAI] 可能的错误响应（无法解析JSON）:', lineContent.substring(0, 200));
-}
-}
-}
-}
 }
 }
 // 【修复】如果流中检测到错误且没有收到任何有效内容，抛出错误

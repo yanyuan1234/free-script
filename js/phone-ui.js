@@ -3659,6 +3659,7 @@ function bindEvents() {
                 streamBuffer = '';
                 _streamModeLocked = false;
                 _streamMode = null;
+                if (typeof _streamFullText !== 'undefined') _streamFullText = '';
                 UI.toast('已取消生成');
             }
         });
@@ -4320,6 +4321,7 @@ function startNewGame() {
     lastCompressTime = 0;
     _streamModeLocked = false;
     _streamMode = null;
+    if (typeof _streamFullText !== 'undefined') _streamFullText = '';
 
     // 清空增强记忆系统（核心修复：防止旧记忆污染新游戏）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.clear) {
