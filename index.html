@@ -1568,36 +1568,32 @@
                     <button class="circle-btn" id="memoryBackBtn">
                         <svg class="icon"><use href="#icon-back" /></svg>
                     </button>
-                    <h2 class="page-title">记忆</h2>
+                    <h2 class="page-title">记忆管理中心</h2>
                     <div style="width:40px;"></div>
                 </div>
-
+                
                 <!-- 方案C记忆管理UI - 全屏嵌入 -->
                 <div id="memoryManagerContainer" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
-                    <!-- 标签页 - 分类折叠设计 -->
-                    <div class="memory-tabs" id="memoryTabsBar">
-                        <div class="memory-tab-group active" data-group="core">
-                            <button class="memory-tab active" data-tab="overview" onclick="MemoryManagerUI.switchTab('overview')">总览</button>
-                            <button class="memory-tab" data-tab="injection" onclick="MemoryManagerUI.switchTab('injection')">注入</button>
-                        </div>
-                        <div class="memory-tab-divider"></div>
-                        <div class="memory-tab-group" data-group="data">
-                            <button class="memory-tab" data-tab="anchors" onclick="MemoryManagerUI.switchTab('anchors')">事实</button>
-                            <button class="memory-tab" data-tab="quests" onclick="MemoryManagerUI.switchTab('quests')">任务</button>
-                            <button class="memory-tab" data-tab="events" onclick="MemoryManagerUI.switchTab('events')">事件</button>
-                        </div>
-                        <div class="memory-tab-divider"></div>
-                        <div class="memory-tab-group" data-group="world">
-                            <button class="memory-tab" data-tab="characters" onclick="MemoryManagerUI.switchTab('characters')">角色</button>
-                            <button class="memory-tab" data-tab="items" onclick="MemoryManagerUI.switchTab('items')">物品</button>
-                            <button class="memory-tab" data-tab="locations" onclick="MemoryManagerUI.switchTab('locations')">地点</button>
-                            <button class="memory-tab" data-tab="world" onclick="MemoryManagerUI.switchTab('world')">世界</button>
-                        </div>
-                        <div class="memory-tab-divider"></div>
-                        <div class="memory-tab-group" data-group="tools">
-                            <button class="memory-tab" data-tab="timeline" onclick="MemoryManagerUI.switchTab('timeline')">时间线</button>
-                            <button class="memory-tab" data-tab="search" onclick="MemoryManagerUI.switchTab('search')">搜索</button>
-                        </div>
+                    <!-- 标签页 -->
+                    <div class="memory-tabs" style="
+                        display:flex;
+                        gap:4px;
+                        padding:12px 16px;
+                        border-bottom:1px solid var(--border);
+                        background:var(--bg-secondary);
+                        overflow-x:auto;
+                    ">
+                        <button class="memory-tab active" data-tab="overview" onclick="MemoryManagerUI.switchTab('overview')">总览</button>
+                        <button class="memory-tab" data-tab="anchors" onclick="MemoryManagerUI.switchTab('anchors')">永久事实</button>
+                        <button class="memory-tab" data-tab="quests" onclick="MemoryManagerUI.switchTab('quests')">约定任务</button>
+                        <button class="memory-tab" data-tab="timeline" onclick="MemoryManagerUI.switchTab('timeline')">时间线</button>
+                        <button class="memory-tab" data-tab="characters" onclick="MemoryManagerUI.switchTab('characters')">角色</button>
+                        <button class="memory-tab" data-tab="items" onclick="MemoryManagerUI.switchTab('items')">物品</button>
+                        <button class="memory-tab" data-tab="locations" onclick="MemoryManagerUI.switchTab('locations')">地点</button>
+                        <button class="memory-tab" data-tab="events" onclick="MemoryManagerUI.switchTab('events')">事件</button>
+                        <button class="memory-tab" data-tab="world" onclick="MemoryManagerUI.switchTab('world')">世界</button>
+                        <button class="memory-tab" data-tab="search" onclick="MemoryManagerUI.switchTab('search')">搜索</button>
+                        <button class="memory-tab" data-tab="injection" onclick="MemoryManagerUI.switchTab('injection')">注入预览</button>
                     </div>
                     
                     <!-- 内容区 -->
@@ -2226,15 +2222,59 @@
                                     <button class="tag-btn" data-fontsize="large">大</button>
                                 </div>
                             </div>
-                            <div>
-                                <label class="field-label">剧情长度（max_tokens）</label>
-                                <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
-                                    value="2048" placeholder="AI每轮最大生成字数">
-                            </div>
-                            <!-- 字数控制设置 -->
+                            <!-- 参数设置卡片（可折叠） -->
                             <div class="setting-group">
                                 <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">字数控制（预设兼容）</h3>
+                                    <h3 class="setting-title">参数设置</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div class="setting-row">
+                                        <label class="field-label">剧情长度（max_tokens）</label>
+                                        <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
+                                            value="2048" placeholder="AI每轮最大生成字数" style="max-width:120px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">上下文长度</label>
+                                        <input type="number" class="input-field" id="settingContextLength" min="256" max="128000"
+                                            value="8192" step="256" style="max-width:120px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Temperature</label>
+                                        <input type="number" class="input-field" id="settingTemperature" min="0" max="2"
+                                            value="0.8" step="0.1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Top P</label>
+                                        <input type="number" class="input-field" id="settingTopP" min="0" max="1"
+                                            value="0.9" step="0.05" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Top K</label>
+                                        <input type="number" class="input-field" id="settingTopK" min="0" max="100"
+                                            value="0" step="1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Freq Penalty</label>
+                                        <input type="number" class="input-field" id="settingFreqPen" min="-2" max="2"
+                                            value="0" step="0.1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Pres Penalty</label>
+                                        <input type="number" class="input-field" id="settingPresPen" min="-2" max="2"
+                                            value="0" step="0.1" style="max-width:80px;">
+                                    </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">Repeat Penalty</label>
+                                        <input type="number" class="input-field" id="settingRepeatPen" min="1" max="2"
+                                            value="1.1" step="0.05" style="max-width:80px;">
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 字数控制卡片（可折叠） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">字数控制</h3>
                                     <span class="toggle-icon">▼</span>
                                 </div>
                                 <div class="setting-body" style="display:none;">
@@ -2253,19 +2293,19 @@
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最少字数</label>
-                                        <input type="number" class="input-field" id="wcMin" value="1500" min="100" max="10000">
+                                        <input type="number" class="input-field" id="wcMin" value="1500" min="100" max="10000" style="max-width:100px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最多字数</label>
-                                        <input type="number" class="input-field" id="wcMax" value="3000" min="100" max="30000">
+                                        <input type="number" class="input-field" id="wcMax" value="3000" min="100" max="30000" style="max-width:100px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最少段落数</label>
-                                        <input type="number" class="input-field" id="wcParaMin" value="15" min="1" max="100">
+                                        <input type="number" class="input-field" id="wcParaMin" value="15" min="1" max="100" style="max-width:80px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">最多段落数</label>
-                                        <input type="number" class="input-field" id="wcParaMax" value="17" min="1" max="100">
+                                        <input type="number" class="input-field" id="wcParaMax" value="17" min="1" max="100" style="max-width:80px;">
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">段落风格</label>
