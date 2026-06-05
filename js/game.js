@@ -3692,16 +3692,24 @@ function openEditNpcModal(name) {
     UI.showModal('npcEditModal');
 }
 function saveNpcEdit() {
-    var name = document.getElementById('npcEditName').value.trim();
+    // 修复：每个 input 都做 nullish 检查，缺一不崩溃
+    var nameEl = document.getElementById('npcEditName');
+    if (!nameEl) { UI.toast('页面未加载完整'); return; }
+    var name = nameEl.value.trim();
     if (!name) {
         UI.toast('请填写角色名字');
         return;
     }
-    var title = document.getElementById('npcEditTitle2').value.trim();
-    var relation = document.getElementById('npcEditRelation').value.trim();
-    var favor = parseInt(document.getElementById('npcEditFavor').value) || 50;
-    var desc = document.getElementById('npcEditDesc').value.trim();
-    var extra = document.getElementById('npcEditExtra').value.trim();
+    var titleEl = document.getElementById('npcEditTitle2');
+    var relationEl = document.getElementById('npcEditRelation');
+    var favorEl = document.getElementById('npcEditFavor');
+    var descEl = document.getElementById('npcEditDesc');
+    var extraEl = document.getElementById('npcEditExtra');
+    var title = titleEl ? titleEl.value.trim() : '';
+    var relation = relationEl ? relationEl.value.trim() : '';
+    var favor = favorEl ? (parseInt(favorEl.value) || 50) : 50;
+    var desc = descEl ? descEl.value.trim() : '';
+    var extra = extraEl ? extraEl.value.trim() : '';
     favor = Math.max(0, Math.min(100, favor));
     var details = [];
     if (extra) {

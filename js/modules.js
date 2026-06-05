@@ -505,6 +505,9 @@ var PresetManager = {
 
     // 绑定事件
     bindEvents: function() {
+        // 修复：防止重复绑定
+        if (this._eventsBound) return;
+        this._eventsBound = true;
         const self = this;
 
         // 主页面按钮

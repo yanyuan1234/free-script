@@ -22,8 +22,10 @@ var TavernHelperCompat = {
         
         // 构建聊天消息列表（与酒馆格式一致）
         var chat = [];
-        if (gameState && gameState.conversationHistory) {
+        // 修复：检查 conversationHistory 是数组（防御旧存档/损坏数据）
+        if (gameState && Array.isArray(gameState.conversationHistory)) {
             chat = gameState.conversationHistory.map(function(msg, idx) {
+                if (!msg) return null;
                 return {
                     mes: msg.content || msg.text || '',
                     name: msg.role === 'user' ? (gameState.playerName || '玩家') : (msg.name || '角色'),
@@ -32,9 +34,9 @@ var TavernHelperCompat = {
                     send_date: msg.timestamp || Date.now(),
                     extra: msg.extra || {},
                     index: idx
-};
-        });
-    }
+                };
+            }).filter(Boolean);
+        }
 
     // 获取角色信息
     var character = {};

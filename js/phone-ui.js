@@ -1369,7 +1369,22 @@ function _applyLogPageStyle(content, type, html) {
         if (typeof QuestSystem !== 'undefined' && QuestSystem.renderQuestPage) {
             QuestSystem.renderQuestPage(content);
         }
-    } else if (type === 'achieve') {
+    }
+
+    // 修复：聊天页面用事件委托，data-chat-name → openNpcChat，避免内联 onclick 的 XSS
+    if (type === 'chat' && !content._chatClickBound) {
+        content._chatClickBound = true;
+        content.addEventListener('click', function(e) {
+            var item = e.target.closest('[data-chat-name]');
+            if (item) {
+                var n = item.getAttribute('data-chat-name');
+                if (n && typeof openNpcChat === 'function') {
+                    openNpcChat(n);
+                }
+            }
+        });
+    }
+    if (type === 'achieve') {
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.renderAchievePage) {
             AchievementSystem.renderAchievePage(content);
         }
@@ -1428,11 +1443,13 @@ function renderChatPage() {
             var unreadBadge = unreadNpc > 0 ?
                 '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;background:#ff3b30;color:#fff;border-radius:9px;font-size:11px;font-weight:600;margin-left:6px;">' + (unreadNpc > 99 ? '99+' : unreadNpc) + '</span>' : '';
             var boldStyle = unreadNpc > 0 ? 'font-weight:600;color:#111;' : '';
-            return '<div class="chat-item" role="button" tabindex="0" onclick="openNpcChat(\'' + name
-                .replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;') + '\')">' +
-                '<div class="chat-avatar" style="background:' + avatarColor + ';">' + name.charAt(0) +
+            // 修复：改用 data-name + 事件委托，避免拼接 onclick 字符串带来的 XSS 风险
+            var safeName = String(name || '').replace(/[\r\n\t\v\f\0]/g, ' ').slice(0, 100);
+            var firstChar = safeName.charAt(0) || '?';
+            return '<div class="chat-item" role="button" tabindex="0" data-chat-name="' + escapeHtml(safeName) + '">' +
+                '<div class="chat-avatar" style="background:' + avatarColor + ';">' + escapeHtml(firstChar) +
                 '</div>' +
-                '<div class="chat-content"><div class="chat-row"><div class="chat-name" style="' + boldStyle + '">' + escapeHtml(name) + unreadBadge +
+                '<div class="chat-content"><div class="chat-row"><div class="chat-name" style="' + boldStyle + '">' + escapeHtml(safeName) + unreadBadge +
                 '</div><div class="chat-time">' + escapeHtml(timeStr) + '</div></div><div class="chat-preview" style="' + boldStyle + '">' +
                 escapeHtml(lastMsg) + '</div></div></div>';
         }).join('') +
@@ -2645,7 +2662,11 @@ function renderCalendarPage() {
     // 按日期分组
     var groupedEvents = {};
     events.forEach(function(evt) {
-        var date = evt.time ? evt.time.split(' ')[0] : '待定';
+        // 修复：evt.time 可能是数字/Date，先转字符串再 split
+        var date = '待定';
+        if (evt && typeof evt.time === 'string' && evt.time) {
+            date = evt.time.split(' ')[0] || '待定';
+        }
         if (!groupedEvents[date]) groupedEvents[date] = [];
         groupedEvents[date].push(evt);
     });
@@ -2784,6 +2805,7 @@ function renderDefaultPage(type) {
     if (matched.length > 0) {
         return matched.map(function(mod) {
             var inner = '';
+            // 修复：AI 返回的字段全部 escapeHtml，防止 XSS
             switch (mod.type) {
                 case 'text':
                     inner = '<div style="font-size:14px;line-height:1.7;">' + parseMarkdown(mod
@@ -2791,38 +2813,40 @@ function renderDefaultPage(type) {
                     break;
                 case 'list':
                     inner = (mod.items || []).map(function(it) {
-                        return '<div style="padding:6px 0;font-size:14px;">▸ ' + it +
+                        var txt = (typeof it === 'object' && it !== null) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
+                        return '<div style="padding:6px 0;font-size:14px;">▸ ' + escapeHTML(txt) +
                             '</div>';
                     }).join('');
                     break;
                 case 'ranking':
                     inner = (mod.items || []).map(function(it, i) {
+                        var txt = (typeof it === 'object' && it !== null) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
                         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;"><span style="font-weight:600;color:' +
                             (i < 3 ? 'var(--text)' : 'var(--text-tertiary)') + ';">' + (i +
-                                1) + '</span><span style="font-size:14px;">' + it +
+                                1) + '</span><span style="font-size:14px;">' + escapeHTML(txt) +
                             '</span></div>';
                     }).join('');
                     break;
                 case 'key_value':
                     inner = (mod.items || []).map(function(kv) {
                         return '<div class="player-field"><span class="player-field-label">' +
-                            kv.key + '</span><span class="player-field-value">' + kv.value +
+                            escapeHTML(kv && kv.key) + '</span><span class="player-field-value">' + escapeHTML(kv && kv.value) +
                             '</span></div>';
                     }).join('');
                     break;
                 case 'cards':
                     inner = (mod.items || []).map(function(c) {
                         return '<div class="pearl-card" style="padding:12px;margin-bottom:8px;"><div style="font-weight:500;">' +
-                            (c.icon || '') + ' ' + c.title +
+                            escapeHTML(c && c.icon || '') + ' ' + escapeHTML(c && c.title) +
                             '</div><div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">' +
-                            (c.content || '') + '</div></div>';
+                            escapeHTML(c && c.content || '') + '</div></div>';
                     }).join('');
                     break;
                 case 'comments':
-                    inner = '<div style="font-size:14px;margin-bottom:8px;">' + (mod.main || '') +
+                    inner = '<div style="font-size:14px;margin-bottom:8px;">' + escapeHTML(mod.main || '') +
                         '</div>' + (mod.comments || []).map(function(cm) {
                             return '<div style="padding:8px 0;border-top:1px solid var(--border);font-size:13px;"><strong>' +
-                                cm.name + ':</strong> ' + cm.text + '</div>';
+                                escapeHTML(cm && cm.name) + ':</strong> ' + escapeHTML(cm && cm.text) + '</div>';
                         }).join('');
                     break;
                 case 'moments':
@@ -4033,7 +4057,7 @@ function bindEvents() {
     // 重新开始
     bindEvent('btnSettingsBackToMenu', 'click', async function() {
         if (await UI.confirm('返回主页', '确定要返回主页吗？当前进度会自动保存。')) {
-            try { await saveGame(); } catch(e) {}
+            try { await saveGame(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
             safeAbort();
             window._currentAbort = null;
             UI.hideModal('settingsModal');

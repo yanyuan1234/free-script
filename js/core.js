@@ -1701,12 +1701,12 @@ if (!storyText || storyText.trim() === '') {
                     if (jsonBlockMatch) {
                         var extracted = safeJSONParse(jsonBlockMatch[0]);
                         if (extracted && typeof extracted === 'object') {
-                            data = extracted;
-                            // 从文本中移除JSON块
-                            storyText = cleanedReply.replace(jsonBlockMatch[0], '').trim();
+                                data = extracted;
+                                // 从文本中移除JSON块
+                                storyText = cleanedReply.replace(jsonBlockMatch[0], '').trim();
+                            }
                         }
-                }
-        } catch(e) {}
+                } catch(e) { console.warn('[parseAIResponse] 文本末尾 JSON 块解析失败:', e && e.message); }
 }
 }
 }
