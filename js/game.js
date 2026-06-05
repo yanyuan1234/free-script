@@ -582,6 +582,9 @@ async function sendAIRequest(userMessage, isInit = false) {
     streamBuffer = '';
     TypewriterBuffer.stop();
     
+    // 让浏览器先渲染 loading 动画，再执行重操作（避免点击后长时间无反馈）
+    await new Promise(function(r) { requestAnimationFrame(r); });
+    
     // 保存撤销状态（在AI回复前）
     saveUndoState();
     var storyScroll = document.getElementById('storyScroll');
