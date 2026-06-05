@@ -1176,6 +1176,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                         gameState.keyEvents.push(evt.trim());
                     }
                 });
+                // 上限30条，防止占太多token
+                if (gameState.keyEvents.length > 30) {
+                    gameState.keyEvents = gameState.keyEvents.slice(-30);
+                }
             }
         }
         // 兜底选项
@@ -1210,6 +1214,13 @@ async function sendAIRequest(userMessage, isInit = false) {
             role: 'assistant',
             content: historyAssistantContent
         });
+        // 对话历史上限200条，防止内存和token膨胀
+        if (gameState.conversationHistory.length > 200) {
+            // 保留第一条system消息 + 最近198条
+            var systemMsg = gameState.conversationHistory[0] && gameState.conversationHistory[0].role === 'system'
+                ? [gameState.conversationHistory[0]] : [];
+            gameState.conversationHistory = systemMsg.concat(gameState.conversationHistory.slice(-(200 - systemMsg.length)));
+        }
         // 触发事件：CHARACTER_MESSAGE_RENDERED（AI消息渲染后）
         if (typeof TavernHelperCompat !== 'undefined') {
             TavernHelperCompat.emit('CHARACTER_MESSAGE_RENDERED', {

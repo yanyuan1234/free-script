@@ -67,7 +67,7 @@ var GameLinker = {
 // ========================================
 var UI = {
     toast: function(msg) {
-        var ct = document.getElementById('toastContainer');
+        var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
         var t = document.createElement('div');
         t.className = 'toast';
@@ -432,12 +432,21 @@ var LocalGameAPI = {
         if (this._requestLog.length > this._MAX_LOG) {
             this._requestLog = this._requestLog.slice(-this._MAX_LOG);
         }
-    this.save();
+    // 延迟批量保存，避免每次请求都写localStorage
+    if (!this._savePending) {
+        this._savePending = true;
+        var self = this;
+        TimerManager.setTimeout('apiLogSave', function() {
+            self._savePending = false;
+            self.save();
+        }, 5000);
+    }
     },
     _markModelFailed(slot) {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return;
         this._failedModels[cfg.model] = Date.now();
+        // 失败标记需要立即持久化，防止刷新后丢失
         this.save();
     },
     isModelFailed(modelName) {
@@ -538,6 +547,31 @@ var LocalGameAPI = {
     },
     getNetworkStatus() {
         return this._networkStatus;
+    },
+    // 启动网络状态定期检查（每60秒）
+    _netCheckInterval: null,
+    startNetworkCheck() {
+        if (this._netCheckInterval) return;
+        var self = this;
+        this._netCheckInterval = TimerManager.setInterval('netCheck', function() {
+            var cfg = self.getCurrentConfig();
+            if (cfg && cfg.baseUrl) {
+                self.checkConnectivity(cfg.baseUrl).then(function(result) {
+                    self._updateNetworkUI(result.ok);
+                });
+            }
+        }, 60000);
+    },
+    _updateNetworkUI(connected) {
+        var indicator = document.getElementById('networkIndicator');
+        if (!indicator) return;
+        if (connected) {
+            indicator.className = 'net-indicator net-ok';
+            indicator.title = '网络连接正常';
+        } else {
+            indicator.className = 'net-indicator net-err';
+            indicator.title = '网络连接异常';
+        }
     },
     async fetchModels(baseUrl, apiKey) {
         if (!baseUrl) return [];
@@ -1071,6 +1105,7 @@ var TypewriterBuffer = {
     _currentParaChars: '',
     _lastRendered: '',
     _forceFullRender: false,
+    _rafPending: false,
     // 标点停顿映射（字符 → 额外等待ms）
     _pauseMap: {
         '\u3002': 120, '\uff01': 120, '\uff1f': 120, '\u2026': 80,
@@ -1203,7 +1238,7 @@ var TypewriterBuffer = {
         return this.queue.length === 0 && !this.isTyping;
     },
     render() {
-        var storyEl = document.getElementById('storyText');
+        var storyEl = DOMCache.get('storyText', true);
         if (!storyEl) return;
         var allText = this._completedParagraphs.join('\n') + (this._completedParagraphs.length > 0 ? '\n' : '') + this._currentParaChars;
         // 脏检查：内容未变化则跳过重绘
@@ -1216,8 +1251,15 @@ var TypewriterBuffer = {
         this.render();
     },
     _renderCurrentPara() {
-        // 渲染当前段落（节流）
-        this.render();
+        // 使用 requestAnimationFrame 合并渲染，每帧最多更新一次DOM
+        if (!this._rafPending) {
+            this._rafPending = true;
+            var self = this;
+            requestAnimationFrame(function() {
+                self._rafPending = false;
+                self.render();
+            });
+        }
     }
 };
 const MAX_HISTORY = 20;
@@ -1380,10 +1422,12 @@ function extractCharaData(arrayBuffer) {
         }
     // 遍历PNG chunks
     var offset = 8;
-    while (offset < data.length) {
+    while (offset + 8 <= data.length) {
         // 读取chunk长度 (4 bytes, big-endian)
         var length = (data[offset] << 24) | (data[offset + 1] << 16) | (data[offset + 2] << 8) | data[offset + 3];
         offset += 4;
+        // 边界检查：chunk长度不能为负或超出文件
+        if (length < 0 || offset + length > data.length) break;
         // 读取chunk类型 (4 bytes)
         var type = String.fromCharCode(data[offset], data[offset + 1], data[offset + 2], data[offset + 3]);
         offset += 4;
@@ -2425,6 +2469,14 @@ function translateError(msg) {
         'invalid response': '无效的响应',
         'empty response': '服务器返回了空数据',
     };
+// 预构建按长度降序排列的key数组，避免每次调用都排序
+var _translateErrorSortedKeys = null;
+function _getTranslateErrorSortedKeys(map) {
+    if (!_translateErrorSortedKeys) {
+        _translateErrorSortedKeys = Object.keys(map).sort(function(a, b) { return b.length - a.length; });
+    }
+    return _translateErrorSortedKeys;
+}
 // 【修复】如果翻译后的结果与原文不同，在末尾附加原始错误信息
 // 这样用户既能看到中文解释，也能看到原始英文错误用于排查
 var translated = null;
@@ -2432,7 +2484,7 @@ for (var key in map) {
     if (m === key) { translated = map[key]; break; }
 }
 if (!translated) {
-    var keys = Object.keys(map).sort(function(a, b) { return b.length - a.length; });
+    var keys = _getTranslateErrorSortedKeys(map);
     for (var i = 0; i < keys.length; i++) {
         var key = keys[i];
         if (m.indexOf(key) !== -1) { translated = map[key]; break; }
@@ -2672,6 +2724,13 @@ async function autoSave() {
     _autoSaveTimer = TimerManager.setTimeout('autoSave', async function() {
         _autoSaveTimer = null;
         try {
+            // 存储空间预警
+            if (typeof StorageMonitor !== 'undefined') {
+                var cap = StorageMonitor.checkCapacity();
+                if (cap.percentage > 80) {
+                    UI.toast('存储空间已用 ' + Math.round(cap.percentage) + '%，建议导出旧存档后清理');
+                }
+            }
             if (typeof SaveDB !== 'undefined') {
                 await SaveDB.set(0, buildSaveData(''));
             }

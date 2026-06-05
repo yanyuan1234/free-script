@@ -1413,14 +1413,16 @@ var WorldInfo = {
         }
         var scanDepth = this.settings.scanDepth;
 
-        // 读取UI设置
-        var depthEl = document.getElementById('wiScanDepth');
-        var budgetEl = document.getElementById('wiTokenBudget');
-        var recursiveEl = document.getElementById('wiRecursive');
-        // scanDepth默认值统一为2（与酒馆一致）
-        if (depthEl) this.settings.scanDepth = parseInt(depthEl.value) || 2;
-        if (budgetEl) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
-        if (recursiveEl) this.settings.recursive = recursiveEl.checked;
+        // 读取UI设置（缓存DOM查询，避免每次scan都getElementById）
+        if (!this._settingsCache || this._settingsCache.turn !== this._currentTurn) {
+            var depthEl = document.getElementById('wiScanDepth');
+            var budgetEl = document.getElementById('wiTokenBudget');
+            var recursiveEl = document.getElementById('wiRecursive');
+            if (depthEl) this.settings.scanDepth = parseInt(depthEl.value) || 2;
+            if (budgetEl) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
+            if (recursiveEl) this.settings.recursive = recursiveEl.checked;
+            this._settingsCache = { turn: this._currentTurn };
+        }
 
         // 递增轮次
         this._currentTurn++;

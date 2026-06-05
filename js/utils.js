@@ -58,7 +58,9 @@ var GlobalCleanup = {
 
 window.addEventListener('beforeunload', function() { GlobalCleanup.cleanup(); });
 
-function sanitizeHTML(str) { if (!str) return ''; if (typeof str !== 'string') str = String(str); return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+function escapeHTML(str) { if (!str) return ''; if (typeof str !== 'string') str = String(str); return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;'); }
+// 兼容旧调用：sanitizeHTML 是 escapeHTML 的别名
+var sanitizeHTML = escapeHTML;
 
 function debounce(fn, delay) { var t = null; return function() { var a = arguments, c = this; if (t) clearTimeout(t); t = setTimeout(function() { fn.apply(c, a); t = null; }, delay); }; }
 function throttle(fn, interval) { var last = 0, t = null; return function() { var a = arguments, c = this, now = Date.now(), r = interval - (now - last); if (r <= 0) { if (t) { clearTimeout(t); t = null; } last = now; fn.apply(c, a); } else if (!t) { t = setTimeout(function() { last = Date.now(); t = null; fn.apply(c, a); }, r); } }; }
