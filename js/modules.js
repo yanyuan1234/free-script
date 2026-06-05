@@ -581,16 +581,27 @@ var PresetManager = {
     }
 
     // 参数调节区域折叠/展开
+    // 修复：初始状态是 class="hidden"（CSS 隐藏），不是 style.display="none"
+    // 必须同时检查 class，否则点一次就反向关闭
     var paramsToggle = document.getElementById('presetParamsToggle');
     var paramsContent = document.getElementById('presetParamsContent');
     var paramsToggleIcon = document.getElementById('presetParamsToggleIcon');
     if (paramsToggle && paramsContent && paramsToggleIcon) {
         paramsToggle.addEventListener('click', function() {
-            var isHidden = paramsContent.style.display === 'none';
-            paramsContent.style.display = isHidden ? '' : 'none';
-            paramsToggleIcon.style.transform = isHidden ? 'rotate(180deg)' : 'rotate(0deg)';
-            paramsToggleIcon.textContent = isHidden ? '▲' : '▼';
-            });
+            var isHidden = paramsContent.classList.contains('hidden')
+                || paramsContent.style.display === 'none';
+            if (isHidden) {
+                paramsContent.classList.remove('hidden');
+                paramsContent.style.display = '';
+                paramsToggleIcon.style.transform = 'rotate(180deg)';
+                paramsToggleIcon.textContent = '▲';
+            } else {
+                paramsContent.classList.add('hidden');
+                paramsContent.style.display = 'none';
+                paramsToggleIcon.style.transform = 'rotate(0deg)';
+                paramsToggleIcon.textContent = '▼';
+            }
+        });
     }
 
     // 滑块实时更新显示值
