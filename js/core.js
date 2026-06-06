@@ -1113,6 +1113,9 @@ var TypewriterBuffer = {
     _lastRendered: '',
     _forceFullRender: false,
     _rafPending: false,
+    // 【性能优化】缓存已完成段落的格式化HTML，避免每tick重新formatStory
+    _cachedCompletedHtml: '',
+    _cachedCompletedKey: '',
     // 标点停顿映射（字符 → 额外等待ms）
     _pauseMap: {
         '\u3002': 120, '\uff01': 120, '\uff1f': 120, '\u2026': 80,
@@ -1216,6 +1219,8 @@ var TypewriterBuffer = {
         this._lastRendered = '';
         this._forceFullRender = true;
         this.onComplete = null;
+        this._cachedCompletedHtml = '';
+        this._cachedCompletedKey = '';
     },
     // 添加销毁方法，移除事件监听器防止内存泄漏
     destroy() {
@@ -1251,7 +1256,23 @@ var TypewriterBuffer = {
         // 脏检查：内容未变化则跳过重绘
         if (allText === this._lastRendered) return;
         this._lastRendered = allText;
-        storyEl.innerHTML = formatStory(allText);
+
+        // 【性能优化】段落级缓存：已完成段落的HTML只在段落列表变化时重新生成
+        // 打字机每tick只新增当前段落的一个字符，已完成段落不变
+        // 缓存key用已完成段落的join结果
+        var completedKey = this._completedParagraphs.join('\n');
+        var completedHtml;
+        if (completedKey === this._cachedCompletedKey && this._cachedCompletedHtml) {
+            completedHtml = this._cachedCompletedHtml;
+        } else {
+            completedHtml = completedKey ? formatStory(completedKey) : '';
+            this._cachedCompletedKey = completedKey;
+            this._cachedCompletedHtml = completedHtml;
+        }
+
+        // 当前正在打字的段落需要每tick格式化
+        var currentHtml = this._currentParaChars ? formatStory(this._currentParaChars) : '';
+        storyEl.innerHTML = completedHtml + currentHtml;
     },
     _renderCached() {
         // 渲染已完成的段落
@@ -2535,27 +2556,45 @@ function escapeHtml(text) {
 
 // 轻量级HTML净化（防止XSS）
 // 允许基本格式标签，移除危险属性和事件处理器
+// 【性能优化】预编译 sanitizeHtml 中所有正则，避免每次调用都重新编译
+var _reSanScript = new RegExp('<script[\\s\\S]*?<\\/script>', 'gi');
+var _reSanEventAttr1 = /\/?on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>\/]+)/gi;
+var _reSanEventAttr2 = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
+var _reSanJsHref = /href\s*=\s*["']?\s*javascript\s*:[^"'>]*/gi;
+var _reSanJsSrc = /src\s*=\s*["']?\s*javascript\s*:[^"'>]*/gi;
+var _reSanVbsHref = /href\s*=\s*["']?\s*vbscript\s*:[^"'>]*/gi;
+var _reSanDataSrc = /src\s*=\s*["']?\s*data\s*:[^"'>]*/gi;
+var _reSanDangerTag = /<(iframe|object|embed|form|meta|link|base|svg)[^>]*>/gi;
+var _reSanDangerTagClose = new RegExp('<\\/(iframe|object|embed|form|meta|link|base|svg)>', 'gi');
+var _reSanExpression = /expression\s*\([^)]*\)/gi;
+
 function sanitizeHtml(html) {
     if (!html) return '';
     var str = String(html);
-    // 移除script标签及其内容（注意：不能在代码中直接写关闭script标签，会被HTML解析器截断）
-    str = str.replace(new RegExp('<script[\\s\\S]*?<\\/script>', 'gi'), '');
+    // 重置所有正则的 lastIndex
+    _reSanScript.lastIndex = 0; _reSanEventAttr1.lastIndex = 0;
+    _reSanEventAttr2.lastIndex = 0; _reSanJsHref.lastIndex = 0;
+    _reSanJsSrc.lastIndex = 0; _reSanVbsHref.lastIndex = 0;
+    _reSanDataSrc.lastIndex = 0; _reSanDangerTag.lastIndex = 0;
+    _reSanDangerTagClose.lastIndex = 0; _reSanExpression.lastIndex = 0;
+    // 移除script标签及其内容
+    str = str.replace(_reSanScript, '');
     // 移除SVG事件（onload, onerror等，包括无空格分隔的情况）
-    str = str.replace(/\/?on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>\/]+)/gi, '');
+    str = str.replace(_reSanEventAttr1, '');
     // 移除所有事件属性（onclick, onerror, onload 等）
-    str = str.replace(/\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '');
+    str = str.replace(_reSanEventAttr2, '');
     // 移除 javascript: 协议（包括大小写变体和编码变体）
-    str = str.replace(/href\s*=\s*["']?\s*javascript\s*:[^"'>]*/gi, 'href="#"');
-    str = str.replace(/src\s*=\s*["']?\s*javascript\s*:[^"'>]*/gi, 'src=""');
+    str = str.replace(_reSanJsHref, 'href="#"');
+    str = str.replace(_reSanJsSrc, 'src=""');
     // 移除 vbscript: 协议
-    str = str.replace(/href\s*=\s*["']?\s*vbscript\s*:[^"'>]*/gi, 'href="#"');
+    str = str.replace(_reSanVbsHref, 'href="#"');
     // 移除 data: 协议（防止base64注入）
-    str = str.replace(/src\s*=\s*["']?\s*data\s*:[^"'>]*/gi, 'src=""');
+    str = str.replace(_reSanDataSrc, 'src=""');
     // 移除危险标签
-    str = str.replace(/<(iframe|object|embed|form|meta|link|base|svg)[^>]*>/gi, '');
-    str = str.replace(new RegExp('<\\/(iframe|object|embed|form|meta|link|base|svg)>', 'gi'), '');
+    str = str.replace(_reSanDangerTag, '');
+    str = str.replace(_reSanDangerTagClose, '');
     // 移除 style 标签中的 expression 和 url()
-    str = str.replace(/expression\s*\([^)]*\)/gi, '');
+    str = str.replace(_reSanExpression, '');
     return str;
 }
 // 页面关闭前保存

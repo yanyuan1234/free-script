@@ -871,12 +871,27 @@ var PresetAppManager = (function() {
         }
     }
 
+    // 【性能优化】预编译 stripDecorTags 中所有正则，合并同类标签为单个正则
+    // 将所有 XML 标签对合并为一个正则，避免 20+ 次独立的 replace 调用
+    var _decorTagNames = ['gossip_rules', 'snow_rules', '激活群组', 'NSFW设计',
+        'tableThink', 'tableEdit', 'horae', 'horaeevent', 'image', 'imgthink', '文生图', 'details'];
+    var _decorTagsRegex = new RegExp(
+        '<(?:' + _decorTagNames.join('|').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        ')[\\s>][\\s\\S]*?<\\/(?:' + _decorTagNames.join('|').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')>', 'gi');
+    var _reStyleDiv = /<style[\s>][\s\S]*?<\/style>\s*<div[\s>][\s\S]*?<\/div>/gi;
+    var _reComment = /<!--[\s\S]*?-->/g;
+    var _rePollinations = /https?:\/\/gen\.pollinations\.ai\/image\/[^\s<>"']+/gi;
+    var _reImageHash = /image###[\s\S]*?###/gi;
+    var _reImgTag = /<img[^>]*>/gi;
+    var _reMultiNewline = /\n{3,}/g;
+
     // 从剧情文本中移除装饰XML标签（不显示在剧情区域）
     function stripDecorTags(text) {
         if (!text) return text;
         var result = text;
 
         // 移除所有已定义的装饰标签（排除giggle，因为心声需要在剧情中显示）
+        // 【性能优化】动态标签也用预编译正则，避免 forEach + new RegExp
         Object.keys(_appDefs).forEach(function(tag) {
             if (_excludeTags.indexOf(tag) !== -1) return;
             var escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -885,56 +900,30 @@ var PresetAppManager = (function() {
         });
 
         // 移除 <style>...</style><div>...</div> 块（ice组件）
-        result = result.replace(/<style[\s>][\s\S]*?<\/style>\s*<div[\s>][\s\S]*?<\/div>/gi, '');
+        _reStyleDiv.lastIndex = 0;
+        result = result.replace(_reStyleDiv, '');
 
-        // 移除 <details>...</details> 块（小剧场简约模式）
-        result = result.replace(/<details[\s>][\s\S]*?<\/details>/gi, '');
+        // 【性能优化】合并所有固定标签名为单个正则匹配
+        _decorTagsRegex.lastIndex = 0;
+        result = result.replace(_decorTagsRegex, '');
 
         // 移除导演手记注释 <!-- ... -->
-        result = result.replace(/<!--[\s\S]*?-->/g, '');
+        _reComment.lastIndex = 0;
+        result = result.replace(_reComment, '');
 
-        // 移除 <gossip_rules>...</gossip_rules> 块
-        result = result.replace(/<gossip_rules[\s>][\s\S]*?<\/gossip_rules>/gi, '');
-
-        // 移除 <snow_rules>...</snow_rules> 块
-        result = result.replace(/<snow_rules[\s>][\s\S]*?<\/snow_rules>/gi, '');
-
-        // 移除 <激活群组>...</激活群组> 块
-        result = result.replace(/<激活群组[\s>][\s\S]*?<\/激活群组>/gi, '');
-
-        // 移除 <NSFW设计>...</NSFW设计> 块
-        result = result.replace(/<NSFW设计[\s>][\s\S]*?<\/NSFW设计>/gi, '');
-
-        // 移除 <tableThink>...</tableThink> 块
-        result = result.replace(/<tableThink[\s>][\s\S]*?<\/tableThink>/gi, '');
-
-        // 移除 <tableEdit>...</tableEdit> 块
-        result = result.replace(/<tableEdit[\s>][\s\S]*?<\/tableEdit>/gi, '');
-
-        // 移除 <horae>...</horae> 块
-        result = result.replace(/<horae[\s>][\s\S]*?<\/horae>/gi, '');
-
-        // 移除 <horaeevent>...</horaeevent> 块
-        result = result.replace(/<horaeevent[\s>][\s\S]*?<\/horaeevent>/gi, '');
-
-        // 移除 <image>...</image> 块（文生图）
-        result = result.replace(/<image[\s>][\s\S]*?<\/image>/gi, '');
-
-        // 移除 <imgthink>...</imgthink> 块
-        result = result.replace(/<imgthink[\s>][\s\S]*?<\/imgthink>/gi, '');
-
-        // 移除更多文生图相关标签，彻底清理节省token
         // 移除 pollinations.ai 图片链接
-        result = result.replace(/https?:\/\/gen\.pollinations\.ai\/image\/[^\s<>"']+/gi, '');
-        // 移除 <文生图>...</文生图> 块
-        result = result.replace(/<文生图[\s>][\s\S]*?<\/文生图>/gi, '');
+        _rePollinations.lastIndex = 0;
+        result = result.replace(_rePollinations, '');
         // 移除 image###...### 格式
-        result = result.replace(/image###[\s\S]*?###/gi, '');
+        _reImageHash.lastIndex = 0;
+        result = result.replace(_reImageHash, '');
         // 移除 <img> 标签（AI可能生成的图片标签）
-        result = result.replace(/<img[^>]*>/gi, '');
+        _reImgTag.lastIndex = 0;
+        result = result.replace(_reImgTag, '');
 
         // 移除多余的空行（超过2个连续换行压缩为2个）
-        result = result.replace(/\n{3,}/g, '\n\n');
+        _reMultiNewline.lastIndex = 0;
+        result = result.replace(_reMultiNewline, '\n\n');
 
         return result.trim();
     }

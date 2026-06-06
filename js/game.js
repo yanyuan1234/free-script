@@ -1698,8 +1698,10 @@ function onStreamChunk(chunk) {
     // 一次扫描从累积 buffer 中提取 story（如果存在）
     var story = extractStoryStreaming(streamBuffer);
     if (story && story.length > 0) {
-        // 应用正则脚本到AI输出
-        story = RegexManager.applyToOutput(story);
+        // 【性能优化】流式输出期间跳过 RegexManager.applyToOutput
+        // 原因：每个chunk都跑一遍所有正则脚本是巨大浪费，文本还在变化
+        // 正则替换结果会被下一个chunk覆盖，等于白做
+        // 改为在打字机完成后（TypewriterBuffer.onComplete）统一执行一次
         TypewriterBuffer.push(story);
     }
 }
@@ -1727,6 +1729,25 @@ function renderStory(text) {
 }
 // 全局心声计数器
 var globalThoughtId = 0;
+// 【性能优化】预编译 formatStory 中所有正则，避免每次调用都重新编译
+var _reHtmlLt = /&lt;/g;
+var _reHtmlGt = /&gt;/g;
+var _reHtmlQuot = /&quot;/g;
+var _reHtmlAmp = /&amp;/g;
+var _reDecEntity = /&#(\d+);/g;
+var _reHexEntity = /&#x([0-9a-fA-F]+);/g;
+var _reGiggleCN = /【giggle】/g;
+var _reGiggleCNClose = /【\/giggle】/g;
+var _reGiggleOpen = /<giggle>([\s\S]*?)<\/giggle>/gi;
+var _reGiggleStrip = /<giggle>[\s\S]*?<\/giggle>/gi;
+var _reGiggleCNStrip = /【giggle】[\s\S]*?【\/giggle】/gi;
+var _reDecorTagsTyping = /<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+var _reChapterEnd = /\[章节结束\|([^\]]+)\]/;
+var _reDialogueCN = /(\u300c[^\u300d]+\u300d)/g;
+var _reDialogueEN = /("[^"]+")/g;
+var _rePlaceholder = /&lt;&lt;PH(\d+)PH&gt;&gt;/g;
+var _reBold = /\*\*(.*?)\*\*/g;
+var _reItalic = /\*(.*?)\*/g;
 // 心声气泡清理：简单的同步清理（与原版一致），不要用 requestIdleCallback
 // 原版用 querySelectorAll 同步清理（气泡数量少，开销可忽略）
 function formatStory(text) {
@@ -1734,16 +1755,21 @@ function formatStory(text) {
 
     // 【修复】反转义 HTML 实体，防止 <giggle> 和 「」被转义后无法匹配
     // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
-    text = text.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    // 【性能优化】使用预编译正则，避免每次调用都 new RegExp
+    _reHtmlLt.lastIndex = 0; _reHtmlGt.lastIndex = 0;
+    _reHtmlQuot.lastIndex = 0; _reHtmlAmp.lastIndex = 0;
+    text = text.replace(_reHtmlLt, '<').replace(_reHtmlGt, '>').replace(_reHtmlQuot, '"').replace(_reHtmlAmp, '&');
     // 同时处理数字字符实体（如 &#12300; → 「）
-    text = text.replace(/&#(\d+);/g, function(_, code) {
+    _reDecEntity.lastIndex = 0; _reHexEntity.lastIndex = 0;
+    text = text.replace(_reDecEntity, function(_, code) {
         return String.fromCharCode(parseInt(code, 10));
-    }).replace(/&#x([0-9a-fA-F]+);/g, function(_, hex) {
+    }).replace(_reHexEntity, function(_, hex) {
         return String.fromCharCode(parseInt(hex, 16));
     });
 
     // 【新增兼容】处理AI错误返回的中文方括号格式 【giggle】→<giggle>
-    text = text.replace(/【giggle】/g, '<giggle>').replace(/【\/giggle】/g, '</giggle>');
+    _reGiggleCN.lastIndex = 0; _reGiggleCNClose.lastIndex = 0;
+    text = text.replace(_reGiggleCN, '<giggle>').replace(_reGiggleCNClose, '</giggle>');
 
     // 【性能修复】打字机tick期间跳过PresetAppManager解析和标签移除
     // parseFromText 遍历所有装饰标签做正则匹配，stripDecorTags 做大量正则替换
@@ -1762,7 +1788,8 @@ function formatStory(text) {
     } else {
         // 打字机tick期间：只做最基本的标签移除（giggle标签需要保留用于心声显示）
         // 其他装饰标签在tick期间不影响显示，因为它们的内容不会渲染到storyText
-        text = text.replace(/<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi, '');
+        _reDecorTagsTyping.lastIndex = 0;
+        text = text.replace(_reDecorTagsTyping, '');
     }
 
     // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）
@@ -1775,7 +1802,7 @@ function formatStory(text) {
     }
 
     // 检查是否包含章节结束标记
-    var chapterEndMatch = text.match(/\[章节结束\|([^\]]+)\]/);
+    var chapterEndMatch = _reChapterEnd.exec(text);
     var chapterEndHtml = '';
     if (chapterEndMatch) {
         chapterEndHtml = '<div class="chapter-end-title"><span class="flower">*</span>' + escapeHtml(
@@ -1790,14 +1817,14 @@ function formatStory(text) {
     var result = [];
 
     // 收集所有心声（整章限制2-5个）
-    // 【性能优化】正则提到外面，只创建一次
-    var thoughtRegex = /<giggle>([\s\S]*?)<\/giggle>/gi;
+    // 【性能优化】使用预编译正则
+    _reGiggleOpen.lastIndex = 0;
     var allThoughts = [];
     for (var pI = 0; pI < paragraphs.length; pI++) {
         var pp = paragraphs[pI];
-        thoughtRegex.lastIndex = 0;
+        _reGiggleOpen.lastIndex = 0;
         var tmatch;
-        while ((tmatch = thoughtRegex.exec(pp)) !== null) {
+        while ((tmatch = _reGiggleOpen.exec(pp)) !== null) {
             var giggleText = tmatch[1].trim();
             var colonIdx = giggleText.indexOf('：');
             if (colonIdx === -1) colonIdx = giggleText.indexOf(':');
@@ -1833,7 +1860,8 @@ function formatStory(text) {
 
     paragraphs.forEach(function(p, pIdx) {
         // 移除所有心声标记（兼容中文方括号格式）
-        var cleanText = p.replace(/<giggle>[\s\S]*?<\/giggle>/gi, '').replace(/【giggle】[\s\S]*?【\/giggle】/gi, '').trim();
+        _reGiggleStrip.lastIndex = 0; _reGiggleCNStrip.lastIndex = 0;
+        var cleanText = p.replace(_reGiggleStrip, '').replace(_reGiggleCNStrip, '').trim();
 
         // 检查这个段落是否有对应的心声
         var hasThoughtInThisPara = false;
@@ -1859,24 +1887,28 @@ function formatStory(text) {
             if (hasDialogue) {
                 var placeholders = [];
                 // 先处理中文引号「」
-                var safeText = cleanText.replace(/(\u300c[^\u300d]+\u300d)/g, function(m) {
+                _reDialogueCN.lastIndex = 0;
+                var safeText = cleanText.replace(_reDialogueCN, function(m) {
                     var idx = placeholders.length;
                     placeholders.push('<span class="dialogue">' + escapeHtml(m) + '</span>');
                     return '<<PH' + idx + 'PH>>';
                 });
                 // 再处理英文引号""
-                safeText = safeText.replace(/("[^"]+")/g, function(m) {
+                _reDialogueEN.lastIndex = 0;
+                safeText = safeText.replace(_reDialogueEN, function(m) {
                     var idx = placeholders.length;
                     placeholders.push('<span class="dialogue">' + escapeHtml(m) + '</span>');
                     return '<<PH' + idx + 'PH>>';
                 });
                 // 先转义HTML，然后替换占位符
-                html = '<p>' + escapeHtml(safeText).replace(/&lt;&lt;PH(\d+)PH&gt;&gt;/g, function(_, i) {
+                _rePlaceholder.lastIndex = 0;
+                html = '<p>' + escapeHtml(safeText).replace(_rePlaceholder, function(_, i) {
                     return placeholders[parseInt(i)];
                 }) + '</p>';
             } else {
-                html = '<p>' + escapeHtml(cleanText).replace(/\*\*(.*?)\*\*/g,
-                    '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>') + '</p>';
+                _reBold.lastIndex = 0; _reItalic.lastIndex = 0;
+                html = '<p>' + escapeHtml(cleanText).replace(_reBold,
+                    '<strong>$1</strong>').replace(_reItalic, '<em>$1</em>') + '</p>';
             }
         }
 
