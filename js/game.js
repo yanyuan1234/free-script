@@ -561,7 +561,7 @@ function applyLengthPreset(preset) {
     };
     var p = presets[preset];
     if (!p) return;
-    
+
     var elMin = document.getElementById('wcMin');
     var elMax = document.getElementById('wcMax');
     var elParaMin = document.getElementById('wcParaMin');
@@ -570,6 +570,15 @@ function applyLengthPreset(preset) {
     if (elMax) elMax.value = p.max;
     if (elParaMin) elParaMin.value = p.paraMin;
     if (elParaMax) elParaMax.value = p.paraMax;
+
+    // 更新按钮active状态
+    var btns = document.querySelectorAll('.wc-preset-btn');
+    for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.remove('active');
+        if (btns[i].getAttribute('data-preset') === preset) {
+            btns[i].classList.add('active');
+        }
+    }
 }
 
 async function sendAIRequest(userMessage, isInit = false) {

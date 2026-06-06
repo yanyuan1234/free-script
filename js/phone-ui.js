@@ -3650,12 +3650,32 @@ function bindEvents() {
         UI.showPage('worldSetupPage');
     });
 
-    // 记录按钮
-    bindEvent('btnMenuRecords', 'click', function() {
+    // 更多菜单开关
+    bindEvent('btnMenuMore', 'click', function(e) {
+        e.stopPropagation();
+        var dropdown = document.getElementById('menuMoreDropdown');
+        if (!dropdown) return;
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    });
+    // 点击外部关闭下拉菜单
+    document.addEventListener('click', function() {
+        var dropdown = document.getElementById('menuMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+    });
+    // 下拉菜单项：记录
+    bindEvent('btnMenuRecordsDropdown', 'click', function() {
+        var dropdown = document.getElementById('menuMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
         showGameStats();
     });
+    // 下拉菜单项：设置
+    bindEvent('btnMenuApiSettingsDropdown', 'click', function() {
+        var dropdown = document.getElementById('menuMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+        renderAPISettings();
+    });
 
-    // ★ 收藏/记录按钮（原版行为：打开加载存档弹窗，比切换主题更合理）
+    // ★ 收藏/记录按钮（原版行为：打开加载存档弹窗）
     bindEvent('menuTopStar', 'click', function() {
         openSaveLoadModal();
     });
@@ -3684,11 +3704,6 @@ function bindEvents() {
             console.error('加载最新存档失败:', e);
             UI.toast('加载失败');
         });
-    });
-
-    // 设置按钮 → API配置
-    bindEvent('btnMenuApiSettings', 'click', function() {
-        renderAPISettings();
     });
 
     // 主页面世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
@@ -3758,10 +3773,42 @@ function bindEvents() {
     bindEvent('btnSettingsHeader', 'click', function() {
         openSettingsModal();
     });
-    // 通知中心按钮
-    bindEvent('btnNotifCenter', 'click', function(e) {
+    // 更多菜单开关
+    bindEvent('btnStoryMore', 'click', function(e) {
+        e.stopPropagation();
+        var dropdown = document.getElementById('storyMoreDropdown');
+        if (!dropdown) return;
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    });
+    // 点击外部关闭下拉菜单
+    document.addEventListener('click', function() {
+        var dropdown = document.getElementById('storyMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+    });
+    // 下拉菜单项：撤回
+    bindEvent('btnUndoDropdown', 'click', function() {
+        var dropdown = document.getElementById('storyMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+        deleteLastTurn();
+    });
+    // 下拉菜单项：重新生成
+    bindEvent('btnRetryDropdown', 'click', function() {
+        var dropdown = document.getElementById('storyMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+        retryStory();
+    });
+    // 下拉菜单项：继续剧情
+    bindEvent('btnContinueDropdown', 'click', function() {
+        var dropdown = document.getElementById('storyMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
+        continueStory();
+    });
+    // 下拉菜单项：通知中心
+    bindEvent('btnNotifDropdown', 'click', function(e) {
         e.preventDefault();
         e.stopPropagation();
+        var dropdown = document.getElementById('storyMoreDropdown');
+        if (dropdown) dropdown.style.display = 'none';
         if (typeof openNotificationCenter === 'function') {
             openNotificationCenter();
         } else if (typeof toggleNotifCenter === 'function') {
@@ -3772,17 +3819,7 @@ function bindEvents() {
     var notifCloseBtn = document.getElementById('notificationCenterClose');
     if (notifCloseBtn) notifCloseBtn.addEventListener('click', closeNotificationCenter);
     // 世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
-    // 预设按钮
     // 预设按钮（已由 PresetManager.bindEvents 绑定，此处不再重复）
-    bindEvent('btnUndo', 'click', function() {
-        deleteLastTurn();
-    });
-    bindEvent('btnRetry', 'click', function() {
-        retryStory();
-    });
-    bindEvent('btnContinueGen', 'click', function() {
-        continueStory();
-    });
 
     // 自定义行动输入
     bindEvent('customAction', 'keypress', function(e) {
