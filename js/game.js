@@ -1729,9 +1729,26 @@ function onStreamChunk(delta, fullText) {
 
     var toPush = null;
     if (_streamMode === 'json') {
-        // JSON 模式：尝试从累积的 fullText 提取 story
-        _streamFullText = fullText;
-        toPush = extractStoryStreaming(_streamFullText);
+        // JSON 模式：【性能修复】只扫描新到的 delta 增量，不再每帧重扫整段累积文本
+        // 原实现 _streamFullText = fullText; extractStoryStreaming(_streamFullText);
+        // 会让 O(N²) 累积扫描，导致长回复时 game 页卡顿
+        // 改为：检测 delta 中是否含 "story":"..."，若有则只解析 delta 这段
+        // 由于中转站可能把整个 JSON 在一次 chunk 里返回完，delta 就是完整 story
+        if (delta && delta.indexOf('"story"') !== -1) {
+            // 先尝试严格解析整段 delta（最常见：单 chunk 含完整 JSON）
+            try {
+                var _j = JSON.parse(delta);
+                if (_j && _j.story != null) {
+                    toPush = String(_j.story);
+                }
+            } catch (e) { /* 不是完整 JSON，尝试宽松提取 */ }
+            // 严格解析失败时，宽松提取 delta 中的 "story":"..." 值
+            if (toPush == null) {
+                toPush = extractStoryStreaming(delta);
+            }
+        } else if (delta && delta.length > 0) {
+            // delta 里没有 "story" 关键字 → 跳过（不重扫 _streamFullText）
+        }
     } else if (_streamMode === 'plaintext') {
         // 纯文本模式：直接用 delta 增量 push（避免 O(n²) 字符串拼接）
         toPush = delta;
