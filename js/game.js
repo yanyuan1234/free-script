@@ -626,6 +626,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                         gameState.conversationHistory[0].content = gameState.systemPrompt;
                     }
                 }
+            } else {
+                try { gameState.systemPrompt = buildSystemPrompt(); } catch(e) {}
             }
             // 无预设时，initializeGame() 已设置好 systemPrompt，无需重复构建
             messages = gameState.conversationHistory.concat([{
