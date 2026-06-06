@@ -1786,40 +1786,10 @@ function renderStory(text) {
 }
 // 全局心声计数器
 var globalThoughtId = 0;
-// 【性能优化】formatStory 整段文本级缓存：避免打字机每帧重复转换已渲染过的文本
-// 键：输入文本，值：转换后的HTML
-// 打字机每80ms调用一次，文本不断增长，但已处理过的前缀会一直被重复转换
-var _formatStoryCache = {
-    _lastInput: '',
-    _lastOutput: '',
-    _hits: 0,
-    get: function(text) {
-        if (text === this._lastInput && this._lastOutput) {
-            this._hits++;
-            return this._lastOutput;
-        }
-        return null;
-    },
-    set: function(text, output) {
-        this._lastInput = text;
-        this._lastOutput = output;
-        // 控制内存：输出超过 200KB 时清空（避免长时间运行内存爆掉）
-        if (this._lastOutput.length > 200000) {
-            this._lastOutput = '';
-        }
-    },
-    invalidate: function() {
-        this._lastInput = '';
-        this._lastOutput = '';
-    }
-};
-
+// 心声气泡清理：简单的同步清理（与原版一致），不要用 requestIdleCallback
+// 原版用 querySelectorAll 同步清理（气泡数量少，开销可忽略）
 function formatStory(text) {
     if (!text) return '';
-
-    // 【性能优化】快速命中：如果输入完全没变（打字机增量推送的同一段），返回上次的HTML
-    var cached = _formatStoryCache.get(text);
-    if (cached !== null) return cached;
 
     // 【修复】反转义 HTML 实体，防止 <giggle> 和 「」被转义后无法匹配
     // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
@@ -1844,28 +1814,12 @@ function formatStory(text) {
         text = PresetAppManager.stripDecorTags(text);
     }
 
-    // 【性能优化】清理心声气泡：直接遍历body.children，避免querySelectorAll
-    if (window._pendingBubbleCleanup) {
-        cancelIdleCallback(window._pendingBubbleCleanup);
-    }
-    window._pendingBubbleCleanup = requestIdleCallback(function() {
-        var body = document.body;
-        if (!body) return;
-        var children = body.children;
-        var toRemove = [];
-        for (var ci = 0; ci < children.length; ci++) {
-            var ch = children[ci];
-            // 只移除心声气泡节点，遍历子节点判断 className
-            if (ch.className && typeof ch.className === 'string' &&
-                ch.className.indexOf('thought-bubble') >= 0 && !ch.dataset.persistent) {
-                toRemove.push(ch);
-            }
-        }
-        for (var ri = 0; ri < toRemove.length; ri++) {
-            toRemove[ri].remove();
-        }
-        window._pendingBubbleCleanup = null;
-    }, { timeout: 100 });
+    // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）
+    // 【性能修复】与原版保持一致：同步 querySelectorAll + forEach 移除
+    // 之前用 requestIdleCallback + 100ms timeout，反而造成气泡一直累积无法清理
+    // （每次 render 都会 cancelIdleCallback 之前的回调，导致清理永远不执行）
+    var oldBubbles = document.querySelectorAll('body > .thought-bubble:not([data-persistent])');
+    oldBubbles.forEach(function(b) { b.remove(); });
 
     // 检查是否包含章节结束标记
     var chapterEndMatch = text.match(/\[章节结束\|([^\]]+)\]/);
@@ -1994,7 +1948,6 @@ function formatStory(text) {
     });
 
     var finalOutput = result.join('') + chapterEndHtml;
-    _formatStoryCache.set(text, finalOutput);
     return finalOutput;
 }
 function createThoughtTriggerHTML(id, thoughts) {

@@ -1258,33 +1258,9 @@ var TypewriterBuffer = {
         this.render();
     },
     _renderCurrentPara() {
-        // 【性能优化】不再每帧都调用render，改为标记脏+节流渲染
-        // 每80ms最多调用一次formatStory，大幅减少DOM重写频率
-        this._dirty = true;
-        if (this._rafPending) return;
-        this._rafPending = true;
-        var self = this;
-        requestAnimationFrame(function() {
-            self._rafPending = false;
-            if (!self._dirty) return;
-            var now = Date.now();
-            if (!self._lastRenderTime) self._lastRenderTime = 0;
-            var elapsed = now - self._lastRenderTime;
-            if (elapsed < 80) {
-                // 距上次渲染不到80ms，延迟到下一个周期
-                TimerManager.setTimeout('typewriterRender', function() {
-                    if (self._dirty) {
-                        self._dirty = false;
-                        self._lastRenderTime = Date.now();
-                        self.render();
-                    }
-                }, 80 - elapsed);
-            } else {
-                self._dirty = false;
-                self._lastRenderTime = now;
-                self.render();
-            }
-        });
+        // 渲染当前段落（与原版保持一致：每 tick 直接 render，不做 80ms 节流）
+        // 之前用 rAF + 80ms 节流反而让文本以 3 字/80ms 的节奏跳动，用户感觉"卡"
+        this.render();
     }
 };
 const MAX_HISTORY = 20;
