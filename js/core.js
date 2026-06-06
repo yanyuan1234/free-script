@@ -511,28 +511,8 @@ var LocalGameAPI = {
     normalizeUrl(baseUrl) {
         return baseUrl.replace(/\/$/, '');
     },
-    _proxyUrl: '',
-    _networkStatus: 'unknown',
-    setProxyUrl(url) {
-        this._proxyUrl = (url || '').trim();
-        localStorage.setItem('freeScript_proxyUrl', this._proxyUrl);
-    },
-    getProxyUrl() {
-        if (!this._proxyUrl) {
-            this._proxyUrl = localStorage.getItem('freeScript_proxyUrl') || '';
-        }
-        return this._proxyUrl;
-    },
-    buildApiUrl(baseUrl, path) {
-        var proxyUrl = this.getProxyUrl();
-        if (proxyUrl) {
-            var targetUrl = this.normalizeUrl(baseUrl) + path;
-            return proxyUrl + '?target=' + encodeURIComponent(targetUrl);
-        }
-        return this.normalizeUrl(baseUrl) + path;
-    },
     async checkConnectivity(baseUrl) {
-        var testUrl = this.buildApiUrl(baseUrl, '/models');
+        var testUrl = this.normalizeUrl(baseUrl) + '/models';
         var cfg = this.getCurrentConfig();
         var headers = { 'Content-Type': 'application/json' };
         if (cfg && cfg.apiKey) headers['Authorization'] = 'Bearer ' + cfg.apiKey;
@@ -583,7 +563,7 @@ var LocalGameAPI = {
     async fetchModels(baseUrl, apiKey) {
         if (!baseUrl) return [];
         try {
-            const url = this.buildApiUrl(baseUrl, '/models');
+            const url = this.normalizeUrl(baseUrl) + '/models';
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + apiKey
@@ -3022,9 +3002,9 @@ if (options.stream) {
                             }
                             const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
                             fullText += content;
-                            if (options.onChunk) {
+                            if (options.onChunk && content) {
                                 try {
-                                    options.onChunk(fullText);
+                                    options.onChunk(content, fullText);
                                 } catch (chunkErr) {
                                     console.warn('[callAI] onChunk 回调异常:', chunkErr);
                                 }
@@ -3061,9 +3041,9 @@ if (options.stream) {
                         }
                         const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
                         fullText += content;
-                        if (options.onChunk) {
+                        if (options.onChunk && content) {
                             try {
-                                options.onChunk(fullText);
+                                options.onChunk(content, fullText);
                             } catch (chunkErr) {
                                 console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
                             }

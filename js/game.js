@@ -1690,11 +1690,16 @@ function extractStoryStreaming(text) {
 // 修复：支持 JSON 包装和纯文本两种流式响应
 // 1) JSON 包装：模型在 delta.content 里返回 "story":"正文" 结构 → 提取 story 字段
 // 2) 纯文本：模型直接逐字返回正文（最常见于 iamhc 等中转站）→ 增量 push delta
-// 【关键】与原版一致：使用 streamBuffer 累积全量内容，extractStoryStreaming 在累积 buffer 上扫描
-// 这样即使中转站把 JSON 拆成多个 chunk 发送，也能正确提取（不会丢内容）
-function onStreamChunk(chunk) {
-    if (!chunk) return;
-    streamBuffer += chunk;
+// 【优化】onChunk 现在传增量 delta（第一个参数）和累积全文（第二个参数）
+// streamBuffer 直接用累积全文，不再重复追加
+function onStreamChunk(delta, fullText) {
+    if (fullText !== undefined) {
+        // 新版 callAI 传 (delta, fullText)，直接用 fullText 替换 streamBuffer
+        streamBuffer = fullText;
+    } else {
+        // 兼容旧调用方式
+        streamBuffer += delta;
+    }
     // 一次扫描从累积 buffer 中提取 story（如果存在）
     var story = extractStoryStreaming(streamBuffer);
     if (story && story.length > 0) {
