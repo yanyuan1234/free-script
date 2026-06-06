@@ -2835,7 +2835,7 @@ async function callAI(messages, options = {}) {
 
 return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
     const config = LocalGameAPI._configs[slotIdx];
-    const url = LocalGameAPI.buildApiUrl(config.baseUrl, '/chat/completions');
+    const url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
     // 【修复】先检查 PresetManager 是否存在，再调用 getParams()
     if (typeof PresetManager === 'undefined') {
         throw new Error('PresetManager 未初始化');
@@ -2961,124 +2961,6 @@ if (options.stream) filteredParams.stream = true;
 
 const body = filteredParams;
 
-// 修复：兜底提取流式 chunk 中的 delta.content
-// 兼容中转站返回的异常 JSON 格式（如多余 {、字段错位、reasoning_content 混入等）
-// 先尝试 JSON.parse 严格解析；失败后用正则宽松提取
-function _extractDeltaContent(rawLine) {
-    if (!rawLine) return '';
-    var s = String(rawLine);
-    // 1) 严格 JSON 解析
-    try {
-        var j = JSON.parse(s);
-        if (j && j.choices && j.choices[0]) {
-            var delta = j.choices[0].delta;
-            if (delta) {
-                // OpenAI 格式：delta.content
-                if (typeof delta.content === 'string') return delta.content;
-                // 部分中转站：choices[0].message.content（非流式字段混入）
-                if (typeof j.choices[0].message === 'string') return j.choices[0].message;
-            }
-        }
-        if (j && j.choices && j.choices[0] && j.choices[0].text) {
-            return j.choices[0].text;
-        }
-        if (typeof j === 'string') return j;
-    } catch (e) {
-        // 继续走宽松解析
-    }
-    // 2) 宽松正则：直接找 "content":"..." 或 "content": "..."
-    // 支持字符串中含转义换行和转义引号
-    var m = s.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"/);
-    if (m) {
-        var v = m[1];
-        // 反转义
-        v = v.replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t')
-             .replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-        return v;
-    }
-    // 3) 宽松正则：content 值为非字符串（如 null、数字）— 这种 chunk 没正文
-    if (/"content"\s*:\s*null/.test(s)) return '';
-    // 4) 实在提取不到，返回空
-    return '';
-}
-
-// 暴力提取：从 rawBody 中扫描出所有 "content":"..." 的值（顺序拼接）
-// 完全不依赖 SSE 事件边界，兼容中转站的任何奇葩格式
-// 返回 { text, endPos }，text 为拼接后的所有 content，endPos 为已扫描到的位置
-function extractAllContentFromRawBody(rawBody, startPos) {
-    if (!rawBody) return { text: '', endPos: startPos || 0 };
-    var pos = startPos || 0;
-    var collected = '';
-    while (pos < rawBody.length) {
-        // 找到下一个 "content" 字段
-        var idx = rawBody.indexOf('"content"', pos);
-        if (idx === -1) break;
-        // 找到冒号
-        var colonIdx = idx + 9;
-        while (colonIdx < rawBody.length && /\s/.test(rawBody[colonIdx])) colonIdx++;
-        if (rawBody[colonIdx] !== ':') { pos = idx + 9; continue; }
-        colonIdx++;
-        while (colonIdx < rawBody.length && /\s/.test(rawBody[colonIdx])) colonIdx++;
-        if (colonIdx >= rawBody.length) break;
-        // 必须是字符串 "..." 开头
-        if (rawBody[colonIdx] !== '"') { pos = colonIdx; continue; }
-        // 开始解析字符串值（含转义）
-        var valueStart = colonIdx + 1;
-        var i = valueStart;
-        var inEscape = false;
-        var value = '';
-        var finished = false;
-        while (i < rawBody.length) {
-            var ch = rawBody[i];
-            if (inEscape) {
-                switch (ch) {
-                    case 'n': value += '\n'; break;
-                    case 'r': value += '\r'; break;
-                    case 't': value += '\t'; break;
-                    case 'b': value += '\b'; break;
-                    case 'f': value += '\f'; break;
-                    case '"': value += '"'; break;
-                    case '\\': value += '\\'; break;
-                    case '/': value += '/'; break;
-                    case 'u':
-                        var hex = rawBody.substring(i + 1, i + 5);
-                        if (/^[0-9a-fA-F]{4}$/.test(hex)) {
-                            value += String.fromCharCode(parseInt(hex, 16));
-                            i += 4;
-                        } else {
-                            value += ch;
-                        }
-                        break;
-                    default: value += ch;
-                }
-                inEscape = false;
-            } else if (ch === '\\') {
-                inEscape = true;
-            } else if (ch === '"') {
-                // 字符串结束
-                collected += value;
-                pos = i + 1;
-                finished = true;
-                break;
-            } else {
-                value += ch;
-            }
-            i++;
-        }
-        if (!finished) {
-            // 没找到结束引号，说明还没收完整，留到下次再处理
-            break;
-        }
-    }
-    return { text: collected, endPos: pos };
-}
-
-// 检测 chunk 内容中是否含错误标记
-function lineContentHasErrorMarker(s) {
-    if (!s) return false;
-    return s.indexOf('"error"') !== -1 || s.indexOf('"code"') !== -1;
-}
-
 // 如果预设中有 reasoning_effort 参数，传递给 API
 // reasoning_effort 支持: "low", "medium", "high", "auto" 等
 if (body.reasoning_effort) {
@@ -3104,7 +2986,6 @@ if (options.stream) {
         let errMsg = translateError('API错误: ' + res.status);
         try {
             const errData = await res.json();
-            // 优先取 message，其次取 code/type，最后拼接所有字段
             var errObj = errData.error || errData;
             errMsg = translateError(errObj.message) ||
             translateError(errObj.code) ||
@@ -3119,43 +3000,37 @@ if (options.stream) {
     let fullText = '';
     let rawBody = '';
     let sseBuffer = '';
-    let streamError = null; // 捕获流中的错误响应
-    // 【性能修复】用增量解析器扫描新到的 chunk，避免 O(n²) 重复扫描整个 rawBody
-    // 原"暴力修复 v3"每帧都 extractAllContentFromRawBody，导致大响应卡顿
-    // 新方案：每帧只解析新 chunk，SSE 标准格式优先，单行宽松匹配兜底
-    // 检测中转站是否用非标准 SSE（无 \n\n 分隔），若是则后续每帧都用单行解析
-    let _useSingleLineMode = false;
-    let _stdEventBoundarySeen = false; // 看到过一次完整 \n\n 就认为该中转站走标准 SSE
-
+    let streamError = null;
     while (true) {
         const {
             done,
             value
         } = await reader.read();
         if (done) {
-            // 流结束时，处理 sseBuffer 中可能剩余的半截 data: 行
+            // 流结束时，处理剩余的buffer
             if (sseBuffer && sseBuffer.trim()) {
-                var _lastLines = sseBuffer.split(/\r?\n/);
-                for (var _li = 0; _li < _lastLines.length; _li++) {
-                    var _ln = _lastLines[_li];
-                    if (_ln.indexOf('data:') === 0 && _ln.indexOf('[DONE]') === -1) {
-                        var _lc = _ln.replace(/^data:\s*/, '');
-                        var _c2 = '';
+                const lines = sseBuffer.split('\n');
+                for (const line of lines) {
+                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
                         try {
-                            var _lj = JSON.parse(_lc);
-                            if (_lj.error && !streamError) {
-                                streamError = translateError(_lj.error.message) || ('API流式错误: ' + JSON.stringify(_lj.error));
-                            } else {
-                                _c2 = _lj.choices && _lj.choices[0] && _lj.choices[0].delta && _lj.choices[0].delta.content || '';
+                            const json = JSON.parse(line.slice(6));
+                            if (json.error && !streamError) {
+                                var errObj = json.error;
+                                streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
+                                console.error('[callAI] 流式错误:', streamError);
+                                continue;
+                            }
+                            const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+                            fullText += content;
+                            if (options.onChunk) {
+                                try {
+                                    options.onChunk(fullText);
+                                } catch (chunkErr) {
+                                    console.warn('[callAI] onChunk 回调异常:', chunkErr);
+                                }
                             }
                         } catch (e) {
-                            _c2 = _extractDeltaContent(_lc);
-                        }
-                        if (_c2) {
-                            fullText += _c2;
-                            if (options.onChunk) {
-                                try { options.onChunk(fullText); } catch (e) { /* 静默 */ }
-                            }
+                            // JSON解析失败，忽略
                         }
                     }
                 }
@@ -3166,139 +3041,66 @@ if (options.stream) {
             stream: true
         });
         rawBody += chunk;
+        // 解析SSE
         sseBuffer += chunk;
-
-        // === 主路径：按 \n\n 分隔的完整 SSE 事件（标准 OpenAI 格式） ===
-        if (!_useSingleLineMode) {
-            const events = sseBuffer.split(/\r?\n\r?\n/);
-            // 最后一段可能不完整，保留在 buffer 中
-            const lastEvent = events.pop() || '';
-            if (events.length > 0) _stdEventBoundarySeen = true;
-            sseBuffer = lastEvent;
-            for (const event of events) {
-                const lines = event.split('\n');
-                for (const line of lines) {
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                        var _lineContent = line.slice(6);
-                        var _content = '';
-                        try {
-                            const _json = JSON.parse(_lineContent);
-                            if (_json.error && !streamError) {
-                                var errObj = _json.error;
-                                streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                                console.error('[callAI] 流式错误:', streamError);
-                                continue;
-                            }
-                            _content = _json.choices && _json.choices[0] && _json.choices[0].delta && _json.choices[0].delta.content || '';
-                        } catch (e) {
-                            _content = _extractDeltaContent(_lineContent);
-                        }
-                        if (_content) {
-                            fullText += _content;
-                            if (options.onChunk) {
-                                try { options.onChunk(fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            // === 兜底路径：中转站只发单 \n 而无 \n\n 分隔（兼容 iamhc.cn 等） ===
-            const lines = sseBuffer.split(/\r?\n/);
-            const lastLine = lines.pop() || '';
-            sseBuffer = lastLine;
+        // 按双换行分割完整SSE事件
+        const events = sseBuffer.split(/\r?\n\r?\n/);
+        // 最后一段可能不完整，保留在buffer中
+        sseBuffer = events.pop() || '';
+        for (const event of events) {
+            const lines = event.split('\n');
             for (const line of lines) {
                 if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                    var _lineContent2 = line.slice(6);
-                    var _content2 = '';
                     try {
-                        const _json2 = JSON.parse(_lineContent2);
-                        if (_json2.error && !streamError) {
-                            var errObj2 = _json2.error;
-                            streamError = translateError(errObj2.message) || translateError(errObj2.code) || translateError(errObj2.msg) || ('API流式错误: ' + JSON.stringify(errObj2));
+                        const json = JSON.parse(line.slice(6));
+                        if (json.error && !streamError) {
+                            var errObj = json.error;
+                            streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
+                            console.error('[callAI] 流式错误:', streamError);
                             continue;
                         }
-                        _content2 = _json2.choices && _json2.choices[0] && _json2.choices[0].delta && _json2.choices[0].delta.content || '';
-                    } catch (e) {
-                        _content2 = _extractDeltaContent(_lineContent2);
-                    }
-                    if (_content2) {
-                        fullText += _content2;
+                        const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+                        fullText += content;
                         if (options.onChunk) {
-                            try { options.onChunk(fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
+                            try {
+                                options.onChunk(fullText);
+                            } catch (chunkErr) {
+                                console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
+                            }
                         }
+                    } catch (e) {
+                        // JSON解析失败，忽略
                     }
                 }
             }
         }
-
-        // === 模式自适应：如果累积了大量未解析的 buffer（说明没出现 \n\n），切换到单行模式 ===
-        // 阈值：sseBuffer 长度超过 4KB 但 fullText 几乎为空 → 中转站没用标准 SSE
-        if (!_useSingleLineMode && !_stdEventBoundarySeen && sseBuffer.length > 4096 && fullText.length === 0) {
-            _useSingleLineMode = true;
-            console.warn('[callAI] 检测到非标准SSE格式（中转站无 \\n\\n 分隔），切换单行解析模式');
-        }
-
-        // === 检测流中的错误响应（仅检测，不提取内容） ===
-        if (!streamError && rawBody.indexOf('"error"') !== -1) {
-            try {
-                var _errIdx = rawBody.lastIndexOf('"error"');
-                var _errWindow = rawBody.substring(Math.max(0, _errIdx - 200), Math.min(rawBody.length, _errIdx + 500));
-                if (_errWindow.indexOf('"error"') !== -1) {
-                    var _errJson = null;
-                    try { _errJson = JSON.parse(_errWindow); } catch (e) { _errJson = null; }
-                    if (_errJson && _errJson.error) {
-                        var errObj3 = _errJson.error;
-                        streamError = translateError(errObj3.message) || translateError(errObj3.code) || translateError(errObj3.msg) || ('API流式错误: ' + JSON.stringify(errObj3));
-                        console.error('[callAI] 流中检测到错误:', streamError);
-                    }
-                }
-            } catch (e) { /* 静默 */ }
-        }
     }
-// 【修复】如果流中检测到错误且没有收到任何有效内容，抛出错误
-// 如果已有部分内容，说明API可能先发了警告但仍正常返回，不中断
-if (streamError && !fullText) {
-    throw new Error(streamError);
-} else if (streamError && fullText) {
-console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', streamError);
-}
-// 兜底：如果SSE解析为空，最后再做一次暴力扫描（确保已收到 rawBody 中所有 content）
-if (!fullText && rawBody) {
-    var _finalScan = extractAllContentFromRawBody(rawBody, 0);
-    if (_finalScan.text) {
-        fullText = _finalScan.text;
-        console.log('[callAI-暴力修复] 兜底提取到内容，长度:', fullText.length);
-    } else {
-        // 仍然没有内容，尝试用 _extractDeltaContent 处理单行 SSE 格式
-        var _linesArr = rawBody.split(/\r?\n/);
-        for (var _li = 0; _li < _linesArr.length; _li++) {
-            var _ln = _linesArr[_li];
-            if (_ln.indexOf('data:') === 0 && _ln.indexOf('[DONE]') === -1) {
-                var _lc = _ln.replace(/^data:\s*/, '');
-                var _c2 = _extractDeltaContent(_lc);
-                if (_c2) fullText += _c2;
-            }
-        }
+    // 如果流中检测到错误且没有收到任何有效内容，抛出错误
+    if (streamError && !fullText) {
+        throw new Error(streamError);
+    } else if (streamError && fullText) {
+        console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', streamError);
     }
-    // 终极兜底：检查是否是非流式 JSON
-    if (!fullText) {
+    // 兜底：如果SSE解析为空，尝试将rawBody作为普通JSON解析
+    if (!fullText && rawBody) {
         try {
             const jsonData = JSON.parse(rawBody);
             if (jsonData.error) {
-                var errObj2 = jsonData.error;
-                throw new Error(translateError(errObj2.message) || translateError(errObj2.code) || translateError(errObj2.msg) || ('API错误: ' + JSON.stringify(errObj2)));
+                var errObj = jsonData.error;
+                throw new Error(translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API错误: ' + JSON.stringify(errObj)));
             }
             fullText = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message && jsonData.choices[0].message.content) || '';
+            if (!fullText && jsonData.usage) {
+                fullText = '';
+            } else if (!fullText) {
+                fullText = rawBody;
+            }
         } catch (e) {
             if (e.message && e.message.indexOf('API') === 0) throw e;
-            // 【暴力修复】绝不再把 rawBody 当作 fullText 返回
-            console.error('[callAI-暴力修复] 无法从响应中提取内容。rawBody前500字符:', rawBody.substring(0, 500));
-            throw new Error('API响应格式无法解析（既不是SSE流也不是非流式JSON）。请检查API配置或更换中转站。');
+            fullText = rawBody;
         }
     }
-}
-return fullText;
+    return fullText;
 } else {
 // 非流式请求
 const res = await fetch(url, {
