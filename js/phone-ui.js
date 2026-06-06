@@ -3655,9 +3655,9 @@ function bindEvents() {
         showGameStats();
     });
 
-    // ★ 收藏/记录按钮
+    // ★ 收藏/记录按钮（原版行为：打开加载存档弹窗，比切换主题更合理）
     bindEvent('menuTopStar', 'click', function() {
-        toggleTheme();
+        openSaveLoadModal();
     });
 
     // 生成中取消按钮

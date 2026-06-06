@@ -3726,6 +3726,15 @@ function saveNpcEdit() {
     autoSave();
     UI.toast('角色「' + name + '」已保存');
 }
+// --- 刷新所有面板（原版功能：一键重新渲染所有UI面板） ---
+function refreshAllPanels() {
+    try { renderPlayerStats(); } catch (e) { console.warn('renderPlayerStats error:', e); }
+    try { renderNpcList(); } catch (e) { console.warn('renderNpcList error:', e); }
+    try { renderQuests(); } catch (e) { console.warn('renderQuests error:', e); }
+    try { renderBag(); } catch (e) { console.warn('renderBag error:', e); }
+    try { if (typeof QuestSystem !== 'undefined' && QuestSystem.renderAchievements) QuestSystem.renderAchievements(); } catch (e) { console.warn('AchievementSystem error:', e); }
+    UI.toast('面板已刷新');
+}
 // --- NPC列表渲染 ---
 function renderNpcList() {
     renderNpcPage();
