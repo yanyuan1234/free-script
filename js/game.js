@@ -1745,22 +1745,34 @@ function formatStory(text) {
     // 【新增兼容】处理AI错误返回的中文方括号格式 【giggle】→<giggle>
     text = text.replace(/【giggle】/g, '<giggle>').replace(/【\/giggle】/g, '</giggle>');
 
-    // 先解析装饰标签，提取到 PresetAppManager
-    if (typeof PresetAppManager !== 'undefined') {
-        PresetAppManager.parseFromText(text);
-    }
+    // 【性能修复】打字机tick期间跳过PresetAppManager解析和标签移除
+    // parseFromText 遍历所有装饰标签做正则匹配，stripDecorTags 做大量正则替换
+    // 在打字机每25ms tick期间执行这些操作是巨大的浪费，因为文本还在变化
+    // 只在最终渲染（非tick）时才执行完整解析
+    if (!TypewriterBuffer.isTyping) {
+        // 先解析装饰标签，提取到 PresetAppManager
+        if (typeof PresetAppManager !== 'undefined') {
+            PresetAppManager.parseFromText(text);
+        }
 
-    // 从剧情文本中移除装饰XML标签
-    if (typeof PresetAppManager !== 'undefined') {
-        text = PresetAppManager.stripDecorTags(text);
+        // 从剧情文本中移除装饰XML标签
+        if (typeof PresetAppManager !== 'undefined') {
+            text = PresetAppManager.stripDecorTags(text);
+        }
+    } else {
+        // 打字机tick期间：只做最基本的标签移除（giggle标签需要保留用于心声显示）
+        // 其他装饰标签在tick期间不影响显示，因为它们的内容不会渲染到storyText
+        text = text.replace(/<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi, '');
     }
 
     // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）
-    // 【性能修复】与原版保持一致：同步 querySelectorAll + forEach 移除
-    // 之前用 requestIdleCallback + 100ms timeout，反而造成气泡一直累积无法清理
-    // （每次 render 都会 cancelIdleCallback 之前的回调，导致清理永远不执行）
-    var oldBubbles = document.querySelectorAll('body > .thought-bubble:not([data-persistent])');
-    oldBubbles.forEach(function(b) { b.remove(); });
+    // 【性能修复】打字机tick期间跳过气泡清理，只在非tick渲染时清理
+    // 打字机每25ms调用formatStory，如果每次都querySelectorAll+remove+createElement+appendChild，
+    // 会造成大量无意义的DOM操作（气泡刚创建就被下一个tick删掉）
+    if (!TypewriterBuffer.isTyping) {
+        var oldBubbles = document.querySelectorAll('body > .thought-bubble:not([data-persistent])');
+        oldBubbles.forEach(function(b) { b.remove(); });
+    }
 
     // 检查是否包含章节结束标记
     var chapterEndMatch = text.match(/\[章节结束\|([^\]]+)\]/);
@@ -1900,16 +1912,21 @@ function createThoughtTriggerHTML(id, thoughts) {
         return '<div class="thought-item"><span class="thought-char">' + escapeHtml(t.character) +
             ':</span> ' + escapeHtml(t.text) + '</div>';
     }).join('');
-    // 气泡直接append到body
-    var bubble = document.createElement('div');
-    bubble.className = 'thought-bubble';
-    bubble.id = 'thought-' + id;
-    // content已经是安全的HTML字符串，直接使用innerHTML
-    bubble.innerHTML = '<div class="thought-content">' + content + '</div>';
-    // 清理已存在的同名气泡
-    var oldBubble = document.getElementById('thought-' + id);
-    if (oldBubble) oldBubble.remove();
-    document.body.appendChild(bubble);
+    // 【性能修复】打字机tick期间不创建气泡DOM，只在最终渲染时创建
+    // 打字机每25ms调用formatStory，如果每次都createElement+appendChild到body，
+    // 下一个tick又querySelectorAll删掉，造成大量无意义DOM操作
+    if (!TypewriterBuffer.isTyping) {
+        // 气泡直接append到body
+        var bubble = document.createElement('div');
+        bubble.className = 'thought-bubble';
+        bubble.id = 'thought-' + id;
+        // content已经是安全的HTML字符串，直接使用innerHTML
+        bubble.innerHTML = '<div class="thought-content">' + content + '</div>';
+        // 清理已存在的同名气泡
+        var oldBubble = document.getElementById('thought-' + id);
+        if (oldBubble) oldBubble.remove();
+        document.body.appendChild(bubble);
+    }
 
     return '<span class="thought-trigger" data-target="thought-' + id +
         '" onclick="toggleThought(this)" title="查看心声">' +

@@ -114,10 +114,10 @@
 .modal-overlay {
     will-change: transform, opacity;
 }
-/* 【性能优化】故事文本区域GPU加速，减少打字机渲染时的重绘范围 */
+/* 【性能修复】移除 contain: layout style 和 will-change: contents
+   原版没有这些属性，测试表明它们在打字机每tick更新innerHTML时
+   反而增加浏览器重排开销（需要反复验证containment边界） */
 #storyText {
-    will-change: contents;
-    contain: layout style;
 }
 
 .setting-header {
