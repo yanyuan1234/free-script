@@ -580,12 +580,6 @@ async function sendAIRequest(userMessage, isInit = false) {
     setWaiting(true);
     showStoryLoading();
     streamBuffer = '';
-    // 修复：重置流式模式状态，让新请求重新判定 json/plaintext
-    if (typeof _streamMode !== 'undefined') {
-        _streamMode = null;
-        _streamModeLocked = false;
-        _streamFullText = '';
-    }
     TypewriterBuffer.stop();
     
     // 让浏览器先渲染 loading 动画，再执行重操作（避免点击后长时间无反馈）
@@ -1693,73 +1687,20 @@ function extractStoryStreaming(text) {
     return result.length > 0 ? result : null;
 }
 
-// 流式模式锁定：一旦确定模式，不再切换（防止纯文本中偶然含"story"导致模式跳变）
-var _streamModeLocked = false;
-var _streamMode = null; // 'json' 或 'plaintext'
-var _streamFullText = ''; // 累积的全量文本，用于模式判定
-
 // 修复：支持 JSON 包装和纯文本两种流式响应
 // 1) JSON 包装：模型在 delta.content 里返回 "story":"正文" 结构 → 提取 story 字段
 // 2) 纯文本：模型直接逐字返回正文（最常见于 iamhc 等中转站）→ 增量 push delta
-// 用 _streamMode 锁定后避免中途切换模式
-function onStreamChunk(delta, fullText) {
-    // 兼容老签名：只传 1 个参数
-    if (typeof fullText !== 'string') {
-        fullText = (typeof delta === 'string') ? delta : '';
-        delta = fullText;
-    }
-    if (!delta) return;
-
-    // 用累积的 fullText 做模式判定（仅第一次）
-    if (!_streamModeLocked) {
-        _streamFullText = fullText;
-        if (_streamFullText.length >= 30) {
-            if (/[{[]/.test(_streamFullText.substring(0, Math.min(_streamFullText.length, 200)))) {
-                if (/"story"\s*:/.test(_streamFullText.substring(0, 500))) {
-                    _streamMode = 'json';
-                } else {
-                    _streamMode = 'plaintext';
-                }
-            } else {
-                _streamMode = 'plaintext';
-            }
-            _streamModeLocked = true;
-        }
-    }
-
-    var toPush = null;
-    if (_streamMode === 'json') {
-        // JSON 模式：【性能修复】只扫描新到的 delta 增量，不再每帧重扫整段累积文本
-        // 原实现 _streamFullText = fullText; extractStoryStreaming(_streamFullText);
-        // 会让 O(N²) 累积扫描，导致长回复时 game 页卡顿
-        // 改为：检测 delta 中是否含 "story":"..."，若有则只解析 delta 这段
-        // 由于中转站可能把整个 JSON 在一次 chunk 里返回完，delta 就是完整 story
-        if (delta && delta.indexOf('"story"') !== -1) {
-            // 先尝试严格解析整段 delta（最常见：单 chunk 含完整 JSON）
-            try {
-                var _j = JSON.parse(delta);
-                if (_j && _j.story != null) {
-                    toPush = String(_j.story);
-                }
-            } catch (e) { /* 不是完整 JSON，尝试宽松提取 */ }
-            // 严格解析失败时，宽松提取 delta 中的 "story":"..." 值
-            if (toPush == null) {
-                toPush = extractStoryStreaming(delta);
-            }
-        } else if (delta && delta.length > 0) {
-            // delta 里没有 "story" 关键字 → 跳过（不重扫 _streamFullText）
-        }
-    } else if (_streamMode === 'plaintext') {
-        // 纯文本模式：直接用 delta 增量 push（避免 O(n²) 字符串拼接）
-        toPush = delta;
-    } else {
-        // 模式未定（缓冲不足 30 字符），暂不渲染
-        return;
-    }
-
-    if (toPush && toPush.length > 0) {
-        toPush = RegexManager.applyToOutput(toPush);
-        TypewriterBuffer.push(toPush);
+// 【关键】与原版一致：使用 streamBuffer 累积全量内容，extractStoryStreaming 在累积 buffer 上扫描
+// 这样即使中转站把 JSON 拆成多个 chunk 发送，也能正确提取（不会丢内容）
+function onStreamChunk(chunk) {
+    if (!chunk) return;
+    streamBuffer += chunk;
+    // 一次扫描从累积 buffer 中提取 story（如果存在）
+    var story = extractStoryStreaming(streamBuffer);
+    if (story && story.length > 0) {
+        // 应用正则脚本到AI输出
+        story = RegexManager.applyToOutput(story);
+        TypewriterBuffer.push(story);
     }
 }
 

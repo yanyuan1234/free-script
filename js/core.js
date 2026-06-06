@@ -3115,7 +3115,7 @@ if (options.stream) {
                         if (_c2) {
                             fullText += _c2;
                             if (options.onChunk) {
-                                try { options.onChunk(_c2, fullText); } catch (e) { /* 静默 */ }
+                                try { options.onChunk(fullText); } catch (e) { /* 静默 */ }
                             }
                         }
                     }
@@ -3157,7 +3157,7 @@ if (options.stream) {
                         if (_content) {
                             fullText += _content;
                             if (options.onChunk) {
-                                try { options.onChunk(_content, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
+                                try { options.onChunk(fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
                             }
                         }
                     }
@@ -3186,7 +3186,7 @@ if (options.stream) {
                     if (_content2) {
                         fullText += _content2;
                         if (options.onChunk) {
-                            try { options.onChunk(_content2, fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
+                            try { options.onChunk(fullText); } catch (chunkErr) { console.warn('[callAI] onChunk回调异常:', chunkErr); }
                         }
                     }
                 }
