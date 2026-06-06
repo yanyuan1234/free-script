@@ -3655,7 +3655,7 @@ function bindEvents() {
         showGameStats();
     });
 
-    // ★ 收藏/记录按钮（原版行为：打开加载存档弹窗）
+    // ★ 收藏/记录按钮（原版行为：打开加载存档弹窗，比切换主题更合理）
     bindEvent('menuTopStar', 'click', function() {
         openSaveLoadModal();
     });
@@ -3758,42 +3758,10 @@ function bindEvents() {
     bindEvent('btnSettingsHeader', 'click', function() {
         openSettingsModal();
     });
-    // 更多菜单开关
-    bindEvent('btnStoryMore', 'click', function(e) {
-        e.stopPropagation();
-        var dropdown = document.getElementById('storyMoreDropdown');
-        if (!dropdown) return;
-        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-    });
-    // 点击外部关闭下拉菜单
-    document.addEventListener('click', function() {
-        var dropdown = document.getElementById('storyMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
-    });
-    // 下拉菜单项：撤回
-    bindEvent('btnUndoDropdown', 'click', function() {
-        var dropdown = document.getElementById('storyMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
-        deleteLastTurn();
-    });
-    // 下拉菜单项：重新生成
-    bindEvent('btnRetryDropdown', 'click', function() {
-        var dropdown = document.getElementById('storyMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
-        retryStory();
-    });
-    // 下拉菜单项：继续剧情
-    bindEvent('btnContinueDropdown', 'click', function() {
-        var dropdown = document.getElementById('storyMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
-        continueStory();
-    });
-    // 下拉菜单项：通知中心
-    bindEvent('btnNotifDropdown', 'click', function(e) {
+    // 通知中心按钮
+    bindEvent('btnNotifCenter', 'click', function(e) {
         e.preventDefault();
         e.stopPropagation();
-        var dropdown = document.getElementById('storyMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
         if (typeof openNotificationCenter === 'function') {
             openNotificationCenter();
         } else if (typeof toggleNotifCenter === 'function') {
@@ -3804,7 +3772,17 @@ function bindEvents() {
     var notifCloseBtn = document.getElementById('notificationCenterClose');
     if (notifCloseBtn) notifCloseBtn.addEventListener('click', closeNotificationCenter);
     // 世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
+    // 预设按钮
     // 预设按钮（已由 PresetManager.bindEvents 绑定，此处不再重复）
+    bindEvent('btnUndo', 'click', function() {
+        deleteLastTurn();
+    });
+    bindEvent('btnRetry', 'click', function() {
+        retryStory();
+    });
+    bindEvent('btnContinueGen', 'click', function() {
+        continueStory();
+    });
 
     // 自定义行动输入
     bindEvent('customAction', 'keypress', function(e) {
@@ -4904,6 +4882,12 @@ function showApiDetail(slot) {
     if (compatibleModeCheckbox) {
         compatibleModeCheckbox.checked = cfg.compatibleMode === true;
     }
+    var proxyUrlInput = document.getElementById('detailApiProxyUrl');
+    if (proxyUrlInput) {
+        proxyUrlInput.value = LocalGameAPI.getProxyUrl();
+    }
+    var proxyTestResult = document.getElementById('proxyTestResult');
+    if (proxyTestResult) proxyTestResult.style.display = 'none';
     // 动态填充分组选项
     var groupSelect = document.getElementById('detailApiGroup');
     if (groupSelect) {
@@ -5068,6 +5052,10 @@ function showApiDetail(slot) {
             group: document.getElementById('detailApiGroup').value,
             compatibleMode: compatibleMode ? compatibleMode.checked : false
         });
+        var proxyUrlEl = document.getElementById('detailApiProxyUrl');
+        if (proxyUrlEl) {
+            LocalGameAPI.setProxyUrl(proxyUrlEl.value.trim());
+        }
         UI.hideModal('apiDetailModal');
         renderAPISettings();
         UI.toast('已保存');
@@ -5145,6 +5133,50 @@ function showApiDetail(slot) {
         newTestBtn.disabled = false;
         newCancelBtn.style.display = 'none';
     });
+
+    var testProxyBtn = document.getElementById('btnTestProxy');
+    if (testProxyBtn) {
+        var newTestProxyBtn = testProxyBtn.cloneNode(true);
+        testProxyBtn.parentNode.replaceChild(newTestProxyBtn, testProxyBtn);
+        newTestProxyBtn.addEventListener('click', async function() {
+            var proxyUrl = document.getElementById('detailApiProxyUrl').value.trim();
+            var resultEl = document.getElementById('proxyTestResult');
+            if (!resultEl) return;
+
+            if (!proxyUrl) {
+                resultEl.style.display = 'block';
+                resultEl.style.color = 'var(--danger)';
+                resultEl.textContent = '请先填写代理地址';
+                return;
+            }
+
+            newTestProxyBtn.textContent = '测试中...';
+            newTestProxyBtn.disabled = true;
+            resultEl.style.display = 'block';
+            resultEl.style.color = 'var(--text-tertiary)';
+            resultEl.textContent = '正在测试代理连通性...';
+
+            try {
+                var oldProxy = LocalGameAPI.getProxyUrl();
+                LocalGameAPI.setProxyUrl(proxyUrl);
+                var baseUrl = document.getElementById('detailApiUrl').value.trim();
+                var result = await LocalGameAPI.checkConnectivity(baseUrl);
+                if (result.ok) {
+                    resultEl.style.color = 'var(--success)';
+                    resultEl.textContent = '✓ 代理连接正常';
+                } else {
+                    resultEl.style.color = 'var(--danger)';
+                    resultEl.textContent = '✗ ' + result.message;
+                }
+            } catch (e) {
+                resultEl.style.color = 'var(--danger)';
+                resultEl.textContent = '✗ 测试失败: ' + e.message;
+            } finally {
+                newTestProxyBtn.textContent = '测试';
+                newTestProxyBtn.disabled = false;
+            }
+        });
+    }
 
     // 绑定复制按钮
     var copyBtn = document.getElementById('btnCopyApi');

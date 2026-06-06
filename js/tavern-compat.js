@@ -3130,9 +3130,6 @@ var MemoryManagerUI = {
             case 'overview':
             content.innerHTML = this.renderOverview(em);
             break;
-            case 'story':
-            content.innerHTML = this.renderStoryMemory(em);
-            break;
             case 'anchors':
             content.innerHTML = this.renderAnchors(em);
             break;
@@ -3166,29 +3163,6 @@ var MemoryManagerUI = {
         }
     },
     
-    /**
-    * 渲染剧情记忆（合并永久事实、约定任务、时间线）
-    */
-    renderStoryMemory: function(em) {
-        var anchorsHtml = this.renderAnchors(em);
-        var questsHtml = this.renderQuests(em);
-        var timelineHtml = this.renderTimeline(em);
-        // 提取各卡片的内部内容（去掉外层memory-card包裹，合并到一个页面）
-        var anchorsContent = anchorsHtml.replace(/<div class="memory-card">/, '').replace(/<\/div>$/, '');
-        var questsContent = questsHtml.replace(/<div class="memory-card">/, '').replace(/<\/div>$/, '');
-        var timelineContent = timelineHtml.replace(/<div class="memory-card">/, '').replace(/<\/div>$/, '');
-        
-        return '<div class="memory-card">'
-            + '<div class="memory-card-title">📜 剧情记忆</div>'
-            + '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.6;">'
-            + '这里汇集了与剧情推进直接相关的所有记忆：AI必须遵守的永久事实、进行中的约定任务、以及完整的时间线记录。'
-            + '</div>'
-            + '</div>'
-            + anchorsHtml
-            + questsHtml
-            + timelineHtml;
-    },
-
     /**
     * 渲染总览
     */
@@ -3381,30 +3355,9 @@ var MemoryManagerUI = {
     },
     
     /**
-    * 渲染角色关系（合并角色、物品、地点、事件）
+    * 渲染角色
     */
     renderCharacters: function(em) {
-        var charsHtml = this._renderCharactersSection(em);
-        var itemsHtml = this.renderItems(em);
-        var locationsHtml = this.renderLocations(em);
-        var eventsHtml = this.renderEvents(em);
-        
-        return '<div class="memory-card">'
-            + '<div class="memory-card-title">👥 角色与世界</div>'
-            + '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;line-height:1.6;">'
-            + '游戏中的所有角色、获得的物品、到访的地点以及发生的重要事件。'
-            + '</div>'
-            + '</div>'
-            + charsHtml
-            + itemsHtml
-            + locationsHtml
-            + eventsHtml;
-    },
-
-    /**
-    * 渲染角色列表（内部方法，供renderCharacters调用）
-    */
-    _renderCharactersSection: function(em) {
         const self = this;
         var characters = Object.values(em.longTermMemory.characterTable);
 
@@ -3674,7 +3627,7 @@ var MemoryManagerUI = {
             };
 
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('items');
         },
     
     deleteItem: function(name) {
@@ -3682,7 +3635,7 @@ var MemoryManagerUI = {
         if (!em || !em.longTermMemory.itemTable[name]) return;
         delete em.longTermMemory.itemTable[name];
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('items');
         UI.toast('物品已删除');
         },
     
@@ -3714,7 +3667,7 @@ var MemoryManagerUI = {
         <textarea id="addItemDesc" placeholder="物品描述..." style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;"></textarea>
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button onclick="MemoryManagerUI.switchTab('characters')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
+        <button onclick="MemoryManagerUI.switchTab('items')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
         <button onclick="MemoryManagerUI.saveNewItem()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button>
         </div>
         </div>
@@ -3738,7 +3691,7 @@ var MemoryManagerUI = {
             };
 
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('items');
         },
     
     /**
@@ -3815,7 +3768,7 @@ var MemoryManagerUI = {
         em.longTermMemory.importantEvents[index].content = content;
         em.longTermMemory.importantEvents[index].importance = parseInt(document.getElementById('editEventImportance').value) || 5;
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('events');
         },
     
     deleteEvent: function(index) {
@@ -3823,7 +3776,7 @@ var MemoryManagerUI = {
         if (!em || !em.longTermMemory.importantEvents[index]) return;
         em.longTermMemory.importantEvents.splice(index, 1);
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('events');
         UI.toast('事件已删除');
         },
     
@@ -3842,7 +3795,7 @@ var MemoryManagerUI = {
         <input id="addEventImportance" type="number" min="1" max="10" value="5" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button onclick="MemoryManagerUI.switchTab('characters')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
+        <button onclick="MemoryManagerUI.switchTab('events')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
         <button onclick="MemoryManagerUI.saveNewEvent()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button>
         </div>
         </div>
@@ -3866,7 +3819,7 @@ var MemoryManagerUI = {
         }
 
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('events');
     },
     
     /**
@@ -4004,7 +3957,7 @@ var MemoryManagerUI = {
         <input type="number" id="editLocCount" value="${loc.visitCount}" min="1" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button onclick="MemoryManagerUI.switchTab('characters')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
+        <button onclick="MemoryManagerUI.switchTab('locations')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
         <button onclick="MemoryManagerUI.saveLocation('${name}')" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button>
         </div>
         </div>
@@ -4035,7 +3988,7 @@ var MemoryManagerUI = {
             };
 
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('locations');
     },
 
     // 删除地点
@@ -4044,7 +3997,7 @@ var MemoryManagerUI = {
         if (!em || !em.longTermMemory.locationTable[name]) return;
         delete em.longTermMemory.locationTable[name];
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('locations');
         UI.toast('地点已删除');
         },
 
@@ -4373,7 +4326,7 @@ var MemoryManagerUI = {
         <input type="number" id="addLocCount" value="1" min="1" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">
         </div>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <button onclick="MemoryManagerUI.switchTab('characters')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
+        <button onclick="MemoryManagerUI.switchTab('locations')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button>
         <button onclick="MemoryManagerUI.saveNewLocation()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button>
         </div>
         </div>
@@ -4398,7 +4351,7 @@ var MemoryManagerUI = {
             };
 
         em.saveToStorage();
-        this.switchTab('characters');
+        this.switchTab('locations');
         },
 
     /**
@@ -4572,7 +4525,7 @@ MemoryManagerUI.saveNewWorldAnchor = function() {
     } else {
         UI.toast && UI.toast('已存在（重复内容）');
     }
-    this.switchTab('story');
+    this.switchTab('anchors');
 };
 
 MemoryManagerUI.editWorldAnchor = function(idx) {
@@ -4617,7 +4570,7 @@ MemoryManagerUI.saveWorldAnchor = function(idx) {
     anchor.source = 'manual';  // 标记为手动
     em.saveToStorage();
     UI.toast && UI.toast('已保存');
-    this.switchTab('story');
+    this.switchTab('anchors');
 };
 
 MemoryManagerUI.deleteWorldAnchor = function(idx) {
@@ -4627,7 +4580,7 @@ MemoryManagerUI.deleteWorldAnchor = function(idx) {
     em.longTermMemory.worldAnchors.splice(idx, 1);
     em.saveToStorage();
     UI.toast && UI.toast('已删除');
-    this.switchTab('story');
+    this.switchTab('anchors');
 };
 
 // === 进行中约定（activeQuests）编辑面板 ===
@@ -4716,7 +4669,7 @@ MemoryManagerUI.saveNewActiveQuest = function() {
     } else {
         UI.toast && UI.toast('已存在相同内容');
     }
-    this.switchTab('story');
+    this.switchTab('quests');
 };
 
 MemoryManagerUI.editActiveQuest = function(idx) {
@@ -4753,7 +4706,7 @@ MemoryManagerUI.saveActiveQuest = function(idx) {
     if (!quest.content) { UI.toast && UI.toast('内容不能为空'); return; }
     em.saveToStorage();
     UI.toast && UI.toast('已保存');
-    this.switchTab('story');
+    this.switchTab('quests');
 };
 
 MemoryManagerUI.deleteActiveQuest = function(idx) {
@@ -4763,7 +4716,7 @@ MemoryManagerUI.deleteActiveQuest = function(idx) {
     em.longTermMemory.activeQuests.splice(idx, 1);
     em.saveToStorage();
     UI.toast && UI.toast('已删除');
-    this.switchTab('story');
+    this.switchTab('quests');
 };
 
 MemoryManagerUI.resolveQuestByIdx = function(idx, newStatus) {
@@ -4775,7 +4728,7 @@ MemoryManagerUI.resolveQuestByIdx = function(idx, newStatus) {
     q.resolvedAt = Date.now();
     em.saveToStorage();
     UI.toast && UI.toast(newStatus === 'resolved' ? '已标记为兑现' : '已标记为违反');
-    this.switchTab('story');
+    this.switchTab('quests');
 };
 
 

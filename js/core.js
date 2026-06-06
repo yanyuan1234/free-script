@@ -511,8 +511,24 @@ var LocalGameAPI = {
     normalizeUrl(baseUrl) {
         return baseUrl.replace(/\/$/, '');
     },
+    _proxyUrl: '',
     _networkStatus: 'unknown',
+    setProxyUrl(url) {
+        this._proxyUrl = (url || '').trim();
+        localStorage.setItem('freeScript_proxyUrl', this._proxyUrl);
+    },
+    getProxyUrl() {
+        if (!this._proxyUrl) {
+            this._proxyUrl = localStorage.getItem('freeScript_proxyUrl') || '';
+        }
+        return this._proxyUrl;
+    },
     buildApiUrl(baseUrl, path) {
+        var proxyUrl = this.getProxyUrl();
+        if (proxyUrl) {
+            var targetUrl = this.normalizeUrl(baseUrl) + path;
+            return proxyUrl + '?target=' + encodeURIComponent(targetUrl);
+        }
         return this.normalizeUrl(baseUrl) + path;
     },
     async checkConnectivity(baseUrl) {
