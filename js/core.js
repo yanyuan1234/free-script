@@ -453,8 +453,15 @@ var LocalGameAPI = {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return;
         this._failedModels[cfg.model] = Date.now();
-        // 失败标记需要立即持久化，防止刷新后丢失
-        this.save();
+        // 复用延迟保存机制，避免重试循环中频繁写 localStorage
+        if (!this._savePending) {
+            this._savePending = true;
+            var self = this;
+            TimerManager.setTimeout('apiLogSave', function() {
+                self._savePending = false;
+                self.save();
+            }, 2000);
+        }
     },
     isModelFailed(modelName) {
         if (!modelName || !this._failedModels[modelName]) return false;
@@ -511,6 +518,7 @@ var LocalGameAPI = {
     normalizeUrl(baseUrl) {
         return baseUrl.replace(/\/$/, '');
     },
+    _networkStatus: 'unknown',
     async checkConnectivity(baseUrl) {
         var testUrl = this.normalizeUrl(baseUrl) + '/models';
         var cfg = this.getCurrentConfig();
@@ -534,31 +542,6 @@ var LocalGameAPI = {
     },
     getNetworkStatus() {
         return this._networkStatus;
-    },
-    // 启动网络状态定期检查（每60秒）
-    _netCheckInterval: null,
-    startNetworkCheck() {
-        if (this._netCheckInterval) return;
-        var self = this;
-        this._netCheckInterval = TimerManager.setInterval('netCheck', function() {
-            var cfg = self.getCurrentConfig();
-            if (cfg && cfg.baseUrl) {
-                self.checkConnectivity(cfg.baseUrl).then(function(result) {
-                    self._updateNetworkUI(result.ok);
-                });
-            }
-        }, 60000);
-    },
-    _updateNetworkUI(connected) {
-        var indicator = document.getElementById('networkIndicator');
-        if (!indicator) return;
-        if (connected) {
-            indicator.className = 'net-indicator net-ok';
-            indicator.title = '网络连接正常';
-        } else {
-            indicator.className = 'net-indicator net-err';
-            indicator.title = '网络连接异常';
-        }
     },
     async fetchModels(baseUrl, apiKey) {
         if (!baseUrl) return [];

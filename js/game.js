@@ -580,6 +580,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     setWaiting(true);
     showStoryLoading();
     streamBuffer = '';
+    _streamModeLocked = false;
+    _streamMode = null;
     TypewriterBuffer.stop();
     
     // 让浏览器先渲染 loading 动画，再执行重操作（避免点击后长时间无反馈）
@@ -1689,27 +1691,41 @@ function extractStoryStreaming(text) {
     return result.length > 0 ? result : null;
 }
 
-// 修复：支持 JSON 包装和纯文本两种流式响应
-// 1) JSON 包装：模型在 delta.content 里返回 "story":"正文" 结构 → 提取 story 字段
-// 2) 纯文本：模型直接逐字返回正文（最常见于 iamhc 等中转站）→ 增量 push delta
-// 【优化】onChunk 现在传增量 delta（第一个参数）和累积全文（第二个参数）
-// streamBuffer 直接用累积全文，不再重复追加
+// 流式模式锁定：一旦确定模式，不再切换
+var _streamModeLocked = false;
+var _streamMode = null; // 'json' 或 'plaintext'
+
 function onStreamChunk(delta, fullText) {
     if (fullText !== undefined) {
-        // 新版 callAI 传 (delta, fullText)，直接用 fullText 替换 streamBuffer
         streamBuffer = fullText;
     } else {
-        // 兼容旧调用方式
         streamBuffer += delta;
     }
-    // 一次扫描从累积 buffer 中提取 story（如果存在）
+    // 模式锁定后直接走对应路径，避免每帧都做正则扫描
+    if (_streamModeLocked) {
+        if (_streamMode === 'plaintext') {
+            // 纯文本模式：直接推送到打字机
+            TypewriterBuffer.push(streamBuffer);
+            return;
+        }
+        // JSON 模式：继续提取 story 字段
+        var story = extractStoryStreaming(streamBuffer);
+        if (story && story.length > 0) {
+            TypewriterBuffer.push(story);
+        }
+        return;
+    }
+    // 未锁定模式：尝试 JSON 提取
     var story = extractStoryStreaming(streamBuffer);
     if (story && story.length > 0) {
-        // 【性能优化】流式输出期间跳过 RegexManager.applyToOutput
-        // 原因：每个chunk都跑一遍所有正则脚本是巨大浪费，文本还在变化
-        // 正则替换结果会被下一个chunk覆盖，等于白做
-        // 改为在打字机完成后（TypewriterBuffer.onComplete）统一执行一次
+        _streamMode = 'json';
+        _streamModeLocked = true;
         TypewriterBuffer.push(story);
+    } else if (streamBuffer.length > 50) {
+        // 累积超过50字符仍未检测到 "story" 字段，锁定为纯文本模式
+        _streamMode = 'plaintext';
+        _streamModeLocked = true;
+        TypewriterBuffer.push(streamBuffer);
     }
 }
 
