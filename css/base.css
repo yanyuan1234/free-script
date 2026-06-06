@@ -1723,17 +1723,17 @@ a,
 @media (max-width: 480px) {
     #logFeatureGrid {
         grid-template-columns: repeat(3, 1fr);
-        gap: 12px 8px;
+        gap: 18px 14px;
     }
     #logFeatureGrid .preset-item {
         padding: 12px 4px;
     }
     #logFeatureGrid .preset-icon-box {
-        width: 40px;
-        height: 40px;
+        width: 52px;
+        height: 52px;
     }
     #logFeatureGrid .preset-name {
-        font-size: 12px;
+        font-size: 13px;
     }
 }
 @media (max-width: 360px) {

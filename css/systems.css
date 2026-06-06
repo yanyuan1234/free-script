@@ -827,7 +827,7 @@
             color:var(--text-secondary);
             cursor:pointer;
             border-radius:8px;
-            font-size:13px;
+            font-size:14px;
             transition:all 0.2s;
             white-space:nowrap;
             font-weight:500;
@@ -842,13 +842,13 @@
         }
         .memory-card {
     border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
+    padding: 18px;
+    margin-bottom: 16px;
 }
         .memory-card-title {
-            font-size:15px;
+            font-size:16px;
             font-weight:600;
-            margin-bottom:12px;
+            margin-bottom:14px;
             color:var(--text);
             display:flex;
             align-items:center;
@@ -866,7 +866,7 @@
         }
         .memory-stat-item {
             background:var(--bg);
-            padding:16px 12px;
+            padding:18px 12px;
             border-radius:10px;
             text-align:center;
         }
@@ -876,16 +876,16 @@
             color:var(--accent);
         }
         .memory-stat-label {
-            font-size:11px;
+            font-size:12px;
             color:var(--text-tertiary);
             margin-top:4px;
         }
         .memory-timeline-item {
             display:flex;
             gap:16px;
-            padding:14px;
+            padding:16px;
             border-left:3px solid var(--accent);
-            margin-bottom:10px;
+            margin-bottom:12px;
             background:var(--bg);
             border-radius:0 10px 10px 0;
         }
@@ -898,10 +898,10 @@
         .memory-character-card {
             display:flex;
             gap:14px;
-            padding:14px;
+            padding:16px;
             background:var(--bg);
             border-radius:10px;
-            margin-bottom:10px;
+            margin-bottom:12px;
             align-items:center;
         }
         .memory-character-avatar {
@@ -930,17 +930,17 @@
             border-color:var(--accent);
         }
         .memory-event-item {
-            padding:14px;
+            padding:16px;
             background:var(--bg);
             border-radius:10px;
             border-left:3px solid var(--warning);
-            margin-bottom:10px;
+            margin-bottom:12px;
         }
         .memory-location-card {
-            padding:14px;
+            padding:16px;
             background:var(--bg);
             border-radius:10px;
-            margin-bottom:10px;
+            margin-bottom:12px;
             display:flex;
             align-items:center;
             gap:12px;
@@ -1442,41 +1442,41 @@
     
     .memory-tabs {
         gap: 6px;
-        padding: 8px 14px;
+        padding: 10px 14px;
     }
     
     .memory-tab {
-        padding: 6px 12px;
-        font-size: 11px;
+        padding: 8px 12px;
+        font-size: 12px;
     }
     
     .memory-list {
-        padding: 10px 14px;
-        gap: 8px;
+        padding: 12px 14px;
+        gap: 10px;
     }
     
     .memory-item {
-        padding: 10px 12px;
+        padding: 12px 14px;
         gap: 10px;
     }
     
     .memory-item-icon {
-        width: 32px;
-        height: 32px;
-        font-size: 14px;
+        width: 36px;
+        height: 36px;
+        font-size: 15px;
     }
     
     .memory-item-title {
-        font-size: 13px;
+        font-size: 14px;
     }
     
     .memory-item-desc {
-        font-size: 11px;
-        margin-top: 2px;
+        font-size: 12px;
+        margin-top: 3px;
     }
     
     .memory-item-meta {
-        font-size: 10px;
+        font-size: 11px;
         margin-top: 4px;
     }
     
