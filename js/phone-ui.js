@@ -3650,29 +3650,9 @@ function bindEvents() {
         UI.showPage('worldSetupPage');
     });
 
-    // 更多菜单开关
-    bindEvent('btnMenuMore', 'click', function(e) {
-        e.stopPropagation();
-        var dropdown = document.getElementById('menuMoreDropdown');
-        if (!dropdown) return;
-        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-    });
-    // 点击外部关闭下拉菜单
-    document.addEventListener('click', function() {
-        var dropdown = document.getElementById('menuMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
-    });
-    // 下拉菜单项：记录
-    bindEvent('btnMenuRecordsDropdown', 'click', function() {
-        var dropdown = document.getElementById('menuMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
+    // 记录按钮
+    bindEvent('btnMenuRecords', 'click', function() {
         showGameStats();
-    });
-    // 下拉菜单项：设置
-    bindEvent('btnMenuApiSettingsDropdown', 'click', function() {
-        var dropdown = document.getElementById('menuMoreDropdown');
-        if (dropdown) dropdown.style.display = 'none';
-        renderAPISettings();
     });
 
     // ★ 收藏/记录按钮（原版行为：打开加载存档弹窗）
@@ -3704,6 +3684,11 @@ function bindEvents() {
             console.error('加载最新存档失败:', e);
             UI.toast('加载失败');
         });
+    });
+
+    // 设置按钮 → API配置
+    bindEvent('btnMenuApiSettings', 'click', function() {
+        renderAPISettings();
     });
 
     // 主页面世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
