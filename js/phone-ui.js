@@ -4904,12 +4904,6 @@ function showApiDetail(slot) {
     if (compatibleModeCheckbox) {
         compatibleModeCheckbox.checked = cfg.compatibleMode === true;
     }
-    var proxyUrlInput = document.getElementById('detailApiProxyUrl');
-    if (proxyUrlInput) {
-        proxyUrlInput.value = LocalGameAPI.getProxyUrl();
-    }
-    var proxyTestResult = document.getElementById('proxyTestResult');
-    if (proxyTestResult) proxyTestResult.style.display = 'none';
     // 动态填充分组选项
     var groupSelect = document.getElementById('detailApiGroup');
     if (groupSelect) {
@@ -5074,10 +5068,6 @@ function showApiDetail(slot) {
             group: document.getElementById('detailApiGroup').value,
             compatibleMode: compatibleMode ? compatibleMode.checked : false
         });
-        var proxyUrlEl = document.getElementById('detailApiProxyUrl');
-        if (proxyUrlEl) {
-            LocalGameAPI.setProxyUrl(proxyUrlEl.value.trim());
-        }
         UI.hideModal('apiDetailModal');
         renderAPISettings();
         UI.toast('已保存');
@@ -5155,50 +5145,6 @@ function showApiDetail(slot) {
         newTestBtn.disabled = false;
         newCancelBtn.style.display = 'none';
     });
-
-    var testProxyBtn = document.getElementById('btnTestProxy');
-    if (testProxyBtn) {
-        var newTestProxyBtn = testProxyBtn.cloneNode(true);
-        testProxyBtn.parentNode.replaceChild(newTestProxyBtn, testProxyBtn);
-        newTestProxyBtn.addEventListener('click', async function() {
-            var proxyUrl = document.getElementById('detailApiProxyUrl').value.trim();
-            var resultEl = document.getElementById('proxyTestResult');
-            if (!resultEl) return;
-
-            if (!proxyUrl) {
-                resultEl.style.display = 'block';
-                resultEl.style.color = 'var(--danger)';
-                resultEl.textContent = '请先填写代理地址';
-                return;
-            }
-
-            newTestProxyBtn.textContent = '测试中...';
-            newTestProxyBtn.disabled = true;
-            resultEl.style.display = 'block';
-            resultEl.style.color = 'var(--text-tertiary)';
-            resultEl.textContent = '正在测试代理连通性...';
-
-            try {
-                var oldProxy = LocalGameAPI.getProxyUrl();
-                LocalGameAPI.setProxyUrl(proxyUrl);
-                var baseUrl = document.getElementById('detailApiUrl').value.trim();
-                var result = await LocalGameAPI.checkConnectivity(baseUrl);
-                if (result.ok) {
-                    resultEl.style.color = 'var(--success)';
-                    resultEl.textContent = '✓ 代理连接正常';
-                } else {
-                    resultEl.style.color = 'var(--danger)';
-                    resultEl.textContent = '✗ ' + result.message;
-                }
-            } catch (e) {
-                resultEl.style.color = 'var(--danger)';
-                resultEl.textContent = '✗ 测试失败: ' + e.message;
-            } finally {
-                newTestProxyBtn.textContent = '测试';
-                newTestProxyBtn.disabled = false;
-            }
-        });
-    }
 
     // 绑定复制按钮
     var copyBtn = document.getElementById('btnCopyApi');
