@@ -158,6 +158,25 @@ ${_termsPrompt}
 5. 【极其重要】所有输出必须是纯中文！story、choices、player、characters、world等所有字段的值都必须用中文书写，绝对禁止出现英文！
 6. 【输出长度上限 - 极其重要】本轮总输出受 max_tokens 限制（约 ${_maxTokens} tokens），请合理分配：story 字段占约 60%，其他字段（player/characters/world/bag/quests/relationships/keyEvents/npcMessages/contextSummary）合计占约 40%。任何字段都不要无节制地写，超长会导致 JSON 被截断、整轮崩掉。
 
+【记忆编辑指令 - 极其重要】
+你可以在story正文中嵌入<mem>标签来主动更新游戏记忆，系统会自动解析并持久化这些变更。这是你维护世界一致性的核心工具，请积极使用！
+格式示例（写在story文本中，对玩家不可见）：
+- 更新角色状态：<mem type="character" name="李明" field="mood" value="开心" />
+- 更新角色位置：<mem type="character" name="李明" field="location" value="酒馆" />
+- 添加物品：<mem type="item" name="长剑" action="add" qty="1" />
+- 移除物品：<mem type="item" name="长剑" action="remove" qty="1" />
+- 记录重要事件：<mem type="event" action="add">击败了山贼头目</mem>
+- 更新地点特征：<mem type="location" name="酒馆" field="features" value="壁炉旁有温暖火光" />
+- 添加约定：<mem type="quest" action="add" content="答应帮李明寻找失落的宝剑" />
+- 完成约定：<mem type="quest" action="resolve" content="寻找失落的宝剑" />
+- 推进游戏时间：<mem type="time" day="3" period="下午" />
+使用原则：
+1. 角色心情/位置/状态变化时，务必用<mem>更新，防止后续遗忘
+2. 物品获得/失去时，务必用<mem>记录数量变化
+3. 重要剧情事件发生时，用<mem type="event">记录
+4. 玩家做出承诺/约定时，用<mem type="quest">记录
+5. <mem>标签不影响正文阅读，系统会自动剥离
+
 【字数与格式控制 - 严格遵循】
 - 字数要求：通过 {{getglobalvar::字数总要求}} 获取
 - 段落风格：通过 {{getglobalvar::单段落字数}} 获取
@@ -998,6 +1017,14 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
             storyText = cleanStoryText;
+        }
+        // === AI记忆编辑标签解析 ===
+        // AI 可通过 <mem> 标签主动更新记忆，比正则提取更可靠
+        if (typeof GameMemory !== 'undefined' && GameMemory.parseAIEditTags) {
+            var memResult = GameMemory.parseAIEditTags(storyText);
+            if (memResult && memResult.cleanedText !== storyText) {
+                storyText = memResult.cleanedText;
+            }
         }
         // 渲染非剧情部分
         if (data) {
