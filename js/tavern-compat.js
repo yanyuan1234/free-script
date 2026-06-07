@@ -1387,7 +1387,8 @@ var GameMemory = {
         }
     },
 
-    // 获取当前应该注入的设定文本（分层策略）
+    // 获取当前应该注入的设定文本（渐进式压缩策略）
+    // 核心思路：不突然切换，而是随轮次逐步精简，始终保留结构
     getSetupInjection: function() {
         var self = this;
         var layers = self._setupLayers;
@@ -1396,37 +1397,63 @@ var GameMemory = {
         if (!layers.fullSetup) return null;
 
         var currentTurn = self.currentTurn || 0;
-
-        // 按次计费优化：前8轮注入完整设定（AI需要完整上下文来建立世界）
-        if (currentTurn <= 8 || !layers.compressed) {
-            // 但即使是前8轮，也把核心规则单独提到最前面
-            var result = '';
-            if (layers.coreRules) {
-                result += '【核心规则】\n' + layers.coreRules + '\n\n';
-            }
-            result += '【完整设定】\n' + layers.fullSetup;
-            return result;
-        }
-
-        // 8轮后：核心规则 + 世界摘要（详细角色设定由永久事实区按需注入）
         var result = '';
+
+        // 核心规则始终完整注入（最高优先级，不可压缩）
         if (layers.coreRules) {
             result += '【核心规则】\n' + layers.coreRules + '\n\n';
         }
-        if (layers.worldSummary) {
-            result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
+
+        // 渐进式策略：根据轮次决定设定注入的详细程度
+        if (currentTurn <= 4) {
+            // 阶段1（1-4轮）：完整设定，AI需要完整上下文建立世界
+            result += '【完整设定】\n' + layers.fullSetup;
+        } else if (currentTurn <= 10) {
+            // 阶段2（5-10轮）：核心规则+世界摘要+关键条目标题
+            // 保留设定中每个章节的标题和首句，让AI知道"有什么"
+            if (layers.worldSummary) {
+                result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
+            }
+            // 提取设定中的章节标题行，作为索引让AI知道设定的完整结构
+            var sectionIndex = self._extractSectionIndex(layers.fullSetup);
+            if (sectionIndex) {
+                result += '【设定结构索引】\n' + sectionIndex + '\n\n';
+            }
+        } else {
+            // 阶段3（11轮+）：核心规则+世界摘要（最精简，详细内容由记忆系统按需注入）
+            if (layers.worldSummary) {
+                result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
+            }
         }
+
         return result;
     },
 
-    // 标记设定已压缩（在第8轮后调用）
-    compressSetupIfNeeded: function() {
-        var self = this;
-        if (self.currentTurn >= 8 && !self._setupLayers.compressed) {
-            self._setupLayers.compressed = true;
-            self.saveToStorage();
-            console.log('[设定分层] 第' + self.currentTurn + '轮，设定已压缩为核心规则+世界摘要模式');
+    // 提取设定中的章节标题行，作为结构索引
+    // 让AI知道设定中有哪些内容，即使看不到全文也能知道"有什么"
+    _extractSectionIndex: function(fullSetup) {
+        if (!fullSetup) return '';
+        var lines = fullSetup.split('\n');
+        var indexLines = [];
+        for (var i = 0; i < lines.length; i++) {
+            var line = lines[i].trim();
+            // 匹配中文标题格式：一、二、三、1. 2. 【】等
+            if (/^[一二三四五六七八九十]+[、．.]/.test(line) ||
+                /^（[一二三四五六七八九十]+）/.test(line) ||
+                /^\d+[、．.．]/.test(line) ||
+                /^【[^】]+】$/.test(line) ||
+                /^#+\s/.test(line)) {
+                // 标题行精简到60字符
+                indexLines.push(truncateByChars(line, 60, '...'));
+            }
         }
+        return indexLines.slice(0, 30).join('\n');
+    },
+
+    // 标记设定已压缩（渐进式，不再需要硬开关）
+    compressSetupIfNeeded: function() {
+        // 渐进式压缩由 getSetupInjection 根据轮次自动处理，无需手动标记
+        // 保留此方法以兼容旧代码
     },
 
     buildInjection: function() {
@@ -1504,7 +1531,7 @@ var GameMemory = {
             characters: '\n', events: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n'
         };
         
-        // 总量控制：先全部组装，超限时按优先级从低到高裁剪
+        // 总量控制：超限时智能压缩而非直接丢弃
         // 第一步：组装所有模块的完整文本
         var moduleTexts = [];
         parts.forEach(function(p) {
@@ -1519,22 +1546,34 @@ var GameMemory = {
         var totalChars = 0;
         moduleTexts.forEach(function(m) { totalChars += m.text.length; });
         
-        // 第三步：如果超限，按优先级从低到高裁剪
+        // 第三步：如果超限，按优先级从低到高智能压缩（保留结构，精简内容，不丢弃）
         var maxChars = budget.maxChars;
         if (totalChars > maxChars) {
-            // 按优先级从低到高排序（优先级低的先裁剪）
+            // 按优先级从低到高排序（优先级低的先压缩）
             var sorted = moduleTexts.slice().sort(function(a, b) { return a.priority - b.priority; });
             var excess = totalChars - maxChars;
             for (var i = 0; i < sorted.length && excess > 0; i++) {
                 var m = sorted[i];
-                if (m.text.length <= excess) {
-                    // 整个模块删除
-                    excess -= m.text.length;
-                    m.text = '';
-                } else {
-                    // 部分裁剪
-                    m.text = truncateByChars(m.text, m.text.length - excess, '...');
-                    excess = 0;
+                var originalLen = m.text.length;
+                // 智能压缩：保留标题行和关键信息，精简详细描述
+                m.text = self._smartCompressModule(m.text, m.key);
+                var saved = originalLen - m.text.length;
+                excess -= saved;
+                // 如果压缩后仍然超限，再进行截断（但保留标题）
+                if (excess > 0 && m.text.length > excess) {
+                    // 保留标题行（第一行），截断剩余内容
+                    var lines = m.text.split('\n');
+                    var headerLine = lines[0] || '';
+                    var bodyChars = m.text.length - excess;
+                    if (bodyChars > headerLine.length + 20) {
+                        m.text = truncateByChars(m.text, bodyChars, '...(已精简)');
+                    } else {
+                        // 只剩标题，总比完全删除好
+                        m.text = headerLine + '\n(内容已精简)';
+                        excess -= (originalLen - m.text.length - saved);
+                    }
+                } else if (excess > 0) {
+                    excess -= (originalLen - m.text.length - saved);
                 }
             }
         }
@@ -1557,6 +1596,81 @@ var GameMemory = {
     },
 
     buildSmartInjection: function() { return this.buildInjection(); },
+
+    // 智能压缩模块文本：保留结构（标题/名字），精简详细描述，绝不整块丢弃
+    // 核心思路：AI看到"角色名+关键词"比什么都看不到强100倍
+    _smartCompressModule: function(text, moduleKey) {
+        if (!text || text.length < 200) return text; // 太短不需要压缩
+        var lines = text.split('\n');
+        var headerLine = lines[0] || '';
+        var bodyLines = lines.slice(1);
+
+        // 不同模块采用不同的压缩策略
+        switch (moduleKey) {
+            case 'characters':
+                // 角色状态：保留名字+关系+好感，去掉详细描述
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    // 保留 "• 角色名[时间](身份) 关系:xxx 好感:xxx" 部分
+                    // 去掉 " | 心情:xxx | 位置:xxx | 状态:xxx" 等次要信息
+                    return line.replace(/\s*\|\s*(心情|位置|outfit|状态):[^\n]*/g, '');
+                }).join('\n');
+
+            case 'events':
+                // 事件：保留重要度标记+核心内容，精简描述
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    // 保留 "🔴[重要度9] 事件内容" 的前60字符
+                    if (line.length > 60) return truncateByChars(line, 60, '...');
+                    return line;
+                }).join('\n');
+
+            case 'items':
+                // 物品：只保留名字+数量+稀有度
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    // "• 物品名 x1 [稀有度]" 就够了，去掉描述
+                    var match = line.match(/•\s*(.+?)\s*x(\d+)/);
+                    if (match) {
+                        var rarityMatch = line.match(/\[([^\]]+)\]/);
+                        return '• ' + match[1] + ' x' + match[2] + (rarityMatch ? ' [' + rarityMatch[1] + ']' : '');
+                    }
+                    return truncateByChars(line, 40, '...');
+                }).join('\n');
+
+            case 'summaryLayers':
+                // 摘要：每条精简到30字符
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 30) return truncateByChars(line, 30, '...');
+                    return line;
+                }).join('\n');
+
+            case 'sceneState':
+                // 场景状态：只保留地点名+锁定状态
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 50) return truncateByChars(line, 50, '...');
+                    return line;
+                }).join('\n');
+
+            case 'changes':
+                // 变化更新：保留名字+变化，去掉时间标签细节
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 60) return truncateByChars(line, 60, '...');
+                    return line;
+                }).join('\n');
+
+            case 'permanentFacts':
+                // 永久事实：最高优先级，尽量保留，只精简超长条目
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 100) return truncateByChars(line, 100, '...');
+                    return line;
+                }).join('\n');
+
+            default:
+                // 通用压缩：每行精简到60字符
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 60) return truncateByChars(line, 60, '...');
+                    return line;
+                }).join('\n');
+        }
+    },
 
     _buildPermanentFactsSection: function() {
         var lines = [];
@@ -1692,9 +1806,8 @@ var GameMemory = {
             return false;
         });
         
-        // 最多注入角色数（按次计费：预算充裕时注入更多角色）
-        var maxChars = (self.budget && self.budget.maxChars > 4000) ? 20 : 12;
-        relevantChars.slice(0, maxChars).forEach(function(c) {
+        // 按次计费：不硬限制角色数，让预算系统通过智能压缩自然控制
+        relevantChars.forEach(function(c) {
             var relTime = self._calculateRelativeTime(c.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
             var line = '• ' + c.name + timeTag;
@@ -1713,8 +1826,8 @@ var GameMemory = {
         var lines = [];
         var self = this;
         self._recalcEventDecayScores(self.currentTurn);
-        var maxEvents = (self.budget && self.budget.maxChars > 4000) ? 30 : 18;
-        self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, maxEvents).forEach(function(e) {
+        // 按次计费：不硬限制事件数，让预算系统通过智能压缩自然控制
+        self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).forEach(function(e) {
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
