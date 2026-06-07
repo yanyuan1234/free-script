@@ -2262,7 +2262,7 @@ function buildSaveData(customName) {
                 stats: EnhancedMemory.stats,
                 _injectionSnapshots: EnhancedMemory._injectionSnapshots || {},
                 _summaryLayers: EnhancedMemory._summaryLayers || { near: [], mid: [], far: [] },
-                _setupLayers: EnhancedMemory._setupLayers || { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1 }
+                _setupLayers: EnhancedMemory._setupLayers || { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] }
             };
         }
     } catch(e) {
