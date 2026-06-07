@@ -1493,51 +1493,52 @@ var GameMemory = {
             characters: '\n', events: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n'
         };
         
-        // 预算分配（变化驱动的模块优先分配）
-        var remaining = budget.maxChars;
-        var allocated = {};
+        // 总量控制：先全部组装，超限时按优先级从低到高裁剪
+        // 第一步：组装所有模块的完整文本
+        var moduleTexts = [];
         parts.forEach(function(p) {
-            var min = budget.minBudget[p.key] || 100;
-            var headerLen = (headers[p.key] || '').length;
-            var footerLen = (footers[p.key] || '').length;
-            var linesChars = p.lines.join('\n').length;
-            // 变化驱动的模块：如果无变化，分配0
-            if (!p.changed) { allocated[p.key] = 0; return; }
-            var actual = Math.min(min, linesChars + headerLen + footerLen);
-            allocated[p.key] = actual;
-            remaining -= actual;
-        });
-        // 剩余预算按优先级分配
-        if (remaining > 0) {
-            var sorted = parts.filter(function(p) { return p.changed; }).slice().sort(function(a, b) { return b.priority - a.priority; });
-            sorted.forEach(function(p) {
-                var ideal = (budget.idealBudget[p.key] || 200) - allocated[p.key];
-                if (ideal <= 0) return;
-                var linesChars = p.lines.join('\n').length;
-                var want = Math.min(ideal, linesChars);
-                var give = Math.min(want, remaining);
-                allocated[p.key] += give;
-                remaining -= give;
-            });
-        }
-        
-        // 组装注入文本
-        var injection = '';
-        parts.forEach(function(p) {
-            if (!p.changed) return; // 变化驱动：跳过无变化模块
-            var alloc = allocated[p.key] || 0;
+            if (!p.changed) return;
             var header = headers[p.key] || '';
             var footer = footers[p.key] || '';
-            var contentBudget = alloc - header.length - footer.length;
-            if (contentBudget <= 0) return;
             var content = p.lines.join('\n');
-            if (content.length > contentBudget) content = truncateByChars(content, contentBudget, '...');
-            injection += header + content + footer;
+            moduleTexts.push({ key: p.key, priority: p.priority, text: header + content + footer });
         });
         
+        // 第二步：计算总量
+        var totalChars = 0;
+        moduleTexts.forEach(function(m) { totalChars += m.text.length; });
+        
+        // 第三步：如果超限，按优先级从低到高裁剪
+        var maxChars = budget.maxChars;
+        if (totalChars > maxChars) {
+            // 按优先级从低到高排序（优先级低的先裁剪）
+            var sorted = moduleTexts.slice().sort(function(a, b) { return a.priority - b.priority; });
+            var excess = totalChars - maxChars;
+            for (var i = 0; i < sorted.length && excess > 0; i++) {
+                var m = sorted[i];
+                if (m.text.length <= excess) {
+                    // 整个模块删除
+                    excess -= m.text.length;
+                    m.text = '';
+                } else {
+                    // 部分裁剪
+                    m.text = truncateByChars(m.text, m.text.length - excess, '...');
+                    excess = 0;
+                }
+            }
+        }
+        
+        // 第四步：组装最终注入文本（按优先级从高到低排列）
+        var injection = '';
+        moduleTexts.filter(function(m) { return m.text.length > 0; })
+            .sort(function(a, b) { return b.priority - a.priority; })
+            .forEach(function(m) { injection += m.text; });
+        
         self._lastInjectionStats = { totalChars: injection.length, budget: budget.maxChars, moduleChars: {}, skippedModules: [] };
+        moduleTexts.forEach(function(m) {
+            self._lastInjectionStats.moduleChars[m.key] = m.text.length;
+        });
         parts.forEach(function(p) {
-            self._lastInjectionStats.moduleChars[p.key] = allocated[p.key] || 0;
             if (!p.changed) self._lastInjectionStats.skippedModules.push(p.key);
         });
         self.lastInjectionTurn = currentTurn;
@@ -2102,16 +2103,20 @@ var GameMemory = {
 
     _adaptBudget: function() {
         var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
-        var base = 4000; if (ctxSize >= 32000) base = 12000; else if (ctxSize >= 16000) base = 8000; else if (ctxSize >= 12000) base = 6000;
+        // 按次计费：尽可能多用上下文，只留30%给对话历史和输出
+        var base = 4000;
+        if (ctxSize >= 128000) base = 80000;
+        else if (ctxSize >= 64000) base = 40000;
+        else if (ctxSize >= 32000) base = 20000;
+        else if (ctxSize >= 16000) base = 10000;
+        else if (ctxSize >= 12000) base = 7000;
+        else if (ctxSize >= 8000) base = 5000;
         this.budget.maxChars = base;
-        // 确保新模块有预算条目
+        // 确保新模块有预算条目（兼容旧代码）
         if (!this.budget.minBudget.sceneState) this.budget.minBudget.sceneState = 100;
         if (!this.budget.minBudget.summaryLayers) this.budget.minBudget.summaryLayers = 200;
         if (!this.budget.idealBudget.sceneState) this.budget.idealBudget.sceneState = 200;
         if (!this.budget.idealBudget.summaryLayers) this.budget.idealBudget.summaryLayers = 400;
-        var ratio = base / 4000;
-        Object.keys(this.budget.minBudget).forEach(function(k) { this[k] = Math.floor(this[k] * ratio); }, this.budget.minBudget);
-        Object.keys(this.budget.idealBudget).forEach(function(k) { this[k] = Math.floor(this[k] * ratio); }, this.budget.idealBudget);
     },
 
     shouldTriggerCompression: function(currentTokenCount, maxTokens) {
