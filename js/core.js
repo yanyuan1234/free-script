@@ -2672,6 +2672,12 @@ const _navBarClickHandler = function(e) {
     if (!btn) return;
     var page = btn.dataset.navPage;
     if (!page) return;
+    // 更新导航栏按钮高亮状态
+    var navContainer = btn.parentElement;
+    if (navContainer) {
+        navContainer.querySelectorAll('.nav-item').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+    }
     UI.showPage(page);
     // 延迟渲染，让浏览器先显示页面切换效果
     var renderFn = null;
@@ -2753,8 +2759,8 @@ function showError(msg, errObj) {
     // 【修复】不要清空剧情区，避免覆盖流式已渲染的内容
     // 仅在没有内容时覆盖；否则在底部追加错误提示条
     var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
-    var errBanner = '<div class="api-error-banner" style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;margin:12px 0;color:#856404;font-size:13px;">' +
-        '<div style="font-weight:600;margin-bottom:4px;">⚠️ 生成失败</div>' +
+    var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;margin:12px 0;color:#856404;font-size:13px;transition:opacity 0.5s;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">⚠️ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:#856404;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
         '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
         (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">📍 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
         '<details style="font-size:11px;color:#666;"><summary style="cursor:pointer;color:#666;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:#fdf6e3;border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
@@ -2771,6 +2777,14 @@ function showError(msg, errObj) {
             '<div style="font-size:12px;color:#999;margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
     }
+    // 15秒后自动淡出并移除错误banner
+    TimerManager.setTimeout('errorBannerFade', function() {
+        var banner = document.querySelector('.api-error-banner[data-error-ts]');
+        if (banner) {
+            banner.style.opacity = '0';
+            setTimeout(function() { if (banner.parentNode) banner.remove(); }, 500);
+        }
+    }, 15000);
     // 同步记录到 localStorage 方便排查
     try {
         var errs = JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');

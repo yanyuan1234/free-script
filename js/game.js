@@ -206,7 +206,7 @@ function _buildFormatRules(gs, _t) {
             + '【关键区分】\n- player 是主角（玩家），characters 是NPC列表，两者不可混淆\n- npcMessages 是即时短消息，正式信件/通知放 mail\n- 直接输出JSON，不要用 ```json 包裹，story字段用 \\n 换行\n- story 必须是 JSON 的第一个字段';
     } else {
         // 第4轮起：精简格式提醒（AI已掌握格式，只需关键提醒）
-        return '【格式提醒】继续按已建立的JSON格式输出。story放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<mem>标签更新状态变化。'
+        return '【格式提醒】继续按已建立的JSON格式输出。story放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<giggle>插入NPC心声，<mem>更新状态变化。'
             + (hasChoices ? '包含choices选项。' : '')
             + '不要用代码块包裹。';
     }
