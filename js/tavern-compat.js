@@ -1235,22 +1235,16 @@ var GameMemory = {
         var self = this;
 
         // 构建解析提示词
-        var parsePrompt = '你是一个游戏设定解析专家。请仔细阅读以下游戏设定，然后按指定JSON格式输出解析结果。\n\n'
-            + '【要求】\n'
-            + '1. coreRules：提取所有硬性规则、限制、底线、红线（如"不许XX""绝对不能XX""必须XX"等游戏规则，注意区分规则和角色性格描述）\n'
-            + '2. worldSummary：用200字以内概括世界观/背景设定（家族、势力、社会结构、时代背景等）\n'
-            + '3. characters：提取所有重要角色，每个角色包括：name（名字）、identity（身份/关系）、keywords（3-5个关联关键词，用于后续检索）、summary（50字以内概括）\n'
-            + '4. playerIdentity：主角的核心身份概括（50字以内）\n'
-            + '5. promises：提取所有约定、承诺、誓言、使命等\n'
-            + '6. setupKeywords：为整个设定生成5-10个全局关键词（用于后续场景匹配）\n\n'
+        var parsePrompt = '请解析以下游戏设定，提取关键信息。\n\n'
+            + '你理解如何从设定中提取：核心规则（硬性限制/底线/红线）、世界观概括、重要角色（名字/身份/关键词/概括）、主角身份、约定承诺、全局关键词。\n\n'
             + '【设定内容】\n' + fullSetup + '\n\n'
-            + '【输出格式】纯JSON，不要代码块包裹：\n'
+            + '输出纯JSON，不要代码块：\n'
             + '{"coreRules":["规则1","规则2"],'
             + '"worldSummary":"世界观概括",'
             + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2"],"summary":"概括"}],'
             + '"playerIdentity":"主角身份",'
             + '"promises":["约定1","约定2"],'
-            + '"setupKeywords":["关键词1","关键词2"]}}';
+            + '"setupKeywords":["关键词1","关键词2"]}';
 
         var messages = [
             { role: 'system', content: '你是游戏设定解析专家，只输出纯JSON，不要任何其他文字。' },
@@ -1289,16 +1283,16 @@ var GameMemory = {
         // 核心规则层
         if (parsed.coreRules && parsed.coreRules.length > 0) {
             self._setupLayers.coreRules = parsed.coreRules.join('\n');
-            if (self._setupLayers.coreRules.length > 800) {
-                self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, 800, '...');
+            if (self._setupLayers.coreRules.length > 2000) {
+                self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, 2000, '...');
             }
         }
 
         // 世界摘要层
         if (parsed.worldSummary) {
             self._setupLayers.worldSummary = parsed.worldSummary;
-            if (self._setupLayers.worldSummary.length > 600) {
-                self._setupLayers.worldSummary = truncateByChars(self._setupLayers.worldSummary, 600, '...');
+            if (self._setupLayers.worldSummary.length > 1500) {
+                self._setupLayers.worldSummary = truncateByChars(self._setupLayers.worldSummary, 1500, '...');
             }
         }
 
@@ -1394,7 +1388,7 @@ var GameMemory = {
             // 但即使是前3轮，也把核心规则单独提到最前面
             var result = '';
             if (layers.coreRules) {
-                result += '【核心规则 - 必须遵守】\n' + layers.coreRules + '\n\n';
+                result += '【核心规则】\n' + layers.coreRules + '\n\n';
             }
             result += '【完整设定】\n' + layers.fullSetup;
             return result;
@@ -1403,7 +1397,7 @@ var GameMemory = {
         // 3轮后：只注入核心规则 + 世界摘要 + 永久事实（记忆系统已接管细节）
         var result = '';
         if (layers.coreRules) {
-            result += '【核心规则 - 必须遵守】\n' + layers.coreRules + '\n\n';
+            result += '【核心规则】\n' + layers.coreRules + '\n\n';
         }
         if (layers.worldSummary) {
             result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
