@@ -854,8 +854,8 @@ var GameMemory = {
     _setupLayers: { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] },
     budget: {
         maxChars: 4000,
-        minBudget: { permanentFacts: 600, quests: 200, plot: 400, characters: 400, events: 300, items: 150, workingMemory: 400, sceneState: 100, summaryLayers: 200 },
-        idealBudget: { permanentFacts: 800, quests: 300, plot: 600, characters: 600, events: 500, items: 200, workingMemory: 600, sceneState: 200, summaryLayers: 400 },
+        minBudget: { permanentFacts: 1200, quests: 200, plot: 400, characters: 400, events: 300, items: 150, workingMemory: 400, sceneState: 100, summaryLayers: 200 },
+        idealBudget: { permanentFacts: 2500, quests: 300, plot: 600, characters: 600, events: 500, items: 200, workingMemory: 600, sceneState: 200, summaryLayers: 400 },
     },
     compressionConfig: { triggerThreshold: 0.75, cooldownMinutes: 5, incrementalUpdate: true, lastCompressionTurn: 0 },
     stats: { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 },
@@ -1236,12 +1236,12 @@ var GameMemory = {
 
         // 构建解析提示词
         var parsePrompt = '请解析以下游戏设定，提取关键信息。\n\n'
-            + '你理解如何从设定中提取：核心规则（硬性限制/底线/红线）、世界观概括、重要角色（名字/身份/关键词/概括）、主角身份、约定承诺、全局关键词。\n\n'
+            + '你理解如何从设定中提取：核心规则（硬性限制/底线/红线）、世界观概括、重要角色（名字/身份/5-10个关键词/200字以内详细描述含性格外貌关系特质）、主角身份、约定承诺、全局关键词。\n\n'
             + '【设定内容】\n' + fullSetup + '\n\n'
             + '输出纯JSON，不要代码块：\n'
             + '{"coreRules":["规则1","规则2"],'
             + '"worldSummary":"世界观概括",'
-            + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2"],"summary":"概括"}],'
+            + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2","关键词3","关键词4","关键词5"],"summary":"200字以内详细描述，包含性格、外貌、与主角关系、关键特质"}],'
             + '"playerIdentity":"主角身份",'
             + '"promises":["约定1","约定2"],'
             + '"setupKeywords":["关键词1","关键词2"]}';
@@ -1327,14 +1327,17 @@ var GameMemory = {
             });
         }
 
-        // 角色 → 永久事实 + 角色表
+        // 角色 → 永久事实 + 角色表（存储完整描述，注入时按需截取）
         if (parsed.characters && parsed.characters.length > 0) {
             self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
             parsed.characters.forEach(function(char) {
-                // 永久事实
+                // 永久事实：存储完整描述（不再截断），注入时按关键词匹配按需截取
                 var profile = char.name + '：' + (char.summary || char.identity || '');
-                if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content === profile; })) {
-                    self.permanentFacts.npcProfiles.push({ content: profile, locked: true });
+                if (char.keywords && char.keywords.length > 0) {
+                    profile = char.name + '【' + char.keywords.join(',') + '】：' + (char.summary || char.identity || '');
+                }
+                if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content.split('【')[0] === char.name; })) {
+                    self.permanentFacts.npcProfiles.push({ content: profile, locked: true, keywords: char.keywords || [] });
                 }
                 // 角色表
                 if (!self.tables.characters[char.name]) {
@@ -1394,7 +1397,7 @@ var GameMemory = {
             return result;
         }
 
-        // 3轮后：只注入核心规则 + 世界摘要 + 永久事实（记忆系统已接管细节）
+        // 3轮后：核心规则 + 世界摘要（详细角色设定由永久事实区按需注入）
         var result = '';
         if (layers.coreRules) {
             result += '【核心规则】\n' + layers.coreRules + '\n\n';
@@ -1402,7 +1405,6 @@ var GameMemory = {
         if (layers.worldSummary) {
             result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
         }
-        result += '【注：详细设定已由记忆系统管理，请参考【剧情记忆】中的信息】';
         return result;
     },
 
@@ -1548,11 +1550,32 @@ var GameMemory = {
         var lines = [];
         var pf = this.permanentFacts;
         var typeLabels = { pcIdentity: '主角', worldRules: '设定规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺/约定' };
+        var topic = this.detectCurrentTopic();
+        var topicKeywords = (topic && topic.keywords) ? topic.keywords : [];
+        var topicChars = (topic && topic.characters) ? topic.characters : [];
+
         ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'].forEach(function(t) {
             var list = pf[t];
             if (list && list.length > 0) {
                 lines.push('【' + typeLabels[t] + '】');
-                list.forEach(function(a) { lines.push('• ' + a.content); });
+                if (t === 'npcProfiles') {
+                    // 角色档案：按关键词匹配排序，相关角色优先注入
+                    var sorted = list.slice().sort(function(a, b) {
+                        var scoreA = 0, scoreB = 0;
+                        var kA = a.keywords || [], kB = b.keywords || [];
+                        var nameA = a.content.split('【')[0], nameB = b.content.split('【')[0];
+                        // 当前话题中的角色最优先
+                        if (topicChars.indexOf(nameA) >= 0) scoreA += 100;
+                        if (topicChars.indexOf(nameB) >= 0) scoreB += 100;
+                        // 关键词匹配
+                        kA.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreA += 10; });
+                        kB.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreB += 10; });
+                        return scoreB - scoreA;
+                    });
+                    sorted.forEach(function(a) { lines.push('• ' + a.content); });
+                } else {
+                    list.forEach(function(a) { lines.push('• ' + a.content); });
+                }
             }
         });
         return lines;
