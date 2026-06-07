@@ -642,23 +642,86 @@ async function sendAIRequest(userMessage, isInit = false) {
             );
             if (d5) messages.push({ role: 'system', content: d5 });
 
-            // 游戏状态快照
+            // 游戏状态快照（按次计费：注入完整数据，让AI掌握更多剧情信息）
             if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
                 var snapshotText = '【当前世界状态】\n';
                 var snap = gameState.worldSnapshot;
                 if (snap.player) {
-                    snapshotText += '主角: ' + (snap.player.name || '未知') + ', ' + (snap.player.identity || '') + '\n';
+                    snapshotText += '主角: ' + (snap.player.name || '未知');
+                    if (snap.player.identity) snapshotText += ', 身份: ' + snap.player.identity;
+                    if (snap.player.age) snapshotText += ', 年龄: ' + snap.player.age;
+                    if (snap.player.title) snapshotText += ', 称号: ' + snap.player.title;
+                    if (snap.player.personality) snapshotText += ', 性格: ' + snap.player.personality;
+                    snapshotText += '\n';
                     if (snap.player.stats && snap.player.stats.length > 0) {
-                        snapshotText += '属性: ' + snap.player.stats.map(function(s) { return s.label + ':' + s.value; }).join(', ') + '\n';
+                        snap.player.stats.forEach(function(s) {
+                            snapshotText += '  ' + s.label + ': ' + s.value + (s.icon ? ' ' + s.icon : '') + '\n';
+                        });
                     }
                 }
                 if (snap.characters && snap.characters.length > 0) {
-                    snapshotText += '当前NPC: ' + snap.characters.map(function(c) {
-                        return c.name + '(' + (c.relation || '未知') + ',好感' + (c.favorability || '?') + ')';
-                    }).join('; ') + '\n';
+                    snapshotText += 'NPC状态:\n';
+                    snap.characters.forEach(function(c) {
+                        var line = '  ' + c.name;
+                        if (c.title) line += '(' + c.title + ')';
+                        if (c.relation) line += ' 关系:' + c.relation;
+                        if (typeof c.favorability === 'number') line += ' 好感:' + c.favorability;
+                        if (c.desc) line += ' - ' + c.desc;
+                        snapshotText += line + '\n';
+                        if (c.details && c.details.length > 0) {
+                            c.details.forEach(function(d) {
+                                if (d.key && d.value) snapshotText += '    ' + d.key + ': ' + d.value + '\n';
+                            });
+                        }
+                    });
                 }
                 if (snap.bag && snap.bag.length > 0) {
-                    snapshotText += '背包: ' + snap.bag.map(function(b) { return b.name + 'x' + (b.count || 1); }).join(', ') + '\n';
+                    snapshotText += '背包:\n';
+                    snap.bag.forEach(function(b) {
+                        var line = '  ' + b.name + ' x' + (b.count || 1);
+                        if (b.rarity) line += ' [' + b.rarity + ']';
+                        if (b.desc) line += ' - ' + b.desc;
+                        if (b.equipped) line += ' [已装备]';
+                        snapshotText += line + '\n';
+                    });
+                }
+                // 注入任务状态
+                if (snap.quests && snap.quests.length > 0) {
+                    snapshotText += '任务:\n';
+                    snap.quests.forEach(function(q) {
+                        var line = '  ' + q.title;
+                        if (q.type) line += ' [' + q.type + ']';
+                        if (q.status) line += ' - ' + q.status;
+                        if (q.progress) line += ' (' + q.progress + ')';
+                        if (q.hint) line += ' 提示:' + q.hint;
+                        snapshotText += line + '\n';
+                    });
+                }
+                // 注入关系网
+                if (snap.relationships && snap.relationships.length > 0) {
+                    snapshotText += '关系网:\n';
+                    snap.relationships.forEach(function(r) {
+                        snapshotText += '  ' + r.from + ' → ' + r.to + ': ' + r.type + (r.desc ? ' (' + r.desc + ')' : '') + '\n';
+                    });
+                }
+                // 注入世界模块
+                if (snap.world && snap.world.length > 0) {
+                    snapshotText += '世界信息:\n';
+                    snap.world.forEach(function(w) {
+                        var line = '  [' + (w.type || 'text') + '] ' + (w.title || '');
+                        if (w.type === 'list' && w.items) line += ': ' + w.items.join(', ');
+                        else if (w.type === 'key_value' && w.items) line += ': ' + w.items.map(function(i) { return i.key + '=' + i.value; }).join(', ');
+                        else if (w.content) line += ': ' + w.content;
+                        snapshotText += line + '\n';
+                    });
+                }
+                // 注入游戏时间
+                if (snap.gameTime) {
+                    var gt = snap.gameTime;
+                    snapshotText += '游戏时间: ' + (gt.date || '') + ' ' + (gt.time || '') + ' ' + (gt.period || '');
+                    if (gt.weather) snapshotText += ' 天气:' + gt.weather;
+                    if (gt.era) snapshotText += ' 时代:' + gt.era;
+                    snapshotText += '\n';
                 }
                 messages.push({ role: 'system', content: snapshotText });
             }
@@ -1479,8 +1542,8 @@ async function autoCompressContext() {
             }
             return true;
         });
-        var keep = dialogOnly.slice(-10);
-        var removed = dialogOnly.slice(0, -10);
+        var keep = dialogOnly.slice(-30);
+        var removed = dialogOnly.slice(0, -30);
         if (removed.length === 0) {
             // 提前返回时需要正确恢复状态
             isCompressing = false;
@@ -1517,16 +1580,16 @@ async function manualCompress(btn) {
         var msgCount = gameState.conversationHistory.filter(function(m) {
             return m.role !== 'system';
         }).length;
-        if (msgCount <= 10) {
-            UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于10条才有意义）');
+        if (msgCount <= 30) {
+            UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于30条才有意义）');
             return;
         }
-        var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近10条原文，确定吗？');
+        var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近30条原文，确定吗？');
         if (!ok) return;
         var sys = gameState.conversationHistory[0];
         var rest = gameState.conversationHistory.slice(1);
-        var keep = rest.slice(-10);
-        var removed = rest.slice(0, -10);
+        var keep = rest.slice(-30);
+        var removed = rest.slice(0, -30);
         if (removed.length === 0) {
             UI.toast('没有需要压缩的内容');
             return;

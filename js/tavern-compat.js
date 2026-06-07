@@ -857,7 +857,7 @@ var GameMemory = {
         minBudget: { permanentFacts: 1200, quests: 200, plot: 400, characters: 400, events: 300, items: 150, workingMemory: 400, sceneState: 100, summaryLayers: 200 },
         idealBudget: { permanentFacts: 2500, quests: 300, plot: 600, characters: 600, events: 500, items: 200, workingMemory: 600, sceneState: 200, summaryLayers: 400 },
     },
-    compressionConfig: { triggerThreshold: 0.75, cooldownMinutes: 5, incrementalUpdate: true, lastCompressionTurn: 0 },
+    compressionConfig: { triggerThreshold: 0.92, cooldownMinutes: 15, incrementalUpdate: true, lastCompressionTurn: 0 },
     stats: { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 },
     _changeLog: [],
     summaryHistory: [],
@@ -1386,9 +1386,9 @@ var GameMemory = {
 
         var currentTurn = self.currentTurn || 0;
 
-        // 前3轮：注入完整设定（AI需要完整上下文来建立世界）
-        if (currentTurn <= 3 || !layers.compressed) {
-            // 但即使是前3轮，也把核心规则单独提到最前面
+        // 按次计费优化：前8轮注入完整设定（AI需要完整上下文来建立世界）
+        if (currentTurn <= 8 || !layers.compressed) {
+            // 但即使是前8轮，也把核心规则单独提到最前面
             var result = '';
             if (layers.coreRules) {
                 result += '【核心规则】\n' + layers.coreRules + '\n\n';
@@ -1397,7 +1397,7 @@ var GameMemory = {
             return result;
         }
 
-        // 3轮后：核心规则 + 世界摘要（详细角色设定由永久事实区按需注入）
+        // 8轮后：核心规则 + 世界摘要（详细角色设定由永久事实区按需注入）
         var result = '';
         if (layers.coreRules) {
             result += '【核心规则】\n' + layers.coreRules + '\n\n';
@@ -1408,10 +1408,10 @@ var GameMemory = {
         return result;
     },
 
-    // 标记设定已压缩（在第3轮后调用）
+    // 标记设定已压缩（在第8轮后调用）
     compressSetupIfNeeded: function() {
         var self = this;
-        if (self.currentTurn >= 3 && !self._setupLayers.compressed) {
+        if (self.currentTurn >= 8 && !self._setupLayers.compressed) {
             self._setupLayers.compressed = true;
             self.saveToStorage();
             console.log('[设定分层] 第' + self.currentTurn + '轮，设定已压缩为核心规则+世界摘要模式');
@@ -1681,8 +1681,8 @@ var GameMemory = {
             return false;
         });
         
-        // 最多注入角色数（根据预算动态调整）
-        var maxChars = (self.budget && self.budget.maxChars > 4000) ? 12 : 8;
+        // 最多注入角色数（按次计费：预算充裕时注入更多角色）
+        var maxChars = (self.budget && self.budget.maxChars > 4000) ? 20 : 12;
         relevantChars.slice(0, maxChars).forEach(function(c) {
             var relTime = self._calculateRelativeTime(c.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
@@ -1702,7 +1702,7 @@ var GameMemory = {
         var lines = [];
         var self = this;
         self._recalcEventDecayScores(self.currentTurn);
-        var maxEvents = (self.budget && self.budget.maxChars > 4000) ? 18 : 12;
+        var maxEvents = (self.budget && self.budget.maxChars > 4000) ? 30 : 18;
         self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, maxEvents).forEach(function(e) {
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
@@ -1746,18 +1746,19 @@ var GameMemory = {
     },
 
     // 逐层摘要注入（Qvink风格：近详细→远压缩）
+    // 按次计费：注入更多摘要，让AI掌握更多剧情脉络
     _buildSummaryLayersSection: function() {
         var lines = [];
         var self = this;
         // 远层：关键句
         if (self._summaryLayers.far && self._summaryLayers.far.length > 0) {
             lines.push('〔更早〕');
-            self._summaryLayers.far.slice(-5).forEach(function(s) { lines.push('• ' + s); });
+            self._summaryLayers.far.slice(-10).forEach(function(s) { lines.push('• ' + s); });
         }
         // 中层：压缩摘要
         if (self._summaryLayers.mid && self._summaryLayers.mid.length > 0) {
             lines.push('〔近期摘要〕');
-            self._summaryLayers.mid.slice(-4).forEach(function(s) { lines.push('• ' + s); });
+            self._summaryLayers.mid.slice(-8).forEach(function(s) { lines.push('• ' + s); });
         }
         // 近层：详细
         if (self._summaryLayers.near && self._summaryLayers.near.length > 0) {
@@ -2103,20 +2104,39 @@ var GameMemory = {
 
     _adaptBudget: function() {
         var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
-        // 按次计费：尽可能多用上下文，只留30%给对话历史和输出
-        var base = 4000;
-        if (ctxSize >= 128000) base = 80000;
-        else if (ctxSize >= 64000) base = 40000;
-        else if (ctxSize >= 32000) base = 20000;
-        else if (ctxSize >= 16000) base = 10000;
-        else if (ctxSize >= 12000) base = 7000;
-        else if (ctxSize >= 8000) base = 5000;
+        // 按次计费优化：尽可能多用上下文，只留15%给输出，其余全塞游戏数据
+        // 字符/token比约1.7，所以 maxChars ≈ ctxSize * 0.85 * 1.7
+        var base = Math.floor(ctxSize * 0.85 * 1.7);
+        // 上下限保护
+        if (base < 4000) base = 4000;
+        if (base > 180000) base = 180000;
         this.budget.maxChars = base;
-        // 确保新模块有预算条目（兼容旧代码）
-        if (!this.budget.minBudget.sceneState) this.budget.minBudget.sceneState = 100;
-        if (!this.budget.minBudget.summaryLayers) this.budget.minBudget.summaryLayers = 200;
-        if (!this.budget.idealBudget.sceneState) this.budget.idealBudget.sceneState = 200;
-        if (!this.budget.idealBudget.summaryLayers) this.budget.idealBudget.summaryLayers = 400;
+        // 按次计费：各模块理想预算也按比例放大
+        var scale = base / 4000; // 以4000为基准缩放
+        var minB = this.budget.minBudget;
+        var idealB = this.budget.idealBudget;
+        if (minB) {
+            minB.permanentFacts = Math.max(minB.permanentFacts || 0, Math.floor(1200 * scale));
+            minB.quests = Math.max(minB.quests || 0, Math.floor(200 * scale));
+            minB.plot = Math.max(minB.plot || 0, Math.floor(400 * scale));
+            minB.characters = Math.max(minB.characters || 0, Math.floor(400 * scale));
+            minB.events = Math.max(minB.events || 0, Math.floor(300 * scale));
+            minB.items = Math.max(minB.items || 0, Math.floor(150 * scale));
+            minB.workingMemory = Math.max(minB.workingMemory || 0, Math.floor(400 * scale));
+            minB.sceneState = Math.max(minB.sceneState || 0, Math.floor(100 * scale));
+            minB.summaryLayers = Math.max(minB.summaryLayers || 0, Math.floor(200 * scale));
+        }
+        if (idealB) {
+            idealB.permanentFacts = Math.max(idealB.permanentFacts || 0, Math.floor(2500 * scale));
+            idealB.quests = Math.max(idealB.quests || 0, Math.floor(300 * scale));
+            idealB.plot = Math.max(idealB.plot || 0, Math.floor(600 * scale));
+            idealB.characters = Math.max(idealB.characters || 0, Math.floor(600 * scale));
+            idealB.events = Math.max(idealB.events || 0, Math.floor(500 * scale));
+            idealB.items = Math.max(idealB.items || 0, Math.floor(200 * scale));
+            idealB.workingMemory = Math.max(idealB.workingMemory || 0, Math.floor(600 * scale));
+            idealB.sceneState = Math.max(idealB.sceneState || 0, Math.floor(200 * scale));
+            idealB.summaryLayers = Math.max(idealB.summaryLayers || 0, Math.floor(400 * scale));
+        }
     },
 
     shouldTriggerCompression: function(currentTokenCount, maxTokens) {
@@ -2124,8 +2144,9 @@ var GameMemory = {
         var messageCount = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.length : 0;
         var lastCompressTime = Date.now() - (window.lastCompressTime || 0);
         if (currentTokenCount > maxTokens * config.triggerThreshold) return { shouldCompress: true, reason: 'Token超限 (' + currentTokenCount + '/' + maxTokens + ')' };
-        if (messageCount > 40) return { shouldCompress: true, reason: '消息数量过多 (' + messageCount + '条)' };
-        if (lastCompressTime > config.cooldownMinutes * 60 * 1000 && messageCount >= 20) { var recentMessages = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = m.content || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
+        // 按次计费：放宽消息数量阈值，保留更多原文
+        if (messageCount > 100) return { shouldCompress: true, reason: '消息数量过多 (' + messageCount + '条)' };
+        if (lastCompressTime > config.cooldownMinutes * 60 * 1000 && messageCount >= 60) { var recentMessages = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = m.content || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
         return { shouldCompress: false, reason: '暂不需要压缩' };
     },
 

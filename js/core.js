@@ -1257,7 +1257,7 @@ var TypewriterBuffer = {
         this.render();
     }
 };
-const MAX_HISTORY = 20;
+const MAX_HISTORY = 50;
 
 // ========================================
 // Token 计数 + 自动压缩
