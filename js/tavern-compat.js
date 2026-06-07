@@ -845,11 +845,15 @@ var GameMemory = {
     events: [],
     timeline: [],
     quests: [],
-    workingMemory: { recentMessages: [], currentTopic: null, turns: [], messages: [] },
+    workingMemory: { recentMessages: [], currentTopic: null, turns: [], messages: [], nearSummary: '', midSummary: '', farSummary: '' },
+    // 变化驱动注入快照（Horae风格：无变化零Token）
+    _injectionSnapshots: {},
+    // 逐层摘要系统（Qvink风格：近详细→远压缩）
+    _summaryLayers: { near: [], mid: [], far: [] },
     budget: {
         maxChars: 4000,
-        minBudget: { permanentFacts: 600, quests: 200, plot: 400, characters: 400, events: 300, items: 150, workingMemory: 400 },
-        idealBudget: { permanentFacts: 800, quests: 300, plot: 600, characters: 600, events: 500, items: 200, workingMemory: 600 },
+        minBudget: { permanentFacts: 600, quests: 200, plot: 400, characters: 400, events: 300, items: 150, workingMemory: 400, sceneState: 100, summaryLayers: 200 },
+        idealBudget: { permanentFacts: 800, quests: 300, plot: 600, characters: 600, events: 500, items: 200, workingMemory: 600, sceneState: 200, summaryLayers: 400 },
     },
     compressionConfig: { triggerThreshold: 0.75, cooldownMinutes: 5, incrementalUpdate: true, lastCompressionTurn: 0 },
     stats: { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 },
@@ -873,6 +877,11 @@ var GameMemory = {
     init: function() {
         var loaded = this.loadFromStorage();
         if (!loaded) this._migrateFromOldFormat();
+        if (!this._injectionSnapshots) this._injectionSnapshots = {};
+        if (!this._summaryLayers) this._summaryLayers = { near: [], mid: [], far: [] };
+        if (!this.workingMemory.nearSummary) this.workingMemory.nearSummary = '';
+        if (!this.workingMemory.midSummary) this.workingMemory.midSummary = '';
+        if (!this.workingMemory.farSummary) this.workingMemory.farSummary = '';
         this.startAutoSave();
         return this;
     },
@@ -978,6 +987,10 @@ var GameMemory = {
             self.stats.totalMessages++;
             self.stats.lastUpdateTime = Date.now();
             self._detectChanges();
+            // 关键词激活：更新记忆条目的访问计数（Arkhon风格：复用评分）
+            self._updateAccessCounts(message);
+            // 逐层摘要：更新摘要层级（Qvink风格）
+            self._updateSummaryLayers();
         } catch (e) {
             self.stats.lastError = { msg: (e && e.message) || String(e), stack: (e && e.stack) || '', time: Date.now() };
             console.error('[GameMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
@@ -1069,39 +1082,245 @@ var GameMemory = {
         return attrs;
     },
 
+    // 关键词激活：更新记忆条目的访问计数
+    _updateAccessCounts: function(message) {
+        var self = this;
+        if (!message || !message.content) return;
+        var content = message.content;
+        // 角色被提及时增加访问计数
+        Object.keys(self.tables.characters).forEach(function(name) {
+            if (content.indexOf(name) >= 0) {
+                var c = self.tables.characters[name];
+                if (!c.accessCount) c.accessCount = 0;
+                c.accessCount++;
+                c.lastAccessTurn = self.currentTurn;
+            }
+        });
+        // 物品被提及时增加访问计数
+        Object.keys(self.tables.items).forEach(function(name) {
+            if (content.indexOf(name) >= 0) {
+                var it = self.tables.items[name];
+                if (!it.accessCount) it.accessCount = 0;
+                it.accessCount++;
+                it.lastAccessTurn = self.currentTurn;
+            }
+        });
+        // 地点被提及时增加访问计数
+        Object.keys(self.tables.locations).forEach(function(name) {
+            if (content.indexOf(name) >= 0) {
+                var loc = self.tables.locations[name];
+                if (!loc.accessCount) loc.accessCount = 0;
+                loc.accessCount++;
+                loc.lastAccessTurn = self.currentTurn;
+            }
+        });
+    },
+
+    // 逐层摘要系统（Qvink风格）
+    _updateSummaryLayers: function() {
+        var self = this;
+        var turns = self.workingMemory.turns || [];
+        var totalTurns = turns.length;
+
+        // 近层：最近3轮，保留详细
+        var nearTurns = turns.slice(-3);
+        self._summaryLayers.near = nearTurns.map(function(t) {
+            var parts = [];
+            if (t.user) parts.push('玩家: ' + truncateByChars(t.user, 150, '...'));
+            if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, 150, '...'));
+            return parts.join(' | ');
+        });
+
+        // 中层：4-10轮前，压缩为摘要
+        if (totalTurns > 3) {
+            var midTurns = turns.slice(Math.max(0, totalTurns - 10), totalTurns - 3);
+            self._summaryLayers.mid = midTurns.map(function(t) {
+                var parts = [];
+                if (t.user) parts.push('玩家: ' + truncateByChars(t.user, 60, '...'));
+                if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, 60, '...'));
+                return parts.join(' | ');
+            });
+        }
+
+        // 远层：10轮以前，只保留关键句
+        if (totalTurns > 10) {
+            var farTurns = turns.slice(0, totalTurns - 10);
+            self._summaryLayers.far = farTurns.map(function(t) {
+                var text = (t.user || '') + (t.assistant || '');
+                // 提取关键句（含关键词的句子）
+                var sentences = text.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 5; });
+                var keySentences = sentences.filter(function(s) {
+                    return /(约定|承诺|获得|失去|死亡|突破|发现|决定|重要|关键|转折)/.test(s);
+                });
+                if (keySentences.length === 0 && sentences.length > 0) keySentences = [sentences[sentences.length - 1]];
+                return keySentences.map(function(s) { return truncateByChars(s.trim(), 40, '...'); }).join('；');
+            }).filter(function(s) { return s.length > 0; });
+        }
+
+        // 生成合并摘要文本
+        self.workingMemory.nearSummary = self._summaryLayers.near.join('\n');
+        self.workingMemory.midSummary = self._summaryLayers.mid.join('\n');
+        self.workingMemory.farSummary = self._summaryLayers.far.join('\n');
+    },
+
+    // 变化驱动：检测某模块是否有变化（Horae风格）
+    _hasModuleChanged: function(moduleKey, currentValue) {
+        var snapshot = this._injectionSnapshots[moduleKey];
+        if (!snapshot) return true; // 首次注入，视为有变化
+        return snapshot !== currentValue;
+    },
+
+    // 变化驱动：保存注入快照
+    _saveInjectionSnapshot: function(moduleKey, value) {
+        this._injectionSnapshots[moduleKey] = value;
+    },
+
+    // 关键词激活：判断记忆条目是否与当前场景相关
+    _isRelevantToScene: function(name, keywords, topic) {
+        // 始终包含：最近变化过的、被频繁访问的
+        // 按需包含：当前话题提及的
+        if (!topic) topic = this.detectCurrentTopic();
+        // 当前话题提及
+        if (topic.characters && topic.characters.indexOf(name) >= 0) return true;
+        if (topic.items && topic.items.indexOf(name) >= 0) return true;
+        if (topic.locations && topic.locations.indexOf(name) >= 0) return true;
+        // 自带关键词匹配
+        if (keywords && keywords.length > 0) {
+            var recentText = '';
+            try {
+                if (typeof gameState !== 'undefined' && gameState.conversationHistory) {
+                    recentText = gameState.conversationHistory.slice(-3).map(function(m) { return m.content || ''; }).join(' ');
+                }
+            } catch(e) {}
+            for (var i = 0; i < keywords.length; i++) {
+                if (recentText.indexOf(keywords[i]) >= 0) return true;
+            }
+        }
+        return false;
+    },
+
     buildInjection: function() {
         var self = this;
         self._adaptBudget();
         var budget = self.budget;
         var currentTurn = self.currentTurn;
         var lastTurn = self.lastInjectionTurn;
+        var topic = self.detectCurrentTopic();
         var parts = [];
+        
+        // ═══ 第一层：永久事实（始终注入，最高优先级）═══
         var factLines = self._buildPermanentFactsSection();
-        if (factLines.length > 0) parts.push({ key: 'permanentFacts', priority: 10, lines: factLines });
+        if (factLines.length > 0) {
+            var factContent = factLines.join('\n');
+            parts.push({ key: 'permanentFacts', priority: 10, lines: factLines, changed: true });
+        }
+        
+        // ═══ 第二层：变化更新（变化驱动：无变化零Token）═══
         var changeLines = self._buildChangeUpdateSection(lastTurn);
-        if (changeLines.length > 0) parts.push({ key: 'changes', priority: 9, lines: changeLines });
+        var changeContent = changeLines.join('\n');
+        var changeChanged = self._hasModuleChanged('changes', changeContent);
+        if (changeChanged && changeLines.length > 0) {
+            parts.push({ key: 'changes', priority: 9, lines: changeLines, changed: true });
+            self._saveInjectionSnapshot('changes', changeContent);
+        }
+        
+        // ═══ 第三层：当前剧情 ═══
         var plotLines = self._buildPlotSection();
-        if (plotLines.length > 0) parts.push({ key: 'plot', priority: 8, lines: plotLines });
+        if (plotLines.length > 0) parts.push({ key: 'plot', priority: 8, lines: plotLines, changed: true });
+        
+        // ═══ 第四层：进行中约定 ═══
         var questLines = self._buildQuestsSection();
-        if (questLines.length > 0) parts.push({ key: 'quests', priority: 7, lines: questLines });
-        var charLines = self._buildCharactersSection(lastTurn);
-        if (charLines.length > 0) parts.push({ key: 'characters', priority: 6, lines: charLines });
+        if (questLines.length > 0) parts.push({ key: 'quests', priority: 7, lines: questLines, changed: true });
+        
+        // ═══ 第五层：角色状态（关键词激活 + 变化驱动 + 时间锚点）═══
+        var charLines = self._buildCharactersSection(lastTurn, topic);
+        var charContent = charLines.join('\n');
+        var charChanged = self._hasModuleChanged('characters', charContent);
+        if (charLines.length > 0) {
+            parts.push({ key: 'characters', priority: 6, lines: charLines, changed: charChanged });
+            self._saveInjectionSnapshot('characters', charContent);
+        }
+        
+        // ═══ 第六层：重要事件（时间锚点 + 增强衰减）═══
         var eventLines = self._buildEventsSection(lastTurn);
-        if (eventLines.length > 0) parts.push({ key: 'events', priority: 5, lines: eventLines });
-        var itemLines = self._buildItemsSection(lastTurn);
-        if (itemLines.length > 0) parts.push({ key: 'items', priority: 4, lines: itemLines });
-        var wmLines = self._buildWorkingMemorySection();
-        if (wmLines.length > 0) parts.push({ key: 'workingMemory', priority: 3, lines: wmLines });
-        var headers = { permanentFacts: '【记忆·永久事实】\n', changes: '【记忆·变化更新】(第' + currentTurn + '回合)\n', plot: '【记忆·当前剧情】\n', quests: '【记忆·进行中约定】\n', characters: '【记忆·角色状态】\n', events: '【记忆·重要事件】\n', items: '【记忆·持有物品】\n', workingMemory: '【记忆·最近对话】\n' };
-        var footers = { permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n', characters: '\n', events: '\n', items: '\n', workingMemory: '\n' };
+        if (eventLines.length > 0) parts.push({ key: 'events', priority: 5, lines: eventLines, changed: true });
+        
+        // ═══ 第七层：持有物品（关键词激活）═══
+        var itemLines = self._buildItemsSection(lastTurn, topic);
+        if (itemLines.length > 0) parts.push({ key: 'items', priority: 4, lines: itemLines, changed: true });
+        
+        // ═══ 第八层：场景状态（场景锁定）═══
+        var sceneLines = self._buildSceneStateSection(topic);
+        if (sceneLines.length > 0) parts.push({ key: 'sceneState', priority: 4, lines: sceneLines, changed: true });
+        
+        // ═══ 第九层：逐层摘要（替代原文工作记忆）═══
+        var summaryLines = self._buildSummaryLayersSection();
+        if (summaryLines.length > 0) parts.push({ key: 'summaryLayers', priority: 3, lines: summaryLines, changed: true });
+        
+        // 注入头尾模板
+        var headers = {
+            permanentFacts: '【记忆·永久事实】\n',
+            changes: '【记忆·变化更新】(第' + currentTurn + '回合)\n',
+            plot: '【记忆·当前剧情】\n',
+            quests: '【记忆·进行中约定】\n',
+            characters: '【记忆·角色状态】\n',
+            events: '【记忆·重要事件】\n',
+            items: '【记忆·持有物品】\n',
+            sceneState: '【记忆·场景状态】\n',
+            summaryLayers: '【记忆·对话摘要】\n'
+        };
+        var footers = {
+            permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n',
+            characters: '\n', events: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n'
+        };
+        
+        // 预算分配（变化驱动的模块优先分配）
         var remaining = budget.maxChars;
         var allocated = {};
-        parts.forEach(function(p) { var min = budget.minBudget[p.key] || 100; var headerLen = (headers[p.key] || '').length; var footerLen = (footers[p.key] || '').length; var linesChars = p.lines.join('\n').length; var actual = Math.min(min, linesChars + headerLen + footerLen); allocated[p.key] = actual; remaining -= actual; });
-        if (remaining > 0) { var sorted = parts.slice().sort(function(a, b) { return b.priority - a.priority; }); sorted.forEach(function(p) { var ideal = (budget.idealBudget[p.key] || 200) - allocated[p.key]; if (ideal <= 0) return; var linesChars = p.lines.join('\n').length; var want = Math.min(ideal, linesChars); var give = Math.min(want, remaining); allocated[p.key] += give; remaining -= give; }); }
+        parts.forEach(function(p) {
+            var min = budget.minBudget[p.key] || 100;
+            var headerLen = (headers[p.key] || '').length;
+            var footerLen = (footers[p.key] || '').length;
+            var linesChars = p.lines.join('\n').length;
+            // 变化驱动的模块：如果无变化，分配0
+            if (!p.changed) { allocated[p.key] = 0; return; }
+            var actual = Math.min(min, linesChars + headerLen + footerLen);
+            allocated[p.key] = actual;
+            remaining -= actual;
+        });
+        // 剩余预算按优先级分配
+        if (remaining > 0) {
+            var sorted = parts.filter(function(p) { return p.changed; }).slice().sort(function(a, b) { return b.priority - a.priority; });
+            sorted.forEach(function(p) {
+                var ideal = (budget.idealBudget[p.key] || 200) - allocated[p.key];
+                if (ideal <= 0) return;
+                var linesChars = p.lines.join('\n').length;
+                var want = Math.min(ideal, linesChars);
+                var give = Math.min(want, remaining);
+                allocated[p.key] += give;
+                remaining -= give;
+            });
+        }
+        
+        // 组装注入文本
         var injection = '';
-        parts.forEach(function(p) { var alloc = allocated[p.key] || 0; var header = headers[p.key] || ''; var footer = footers[p.key] || ''; var contentBudget = alloc - header.length - footer.length; if (contentBudget <= 0) return; var content = p.lines.join('\n'); if (content.length > contentBudget) content = truncateByChars(content, contentBudget, '...'); injection += header + content + footer; });
-        self._lastInjectionStats = { totalChars: injection.length, budget: budget.maxChars, moduleChars: {} };
-        parts.forEach(function(p) { self._lastInjectionStats.moduleChars[p.key] = allocated[p.key] || 0; });
+        parts.forEach(function(p) {
+            if (!p.changed) return; // 变化驱动：跳过无变化模块
+            var alloc = allocated[p.key] || 0;
+            var header = headers[p.key] || '';
+            var footer = footers[p.key] || '';
+            var contentBudget = alloc - header.length - footer.length;
+            if (contentBudget <= 0) return;
+            var content = p.lines.join('\n');
+            if (content.length > contentBudget) content = truncateByChars(content, contentBudget, '...');
+            injection += header + content + footer;
+        });
+        
+        self._lastInjectionStats = { totalChars: injection.length, budget: budget.maxChars, moduleChars: {}, skippedModules: [] };
+        parts.forEach(function(p) {
+            self._lastInjectionStats.moduleChars[p.key] = allocated[p.key] || 0;
+            if (!p.changed) self._lastInjectionStats.skippedModules.push(p.key);
+        });
         self.lastInjectionTurn = currentTurn;
         return injection;
     },
@@ -1114,7 +1333,10 @@ var GameMemory = {
         var typeLabels = { pcIdentity: '主角', worldRules: '设定规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺/约定' };
         ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'].forEach(function(t) {
             var list = pf[t];
-            if (list && list.length > 0) { lines.push('【' + typeLabels[t] + '】'); list.forEach(function(a) { lines.push('• ' + a.content); }); }
+            if (list && list.length > 0) {
+                lines.push('【' + typeLabels[t] + '】');
+                list.forEach(function(a) { lines.push('• ' + a.content); });
+            }
         });
         return lines;
     },
@@ -1122,16 +1344,49 @@ var GameMemory = {
     _buildChangeUpdateSection: function(lastTurn) {
         var lines = [];
         var self = this;
+        var gameTime = self.getGameTimeStr();
+        // 角色变化（带时间锚点）
         Object.keys(self.tables.characters).forEach(function(name) {
             var c = self.tables.characters[name];
-            if (c.lastChangedTurn > lastTurn) { var line = '• 角色·' + name; var changes = []; if (c.history && c.history.length > 0) { var lastH = c.history[c.history.length - 1]; if (lastH.changes) changes.push(lastH.changes); } if (c.mood) changes.push('心情：' + c.mood); if (c.location) changes.push('位置：' + c.location); if (changes.length > 0) line += '：' + changes.join(' | '); lines.push(line); }
+            if (c.lastChangedTurn > lastTurn) {
+                var relTime = self._calculateRelativeTime(c.gameTime || '');
+                var timeTag = relTime ? '(' + relTime + ')' : '';
+                var line = '• ' + name + timeTag;
+                var changes = [];
+                if (c.history && c.history.length > 0) {
+                    var lastH = c.history[c.history.length - 1];
+                    if (lastH.changes) changes.push(lastH.changes);
+                }
+                if (c.mood) changes.push('心情：' + c.mood);
+                if (c.location) changes.push('位置：' + c.location);
+                if (changes.length > 0) line += '：' + changes.join(' | ');
+                lines.push(line);
+            }
         });
+        // 物品变化（带时间锚点）
         Object.keys(self.tables.items).forEach(function(name) {
             var it = self.tables.items[name];
-            if (it.lastChangedTurn > lastTurn) { var line = '• 物品·' + name; if (it.history && it.history.length > 0) { var lastH2 = it.history[it.history.length - 1]; line += '：数量 ' + lastH2.from + '→' + lastH2.to; } lines.push(line); }
+            if (it.lastChangedTurn > lastTurn) {
+                var relTime2 = self._calculateRelativeTime(it.gameTime || '');
+                var timeTag2 = relTime2 ? '(' + relTime2 + ')' : '';
+                var line = '• 物品·' + name + timeTag2;
+                if (it.history && it.history.length > 0) {
+                    var lastH2 = it.history[it.history.length - 1];
+                    line += '：数量 ' + lastH2.from + '→' + lastH2.to;
+                }
+                lines.push(line);
+            }
         });
-        self.events.forEach(function(e) { if (e.turn > lastTurn) lines.push('• 新事件：' + e.content); });
-        if (self.gameClock.lastUpdateTurn > lastTurn) lines.push('• 时间：' + self.getGameTimeStr());
+        // 新事件
+        self.events.forEach(function(e) {
+            if (e.turn > lastTurn) {
+                var relTime3 = self._calculateRelativeTime(e.gameTime || '');
+                var timeTag3 = relTime3 ? ' [' + relTime3 + ']' : '';
+                lines.push('• 新事件' + timeTag3 + '：' + e.content);
+            }
+        });
+        // 时间变化
+        if (self.gameClock.lastUpdateTurn > lastTurn) lines.push('• 时间：' + gameTime);
         return lines;
     },
 
@@ -1152,39 +1407,152 @@ var GameMemory = {
         return lines;
     },
 
-    _buildCharactersSection: function(lastTurn) {
+    _buildCharactersSection: function(lastTurn, topic) {
         var lines = [];
         var self = this;
-        var topic = self.detectCurrentTopic();
+        if (!topic) topic = self.detectCurrentTopic();
         var allChars = Object.keys(self.tables.characters).map(function(n) { return self.tables.characters[n]; });
-        allChars.forEach(function(c) { var score = (c.history ? c.history.length : 0) * 10; if (typeof c.favorability === 'number') score += Math.abs(c.favorability - 50); if (topic.characters && topic.characters.indexOf(c.name) >= 0) score += 500; if (c.lastChangedTurn > lastTurn) score += 300; c._injectScore = score; });
+        // 评分排序（访问计数 + 话题相关 + 近期变化）
+        allChars.forEach(function(c) {
+            var score = 0;
+            // 复用评分（Arkhon风格：被提及越多越重要）
+            score += (c.accessCount || 0) * 5;
+            // 话题相关
+            if (topic.characters && topic.characters.indexOf(c.name) >= 0) score += 500;
+            // 近期变化
+            if (c.lastChangedTurn > lastTurn) score += 300;
+            // 好感度极端值
+            if (typeof c.favorability === 'number') score += Math.abs(c.favorability - 50);
+            c._injectScore = score;
+        });
         allChars.sort(function(a, b) { return b._injectScore - a._injectScore; });
-        allChars.slice(0, 6).forEach(function(c) { var line = '• ' + c.name; if (c.title) line += '（' + c.title + '）'; if (c.relation) line += ' | 关系:' + c.relation; if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability; if (c.mood) line += ' | 心情:' + c.mood; if (c.location) line += ' | 位置:' + c.location; if (c.status) line += ' | ' + c.status; lines.push(line); });
+        
+        // 关键词激活：只注入相关的角色（有变化/被提及/高访问的）
+        var relevantChars = allChars.filter(function(c) {
+            // 始终包含：近期有变化的
+            if (c.lastChangedTurn > lastTurn) return true;
+            // 始终包含：高访问计数的（被频繁提及）
+            if ((c.accessCount || 0) >= 3) return true;
+            // 按需包含：当前话题相关的
+            if (self._isRelevantToScene(c.name, c.keywords, topic)) return true;
+            // 始终包含：好感度极端的
+            if (typeof c.favorability === 'number' && (c.favorability >= 80 || c.favorability <= 20)) return true;
+            return false;
+        });
+        
+        // 最多注入8个角色
+        relevantChars.slice(0, 8).forEach(function(c) {
+            var relTime = self._calculateRelativeTime(c.gameTime || '');
+            var timeTag = relTime ? ' [' + relTime + ']' : '';
+            var line = '• ' + c.name + timeTag;
+            if (c.title) line += '（' + c.title + '）';
+            if (c.relation) line += ' | 关系:' + c.relation;
+            if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
+            if (c.mood) line += ' | 心情:' + c.mood;
+            if (c.location) line += ' | 位置:' + c.location;
+            if (c.status) line += ' | ' + c.status;
+            lines.push(line);
+        });
         return lines;
     },
 
     _buildEventsSection: function(lastTurn) {
         var lines = [];
-        this._recalcEventDecayScores(this.currentTurn);
-        this.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, 10).forEach(function(e) { var imp = e.importance || 5; lines.push((imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢')) + '[重要度' + imp + '] ' + e.content); });
+        var self = this;
+        self._recalcEventDecayScores(self.currentTurn);
+        // 增强衰减：时间 + 复用双因子
+        self.events.forEach(function(e) {
+            var age = Math.max(0, self.currentTurn - (e.turn || 0));
+            var accessBonus = Math.min(3, (e.accessCount || 0) * 0.5);
+            var decay = Math.max(0.3, 1 - age / 80);
+            e.decayScore = (e.importance || 5) * decay + accessBonus;
+            if (e.importance >= 9) e.decayScore = (e.importance || 5) * Math.max(0.6, 1 - age / 150) + accessBonus;
+        });
+        self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, 12).forEach(function(e) {
+            var imp = e.importance || 5;
+            var relTime = self._calculateRelativeTime(e.gameTime || '');
+            var timeTag = relTime ? ' [' + relTime + ']' : '';
+            lines.push((imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢')) + '[重要度' + imp + ']' + timeTag + ' ' + e.content);
+        });
         return lines;
     },
 
-    _buildItemsSection: function(lastTurn) {
+    _buildItemsSection: function(lastTurn, topic) {
         var lines = [];
         var self = this;
-        var topic = self.detectCurrentTopic();
-        Object.keys(self.tables.items).map(function(n) { return self.tables.items[n]; }).filter(function(it) { return it && it.qty > 0; })
-            .sort(function(a, b) { var aScene = (topic.items && topic.items.indexOf(a.name) >= 0) ? 1000 : 0; var bScene = (topic.items && topic.items.indexOf(b.name) >= 0) ? 1000 : 0; return (bScene + (b.lastChangedTurn > lastTurn ? 100 : 0)) - (aScene + (a.lastChangedTurn > lastTurn ? 100 : 0)); })
-            .slice(0, 8).forEach(function(it) { var line = '• ' + it.name; if (it.qty > 1) line += ' x' + it.qty + (it.unit || ''); if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']'; if (it.desc) line += ' - ' + truncateByChars(it.desc, 30, '...'); lines.push(line); });
+        if (!topic) topic = self.detectCurrentTopic();
+        var allItems = Object.keys(self.tables.items).map(function(n) { return self.tables.items[n]; }).filter(function(it) { return it && it.qty > 0; });
+        
+        // 关键词激活：只注入相关物品
+        var relevantItems = allItems.filter(function(it) {
+            // 始终包含：近期有变化的
+            if (it.lastChangedTurn > lastTurn) return true;
+            // 始终包含：高访问计数的
+            if ((it.accessCount || 0) >= 2) return true;
+            // 按需包含：当前话题相关的
+            if (self._isRelevantToScene(it.name, it.keywords, topic)) return true;
+            // 始终包含：珍稀及以上品质的
+            if (it.rarity === '珍稀' || it.rarity === '传说') return true;
+            return false;
+        });
+        
+        relevantItems.sort(function(a, b) {
+            var aScore = (a.accessCount || 0) * 10 + (a.lastChangedTurn > lastTurn ? 100 : 0);
+            var bScore = (b.accessCount || 0) * 10 + (b.lastChangedTurn > lastTurn ? 100 : 0);
+            return bScore - aScore;
+        }).slice(0, 10).forEach(function(it) {
+            var line = '• ' + it.name;
+            if (it.qty > 1) line += ' x' + it.qty + (it.unit || '');
+            if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']';
+            if (it.desc) line += ' - ' + truncateByChars(it.desc, 30, '...');
+            lines.push(line);
+        });
         return lines;
     },
 
     _buildWorkingMemorySection: function() {
+        // 已被 _buildSummaryLayersSection 替代，保留空方法兼容旧调用
+        return [];
+    },
+
+    // 逐层摘要注入（Qvink风格：近详细→远压缩）
+    _buildSummaryLayersSection: function() {
         var lines = [];
-        if (this.workingMemory.messages && this.workingMemory.messages.length > 0) {
-            this.workingMemory.messages.slice(-6).forEach(function(msg) { lines.push((msg.role === 'user' ? '玩家' : 'AI') + ': ' + truncateByChars(msg.content, 120, '...')); });
+        var self = this;
+        // 远层：关键句
+        if (self._summaryLayers.far && self._summaryLayers.far.length > 0) {
+            lines.push('〔更早〕');
+            self._summaryLayers.far.slice(-5).forEach(function(s) { lines.push('• ' + s); });
         }
+        // 中层：压缩摘要
+        if (self._summaryLayers.mid && self._summaryLayers.mid.length > 0) {
+            lines.push('〔近期摘要〕');
+            self._summaryLayers.mid.slice(-4).forEach(function(s) { lines.push('• ' + s); });
+        }
+        // 近层：详细
+        if (self._summaryLayers.near && self._summaryLayers.near.length > 0) {
+            lines.push('〔最近对话〕');
+            self._summaryLayers.near.forEach(function(s) { lines.push('• ' + s); });
+        }
+        return lines;
+    },
+
+    // 场景状态注入（Horae风格：场景锁定）
+    _buildSceneStateSection: function(topic) {
+        var lines = [];
+        var self = this;
+        if (!topic) topic = self.detectCurrentTopic();
+        // 当前所在地点的场景状态
+        Object.keys(self.tables.locations).forEach(function(name) {
+            var loc = self.tables.locations[name];
+            // 只注入当前相关的地点
+            if (!self._isRelevantToScene(name, loc.keywords, topic) && loc.lastChangedTurn < self.lastInjectionTurn) return;
+            if (loc.sceneState) {
+                var line = '• ' + name + '：' + loc.sceneState;
+                if (loc.locked) line += ' [锁定]';
+                lines.push(line);
+            }
+        });
         return lines;
     },
 
@@ -1223,7 +1591,7 @@ var GameMemory = {
             extractedInfo.characters.forEach(function(char) {
                 var key = char.name;
                 var existing = self.tables.characters[key];
-                self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, locked: existing ? existing.locked : false };
+                self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
             });
         }
         if (extractedInfo.items.length > 0) {
@@ -1232,7 +1600,7 @@ var GameMemory = {
                 var existing = self.tables.items[key];
                 var oldQty = existing ? existing.qty : 0;
                 var newQty = item.count || 1;
-                self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, history: existing ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
+                self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
             });
         }
         if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; }); }
@@ -1446,14 +1814,20 @@ var GameMemory = {
         var evt = (typeof eventOrContent === 'string') ? { content: eventOrContent, importance: 5 } : eventOrContent;
         if (!evt || !evt.content) return false;
         if (this.events.some(function(e) { return e.content === evt.content; })) return false;
-        this.events.push({ content: evt.content, turn: this.currentTurn, gameTime: this.getGameTimeStr(), importance: evt.importance || 5, decayScore: evt.importance || 5 });
+        this.events.push({ content: evt.content, turn: this.currentTurn, gameTime: this.getGameTimeStr(), importance: evt.importance || 5, decayScore: evt.importance || 5, accessCount: 0 });
         this._pruneImportantEvents(50);
         try { this.saveToStorage(); } catch(e) {}
         return true;
     },
 
     _recalcEventDecayScores: function(currentTurn) {
-        this.events.forEach(function(e) { var age = Math.max(0, currentTurn - (e.turn || 0)); var decay = Math.max(0.3, 1 - age / 80); e.decayScore = (e.importance || 5) * decay; if (e.importance >= 9) e.decayScore = (e.importance || 5) * Math.max(0.6, 1 - age / 150); });
+        this.events.forEach(function(e) {
+            var age = Math.max(0, currentTurn - (e.turn || 0));
+            var accessBonus = Math.min(3, (e.accessCount || 0) * 0.5);
+            var decay = Math.max(0.3, 1 - age / 80);
+            e.decayScore = (e.importance || 5) * decay + accessBonus;
+            if (e.importance >= 9) e.decayScore = (e.importance || 5) * Math.max(0.6, 1 - age / 150) + accessBonus;
+        });
     },
 
     _pruneImportantEvents: function(maxCount) {
@@ -1478,7 +1852,7 @@ var GameMemory = {
     _detectChanges: function() { if (this._changeLog.length > 100) this._changeLog = this._changeLog.slice(-50); },
 
     detectCurrentTopic: function() {
-        var topic = { characters: [], items: [], locations: [] };
+        var topic = { characters: [], items: [], locations: [], keywords: [] };
         try {
             if (typeof gameState === 'undefined' || !gameState.conversationHistory) return topic;
             var allText = gameState.conversationHistory.slice(-3).map(function(m) { return m.content || ''; }).join(' ');
@@ -1486,6 +1860,13 @@ var GameMemory = {
             Object.keys(self.tables.characters).forEach(function(name) { if (allText.indexOf(name) >= 0) topic.characters.push(name); });
             Object.keys(self.tables.items).forEach(function(name) { if (allText.indexOf(name) >= 0) topic.items.push(name); });
             Object.keys(self.tables.locations).forEach(function(name) { if (allText.indexOf(name) >= 0) topic.locations.push(name); });
+            // 提取关键词（动词+名词组合）
+            var kwRe = /(?:在|去|来|到|找|打|杀|买|卖|给|拿|用|吃|喝|穿|学|练|修|突破|战斗|逃跑|追|躲|等|看|听|说|问|想|记|忘)([^，。！？\s]{2,8})/g;
+            var m;
+            while ((m = kwRe.exec(allText)) !== null) {
+                var kw = m[1].trim();
+                if (kw.length >= 2 && topic.keywords.indexOf(kw) === -1) topic.keywords.push(kw);
+            }
         } catch(e) {}
         return topic;
     },
@@ -1493,7 +1874,13 @@ var GameMemory = {
     _adaptBudget: function() {
         var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
         var base = 4000; if (ctxSize >= 32000) base = 12000; else if (ctxSize >= 16000) base = 8000; else if (ctxSize >= 12000) base = 6000;
-        this.budget.maxChars = base; var ratio = base / 4000;
+        this.budget.maxChars = base;
+        // 确保新模块有预算条目
+        if (!this.budget.minBudget.sceneState) this.budget.minBudget.sceneState = 100;
+        if (!this.budget.minBudget.summaryLayers) this.budget.minBudget.summaryLayers = 200;
+        if (!this.budget.idealBudget.sceneState) this.budget.idealBudget.sceneState = 200;
+        if (!this.budget.idealBudget.summaryLayers) this.budget.idealBudget.summaryLayers = 400;
+        var ratio = base / 4000;
         Object.keys(this.budget.minBudget).forEach(function(k) { this[k] = Math.floor(this[k] * ratio); }, this.budget.minBudget);
         Object.keys(this.budget.idealBudget).forEach(function(k) { this[k] = Math.floor(this[k] * ratio); }, this.budget.idealBudget);
     },
@@ -1527,7 +1914,7 @@ var GameMemory = {
         if (self._saving) { self._pendingSave = true; return; }
         self._saving = true;
         try {
-            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, savedAt: Date.now() };
+            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, savedAt: Date.now() };
             var result = safeSetItem('freeScript_memory', JSON.stringify(data));
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
@@ -1565,6 +1952,8 @@ var GameMemory = {
         if (data.compressionConfig) self.compressionConfig = data.compressionConfig;
         if (data.stats) self.stats = data.stats;
         if (data._changeLog) self._changeLog = data._changeLog;
+        if (data._injectionSnapshots) self._injectionSnapshots = data._injectionSnapshots;
+        if (data._summaryLayers) self._summaryLayers = data._summaryLayers;
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         if (!self.workingMemory.messages) self.workingMemory.messages = [];
         if (!self.workingMemory.recentMessages) self.workingMemory.recentMessages = [];
@@ -1584,6 +1973,8 @@ var GameMemory = {
         this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
         this._changeLog = []; this._lastInjectedSnapshot = null; this.summaryHistory = []; this.currentSummaryIndex = -1;
+        this._injectionSnapshots = {};
+        this._summaryLayers = { near: [], mid: [], far: [] };
         localStorage.removeItem('freeScript_memory'); localStorage.removeItem('freeScript_enhancedMemory');
     },
 
@@ -1666,7 +2057,7 @@ Object.defineProperty(GameMemory, 'injectionBudget', {
 });
 
 Object.defineProperty(GameMemory, 'workingMemory', {
-    get: function() { return this._workingMemory || { messages: [], turns: [], recentMessages: [], currentTopic: null }; },
+    get: function() { return this._workingMemory || { messages: [], turns: [], recentMessages: [], currentTopic: null, nearSummary: '', midSummary: '', farSummary: '' }; },
     set: function(val) { this._workingMemory = val; },
     configurable: true
 });
@@ -1727,7 +2118,7 @@ var MemoryManagerUI = {
         if (!content) return;
         var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
         if (!gm) { content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">记忆系统未初始化</div>'; return; }
-        var tabMap = { overview: 'renderOverview', permanentFacts: 'renderPermanentFacts', characters: 'renderCharacters', items: 'renderItems', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', quests: 'renderQuests', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch' };
+        var tabMap = { overview: 'renderOverview', permanentFacts: 'renderPermanentFacts', characters: 'renderCharacters', items: 'renderItems', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', quests: 'renderQuests', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState' };
         var method = tabMap[this.currentTab];
         content.innerHTML = (method && this[method]) ? this[method](gm) : this.renderOverview(gm);
     },
@@ -1750,10 +2141,90 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">进行中约定</div><div style="font-size:20px;font-weight:600;">' + pendingQuests + ' 待办</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + gm.currentTurn + '</div></div>'
             + '</div></div>'
+            + '<div class="memory-card"><div class="memory-card-title">新功能状态</div><div style="display:flex;gap:16px;flex-wrap:wrap;">'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">场景状态</div><div style="font-size:14px;font-weight:600;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点有场景锁定</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
+            + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span><button onclick="MemoryManagerUI.switchTab(\'injection\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">查看详情</button></div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
             + (gm._lastInjectionStats ? '总字符: ' + gm._lastInjectionStats.totalChars + ' / 预算: ' + gm._lastInjectionStats.budget : '尚未生成注入内容')
             + '</div></div></div>';
+    },
+
+    renderSummaryLayers: function(gm) {
+        var self = this;
+        var layers = gm._summaryLayers || { near: [], mid: [], far: [] };
+        var html = '<div class="memory-card"><div class="memory-card-title">逐层摘要</div>';
+        html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">近层保留详细对话，中层压缩摘要，远层只保留关键句。越远的记忆越精简，节省Token。</div>';
+        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--accent);">〔最近对话〕详细 · ' + (layers.near || []).length + ' 条</div>';
+        if (layers.near && layers.near.length > 0) {
+            layers.near.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + self._esc(s) + '</div>'; });
+        } else {
+            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无近层摘要</div>';
+        }
+        html += '</div>';
+        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#ff9500;">〔近期摘要〕压缩 · ' + (layers.mid || []).length + ' 条</div>';
+        if (layers.mid && layers.mid.length > 0) {
+            layers.mid.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + self._esc(s) + '</div>'; });
+        } else {
+            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无中层摘要</div>';
+        }
+        html += '</div>';
+        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#999;">〔更早记忆〕关键句 · ' + (layers.far || []).length + ' 条</div>';
+        if (layers.far && layers.far.length > 0) {
+            layers.far.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;color:var(--text-secondary);">' + self._esc(s) + '</div>'; });
+        } else {
+            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无远层摘要</div>';
+        }
+        html += '</div>';
+        html += '</div>';
+        return html;
+    },
+
+    renderSceneState: function(gm) {
+        var self = this;
+        var locs = Object.values(gm.tables.locations);
+        var html = '<div class="memory-card"><div class="memory-card-title">场景状态</div>';
+        html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">场景锁定：标记地点的当前状态（如"壁炉燃烧中"），AI不会遗忘已锁定的场景细节。</div>';
+        if (locs.length === 0) {
+            html += '<div style="padding:20px;text-align:center;color:var(--text-tertiary);">暂无地点数据</div>';
+        } else {
+            locs.forEach(function(loc) {
+                var hasScene = !!loc.sceneState;
+                html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;">';
+                html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
+                html += '<div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>';
+                html += '<button onclick="MemoryManagerUI.editSceneState(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑场景</button>';
+                html += '</div>';
+                if (hasScene) {
+                    html += '<div style="font-size:13px;color:var(--text-secondary);padding:6px 8px;background:rgba(255,149,0,0.1);border-radius:4px;">' + self._esc(loc.sceneState) + '</div>';
+                } else {
+                    html += '<div style="font-size:12px;color:var(--text-tertiary);">未设置场景状态</div>';
+                }
+                if (loc.accessCount) {
+                    html += '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">提及次数: ' + loc.accessCount + '</div>';
+                }
+                html += '</div>';
+            });
+        }
+        html += '</div>';
+        return html;
+    },
+
+    editSceneState: function(name) {
+        var gm = window.GameMemory; var loc = gm.tables.locations[name]; if (!loc) return;
+        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">'
+            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">场景状态（描述当前场景细节，AI会记住）</label><textarea id="editSceneState" style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;" placeholder="如：壁炉燃烧中，桌上摆着两杯热茶...">' + this._esc(loc.sceneState || '') + '</textarea></div>'
+            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">锁定场景 <span style="font-size:11px;">（锁定后状态不会自动清除）</span></label><input id="editSceneLocked" type="checkbox"' + (loc.locked ? ' checked' : '') + ' style="width:auto;"></div>'
+            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'sceneState\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveSceneState(\'' + this._escAttr(name) + '\')" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
+    },
+
+    saveSceneState: function(name) {
+        var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return;
+        gm.tables.locations[name].sceneState = document.getElementById('editSceneState').value.trim();
+        gm.tables.locations[name].locked = document.getElementById('editSceneLocked').checked;
+        gm.saveToStorage(); this.switchTab('sceneState'); UI.toast('场景状态已保存');
     },
 
     renderPermanentFacts: function(gm) {
@@ -1813,7 +2284,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>角色档案</span><button onclick="MemoryManagerUI.addCharacter()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">+ 添加角色</button></div>';
         if (chars.length === 0) html += '<div class="memory-empty-state"><div>暂无角色数据</div></div>';
         else chars.forEach(function(char) {
-            html += '<div class="memory-character-card"><div class="memory-character-avatar">👤</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' 🔒' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + '</div><div style="display:flex;flex-direction:column;gap:4px;"><button onclick="MemoryManagerUI.editCharacter(\'' + self._escAttr(char.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteCharacter(\'' + self._escAttr(char.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar">👤</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' 🔒' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + self._esc(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div><div style="display:flex;flex-direction:column;gap:4px;"><button onclick="MemoryManagerUI.editCharacter(\'' + self._escAttr(char.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteCharacter(\'' + self._escAttr(char.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
         });
         html += '</div>'; return html;
     },
@@ -1861,7 +2332,7 @@ var MemoryManagerUI = {
         if (items.length === 0) html += '<div class="memory-empty-state"><div>暂无物品数据</div></div>';
         else items.forEach(function(item) {
             var rarityColor = { '普通': '#999', '精良': '#34c759', '珍稀': '#007aff', '传说': '#ff9500' }[item.rarity] || '#999';
-            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + '</div><div style="display:flex;flex-direction:column;gap:4px;"><button onclick="MemoryManagerUI.editItem(\'' + self._escAttr(item.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteItem(\'' + self._escAttr(item.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div><div style="display:flex;flex-direction:column;gap:4px;"><button onclick="MemoryManagerUI.editItem(\'' + self._escAttr(item.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteItem(\'' + self._escAttr(item.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
         });
         html += '</div>'; return html;
     },
@@ -1907,7 +2378,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>地点记录</span><button onclick="MemoryManagerUI.addLocation()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">+ 添加地点</button></div>';
         if (locs.length === 0) html += '<div class="memory-empty-state"><div>暂无地点数据</div></div>';
         else locs.forEach(function(loc) {
-            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + '</div><div style="display:flex;gap:4px;"><button onclick="MemoryManagerUI.editLocation(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteLocation(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + self._esc(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div><div style="display:flex;gap:4px;"><button onclick="MemoryManagerUI.editLocation(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteLocation(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
         });
         html += '</div>'; return html;
     },
@@ -1979,7 +2450,7 @@ var MemoryManagerUI = {
         else events.forEach(function(event, idx) {
             var realIdx = gm.events.length - 1 - idx; var imp = event.importance || 5;
             var icon = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
-            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + ' | 重要度: ' + self._esc(imp) + '/10</div></div><button onclick="MemoryManagerUI.deleteEvent(' + realIdx + ')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div>';
+            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + (event.gameTime ? ' (' + self._esc(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + self._esc(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div><button onclick="MemoryManagerUI.deleteEvent(' + realIdx + ')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div>';
         });
         html += '</div>'; return html;
     },
@@ -2044,7 +2515,9 @@ var MemoryManagerUI = {
         var injection = gm.buildInjection();
         var stats = gm._lastInjectionStats || {};
         var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>注入预览</span><button onclick="MemoryManagerUI.refreshInjection()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">🔄 刷新</button></div>'
-            + '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text-secondary);">总字符: ' + (stats.totalChars || 0) + ' / 预算: ' + (stats.budget || 0) + '</div></div>'
+            + '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text-secondary);">总字符: ' + (stats.totalChars || 0) + ' / 预算: ' + (stats.budget || 0) + '</div>'
+            + (stats.skippedModules && stats.skippedModules.length > 0 ? '<div style="font-size:11px;color:#ff9500;margin-top:4px;">变化驱动跳过: ' + stats.skippedModules.join(', ') + ' (无变化，零Token)</div>' : '')
+            + '</div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;font-family:monospace;">' + self._esc(injection) + '</div></div>';
         return html;
     },
