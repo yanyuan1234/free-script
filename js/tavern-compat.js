@@ -1626,7 +1626,7 @@ var GameMemory = {
     _buildQuestsSection: function() {
         var lines = [];
         var currentTurn = this.currentTurn;
-        this.quests.filter(function(q) { return q.status === 'pending'; }).forEach(function(q) { var age = currentTurn - (q.createdTurn || 0); lines.push('• ' + (age > 20 ? '[长期未兑现] ' : '') + q.content); });
+        this.quests.filter(function(q) { return q.status === 'pending'; }).forEach(function(q) { lines.push('• ' + q.content); });
         return lines;
     },
 
@@ -1663,8 +1663,9 @@ var GameMemory = {
             return false;
         });
         
-        // 最多注入8个角色
-        relevantChars.slice(0, 8).forEach(function(c) {
+        // 最多注入角色数（根据预算动态调整）
+        var maxChars = (self.budget && self.budget.maxChars > 4000) ? 12 : 8;
+        relevantChars.slice(0, maxChars).forEach(function(c) {
             var relTime = self._calculateRelativeTime(c.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
             var line = '• ' + c.name + timeTag;
@@ -1683,7 +1684,8 @@ var GameMemory = {
         var lines = [];
         var self = this;
         self._recalcEventDecayScores(self.currentTurn);
-        self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, 12).forEach(function(e) {
+        var maxEvents = (self.budget && self.budget.maxChars > 4000) ? 18 : 12;
+        self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, maxEvents).forEach(function(e) {
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';

@@ -227,13 +227,10 @@ function buildRecentChatContext() {
             n++;
         }
         if (blocks.length === 0) return '';
-        return '\n【玩家最近私聊记录 - 剧情必须呼应】\n' +
+        return '\n【玩家最近私聊记录】\n' +
             '玩家在剧情之外与部分 NPC 通过手机私聊过，以下是最近对话：\n' +
             blocks.join('\n\n') + '\n' +
-            '【私聊影响剧情规则】\n' +
-            '1. 私聊中玩家与 NPC 做出的【约定、承诺、求助、表白、警告、情报分享、吵架】必须在本回合剧情中产生实际后果（兑现/回应/作用/后果）。\n' +
-            '2. 私聊的情绪会影响该 NPC 在本回合的 favorability、relation、npcMessages 措辞、diary 内容、moments 措辞。\n' +
-            '3. 不要在剧情中直接复述私聊原话（除非剧情需要），而是用剧情事件自然体现私聊的影响。\n';
+            '你理解私聊中的约定、情绪、情报会自然影响剧情走向和NPC态度，请让私聊的后果在剧情中自然体现。\n';
     } catch (e) {
         console.warn('[buildRecentChatContext] 失败：', e);
         return '';
@@ -250,23 +247,17 @@ if (_origStartBtn) {
 function buildProtagonistPrompt() {
     var mc = gameState.protagonistSetup;
     if (!mc || Object.keys(mc).length === 0) return '';
-    var lines = ['【玩家指定的主角设定 - 绝对必须严格遵守，违反会导致游戏崩溃】'];
-    if (mc.mcName) lines.push('【主角姓名】: ' + mc.mcName);
-    if (mc.mcGender) lines.push('【主角性别】: ' + mc.mcGender);
-    if (mc.mcAge) lines.push('【主角年龄】: ' + mc.mcAge);
-    if (mc.mcIdentity) lines.push('【主角身份】: ' + mc.mcIdentity);
-    if (mc.mcPersonality) lines.push('【主角性格】: ' + mc.mcPersonality);
-    if (mc.mcAppearance) lines.push('【主角外貌】: ' + mc.mcAppearance);
-    if (mc.mcAbility) lines.push('【主角特殊能力】: ' + mc.mcAbility);
-    if (mc.mcExtra) lines.push('【主角其他设定】: ' + mc.mcExtra);
+    var lines = ['【玩家指定的主角设定 - 请严格遵守】'];
+    if (mc.mcName) lines.push('姓名: ' + mc.mcName);
+    if (mc.mcGender) lines.push('性别: ' + mc.mcGender);
+    if (mc.mcAge) lines.push('年龄: ' + mc.mcAge);
+    if (mc.mcIdentity) lines.push('身份: ' + mc.mcIdentity);
+    if (mc.mcPersonality) lines.push('性格: ' + mc.mcPersonality);
+    if (mc.mcAppearance) lines.push('外貌: ' + mc.mcAppearance);
+    if (mc.mcAbility) lines.push('特殊能力: ' + mc.mcAbility);
+    if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
     lines.push('');
-    lines.push('【主角设定强制执行规则 - 违反任何一条都是严重错误】');
-    lines.push('1. player.name 必须严格等于【主角姓名】: ' + (mc.mcName || '（玩家未指定，可自由设定）'));
-    lines.push('2. 绝对禁止把主角放进characters数组！主角只能在player字段！');
-    lines.push('3. 绝对禁止给主角改名、换身份、变成NPC！');
-    lines.push('4. 如果玩家只提供了名字，其他字段（年龄/身份/性格）可以根据名字和世界观合理补全，但名字必须完全一致！');
-    lines.push('5. 剧情中主角必须是玩家操控的角色，不能是旁观者或配角！');
-    lines.push('6. 如果违反以上任何一条，游戏逻辑会崩溃，玩家体验会被彻底破坏！');
+    lines.push('你理解主角是玩家操控的角色，player.name 必须等于主角姓名，主角信息只能放在 player 字段，不能放入 characters。');
     lines.push('');
     return lines.join('\n');
 }
@@ -1341,14 +1332,14 @@ async function _compressConversation(removed, sys) {
             var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你是专业的剧情记忆管理专家。现在需要增量更新剧情摘要。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n## 任务要求\n请将新增内容整合到已有摘要中，生成更新后的结构化摘要。\n\n## 输出格式要求\n请按以下结构输出，每个部分用【】标记：\n\n【剧情主线】\n用2-3句话概括核心剧情走向，突出关键转折点。\n\n【角色动态】\n列出出场角色的状态变化（新登场、关系变化、情绪变化、获得/失去物品等）。\n格式：角色名 - 变化描述\n\n【重要事件】\n提取关键事件（战斗、对话、发现、决策等），按时间顺序排列。\n\n【当前状态】\n玩家当前位置、持有物品、主要目标、面临的挑战。\n\n【待解决悬念】\n未完成的任务、未解答的问题、潜在的危机。\n\n## 注意事项\n- 保留已有摘要中的关键信息，添加新增内容中的重要事件\n- 删除冗余和重复内容\n- 区分"已解决"和"待解决"的事项\n- 关注角色的心理变化和关系演变\n- 突出剧情的因果关系\n- 摘要总字数控制在500字以内';
+        summaryPrompt = '你是剧情记忆管理专家。请将新增内容整合到已有摘要中，生成更新后的摘要。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在500字以内。';
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
             var text = m.content.length > 800 ? m.content.substring(0, 800) + '...(内容过长已截断)' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你是专业的剧情分析师和记忆管理专家。请对以下游戏对话进行深度结构化总结。\n\n## 输出格式要求\n\n请按以下结构输出，每个部分用【】标记：\n\n【剧情主线】\n用2-3句话概括核心剧情走向，突出关键转折点。\n\n【角色动态】\n列出出场角色的状态变化（新登场、关系变化、情绪变化、获得/失去物品等）。\n格式：角色名 - 变化描述\n\n【重要事件】\n提取关键事件（战斗、对话、发现、决策等），按时间顺序排列。\n\n【当前状态】\n玩家当前位置、持有物品、主要目标、面临的挑战。\n\n【待解决悬念】\n未完成的任务、未解答的问题、潜在的危机。\n\n## 注意事项\n- 保留所有重要细节，但避免冗余\n- 区分"已解决"和"待解决"的事项\n- 关注角色的心理变化和关系演变\n- 突出剧情的因果关系';
+        summaryPrompt = '你是剧情分析师。请对以下游戏对话进行深度结构化总结。\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。';
     }
     var summaryMessages = [{ role: 'system', content: summaryPrompt }, { role: 'user', content: '请对以上内容进行处理：\n\n' + summaryContent }];
     var summary = await callAI(summaryMessages, { temperature: 0.3 });
