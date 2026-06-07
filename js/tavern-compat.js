@@ -860,7 +860,6 @@ var GameMemory = {
     compressionConfig: { triggerThreshold: 0.75, cooldownMinutes: 5, incrementalUpdate: true, lastCompressionTurn: 0 },
     stats: { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 },
     _changeLog: [],
-    _lastInjectedSnapshot: null,
     summaryHistory: [],
     currentSummaryIndex: -1,
     _saving: false,
@@ -1684,14 +1683,6 @@ var GameMemory = {
         var lines = [];
         var self = this;
         self._recalcEventDecayScores(self.currentTurn);
-        // 增强衰减：时间 + 复用双因子
-        self.events.forEach(function(e) {
-            var age = Math.max(0, self.currentTurn - (e.turn || 0));
-            var accessBonus = Math.min(3, (e.accessCount || 0) * 0.5);
-            var decay = Math.max(0.3, 1 - age / 80);
-            e.decayScore = (e.importance || 5) * decay + accessBonus;
-            if (e.importance >= 9) e.decayScore = (e.importance || 5) * Math.max(0.6, 1 - age / 150) + accessBonus;
-        });
         self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).slice(0, 12).forEach(function(e) {
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
@@ -1732,11 +1723,6 @@ var GameMemory = {
             lines.push(line);
         });
         return lines;
-    },
-
-    _buildWorkingMemorySection: function() {
-        // 已被 _buildSummaryLayersSection 替代，保留空方法兼容旧调用
-        return [];
     },
 
     // 逐层摘要注入（Qvink风格：近详细→远压缩）
@@ -2151,7 +2137,7 @@ var GameMemory = {
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
-            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, stats: this.stats, savedAt: Date.now() };
+            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, stats: this.stats, savedAt: Date.now() };
             var r2 = safeSetItem('freeScript_memory', JSON.stringify(reduced));
             if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
             else console.error('[GameMemory] 降级保存仍然失败：', r2);
@@ -2183,6 +2169,13 @@ var GameMemory = {
         if (!self.workingMemory.messages) self.workingMemory.messages = [];
         if (!self.workingMemory.recentMessages) self.workingMemory.recentMessages = [];
         if (!self.plot.pendingMysteries) self.plot.pendingMysteries = [];
+        if (!self._injectionSnapshots) self._injectionSnapshots = {};
+        if (!self._summaryLayers) self._summaryLayers = { near: [], mid: [], far: [] };
+        if (!self._setupLayers) self._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
+        if (!self._setupLayers.setupKeywords) self._setupLayers.setupKeywords = [];
+        if (!self.workingMemory.nearSummary) self.workingMemory.nearSummary = '';
+        if (!self.workingMemory.midSummary) self.workingMemory.midSummary = '';
+        if (!self.workingMemory.farSummary) self.workingMemory.farSummary = '';
         return true;
     },
 
@@ -2195,9 +2188,9 @@ var GameMemory = {
         this.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
         this.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
         this.events = []; this.timeline = []; this.quests = [];
-        this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
+        this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [], nearSummary: '', midSummary: '', farSummary: '' };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
-        this._changeLog = []; this._lastInjectedSnapshot = null; this.summaryHistory = []; this.currentSummaryIndex = -1;
+        this._changeLog = []; this.summaryHistory = []; this.currentSummaryIndex = -1;
         this._injectionSnapshots = {};
         this._summaryLayers = { near: [], mid: [], far: [] };
         this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
