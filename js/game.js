@@ -126,6 +126,13 @@ function buildSystemPrompt(includeFormatRules) {
     var _safeUserPrompt = _sanitizePromptInput(gameState.userPrompt);
     var _safeCustomStyle = _sanitizePromptInput(gameState.customStyle);
 
+    // 设定分层注入（Lorebook风格：核心常驻+按需加载）
+    var _setupText = _safeUserPrompt;
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.getSetupInjection) {
+        var _layeredSetup = EnhancedMemory.getSetupInjection();
+        if (_layeredSetup !== null) _setupText = _layeredSetup;
+    }
+
     // 【新】收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
     var _chatContextText = buildRecentChatContext();
 
@@ -134,7 +141,7 @@ function buildSystemPrompt(includeFormatRules) {
     if (!includeFormatRules) {
         return `你是一个高自由度的文字游戏AI引擎。
 
-玩家想玩的游戏："${_safeUserPrompt}"
+${_setupText}
 ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}`;
     }
 
@@ -145,7 +152,7 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
     var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
     var _prompt = `你是一个高自由度的文字游戏AI引擎。
 
-玩家想玩的游戏："${_safeUserPrompt}"
+${_setupText}
 ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
@@ -2254,7 +2261,8 @@ function buildSaveData(customName) {
                 longTermMemory: EnhancedMemory.longTermMemory,
                 stats: EnhancedMemory.stats,
                 _injectionSnapshots: EnhancedMemory._injectionSnapshots || {},
-                _summaryLayers: EnhancedMemory._summaryLayers || { near: [], mid: [], far: [] }
+                _summaryLayers: EnhancedMemory._summaryLayers || { near: [], mid: [], far: [] },
+                _setupLayers: EnhancedMemory._setupLayers || { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1 }
             };
         }
     } catch(e) {
@@ -2424,6 +2432,7 @@ async function loadFromSlot(slot) {
                     if (memParsed.stats) EnhancedMemory.stats = memParsed.stats;
                     if (memParsed._injectionSnapshots) EnhancedMemory._injectionSnapshots = memParsed._injectionSnapshots;
                     if (memParsed._summaryLayers) EnhancedMemory._summaryLayers = memParsed._summaryLayers;
+                    if (memParsed._setupLayers) EnhancedMemory._setupLayers = memParsed._setupLayers;
                     EnhancedMemory.saveToStorage();
                 }
             } catch(memErr) {

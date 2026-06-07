@@ -4333,6 +4333,11 @@ function startNewGame() {
     // ======== 开始新游戏 ========
     gameState.userPrompt = prompt;
 
+    // 设定分层处理
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.processSetupPrompt) {
+        EnhancedMemory.processSetupPrompt(gameState.userPrompt);
+    }
+
     // 收集主角设定
     gameState.protagonistSetup = {};
     var mcMap = {

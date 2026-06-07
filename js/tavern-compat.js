@@ -850,6 +850,8 @@ var GameMemory = {
     _injectionSnapshots: {},
     // 逐层摘要系统（Qvink风格：近详细→远压缩）
     _summaryLayers: { near: [], mid: [], far: [] },
+    // 开局设定分层系统
+    _setupLayers: { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1 },
     budget: {
         maxChars: 4000,
         minBudget: { permanentFacts: 600, quests: 200, plot: 400, characters: 400, events: 300, items: 150, workingMemory: 400, sceneState: 100, summaryLayers: 200 },
@@ -879,6 +881,7 @@ var GameMemory = {
         if (!loaded) this._migrateFromOldFormat();
         if (!this._injectionSnapshots) this._injectionSnapshots = {};
         if (!this._summaryLayers) this._summaryLayers = { near: [], mid: [], far: [] };
+        if (!this._setupLayers) this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1 };
         if (!this.workingMemory.nearSummary) this.workingMemory.nearSummary = '';
         if (!this.workingMemory.midSummary) this.workingMemory.midSummary = '';
         if (!this.workingMemory.farSummary) this.workingMemory.farSummary = '';
@@ -991,6 +994,8 @@ var GameMemory = {
             self._updateAccessCounts(message);
             // 逐层摘要：更新摘要层级（Qvink风格）
             self._updateSummaryLayers();
+            // 设定压缩检查
+            self.compressSetupIfNeeded();
         } catch (e) {
             self.stats.lastError = { msg: (e && e.message) || String(e), stack: (e && e.stack) || '', time: Date.now() };
             console.error('[GameMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
@@ -1197,6 +1202,174 @@ var GameMemory = {
             }
         }
         return false;
+    },
+
+    // 开局设定智能分层（Lorebook风格：核心常驻+按需加载）
+    processSetupPrompt: function(fullSetup) {
+        if (!fullSetup || fullSetup.length < 100) return;
+        var self = this;
+        self._setupLayers.fullSetup = fullSetup;
+
+        // 提取核心规则（含"必须/不能/禁止/规则/设定/绝对"等关键词的句子）
+        var coreLines = [];
+        var worldLines = [];
+        var npcLines = [];
+        var identityLines = [];
+        var promiseLines = [];
+
+        var lines = fullSetup.split(/\n/);
+        lines.forEach(function(line) {
+            var trimmed = line.trim();
+            if (!trimmed || trimmed.length < 3) return;
+
+            // 核心规则：含强制/禁止性关键词
+            if (/(必须|不能|禁止|绝对|不可|务必|严禁|规则|设定|限制|永远|绝不|只能|唯一)/.test(trimmed)) {
+                coreLines.push(trimmed);
+            }
+            // 世界观设定
+            else if (/(世界|大陆|国家|城市|时代|纪元|历法|种族|势力|门派|组织|帝国|王国|学院|宗门|修仙|魔法|科技|文明|阵营)/.test(trimmed)) {
+                worldLines.push(trimmed);
+            }
+            // NPC/角色信息
+            else if (/(她叫|他叫|名叫|名字叫|名为|角色|NPC|人物|师傅|师姐|师妹|师兄|师父|徒弟|主角|女主|男主|反派|配角)/.test(trimmed)) {
+                npcLines.push(trimmed);
+            }
+            // 主角身份
+            else if (/(你是|玩家|主角|我|穿越|重生|转世|身份|名字叫|名为)/.test(trimmed) && trimmed.length < 100) {
+                identityLines.push(trimmed);
+            }
+            // 约定/承诺
+            else if (/(约定|承诺|誓言|契约|诅咒|宿命|使命|任务|目标|目的)/.test(trimmed)) {
+                promiseLines.push(trimmed);
+            }
+        });
+
+        // 生成核心规则层（始终注入，< 800字）
+        self._setupLayers.coreRules = coreLines.slice(0, 15).join('\n');
+        if (self._setupLayers.coreRules.length > 800) {
+            self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, 800, '...');
+        }
+
+        // 生成世界摘要层（始终注入，压缩版）
+        if (worldLines.length > 0) {
+            self._setupLayers.worldSummary = worldLines.slice(0, 10).join('\n');
+            if (self._setupLayers.worldSummary.length > 600) {
+                self._setupLayers.worldSummary = truncateByChars(self._setupLayers.worldSummary, 600, '...');
+            }
+        } else {
+            // 没有明确的世界观行，取前500字作为世界摘要
+            self._setupLayers.worldSummary = truncateByChars(fullSetup, 500, '...');
+        }
+
+        // 自动提取到永久事实
+        self._extractSetupToPermanentFacts(identityLines, worldLines, npcLines, promiseLines, coreLines);
+
+        self._setupLayers.compressed = false;
+        self._setupLayers.extractTurn = self.currentTurn;
+        self.saveToStorage();
+    },
+
+    // 从开局设定提取到永久事实区
+    _extractSetupToPermanentFacts: function(identityLines, worldLines, npcLines, promiseLines, coreLines) {
+        var self = this;
+
+        // 主角身份
+        if (identityLines.length > 0) {
+            self.permanentFacts.pcIdentity = self.permanentFacts.pcIdentity || [];
+            identityLines.forEach(function(line) {
+                var content = truncateByChars(line, 100, '...');
+                if (!self.permanentFacts.pcIdentity.some(function(a) { return a.content === content; })) {
+                    self.permanentFacts.pcIdentity.push({ content: content, locked: true });
+                }
+            });
+        }
+
+        // 世界规则
+        if (coreLines.length > 0) {
+            self.permanentFacts.worldRules = self.permanentFacts.worldRules || [];
+            coreLines.slice(0, 10).forEach(function(line) {
+                var content = truncateByChars(line, 100, '...');
+                if (!self.permanentFacts.worldRules.some(function(a) { return a.content === content; })) {
+                    self.permanentFacts.worldRules.push({ content: content, locked: true });
+                }
+            });
+        }
+
+        // 世界设定
+        if (worldLines.length > 0) {
+            self.permanentFacts.settings = self.permanentFacts.settings || [];
+            worldLines.slice(0, 8).forEach(function(line) {
+                var content = truncateByChars(line, 100, '...');
+                if (!self.permanentFacts.settings.some(function(a) { return a.content === content; })) {
+                    self.permanentFacts.settings.push({ content: content, locked: true });
+                }
+            });
+        }
+
+        // NPC档案
+        if (npcLines.length > 0) {
+            self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
+            npcLines.slice(0, 8).forEach(function(line) {
+                var content = truncateByChars(line, 100, '...');
+                if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content === content; })) {
+                    self.permanentFacts.npcProfiles.push({ content: content, locked: true });
+                }
+            });
+        }
+
+        // 约定/承诺
+        if (promiseLines.length > 0) {
+            self.permanentFacts.promises = self.permanentFacts.promises || [];
+            promiseLines.slice(0, 5).forEach(function(line) {
+                var content = truncateByChars(line, 100, '...');
+                if (!self.permanentFacts.promises.some(function(a) { return a.content === content; })) {
+                    self.permanentFacts.promises.push({ content: content, locked: true });
+                }
+            });
+        }
+    },
+
+    // 获取当前应该注入的设定文本（分层策略）
+    getSetupInjection: function() {
+        var self = this;
+        var layers = self._setupLayers;
+
+        // 如果没有处理过设定，返回null（让旧逻辑处理）
+        if (!layers.fullSetup) return null;
+
+        var currentTurn = self.currentTurn || 0;
+
+        // 前3轮：注入完整设定（AI需要完整上下文来建立世界）
+        if (currentTurn <= 3 || !layers.compressed) {
+            // 但即使是前3轮，也把核心规则单独提到最前面
+            var result = '';
+            if (layers.coreRules) {
+                result += '【核心规则 - 必须遵守】\n' + layers.coreRules + '\n\n';
+            }
+            result += '【完整设定】\n' + layers.fullSetup;
+            return result;
+        }
+
+        // 3轮后：只注入核心规则 + 世界摘要 + 永久事实（记忆系统已接管细节）
+        var result = '';
+        if (layers.coreRules) {
+            result += '【核心规则 - 必须遵守】\n' + layers.coreRules + '\n\n';
+        }
+        if (layers.worldSummary) {
+            result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
+        }
+        result += '【注：详细设定已由记忆系统管理，请参考【剧情记忆】中的信息】';
+        return result;
+    },
+
+    // 标记设定已压缩（在第3轮后调用）
+    compressSetupIfNeeded: function() {
+        var self = this;
+        if (self.currentTurn >= 3 && !self._setupLayers.compressed) {
+            self._setupLayers.compressed = true;
+            self.saveToStorage();
+            console.log('[设定分层] 第' + self.currentTurn + '轮，设定已压缩为核心规则+世界摘要模式');
+        }
     },
 
     buildInjection: function() {
@@ -1914,7 +2087,7 @@ var GameMemory = {
         if (self._saving) { self._pendingSave = true; return; }
         self._saving = true;
         try {
-            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, savedAt: Date.now() };
+            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, savedAt: Date.now() };
             var result = safeSetItem('freeScript_memory', JSON.stringify(data));
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
@@ -1954,6 +2127,7 @@ var GameMemory = {
         if (data._changeLog) self._changeLog = data._changeLog;
         if (data._injectionSnapshots) self._injectionSnapshots = data._injectionSnapshots;
         if (data._summaryLayers) self._summaryLayers = data._summaryLayers;
+        if (data._setupLayers) self._setupLayers = data._setupLayers;
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         if (!self.workingMemory.messages) self.workingMemory.messages = [];
         if (!self.workingMemory.recentMessages) self.workingMemory.recentMessages = [];
@@ -1975,6 +2149,7 @@ var GameMemory = {
         this._changeLog = []; this._lastInjectedSnapshot = null; this.summaryHistory = []; this.currentSummaryIndex = -1;
         this._injectionSnapshots = {};
         this._summaryLayers = { near: [], mid: [], far: [] };
+        this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1 };
         localStorage.removeItem('freeScript_memory'); localStorage.removeItem('freeScript_enhancedMemory');
     },
 
@@ -2145,6 +2320,7 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">场景状态</div><div style="font-size:14px;font-weight:600;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点有场景锁定</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.compressed ? '已压缩（核心规则+世界摘要）' : (gm._setupLayers && gm._setupLayers.fullSetup ? '完整模式（前3轮）' : '未初始化')) + '</div></div>'
             + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span><button onclick="MemoryManagerUI.switchTab(\'injection\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">查看详情</button></div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
