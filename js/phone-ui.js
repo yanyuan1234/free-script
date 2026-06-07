@@ -1099,7 +1099,7 @@ function renderLogPage() {
             icon: 'icon-clock',
             label: '回顾'
         }
-    ], 4);
+    ], 3);
 }
 // 日志子页面渲染函数映射
 // 原代码在这里引用了 renderChatPage 等函数，但它们在下一个 script 块中才定义
@@ -3226,7 +3226,7 @@ function renderRecapPage() {
             icon: 'icon-clock',
             label: '回顾'
         }
-    ], 3);
+    ], 5);
 }
 function showRecapDetail(idx) {
     var stories = getStoryList();
