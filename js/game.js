@@ -1472,6 +1472,8 @@ async function _compressConversation(removed, sys) {
         EnhancedMemory.saveSummaryHistory(summary, gameState.conversationHistory.length);
         EnhancedMemory.longTermMemory.masterSummary = summary;
         if (summary.includes('【剧情主线】')) _parseStructuredSummary(summary);
+        // 同步逐层摘要
+        if (EnhancedMemory._updateSummaryLayers) EnhancedMemory._updateSummaryLayers();
         EnhancedMemory.saveToStorage();
         console.log('[智能总结] 已同步到EnhancedMemory');
     }
@@ -1501,10 +1503,15 @@ function _parseStructuredSummary(summary) {
                     EnhancedMemory.longTermMemory.characterTable[name] = {
                         name: name,
                         firstAppearance: Date.now(),
-                        changes: []
+                        changes: [],
+                        gameTime: typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : '',
+                        accessCount: 0,
+                        lastChangedTurn: typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : 0
                     };
                 }
                 EnhancedMemory.longTermMemory.characterTable[name].lastUpdate = Date.now();
+                EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn = typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : (EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn || 0);
+                EnhancedMemory.longTermMemory.characterTable[name].gameTime = typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : (EnhancedMemory.longTermMemory.characterTable[name].gameTime || '');
                 EnhancedMemory.longTermMemory.characterTable[name].changes.push({
                     time: Date.now(),
                     change: change
@@ -1549,9 +1556,11 @@ function _extractAndStoreImportantInfo(message) {
             var name = (match[1] || match[2]).replace(/[首次登场出现走进来到新角色新人物：:]/g, '').trim();
             if (name.length >= 2 && name.length <= 10) {
                 if (!EnhancedMemory.longTermMemory.characterTable[name]) {
-                    EnhancedMemory.longTermMemory.characterTable[name] = { name: name, firstAppearance: Date.now(), changes: [] };
+                    EnhancedMemory.longTermMemory.characterTable[name] = { name: name, firstAppearance: Date.now(), changes: [], gameTime: typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : '', accessCount: 0, lastChangedTurn: typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : 0 };
                 }
                 EnhancedMemory.longTermMemory.characterTable[name].lastUpdate = Date.now();
+                EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn = typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : (EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn || 0);
+                EnhancedMemory.longTermMemory.characterTable[name].gameTime = typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : (EnhancedMemory.longTermMemory.characterTable[name].gameTime || '');
             }
         }
     });
@@ -1561,7 +1570,7 @@ function _extractAndStoreImportantInfo(message) {
         if (match) {
             var item = match[2].trim();
             if (item.length >= 2 && !EnhancedMemory.longTermMemory.itemTable[item]) {
-                EnhancedMemory.longTermMemory.itemTable[item] = { name: item, obtainedTime: Date.now(), desc: '玩家持有' };
+                EnhancedMemory.longTermMemory.itemTable[item] = { name: item, obtainedTime: Date.now(), desc: '玩家持有', gameTime: typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : '', accessCount: 0, lastChangedTurn: typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : 0 };
             }
         }
     });
@@ -2243,7 +2252,9 @@ function buildSaveData(customName) {
                 workingMemory: EnhancedMemory.workingMemory,
                 shortTermMemory: EnhancedMemory.shortTermMemory,
                 longTermMemory: EnhancedMemory.longTermMemory,
-                stats: EnhancedMemory.stats
+                stats: EnhancedMemory.stats,
+                _injectionSnapshots: EnhancedMemory._injectionSnapshots || {},
+                _summaryLayers: EnhancedMemory._summaryLayers || { near: [], mid: [], far: [] }
             };
         }
     } catch(e) {
@@ -2411,6 +2422,8 @@ async function loadFromSlot(slot) {
                     if (memParsed.shortTermMemory) EnhancedMemory.shortTermMemory = memParsed.shortTermMemory;
                     if (memParsed.longTermMemory) EnhancedMemory.longTermMemory = memParsed.longTermMemory;
                     if (memParsed.stats) EnhancedMemory.stats = memParsed.stats;
+                    if (memParsed._injectionSnapshots) EnhancedMemory._injectionSnapshots = memParsed._injectionSnapshots;
+                    if (memParsed._summaryLayers) EnhancedMemory._summaryLayers = memParsed._summaryLayers;
                     EnhancedMemory.saveToStorage();
                 }
             } catch(memErr) {

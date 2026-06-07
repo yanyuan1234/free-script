@@ -2305,7 +2305,7 @@ var MemoryManagerUI = {
     saveCharacter: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
         var char = gm.tables.characters[oldName] || {}; if (oldName !== newName) delete gm.tables.characters[oldName];
-        gm.tables.characters[newName] = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
+        gm.tables.characters[newName] = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
         gm.saveToStorage(); this.switchTab('characters');
     },
 
@@ -2322,7 +2322,7 @@ var MemoryManagerUI = {
 
     saveNewCharacter: function() {
         var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { alert('请输入角色名称'); return; }
-        gm.tables.characters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], lastChangedTurn: gm.currentTurn, locked: false };
+        gm.tables.characters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
         gm.saveToStorage(); this.switchTab('characters');
     },
 
@@ -2351,7 +2351,7 @@ var MemoryManagerUI = {
     saveItem: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editItemName').value.trim(); if (!newName) return;
         var item = gm.tables.items[oldName] || {}; if (oldName !== newName) delete gm.tables.items[oldName];
-        gm.tables.items[newName] = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, history: item.history || [] };
+        gm.tables.items[newName] = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
         gm.saveToStorage(); this.switchTab('items');
     },
 
@@ -2369,7 +2369,7 @@ var MemoryManagerUI = {
 
     saveNewItem: function() {
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { alert('请输入物品名称'); return; }
-        gm.tables.items[name] = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
+        gm.tables.items[name] = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
         gm.saveToStorage(); this.switchTab('items');
     },
 
