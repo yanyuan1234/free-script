@@ -2224,7 +2224,7 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return;
         gm.tables.locations[name].sceneState = document.getElementById('editSceneState').value.trim();
         gm.tables.locations[name].locked = document.getElementById('editSceneLocked').checked;
-        gm.saveToStorage(); this.switchTab('sceneState'); UI.toast('场景状态已保存');
+        gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('worldSnapshot'); this.switchTab('sceneState'); UI.toast('场景状态已保存');
     },
 
     renderPermanentFacts: function(gm) {
@@ -2270,13 +2270,13 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
         var content = (document.getElementById('editFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
-        gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual'; gm.saveToStorage(); UI.toast && UI.toast('已保存'); this.switchTab('permanentFacts');
+        gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual'; gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('_memory'); UI.toast && UI.toast('已保存'); this.switchTab('permanentFacts');
     },
 
     deletePermanentFact: function(type, idx) {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
         if (!confirm('确定要删除这条永久事实吗？')) return;
-        gm.permanentFacts[type].splice(idx, 1); gm.saveToStorage(); UI.toast && UI.toast('已删除'); this.switchTab('permanentFacts');
+        gm.permanentFacts[type].splice(idx, 1); gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('_memory'); UI.toast && UI.toast('已删除'); this.switchTab('permanentFacts');
     },
 
     renderCharacters: function(gm) {
@@ -2306,10 +2306,21 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
         var char = gm.tables.characters[oldName] || {}; if (oldName !== newName) delete gm.tables.characters[oldName];
         gm.tables.characters[newName] = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
-        gm.saveToStorage(); this.switchTab('characters');
+        gm.saveToStorage();
+        // 同步到gameState
+        if (typeof gameState !== 'undefined' && gameState.allCharacters) {
+            if (oldName !== newName && gameState.allCharacters[oldName]) delete gameState.allCharacters[oldName];
+            gameState.allCharacters[newName] = gameState.allCharacters[newName] || {};
+            gameState.allCharacters[newName].name = newName;
+            gameState.allCharacters[newName].title = document.getElementById('editCharTitle').value.trim();
+            gameState.allCharacters[newName].relation = document.getElementById('editCharRelation').value.trim();
+            gameState.allCharacters[newName].favorability = parseInt(document.getElementById('editCharFav').value) || 0;
+        }
+        if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
+        this.switchTab('characters');
     },
 
-    deleteCharacter: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.characters[name]) return; delete gm.tables.characters[name]; gm.saveToStorage(); this.switchTab('characters'); UI.toast('角色已删除'); },
+    deleteCharacter: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.characters[name]) return; delete gm.tables.characters[name]; gm.saveToStorage(); if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) { delete gameState.allCharacters[name]; } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters'); this.switchTab('characters'); UI.toast('角色已删除'); },
 
     addCharacter: function() {
         document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">'
@@ -2323,7 +2334,14 @@ var MemoryManagerUI = {
     saveNewCharacter: function() {
         var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { alert('请输入角色名称'); return; }
         gm.tables.characters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
-        gm.saveToStorage(); this.switchTab('characters');
+        gm.saveToStorage();
+        // 同步到gameState
+        if (typeof gameState !== 'undefined') {
+            if (!gameState.allCharacters) gameState.allCharacters = {};
+            gameState.allCharacters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), favorability: parseInt(document.getElementById('addCharFav').value) || 0 };
+        }
+        if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
+        this.switchTab('characters');
     },
 
     renderItems: function(gm) {
@@ -2352,10 +2370,26 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var newName = document.getElementById('editItemName').value.trim(); if (!newName) return;
         var item = gm.tables.items[oldName] || {}; if (oldName !== newName) delete gm.tables.items[oldName];
         gm.tables.items[newName] = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
-        gm.saveToStorage(); this.switchTab('items');
+        gm.saveToStorage();
+        // 同步到gameState.currentBag
+        if (typeof gameState !== 'undefined' && gameState.currentBag) {
+            if (oldName !== newName) gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== oldName; });
+            var found = false;
+            for (var i = 0; i < gameState.currentBag.length; i++) {
+                if (gameState.currentBag[i].name === newName) {
+                    gameState.currentBag[i].count = parseInt(document.getElementById('editItemQty').value) || 1;
+                    gameState.currentBag[i].rarity = document.getElementById('editItemRarity').value;
+                    gameState.currentBag[i].desc = document.getElementById('editItemDesc').value.trim();
+                    found = true; break;
+                }
+            }
+            if (!found) gameState.currentBag.push({ name: newName, count: parseInt(document.getElementById('editItemQty').value) || 1, desc: document.getElementById('editItemDesc').value.trim(), rarity: document.getElementById('editItemRarity').value });
+        }
+        if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
+        this.switchTab('items');
     },
 
-    deleteItem: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.items[name]) return; delete gm.tables.items[name]; gm.saveToStorage(); this.switchTab('items'); UI.toast('物品已删除'); },
+    deleteItem: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.items[name]) return; delete gm.tables.items[name]; gm.saveToStorage(); if (typeof gameState !== 'undefined' && gameState.currentBag) { gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== name; }); } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag'); this.switchTab('items'); UI.toast('物品已删除'); },
 
     addItem: function() {
         document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">'
@@ -2370,7 +2404,15 @@ var MemoryManagerUI = {
     saveNewItem: function() {
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { alert('请输入物品名称'); return; }
         gm.tables.items[name] = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
-        gm.saveToStorage(); this.switchTab('items');
+        gm.saveToStorage();
+        // 同步到gameState.currentBag
+        if (typeof gameState !== 'undefined') {
+            if (!gameState.currentBag) gameState.currentBag = [];
+            var exists = gameState.currentBag.some(function(b) { return b.name === name; });
+            if (!exists) gameState.currentBag.push({ name: name, count: parseInt(document.getElementById('addItemQty').value) || 1, desc: document.getElementById('addItemDesc').value.trim(), rarity: document.getElementById('addItemRarity').value });
+        }
+        if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
+        this.switchTab('items');
     },
 
     renderLocations: function(gm) {
@@ -2397,10 +2439,10 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var newName = document.getElementById('editLocName').value.trim(); if (!newName) { alert('请输入地点名称'); return; }
         var loc = gm.tables.locations[oldName]; if (!loc) return; if (newName !== oldName) delete gm.tables.locations[oldName];
         gm.tables.locations[newName] = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
-        gm.saveToStorage(); this.switchTab('locations');
+        gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('worldSnapshot'); this.switchTab('locations');
     },
 
-    deleteLocation: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return; delete gm.tables.locations[name]; gm.saveToStorage(); this.switchTab('locations'); UI.toast('地点已删除'); },
+    deleteLocation: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return; delete gm.tables.locations[name]; gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('worldSnapshot'); this.switchTab('locations'); UI.toast('地点已删除'); },
 
     addLocation: function() {
         document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">'
@@ -2412,7 +2454,7 @@ var MemoryManagerUI = {
     saveNewLocation: function() {
         var gm = window.GameMemory; var name = document.getElementById('addLocName').value.trim(); if (!name) { alert('请输入地点名称'); return; }
         gm.tables.locations[name] = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
-        gm.saveToStorage(); this.switchTab('locations');
+        gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('worldSnapshot'); this.switchTab('locations');
     },
 
     renderRelationships: function(gm) {
@@ -2441,7 +2483,7 @@ var MemoryManagerUI = {
             + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'plot\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.savePlot()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
     },
 
-    savePlot: function() { var gm = window.GameMemory; gm.plot.worldSetting = document.getElementById('editPlotWorld').value.trim(); gm.plot.currentChapter = document.getElementById('editPlotCurrent').value.trim(); gm.saveToStorage(); this.switchTab('plot'); },
+    savePlot: function() { var gm = window.GameMemory; gm.plot.worldSetting = document.getElementById('editPlotWorld').value.trim(); gm.plot.currentChapter = document.getElementById('editPlotCurrent').value.trim(); gm.saveToStorage(); if (typeof gameState !== 'undefined') { gameState.rollingSummary = (gm.plot.worldSetting || '') + '\n' + (gm.plot.currentChapter || ''); } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('rollingSummary'); this.switchTab('plot'); },
 
     renderEvents: function(gm) {
         var self = this; var events = gm.events.slice(-20).reverse();
@@ -2465,10 +2507,17 @@ var MemoryManagerUI = {
     saveNewEvent: function() {
         var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { alert('请输入事件内容'); return; }
         gm.events.push({ content: content, turn: gm.currentTurn, gameTime: gm.getGameTimeStr(), importance: parseInt(document.getElementById('addEventImportance').value) || 5, decayScore: parseInt(document.getElementById('addEventImportance').value) || 5 });
-        if (gm.events.length > 50) gm.events = gm.events.slice(-50); gm.saveToStorage(); this.switchTab('events');
+        if (gm.events.length > 50) gm.events = gm.events.slice(-50); gm.saveToStorage();
+        // 同步到gameState.keyEvents
+        if (typeof gameState !== 'undefined') {
+            if (!gameState.keyEvents) gameState.keyEvents = [];
+            if (gameState.keyEvents.indexOf(content) === -1) { gameState.keyEvents.push(content); if (gameState.keyEvents.length > 30) gameState.keyEvents = gameState.keyEvents.slice(-30); }
+        }
+        if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('keyEvents');
+        this.switchTab('events');
     },
 
-    deleteEvent: function(index) { var gm = window.GameMemory; if (!gm || !gm.events[index]) return; gm.events.splice(index, 1); gm.saveToStorage(); this.switchTab('events'); UI.toast('事件已删除'); },
+    deleteEvent: function(index) { var gm = window.GameMemory; if (!gm || !gm.events[index]) return; var evtContent = gm.events[index] ? gm.events[index].content : ''; gm.events.splice(index, 1); gm.saveToStorage(); if (typeof gameState !== 'undefined' && gameState.keyEvents && evtContent) { var idx = gameState.keyEvents.indexOf(evtContent); if (idx >= 0) gameState.keyEvents.splice(idx, 1); } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('keyEvents'); this.switchTab('events'); UI.toast('事件已删除'); },
 
     renderQuests: function(gm) {
         var self = this; var quests = gm.quests || [];
@@ -2499,7 +2548,18 @@ var MemoryManagerUI = {
 
     resolveQuestByIndex: function(idx) {
         var gm = window.GameMemory; if (!gm || !gm.quests[idx]) return;
-        gm.quests[idx].status = 'resolved'; gm.quests[idx].resolvedTurn = gm.currentTurn; gm.saveToStorage(); this.switchTab('quests'); UI.toast('约定已完成');
+        gm.quests[idx].status = 'resolved'; gm.quests[idx].resolvedTurn = gm.currentTurn; gm.saveToStorage();
+        // 同步到gameState.currentQuests
+        if (typeof gameState !== 'undefined' && gameState.currentQuests && gm.quests[idx].content) {
+            var questContent = gm.quests[idx].content;
+            for (var i = 0; i < gameState.currentQuests.length; i++) {
+                if (gameState.currentQuests[i].title && gameState.currentQuests[i].title.indexOf(questContent.substring(0, 10)) >= 0) {
+                    gameState.currentQuests[i].status = '已完成'; break;
+                }
+            }
+        }
+        if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentQuests');
+        this.switchTab('quests'); UI.toast('约定已完成');
     },
 
     renderTimeline: function(gm) {
