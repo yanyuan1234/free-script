@@ -4345,6 +4345,12 @@ function startNewGame() {
         if (el && el.value.trim()) gameState.protagonistSetup[mcMap[id]] = el.value.trim();
     });
 
+    // 收集作者备注（酒馆Author's Note特性）
+    var authorsNoteEl = document.getElementById('authorsNote');
+    if (authorsNoteEl && authorsNoteEl.value.trim()) {
+        gameState.authorsNote = authorsNoteEl.value.trim();
+    }
+
     // 保存上次填写
     safeSetItem('freeScript_lastPrompt', prompt);
 

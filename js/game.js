@@ -748,6 +748,25 @@ async function sendAIRequest(userMessage, isInit = false) {
             var chatHistoryStart = messages.length; // 记录聊天历史在消息数组中的起始位置
             messages = messages.concat(recent);
 
+            // 【酒馆特性】Author's Note（作者备注）
+            // 在聊天历史尾部、用户消息之前注入可自定义的提示词
+            // 作用：让玩家可以在每轮对话中微调AI的行为，而不需要修改整个系统提示词
+            // 例如："请侧重描写殷允的心理活动" 或 "这章要出现一个新角色"
+            var authorsNote = gameState.authorsNote || '';
+            var authorsNoteDepth = gameState.authorsNoteDepth || 0; // 默认0=紧贴用户消息前
+            if (authorsNote) {
+                var anMessage = { role: 'system', content: '【作者备注】\n' + authorsNote };
+                if (authorsNoteDepth > 0 && authorsNoteDepth < messages.length) {
+                    // 注入到聊天历史的指定深度位置
+                    var insertIdx = messages.length - authorsNoteDepth;
+                    if (insertIdx < chatHistoryStart) insertIdx = chatHistoryStart;
+                    messages.splice(insertIdx, 0, anMessage);
+                } else {
+                    // 默认：紧贴用户消息之前
+                    messages.push(anMessage);
+                }
+            }
+
             // 当前用户消息
             messages.push({ role: 'user', content: userMessage });
 
@@ -891,6 +910,40 @@ async function sendAIRequest(userMessage, isInit = false) {
                 role: 'assistant',
                 content: gameState._assistantPrompt
             });
+        }
+
+        // 【酒馆特性】智能上下文管理
+        // 自动计算当前消息的token数，如果接近上下文窗口上限，从最旧的聊天消息开始移除
+        // 保留系统消息和固定消息，只移除普通的user/assistant历史消息
+        var contextSize = gameState.contextSize || 8000;
+        var reservedForOutput = Math.floor(contextSize * 0.15); // 留15%给输出
+        var maxInputTokens = contextSize - reservedForOutput;
+        var currentTokens = estimateTokensForMessages(messages);
+        if (currentTokens > maxInputTokens) {
+            console.log('[智能上下文] 当前 ' + currentTokens + ' tokens，上限 ' + maxInputTokens + '，开始裁剪');
+            // 从聊天历史区域（跳过系统消息）的最旧消息开始移除
+            // 但不移除固定消息和最后一条user消息
+            var removedCount = 0;
+            var lastUserIdx = -1;
+            for (var _rIdx = messages.length - 1; _rIdx >= 0; _rIdx--) {
+                if (messages[_rIdx].role === 'user') { lastUserIdx = _rIdx; break; }
+            }
+            // 从chatHistoryStart开始，移除最旧的非固定消息
+            for (var _rIdx2 = chatHistoryStart; _rIdx2 < messages.length && currentTokens > maxInputTokens; _rIdx2++) {
+                if (_rIdx2 === lastUserIdx) continue; // 不移除当前用户消息
+                var msg = messages[_rIdx2];
+                if (msg._pinned) continue; // 不移除固定消息
+                if (msg.role === 'user' || msg.role === 'assistant') {
+                    currentTokens -= estimateTokensUtil(msg.content || '');
+                    messages.splice(_rIdx2, 1);
+                    _rIdx2--; // 调整索引
+                    removedCount++;
+                    if (lastUserIdx > _rIdx2) lastUserIdx--; // 调整lastUserIdx
+                }
+            }
+            if (removedCount > 0) {
+                console.log('[智能上下文] 移除了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
+            }
         }
         var options = {
             stream: gameState.useStream,
@@ -1545,6 +1598,17 @@ async function autoCompressContext() {
         });
         var keep = dialogOnly.slice(-30);
         var removed = dialogOnly.slice(0, -30);
+
+        // 【酒馆特性】消息Pinning：固定重要消息不被压缩
+        // 消息上有 _pinned=true 标记的，即使在前30条之外也要保留
+        var pinnedMessages = removed.filter(function(m) { return m._pinned === true; });
+        if (pinnedMessages.length > 0) {
+            // 把固定消息从removed移到keep
+            removed = removed.filter(function(m) { return m._pinned !== true; });
+            keep = pinnedMessages.concat(keep);
+            console.log('[压缩] 保留了 ' + pinnedMessages.length + ' 条固定消息');
+        }
+
         if (removed.length === 0) {
             // 提前返回时需要正确恢复状态
             isCompressing = false;
@@ -1591,6 +1655,12 @@ async function manualCompress(btn) {
         var rest = gameState.conversationHistory.slice(1);
         var keep = rest.slice(-30);
         var removed = rest.slice(0, -30);
+        // 【酒馆特性】消息Pinning：固定消息不被压缩
+        var pinnedMessages = removed.filter(function(m) { return m._pinned === true; });
+        if (pinnedMessages.length > 0) {
+            removed = removed.filter(function(m) { return m._pinned !== true; });
+            keep = pinnedMessages.concat(keep);
+        }
         if (removed.length === 0) {
             UI.toast('没有需要压缩的内容');
             return;
