@@ -155,16 +155,12 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
 ${_termsPrompt}
 
 【核心原则】
-你是一个拥有完全创作自主权的游戏引擎。以下不是规则约束，而是你的能力说明——你理解这些概念，由你自行判断如何运用：
-- 你理解"沉浸式文字游戏"的含义，自行决定如何创造引人入胜的体验
-- 你理解"中文输出"的要求，所有字段值用中文
-- 你理解总输出受 max_tokens（约 ${_maxTokens} tokens）限制，自行分配各字段篇幅，避免截断
-- 你理解"选项必须是主角视角"——玩家操控主角，选项描述主角可做的事
-- 你理解"角色心声"——用 <giggle>角色名：心声内容</giggle> 插入NPC内心独白，由你决定何时插入、什么风格
-- 你理解"NPC消息频率"——根据每个NPC的性格、与主角的关系亲疏，自行决定它是否发消息、发几条
-- 你理解"时间推进"——在gameTime中记录剧情内时间，根据世界观和事件自然推进
-- 你理解"记忆一致性"——用 <mem> 标签主动维护世界状态，示例：<mem type="character" name="角色名" field="mood" value="开心" /> <mem type="item" name="物品" action="add" qty="1" /> <mem type="event" action="add">事件内容</mem> <mem type="time" day="3" period="下午" />
-- 你理解"章节节奏"——在合适的时候用 [章节结束|章节标题] 标记章节结尾
+你是一个拥有完全创作自主权的游戏引擎，以下是你理解的能力：
+- 沉浸式文字游戏：自行创造引人入胜的体验
+- 中文输出，JSON格式，story放第一个字段
+- 输出受 max_tokens（约 ${_maxTokens} tokens）限制，自行分配篇幅
+- 选项是主角视角，<giggle>插入NPC心声，<mem>更新状态（character/item/event/time）
+- [章节结束|标题] 标记章节结尾
 
 【用户偏好】（由你灵活解读，不必死板遵循）
 - 字数：{{getglobalvar::字数总要求}}
@@ -177,15 +173,43 @@ ${_termsPrompt}
 
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
 
-【回复格式 - 纯JSON，不要用代码块包裹】
-{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : ''} "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, "characters": [{"name": "", "title": "", "relation": "", "favorability": 0, "desc": "", "details": [{"key": "", "value": ""}]}], "world": [ {"type": "text", "title": "", "content": ""}, {"type": "list", "title": "", "items": [""]}, {"type": "ranking", "title": "${_t('ranking', '排行榜')}", "items": [{"name": "", "value": ""}]}, {"type": "key_value", "title": "", "items": [{"key": "", "value": ""}]}, {"type": "cards", "title": "${_t('cards', '任务卡片')}", "items": [{"icon": "单字图标", "title": "", "content": ""}]}, {"type": "comments", "title": "${_t('comments', '论坛')}", "main": "", "comments": [{"name": "", "text": ""}]}, {"type": "moments", "title": "${_t('moments', '朋友圈')}", "posts": [{"author": "", "avatar": "👤", "text": "", "time": "", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_t('mail', '邮件')}", "items": [{"from": "", "subject": "", "body": "", "preview": "", "date": ""}]}, {"type": "shop", "title": "${_t('shop', '商店')}", "items": [{"icon": "", "name": "", "desc": "", "price": 0}]}, {"type": "diary", "title": "${_t('diary', '日记')}", "items": [{"npc": "", "date": "", "content": "", "mood": "", "memos": [""]}]} ], "bag": [{"name": "", "count": 1, "desc": "", "rarity": "", "usable": false, "effect": "", "equippable": false, "equipped": false, "slot": ""}], "quests": [{"title": "", "type": "", "status": "", "progress": "", "hint": ""}], "relationships": [{"from": "", "to": "", "type": "", "desc": ""}], "keyEvents": [""], "npcMessages": [{"name": "", "avatar": "👤", "content": "", "time": ""}], "gameTime": {"date": "", "time": "", "period": "", "weather": "", "era": ""}, "contextSummary": "" }
+${_buildFormatRules(gameState, _t)}`;
 
-【关键区分】
-- player 是主角（玩家），characters 是NPC列表，两者不可混淆
-- npcMessages 是即时短消息，正式信件/通知放 mail
-- 直接输出JSON，不要用 \`\`\`json 包裹，story字段用 \\n 换行
-- story 必须是 JSON 的第一个字段`;
     return _prompt;
+}
+
+// 渐进式格式规则：前3轮注入完整JSON模板，后续只保留关键提醒
+// 按次计费优化：省下的token让给游戏数据
+function _buildFormatRules(gs, _t) {
+    var turn = (gs._stats && gs._stats.totalTurns) || 0;
+    var hasChoices = gs.generateChoices;
+
+    if (turn <= 3) {
+        // 前3轮：完整JSON模板（AI需要学习格式）
+        return '【回复格式 - 纯JSON，不要用代码块包裹】\n'
+            + '{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], '
+            + (hasChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : '')
+            + ' "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, '
+            + '"characters": [{"name": "", "title": "", "relation": "", "favorability": 0, "desc": "", "details": [{"key": "", "value": ""}]}], '
+            + '"world": [ {"type": "text", "title": "", "content": ""}, {"type": "list", "title": "", "items": [""]}, {"type": "ranking", "title": "' + _t('ranking', '排行榜') + '", "items": [{"name": "", "value": ""}]}, '
+            + '{"type": "key_value", "title": "", "items": [{"key": "", "value": ""}]}, {"type": "cards", "title": "' + _t('cards', '任务卡片') + '", "items": [{"icon": "单字图标", "title": "", "content": ""}]}, '
+            + '{"type": "comments", "title": "' + _t('comments', '论坛') + '", "main": "", "comments": [{"name": "", "text": ""}]}, '
+            + '{"type": "moments", "title": "' + _t('moments', '朋友圈') + '", "posts": [{"author": "", "avatar": "👤", "text": "", "time": "", "likes": 0, "comments": 0}]}, '
+            + '{"type": "mail", "title": "' + _t('mail', '邮件') + '", "items": [{"from": "", "subject": "", "body": "", "preview": "", "date": ""}]}, '
+            + '{"type": "shop", "title": "' + _t('shop', '商店') + '", "items": [{"icon": "", "name": "", "desc": "", "price": 0}]}, '
+            + '{"type": "diary", "title": "' + _t('diary', '日记') + '", "items": [{"npc": "", "date": "", "content": "", "mood": "", "memos": [""]}]} ], '
+            + '"bag": [{"name": "", "count": 1, "desc": "", "rarity": "", "usable": false, "effect": "", "equippable": false, "equipped": false, "slot": ""}], '
+            + '"quests": [{"title": "", "type": "", "status": "", "progress": "", "hint": ""}], '
+            + '"relationships": [{"from": "", "to": "", "type": "", "desc": ""}], '
+            + '"keyEvents": [""], "npcMessages": [{"name": "", "avatar": "👤", "content": "", "time": ""}], '
+            + '"gameTime": {"date": "", "time": "", "period": "", "weather": "", "era": ""}, "contextSummary": "" }\n\n'
+            + '【关键区分】\n- player 是主角（玩家），characters 是NPC列表，两者不可混淆\n- npcMessages 是即时短消息，正式信件/通知放 mail\n- 直接输出JSON，不要用 ```json 包裹，story字段用 \\n 换行\n- story 必须是 JSON 的第一个字段';
+    } else {
+        // 第4轮起：精简格式提醒（AI已掌握格式，只需关键提醒）
+        return '【格式提醒】继续按已建立的JSON格式输出。story放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<mem>标签更新状态变化。'
+            + (hasChoices ? '包含choices选项。' : '')
+            + '不要用代码块包裹。';
+    }
 }
 
 /**
@@ -963,6 +987,13 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 移除请求超时限制，只要API本身不出错就无限等待
         var response;
+        // 记录输入token数（按次计费玩家需要知道每次请求用了多少上下文）
+        var inputTokens = estimateTokensForMessages(messages);
+        var contextSize = gameState.contextSize || 8000;
+        gameState._lastInputTokens = inputTokens;
+        gameState._lastContextUsage = Math.round(inputTokens / contextSize * 100);
+        console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + gameState._lastContextUsage + '%)');
+
         try {
             response = await callAI(messages, options);
         } catch (e) {
@@ -1313,7 +1344,13 @@ function updateTokenCount(currentResponseLength) {
     var chatTokenEl = document.getElementById('chatTokenDisplay');
     if (chatTokenEl) {
         var displayText = estimated > 1000 ? (estimated / 1000).toFixed(1) + 'k' : estimated;
-        chatTokenEl.textContent = '上下文: 约 ' + displayText + ' token | ' + gameState.conversationHistory.length + ' 条消息';
+        var inputInfo = '';
+        if (gameState._lastInputTokens) {
+            var inputDisplay = gameState._lastInputTokens > 1000 ? (gameState._lastInputTokens / 1000).toFixed(1) + 'k' : gameState._lastInputTokens;
+            var ctxDisplay = (gameState.contextSize || 8000) > 1000 ? ((gameState.contextSize || 8000) / 1000).toFixed(0) + 'k' : (gameState.contextSize || 8000);
+            inputInfo = ' | 请求: ' + inputDisplay + '/' + ctxDisplay + ' (' + (gameState._lastContextUsage || 0) + '%)';
+        }
+        chatTokenEl.textContent = '上下文: 约 ' + displayText + ' token' + inputInfo + ' | ' + gameState.conversationHistory.length + ' 条消息';
     }
 
     // 智能压缩检查
