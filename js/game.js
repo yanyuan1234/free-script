@@ -166,7 +166,7 @@ ${_termsPrompt}
 - 你理解"角色心声"——用 <giggle>角色名：心声内容</giggle> 插入NPC内心独白，由你决定何时插入、什么风格
 - 你理解"NPC消息频率"——根据每个NPC的性格、与主角的关系亲疏，自行决定它是否发消息、发几条
 - 你理解"时间推进"——在gameTime中记录剧情内时间，根据世界观和事件自然推进
-- 你理解"记忆一致性"——用 <mem> 标签主动维护世界状态，格式：<mem type="character|item|event|location|quest|time" ... />
+- 你理解"记忆一致性"——用 <mem> 标签主动维护世界状态，示例：<mem type="character" name="角色名" field="mood" value="开心" /> <mem type="item" name="物品" action="add" qty="1" /> <mem type="event" action="add">事件内容</mem> <mem type="time" day="3" period="下午" />
 - 你理解"章节节奏"——在合适的时候用 [章节结束|章节标题] 标记章节结尾
 
 【用户偏好】（由你灵活解读，不必死板遵循）
@@ -181,7 +181,7 @@ ${_termsPrompt}
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
 
 【回复格式 - 纯JSON，不要用代码块包裹】
-{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "${_t('ranking', '排行榜')}", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "${_t('cards', '任务卡片')}", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "${_t('comments', '论坛')}", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "${_t('moments', '朋友圈')}", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_t('mail', '邮件')}", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "${_t('shop', '商店')}", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "${_t('diary', '日记')}", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "${_t('quest', '任务')}名", "type": "任务类型", "status": "状态", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "关系描述"}], "keyEvents": ["重要事件描述"], "npcMessages": [{"name": "NPC名", "avatar": "👤", "content": "消息内容", "time": "刚刚"}], "gameTime": {"date": "日期", "time": "时间", "period": "时段", "weather": "天气", "era": "时代"}, "contextSummary": "持续更新的剧情摘要" }
+{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : ''} "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, "characters": [{"name": "", "title": "", "relation": "", "favorability": 0, "desc": "", "details": [{"key": "", "value": ""}]}], "world": [ {"type": "text", "title": "", "content": ""}, {"type": "list", "title": "", "items": [""]}, {"type": "ranking", "title": "${_t('ranking', '排行榜')}", "items": [{"name": "", "value": ""}]}, {"type": "key_value", "title": "", "items": [{"key": "", "value": ""}]}, {"type": "cards", "title": "${_t('cards', '任务卡片')}", "items": [{"icon": "单字图标", "title": "", "content": ""}]}, {"type": "comments", "title": "${_t('comments', '论坛')}", "main": "", "comments": [{"name": "", "text": ""}]}, {"type": "moments", "title": "${_t('moments', '朋友圈')}", "posts": [{"author": "", "avatar": "👤", "text": "", "time": "", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_t('mail', '邮件')}", "items": [{"from": "", "subject": "", "body": "", "preview": "", "date": ""}]}, {"type": "shop", "title": "${_t('shop', '商店')}", "items": [{"icon": "", "name": "", "desc": "", "price": 0}]}, {"type": "diary", "title": "${_t('diary', '日记')}", "items": [{"npc": "", "date": "", "content": "", "mood": "", "memos": [""]}]} ], "bag": [{"name": "", "count": 1, "desc": "", "rarity": "", "usable": false, "effect": "", "equippable": false, "equipped": false, "slot": ""}], "quests": [{"title": "", "type": "", "status": "", "progress": "", "hint": ""}], "relationships": [{"from": "", "to": "", "type": "", "desc": ""}], "keyEvents": [""], "npcMessages": [{"name": "", "avatar": "👤", "content": "", "time": ""}], "gameTime": {"date": "", "time": "", "period": "", "weather": "", "era": ""}, "contextSummary": "" }
 
 【关键区分】
 - player 是主角（玩家），characters 是NPC列表，两者不可混淆
@@ -644,7 +644,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 游戏状态快照
             if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
-                var snapshotText = '【当前世界状态快照 - 请基于此状态继续】\n';
+                var snapshotText = '【当前世界状态】\n';
                 var snap = gameState.worldSnapshot;
                 if (snap.player) {
                     snapshotText += '主角: ' + (snap.player.name || '未知') + ', ' + (snap.player.identity || '') + '\n';
@@ -665,7 +665,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 重要事件记录
             if (gameState.keyEvents && gameState.keyEvents.length > 0) {
-                var eventsText = '【重要事件记录 - 必须记住，不可遗忘】\n';
+                var eventsText = '【重要事件记录】\n';
                 gameState.keyEvents.forEach(function(evt, idx) {
                     eventsText += (idx + 1) + '. ' + evt + '\n';
                 });
@@ -676,7 +676,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState.rollingSummary) {
                 messages.push({
                     role: 'system',
-                    content: '【前情摘要 - 之前剧情的总结】\n' + gameState.rollingSummary + '\n\n请基于以上摘要和后续对话继续游戏，保持连贯。'
+                    content: '【前情摘要】\n' + gameState.rollingSummary
                 });
             }
 
@@ -1109,13 +1109,13 @@ async function sendAIRequest(userMessage, isInit = false) {
                 } else {
                     renderChoices([{
                         id: 'A',
-                        text: '继续探索'
+                        text: '继续'
                     }, {
                         id: 'B',
-                        text: '观察四周'
+                        text: '换个方向'
                     }, {
                         id: 'C',
-                        text: '等待观望'
+                        text: '停下来思考'
                     }]);
                 }
             } else {

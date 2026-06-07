@@ -185,15 +185,8 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         '【帖子内容】' + (post.main || post.content || '未知') + '\n' +
         '【已有评论】\n' + (existingComments || '暂无评论') + '\n\n' +
         '【可选NPC】' + (npcNames.length > 0 ? npcNames.join('、') : '随机生成网名') + '\n\n' +
-        '生成规则：\n' +
-        '1. 根据玩家身份和关系自行决定回复数量和热度——身份越高、关系越复杂，回复越多，有人回复玩家、有人回复其他评论、有人聊别的话题\n' +
-        '2. 回复JSON数组格式：[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n' +
-        '3. 【核心规则】NPC必须知道玩家(' + playerName + ')的真实身份！不要把玩家当陌生人！NPC的回复必须基于对玩家身份的了解来写。例如如果玩家是"殷家那位"，NPC应该知道并据此回复，而不是把玩家当普通网友。\n' +
-        '4. 【回复规则】如果玩家在评论中@了某个NPC（用"名字"格式），被@的NPC必须回复玩家！这是强制要求，不能忽略。\n' +
-        '5. 有人要直接回复玩家(' + playerName + ')，有人回复其他评论者，有人自说自话\n' +
-        '6. 回复简短自然，纯文字，不要emoji\n' +
-        '7. 态度多样：赞同、反对、吐槽、八卦、补充信息等\n' +
-        '8. 如果玩家身份很高，在最后加一个字段 maySpawnNewPost: true，表示可能有人开新帖讨论此事';
+        '你理解论坛的运作方式——NPC知道玩家身份，会根据关系和性格自然回复，有人回复玩家、有人回复其他人、有人聊别的话题。被@的NPC会回复。回复简短自然，纯文字。态度多样。如果玩家身份引人注目，加字段 maySpawnNewPost: true。\n' +
+        '回复JSON数组：[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n';
     callAI([{
         role: 'system',
         content: sysMsg
@@ -251,11 +244,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         '【原帖标题】' + (srcPost.title || '未知') + '\n' +
         '【玩家评论】' + playerComment + '\n\n' +
         '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
-        '要求：\n' +
-        '1. 标题要吸引眼球，10-20字\n' +
-        '2. 正文引用玩家的评论，加上自己的看法，50-100字\n' +
-        '3. 纯文字，不要emoji\n' +
-        '4. 帖子内容要和原帖相关但角度不同（八卦、分析、吐槽等）';
+        '你理解论坛生态——标题吸引眼球(10-20字)，正文引用玩家评论加自己看法(50-100字)，纯文字，角度和原帖不同。';
     callAI([{
         role: 'system',
         content: sysMsg
@@ -4442,16 +4431,12 @@ async function _generateEndingRender(stories) {
             '【世界观】' + worldTheme + '\n' +
             '【主角】' + playerName + '\n' +
             '【主要角色】' + (charInfo || '未知') + '\n\n' +
-            '【要求】\n' +
-            '1. 用JSON格式回复：{"title":"结局标题","summary":"结局概述（200字）","epilogue":"后记（300字）","names":"相关角色名，用顿号分隔"}\n' +
-            '2. 结局要符合剧情发展，有始有终\n' +
-            '3. 直接输出JSON，不要代码块包裹\n' +
-            '4. names字段中的角色名用顿号（、）分隔\n\n' +
+            '你理解如何为文字冒险游戏创作有深度、有画面感的结局。回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
             '【剧情】\n' + allText;
 
         var result = await callAI([{
             role: 'system',
-            content: '你是专业的游戏结局编剧，擅长为文字冒险游戏创作有深度、有画面感的结局。所有输出必须用中文。'
+            content: '你是游戏结局编剧，中文输出。'
         }, {
             role: 'user',
             content: prompt

@@ -2038,7 +2038,7 @@ var WorldInfo = {
 
     var mergedText = '';
     if (allTexts.length > 0) {
-        var lines = ['【世界知识库 - 以下信息请牢记并融入剧情中】'];
+        var lines = ['【世界知识库】'];
         allTexts.forEach(function(text) { lines.push(text); });
         mergedText = lines.join('\n');
     }
