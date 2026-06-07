@@ -13,6 +13,26 @@ var QuestSystem = {
         SIDE: '支线',
         HIDDEN: '隐藏'
     },
+    // 动态类型注册：AI 可以创造新的任务类型
+    _customTypes: {},
+    _customStatuses: {},
+    registerType: function(key, label, sortOrder) {
+        this._customTypes[key] = { label: label, sortOrder: sortOrder || 50 };
+    },
+    registerStatus: function(key, label, sortOrder) {
+        this._customStatuses[key] = { label: label, sortOrder: sortOrder || 50 };
+    },
+    // 获取所有已知类型（内置+自定义）
+    getAllTypes: function() {
+        var types = Object.assign({}, this.TYPE);
+        for (var k in this._customTypes) { types[k] = this._customTypes[k].label; }
+        return types;
+    },
+    getAllStatuses: function() {
+        var statuses = Object.assign({}, this.STATUS);
+        for (var k in this._customStatuses) { statuses[k] = this._customStatuses[k].label; }
+        return statuses;
+    },
     getAllQuests() {
         var quests = gameState.currentQuests || [];
         if (quests.filter(function(q) {
@@ -93,8 +113,16 @@ var QuestSystem = {
         cc +
         '</div><div class="quest-stat-label">已完成</div></div><div class="quest-stat-item"><div class="quest-stat-num">' +
         fc + '</div><div class="quest-stat-label">已失败</div></div></div>';
-        html +=
-        '<div class="quest-filter-bar"><button class="quest-filter-btn active" data-quest-filter="all">全部</button><button class="quest-filter-btn" data-quest-filter="main">主线</button><button class="quest-filter-btn" data-quest-filter="side">支线</button><button class="quest-filter-btn" data-quest-filter="hidden">隐藏</button><button class="quest-filter-btn" data-quest-filter="active">进行中</button></div>';
+        var filterBtns = '<button class="quest-filter-btn active" data-quest-filter="all">全部</button>';
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="main">主线</button>';
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="side">支线</button>';
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="hidden">隐藏</button>';
+        // 动态添加自定义类型按钮
+        for (var k in QuestSystem._customTypes) {
+            filterBtns += '<button class="quest-filter-btn" data-quest-filter="' + k + '">' + QuestSystem._customTypes[k].label + '</button>';
+        }
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="active">进行中</button>';
+        html += '<div class="quest-filter-bar">' + filterBtns + '</div>';
         html += '<div class="quest-list-container" id="questListContainer">';
         if (quests.length === 0) {
             html +=
@@ -110,7 +138,10 @@ var QuestSystem = {
         const self = this;
         // 【优化】主线 → 支线 → 隐藏，进行中 → 已完成 → 已失败
         var typeOrder = { '主线': 0, '支线': 1, '隐藏': 2 };
-        var statusOrder = { '进行中': 0, '已完成': 1, '已失败': 2 };
+        // 合入自定义类型的排序
+        for (var k in QuestSystem._customTypes) { typeOrder[QuestSystem._customTypes[k].label] = QuestSystem._customTypes[k].sortOrder; }
+        var statusOrder = { '进行中': 0, '已完成': 1, '已失败': 2, '已放弃': 3 };
+        for (var k in QuestSystem._customStatuses) { statusOrder[QuestSystem._customStatuses[k].label] = QuestSystem._customStatuses[k].sortOrder; }
         var sorted = quests.slice().sort(function(a, b) {
             var ta = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99;
             var tb = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99;
@@ -172,12 +203,14 @@ var QuestSystem = {
                 var f = this.dataset.questFilter;
                 var quests = self.getAllQuests();
                 var filtered = quests;
-                if (f === 'main' || f === 'side' || f === 'hidden') {
+                if (f === 'main' || f === 'side' || f === 'hidden' || QuestSystem._customTypes[f]) {
                     var tm = {
                         main: self.TYPE.MAIN,
                         side: self.TYPE.SIDE,
                         hidden: self.TYPE.HIDDEN
                         };
+                    // 合入自定义类型
+                    for (var k in QuestSystem._customTypes) { tm[k] = QuestSystem._customTypes[k].label; }
                     filtered = self.filterByType(quests, tm[f]);
                     } else if (f === 'active') {
                     filtered = self.filterByStatus(quests, 'active');
@@ -367,65 +400,34 @@ var AchievementSystem = {
                 return u.id === ach.id;
                 })) return;
             var np = 0;
-            switch (ach.condition) {
-                case 'storyCount >= 1':
-                np = Math.min(1, stats.storyCount);
-                break;
-                case 'storyCount >= 10':
-                np = Math.min(10, stats.storyCount);
-                break;
-                case 'storyCount >= 50':
-                np = Math.min(50, stats.storyCount);
-                break;
-                case 'storyCount >= 100':
-                np = Math.min(100, stats.storyCount);
-                break;
-                case 'npcCount >= 1':
-                np = Math.min(1, stats.npcCount);
-                break;
-                case 'friendlyNpc >= 10':
-                np = Math.min(10, stats.friendlyNpc);
-                break;
-                case 'romanceNpc >= 3':
-                np = Math.min(3, stats.romanceNpc);
-                break;
-                case 'allyNpc >= 5':
-                np = Math.min(5, stats.allyNpc);
-                break;
-                case 'combatCount >= 1':
-                np = Math.min(1, stats.combatCount);
-                break;
-                case 'combatCount >= 10':
-                np = Math.min(10, stats.combatCount);
-                break;
-                case 'winStreak >= 5':
-                np = Math.min(5, stats.winStreak);
-                break;
-                case 'bagItems >= 10':
-                np = Math.min(10, stats.bagItems);
-                break;
-                case 'rareItems >= 5':
-                np = Math.min(5, stats.rareItems);
-                break;
-                case 'legendaryItems >= 3':
-                np = Math.min(3, stats.legendaryItems);
-                break;
-                case 'locations >= 5':
-                np = Math.min(5, stats.locations);
-                break;
-                case 'locations >= 20':
-                np = Math.min(20, stats.locations);
-                break;
-                case 'hiddenLocations >= 3':
-                np = Math.min(3, stats.hiddenLocations);
-                break;
-                default:
-                if (ach.condition === 'nightOwl') {
+            // 动态解析条件表达式，如 "storyCount >= 1"
+            var cond = ach.condition || 'true';
+            try {
+                // 安全的条件求值：只支持简单的比较表达式
+                var match = cond.match(/^(\w+)\s*(>=|<=|>|<|==|!=)\s*(\d+)$/);
+                if (match) {
+                    var field = match[1];
+                    var op = match[2];
+                    var val = parseInt(match[3]);
+                    var statVal = stats[field] || 0;
+                    switch (op) {
+                        case '>=': np = Math.min(val, statVal); break;
+                        case '<=': np = statVal <= val ? 1 : 0; break;
+                        case '>': np = statVal > val ? 1 : 0; break;
+                        case '<': np = statVal < val ? 1 : 0; break;
+                        case '==': np = statVal === val ? 1 : 0; break;
+                        case '!=': np = statVal !== val ? 1 : 0; break;
+                    }
+                } else if (cond === 'nightOwl') {
                     var h = new Date().getHours();
                     np = (h >= 2 && h < 5) ? 1 : 0;
+                } else if (cond !== 'true') {
+                    // 未知条件格式，尝试作为简单布尔值
+                    np = 0;
                 }
-            break;
-        }
+            } catch(e) {
+                np = 0;
+            }
     pd.progress[ach.id] = np;
     var mp = ach.maxProgress || 1;
     if (np >= mp) {

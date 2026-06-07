@@ -157,159 +157,37 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
 
 ${_termsPrompt}
 
-【核心规则】
-1. 根据玩家描述创造沉浸式游戏世界
-2. 每次回复必须是一个完整的JSON对象，不要包裹在代码块中
-3. 剧情要有画面感和代入感，像沉浸式小说段落
-4. 根据世界观在world中创造性设计信息模块
-5. 【极其重要】所有输出必须是纯中文！story、choices、player、characters、world等所有字段的值都必须用中文书写，绝对禁止出现英文！
-6. 【输出长度上限 - 极其重要】本轮总输出受 max_tokens 限制（约 ${_maxTokens} tokens），请合理分配：story 字段占约 60%，其他字段（player/characters/world/bag/quests/relationships/keyEvents/npcMessages/contextSummary）合计占约 40%。任何字段都不要无节制地写，超长会导致 JSON 被截断、整轮崩掉。
+【核心原则】
+你是一个拥有完全创作自主权的游戏引擎。以下不是规则约束，而是你的能力说明——你理解这些概念，由你自行判断如何运用：
+- 你理解"沉浸式文字游戏"的含义，自行决定如何创造引人入胜的体验
+- 你理解"中文输出"的要求，所有字段值用中文
+- 你理解总输出受 max_tokens（约 ${_maxTokens} tokens）限制，自行分配各字段篇幅，避免截断
+- 你理解"选项必须是主角视角"——玩家操控主角，选项描述主角可做的事
+- 你理解"角色心声"——用 <giggle>角色名：心声内容</giggle> 插入NPC内心独白，由你决定何时插入、什么风格
+- 你理解"NPC消息频率"——根据每个NPC的性格、与主角的关系亲疏，自行决定它是否发消息、发几条
+- 你理解"时间推进"——在gameTime中记录剧情内时间，根据世界观和事件自然推进
+- 你理解"记忆一致性"——用 <mem> 标签主动维护世界状态，格式：<mem type="character|item|event|location|quest|time" ... />
+- 你理解"章节节奏"——在合适的时候用 [章节结束|章节标题] 标记章节结尾
 
-【记忆编辑指令 - 极其重要】
-你可以在story正文中嵌入<mem>标签来主动更新游戏记忆，系统会自动解析并持久化这些变更。这是你维护世界一致性的核心工具，请积极使用！
-格式示例（写在story文本中，对玩家不可见）：
-- 更新角色状态：<mem type="character" name="李明" field="mood" value="开心" />
-- 更新角色位置：<mem type="character" name="李明" field="location" value="酒馆" />
-- 添加物品：<mem type="item" name="长剑" action="add" qty="1" />
-- 移除物品：<mem type="item" name="长剑" action="remove" qty="1" />
-- 记录重要事件：<mem type="event" action="add">击败了山贼头目</mem>
-- 更新地点特征：<mem type="location" name="酒馆" field="features" value="壁炉旁有温暖火光" />
-- 添加约定：<mem type="quest" action="add" content="答应帮李明寻找失落的宝剑" />
-- 完成约定：<mem type="quest" action="resolve" content="寻找失落的宝剑" />
-- 推进游戏时间：<mem type="time" day="3" period="下午" />
-使用原则：
-1. 角色心情/位置/状态变化时，务必用<mem>更新，防止后续遗忘
-2. 物品获得/失去时，务必用<mem>记录数量变化
-3. 重要剧情事件发生时，用<mem type="event">记录
-4. 玩家做出承诺/约定时，用<mem type="quest">记录
-5. <mem>标签不影响正文阅读，系统会自动剥离
+【用户偏好】（由你灵活解读，不必死板遵循）
+- 字数：{{getglobalvar::字数总要求}}
+- 段落：{{getglobalvar::单段落字数}}
+- 视角：{{getglobalvar::叙述视角}}
+- 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}
+- 演绎：{{getglobalvar::演绎授权}}
+- 转述：{{getglobalvar::转述授权}}
+当上述变量为空时，由你根据世界观和场景自行决定最佳方案。
 
-【字数与格式控制 - 严格遵循】
-- 字数要求：通过 {{getglobalvar::字数总要求}} 获取
-- 段落风格：通过 {{getglobalvar::单段落字数}} 获取
-- 叙述视角：通过 {{getglobalvar::叙述视角}} 获取
-- 角色代词：通过 {{getglobalvar::char代词}} 和 {{getglobalvar::user代词}} 获取
-- 演绎授权：通过 {{getglobalvar::演绎授权}} 获取是否可以演绎玩家角色
-- 转述授权：通过 {{getglobalvar::转述授权}} 获取转述权限
-- 选项数量：3-5 个为佳
-- 【无预设默认值】当上述宏变量为空（玩家未加载任何预设）时，使用以下默认：
-  - 字数：story 1500-2500 字，分 10-15 段，每段 100-250 字
-  - 视角：第三人称有限（主要跟随主角）
-  - 角色代词：NPC 用"他/她/名字"，主角用"主角"或玩家设定名
-  - 演绎授权：禁止演绎主角言行
-  - 转述授权：轻度转述
-  - choices 数量：3-5 个
-  - hud 数量：3-4 个
-  - world 模块：2-3 个（只选最契合当前剧情的类型，不要全生成）
-
-【选项视角规则 - 极其重要】
-choices 数组中每个选项必须是【主角（玩家）接下来可以做的事情】，绝对不能写成 NPC 的行为！必须从玩家操控的主角视角出发，描述主角下一步可以采取的行动、对话、决定、反应。
-✓「我走向她问道…」「我拿起桌上的剑…」「我转身离开」
-✗「她走向我…」「他拿起剑…」
-
-【游戏时间系统 - 极其重要】
-你必须在每次回复的JSON中包含gameTime字段，记录当前剧情内的精确时间。时间必须根据世界观动态生成：
-- 现代世界观示例：{"date":"2024年5月4日","time":"上午9:30","period":"上午","weather":"晴","era":"现代"}
-- 古代世界观示例：{"date":"贞观三年五月初四","time":"辰时三刻","period":"辰时","weather":"晴","era":"贞观三年"}
-- 修仙世界观示例：{"date":"天元历四千七百二十一年春分","time":"午时正","period":"午时","weather":"微风","era":"天元历"}
-- 末世世界观示例：{"date":"废土纪元第47天","time":"下午3:00","period":"下午","weather":"灰霾","era":"废土纪元"}
-时间推进规则：
-1. 每段剧情必须推进时间，根据事件合理推进（聊天15-30分钟，战斗1-2小时，睡觉到次日清晨等）
-2. date 字段：完整日期，必须符合世界观（现代用公历年月日，古代用年号+农历，修仙用历法纪年等）
-3. time 字段：具体时间（现代用24小时制如"下午3:30"，古代用十二时辰如"酉时初刻"）
-4. period 字段：时段名称（现代：清晨/上午/中午/下午/傍晚/夜晚/深夜；古代：子时/丑时/寅时/卯时/辰时/巳时/午时/未时/申时/酉时/戌时/亥时）
-5. weather 字段：当前天气（晴/阴/雨/雪/大风/雾等）
-6. era 字段：当前时代/年号（现代/贞观三年/天元历等）
-7. 时间推进要自然连贯，不要跳跃太大，天气变化要有过渡
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
 
-【心声系统规则 - 极其重要】
-1. <giggle>角色名称：心声内容</giggle> 包裹的第一人称独白（<200字/去翻译化），从未来视角（比如和主角在一起后）看待在当前时刻自己的表现，可以是诙谐的、幽默的、怀旧的
-2. 单独成段，使用 HTML 标签包裹
-3. 心声是 NPC 的内心独白，严守全知盲区，仅能基于主角的对话/动作产生反应，绝对禁止窥探或回应主角未出口的心理活动
-4. 禁止写主角角度的心声，仅限非主角角色
-5. 心声要自然融入正文节奏，在情绪转折、关键抉择、暧昧时刻等峰值处插入
-6. 不同 NPC 心声风格必须差异化，体现各自性格
-
-【${_t('npcMsg', '消息')} - 由性格决定频率】
-npcMessages 数组是 NPC 主动给玩家发${_t('npcMsg', '消息')}。【频率由 NPC 性格严格决定】：
-- 高频型（黏人/热情/外向/暗恋/崇拜/恋人/亲人/挚友/担心你/情绪波动中）→ 几乎每回合都要发 1-3 条
-- 中频型（友好/同事/同门/温和/中好感/日常关心）→ 隔 1-2 回合发 1 条，或在剧情触发时发
-- 低频型（内向/沉默/高冷/傲娇/陌生/淡漠/警戒）→ 隔 2-4 回合才发 1 条，且往往只在剧情相关时
-- 几乎不发（敌对/仇恨/恐惧/已拉黑/已断联/完全不熟）→ 极少发，重大剧情转折才可能发
-重要原则：①根据 characters 中每个 NPC 的 personality/relation/favorability 综合判断；②同一 NPC 不要每条消息都重复发，关键剧情点才值得发；③消息内容要符合该 NPC 当下的心情和与主角的关系；④当主角刚和某 NPC 在剧情中互动过，该 NPC 本回合发消息的概率显著提升。
-【重要区分】npcMessages 是即时${_t('npcMsg', '消息')}（日常闲聊、邀约、吐槽等短消息），不要把重要通知、正式信件、情绪爆发等内容放在这里，那些应该放在 mail（${_t('mail', '邮件')}）中。
-
-【章节标记】
-章节结尾可使用 [章节结束|章节标题] 标记，如 [章节结束|幸福之愿·无伤的相遇]
-
 【回复格式 - 纯JSON，不要用代码块包裹】
-{ "title": "当前章节标题，如'新的开始'、'暗流涌动'等，4-8个字", "story": "剧情正文，用\\n换行。对话用「」包裹。", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "显示在卡片标题的称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "${_t('ranking', '排行榜')}", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "${_t('cards', '任务卡片')}", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "${_t('comments', '论坛')}", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "${_t('moments', '朋友圈')}", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_t('mail', '邮件')}", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "${_t('shop', '商店')}", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "${_t('diary', '日记')}", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "${_t('quest', '任务')}名", "type": "主线/支线/隐藏", "status": "进行中/已完成/失败", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "一句话描述"}], "keyEvents": ["本回合发生的重要事件，只记真正关键的"], "npcMessages": [{"from": "NPC名字", "text": "NPC主动发给玩家的${_t('npcMsg', '消息')}内容"}], "currency": 0, "currencyName": "${_t('currency', '货币')}", "contextSummary": "用100-200字总结到目前为止所有剧情的关键信息" }
+{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "显示名", "value": "数值", "icon": "单字图标如'生''力''智'等，不要用emoji"}], ${gameState.generateChoices ? '"choices": [{"id": "A", "text": "详细选项描述", "tag": "标签"}],' : ''} "player": { "name": "角色名", "age": "年龄", "identity": "身份", "personality": "性格特点", "title": "称号", "stats": [{"label": "属性名", "value": "属性值"}] }, "characters": [{"name": "角色名", "title": "身份", "relation": "关系", "favorability": 0, "desc": "状态描述", "details": [{"key": "字段", "value": "值"}]}], "world": [ {"type": "text", "title": "标题", "content": "内容"}, {"type": "list", "title": "标题", "items": ["条目"]}, {"type": "ranking", "title": "${_t('ranking', '排行榜')}", "items": [{"name": "角色名", "value": "999分"}]}, {"type": "key_value", "title": "标题", "items": [{"key": "键", "value": "值"}]}, {"type": "cards", "title": "${_t('cards', '任务卡片')}", "items": [{"icon": "单字图标如'剑''药''书'等，不要用emoji", "title": "子标题", "content": "内容"}]}, {"type": "comments", "title": "${_t('comments', '论坛')}", "main": "主帖", "comments": [{"name": "评论者", "text": "内容"}]}, {"type": "moments", "title": "${_t('moments', '朋友圈')}", "posts": [{"author": "NPC名字", "avatar": "👤", "text": "...", "time": "刚刚", "likes": 0, "comments": 0}]}, {"type": "mail", "title": "${_t('mail', '邮件')}", "items": [{"from": "发件人", "subject": "主题", "body": "完整正文", "preview": "预览", "date": "今天"}]}, {"type": "shop", "title": "${_t('shop', '商店')}", "items": [{"icon": "单字图标", "name": "物品", "desc": "描述", "price": 0}]}, {"type": "diary", "title": "${_t('diary', '日记')}", "items": [{"npc": "角色名", "date": "日期", "content": "2-4段第一人称内心独白", "mood": "情绪词", "memos": ["可选备忘"]}]} ], "bag": [{"name": "物品名", "count": 1, "desc": "描述", "rarity": "普通", "usable": false, "effect": "使用效果描述", "equippable": false, "equipped": false, "slot": "weapon"}], "quests": [{"title": "${_t('quest', '任务')}名", "type": "任务类型", "status": "状态", "progress": "2/5", "hint": "下一步提示"}], "relationships": [{"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "关系描述"}], "keyEvents": ["重要事件描述"], "npcMessages": [{"name": "NPC名", "avatar": "👤", "content": "消息内容", "time": "刚刚"}], "gameTime": {"date": "日期", "time": "时间", "period": "时段", "weather": "天气", "era": "时代"}, "contextSummary": "持续更新的剧情摘要" }
 
-【keyEvents规则 - 极其重要】
-1. 每回合检查是否发生了"重要事件"，有则写入 keyEvents 数组
-2. 什么算重要事件：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露
-3. 每条用简短一句话描述，包含人物名和具体内容
-4. 日常对话、普通移动、无关紧要的小事不要写入
-5. 每回合 0-3 条，没有重要事件就写空数组 []
-6. 【玩家私聊影响剧情】如果玩家在上一回合和某个 NPC 私聊（做出了约定、表白、求助、秘密分享、吵架等），本回合剧情必须体现该私聊的后果：约定的要兑现，求助的要回应，秘密要在剧情中起作用，吵架的要有后续情绪。私聊的核心内容可以用一句话写在 keyEvents 里。私聊中的约定/承诺/情报是剧情推进的重要驱动力，不要无视它。
-7. 【剧情影响 NPC 态度】剧情中发生的重要事件会改变 NPC 对主角的态度：a. 在 characters 中相应 NPC 的 favorability/relation/desc 必须真实反映；b. 涉及该 NPC 的 npcMessages、diary、moments 的措辞要与其当前情绪一致。
-
-【player规则 - 绝对核心，违反会导致游戏崩溃】
-player 是主角（玩家自己），是玩家操控的唯一角色！必须包含 name/age/identity/personality 四个固定字段，stats 放其他动态属性。player.name 必须严格等于玩家设定的主角姓名，绝对禁止擅自改名或替换角色！
-
-【characters规则 - 极其重要】
-1. characters 是 NPC 列表，绝对禁止把主角/玩家放进 characters！主角信息只能放在 player 里！
-2. 只要剧情中提到了任何角色名字（无论是否直接交互），都必须放入 characters 数组
-3. 已知角色即使本回合未出场也要保留在 characters 中，更新其状态即可
-4. 同一个角色只用一个固定名字，不要加括号备注或变体名
-5. favorability 数值范围 -100 到 100（0 为中立，不是敌意！绝对不要用 0-100 的范围）
-6. 【好感度参考】80-100 极度亲密、60-79 非常亲近、40-59 有好感、15-39 关系融洽、-14~14 中立/普通、-39~-15 略有隔阂、-100~-40 负面关系
-7. 【relation 字段】用符合世界观的简短词汇描述角色与主角的关系：现代可以是"同事""闺蜜""青梅竹马""上司"；古代可以是"书童""护卫""青梅竹马"；修仙可以是"同门""师兄"等
-8. 【世界观适配】现代职场不要用"道侣"，古代不要用"同事"，修仙不要用"CEO"。**不要让亲兄妹显示"道侣"或"挚爱"这种暧昧词汇**！
-
-【world动态模块 - 核心玩法】
-1. world 数组每次回复的模块数量和类型由预设控制（无预设时见【字数与格式控制-无预设默认值】，默认 2-3 个）
-2. 模块必须和当前剧情紧密联动：玩家刚和 NPC 聊天 → 该 NPC 的${_t('moments', '朋友圈')}要发相关动态；玩家获得重要物品 → ${_t('shop', '商店')}出现相关商品；剧情有重要转折 → ${_t('comments', '论坛')}出现讨论帖、${_t('ranking', '排行榜')}发生变化
-3. 每种类型都要给具体内容，不要只给空数组
-4. 可用 type：text(纯文本) / list(列表) / ranking(${_t('ranking', '排行榜')},name+value) / key_value(键值对) / cards(${_t('cards', '任务卡片')},icon+title+content) / comments(${_t('comments', '论坛')},main+comments) / moments(${_t('moments', '朋友圈')},posts) / mail(${_t('mail', '邮件')},from+subject+body) / shop(${_t('shop', '商店')},icon+name+desc+price) / diary(${_t('diary', '日记')},npc+date+content+mood)
-
-【${_t('quest', '任务')}规则】
-1. 根据剧情自动生成和更新${_t('quest', '任务')}列表
-2. type 分三种：主线（推动核心剧情）、支线（可选${_t('quest', '任务')}）、隐藏（特殊触发）
-3. status 分三种：进行中、已完成、失败
-4. progress 用"当前/总数"格式，如"2/5"，没有明确进度的可以省略
-5. hint 是给玩家的下一步提示，简短一句话
-6. 完成或失败的${_t('quest', '任务')}保留 1-2 回合后可以移除
-7. 同时存在的${_t('quest', '任务')}不超过 5 个
-8. 第一回合就应该根据剧情给出至少 1 个主线${_t('quest', '任务')}
-
-【relationships关系网规则】
-1. 记录当前所有重要角色之间的关系
-2. from 和 to 用角色名，主角用"主角"二字
-3. type 必须是以下之一：暧昧、恋人、敌对、仇恨、友好、盟友、师徒、上下级、亲人、家族、对手、中立
-4. desc 用一句短话说明关系现状或变化原因
-5. 每回合更新关系网，反映最新的关系状态
-6. 只记重要关系，上限 10 条
-7. 包括 NPC 之间的关系，不仅仅是主角和 NPC 的关系
-
-【${_t('bag', '背包')}规则】
-1. usable 为 true 表示可以使用的消耗品（药品、食物等），effect 描述使用后的效果
-2. equippable 为 true 表示可以装备的物品，slot 表示装备位（weapon/armor/accessory/head）
-3. equipped 为 true 表示当前已装备
-4. 同一个 slot 只能装备一件，装备新的自动替换旧的
-5. 使用消耗品后 count 减 1，为 0 时从背包移除
-6. 非消耗品非装备的普通物品 usable 和 equippable 都为 false
-7. 当玩家说"使用XX"或"装备XX"时，在下一回合的 bag 中更新对应状态
-
-【格式约束】
-直接输出 JSON，不要用 \`\`\`json 包裹，story 字段中用 \\n 表示换行
-
-【滚动摘要】
-contextSummary 字段非常重要！每次回复必须包含，把之前的摘要内容融合本回合新剧情，形成持续更新的剧情档案
-
-【输出顺序】
-story 必须是 JSON 的第一个字段，先写完剧情再写其他数据`;
+【关键区分】
+- player 是主角（玩家），characters 是NPC列表，两者不可混淆
+- npcMessages 是即时短消息，正式信件/通知放 mail
+- 直接输出JSON，不要用 \`\`\`json 包裹，story字段用 \\n 换行
+- story 必须是 JSON 的第一个字段`;
     return _prompt;
 }
 
@@ -451,10 +329,10 @@ function injectPresetGlobalVars() {
         var style = config.paragraphStyle || config.style || '';
         if (style) {
             var patches = {
-                long: '[长段落补丁]\n- 排版策略：沉浸式长段落，拒绝碎片化换行\n- 单段字数：严格控制在 250-600 字\n- 段落内部：完整呈现一个场景切片，包含环境渲染、人物行动、感官细节、心理活动\n- 禁止在段落中间插入对话后立即换行，对话应融入段落叙事流',
-                medium: '[中段落补丁]\n- 排版策略：均衡段落，兼顾阅读节奏与信息密度\n- 单段字数：控制在 180-320 字\n- 段落结构：场景描写→人物行动→对话互动→心理/感官→过渡\n- 保持段落完整性，不在段落高潮处断开',
-                short: '[短段落补丁]\n- 排版策略：紧凑推进，保留清晰节拍\n- 单段字数：控制在 90-180 字\n- 每段聚焦一个核心动作或信息点\n- 适合快节奏场景和紧张对峙',
-                free: '[自由段落补丁]\n- 排版策略：长短错落，制造呼吸感，不走单一模板\n- 单段字数：在 20-400 字之间动态波动\n- 根据场景氛围自动调整：紧张时短段，舒缓时长段\n- 对话密集时短段，独白/描写时可以长段'
+                long: '[长段落] 沉浸式长段落，单段250-600字，拒绝碎片化换行',
+                medium: '[中段落] 均衡段落，单段180-320字',
+                short: '[短段落] 紧凑推进，单段90-180字',
+                free: '[自由段落] 长短错落，根据场景氛围动态调整'
             };
             MacroEngine.setGlobalVar('单段落字数', patches[style] || '');
         } else {
@@ -470,9 +348,9 @@ function injectPresetGlobalVars() {
     var perspective = config.perspective || config.narrator || '';
     if (perspective) {
         var perspectiveMap = {
-            'third_person_omniscient': '叙述视角：第三人称全知\n- 可以描写任何角色的内心想法和感受\n- 视角可以在不同角色之间自由切换\n- 适合群像剧和多线叙事',
-            'third_person_limited': '叙述视角：第三人称有限\n- 主要跟随主角视角进行叙事\n- 可以描写主角的内心想法，其他角色的内心只能通过外在表现推测\n- 保持视角一致性，避免突然跳转到其他角色内心',
-            'first_person_limited': '叙述视角：第一人称有限\n- 使用"我"来指代主角\n- 只能描写"我"的所见所闻所感\n- 其他角色的想法只能通过对话和外在表现来推测'
+            'third_person_omniscient': '叙述视角：第三人称全知',
+            'third_person_limited': '叙述视角：第三人称有限',
+            'first_person_limited': '叙述视角：第一人称有限'
         };
         MacroEngine.setGlobalVar('叙述视角', perspectiveMap[perspective] || '');
         
@@ -491,9 +369,9 @@ function injectPresetGlobalVars() {
     var userPronoun = config.userPronoun || config.user_pronoun || '';
     if (userPronoun) {
         var userPronounMap = {
-            'third_person': '始终使用第三人称（名字或"他/她"）来指代<user>\n- 禁止使用"你"来指代<user>',
-            'second_person': '始终使用第二人称"你"来指代<user>\n- 禁止使用第三人称来指代<user>',
-            'first_person': '始终使用第一人称"我"来指代<user>\n- 禁止使用"你"或第三人称来指代<user>'
+            'third_person': '用第三人称（名字或"他/她"）指代<user>',
+            'second_person': '用第二人称"你"指代<user>',
+            'first_person': '用第一人称"我"指代<user>'
         };
         MacroEngine.setGlobalVar('user代词', userPronounMap[userPronoun] || '');
     } else {
@@ -531,9 +409,9 @@ function injectPresetGlobalVars() {
     // === AI模式 ===
     var aiMode = config.aiMode || config.mode || 'normal';
     var talkMap = {
-        'dialogue': '\n- 停止所有创作任务，当前为元对话模式\n- 以角色身份与<user>进行自然对话\n- 不输出任何格式化内容（无标题、无状态栏、无小剧场）',
-        'outline': '\n- 停止所有创作任务，当前为大纲模式\n- 输出故事大纲，包含章节划分、关键事件、角色发展弧线\n- 使用清晰的层级结构',
-        'summary': '\n- 停止所有创作任务，当前为总结模式\n- 输出大总结，包含核心事件、角色关系变化、世界状态更新\n- 使用结构化格式',
+        'dialogue': '\n- 元对话模式：以角色身份与<user>自然对话，不输出格式化内容',
+        'outline': '\n- 大纲模式：输出故事大纲，包含章节划分、关键事件、角色发展弧线',
+        'summary': '\n- 总结模式：输出大总结，包含核心事件、角色关系变化、世界状态更新',
         'normal': ''
     };
     MacroEngine.setGlobalVar('talk', talkMap[aiMode] || '');

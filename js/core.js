@@ -812,6 +812,16 @@ var SaveDB = {
 // 未来加题材只需往数组里push对象即可
 // ========================================
 const THEME_LIBRARY = [
+    // ---- 自由创作（推荐） ----
+    {
+        category: '自由创作',
+        icon: '✦',
+        title: '自由创作·无限可能',
+        desc: '输入你想要的任何世界，AI 会理解并创造',
+        prompt: '',
+        tags: ['自由', '无限'],
+        hot: true
+    },
     // ---- 修仙玄幻 ----
     {
         category: '修仙玄幻',
@@ -1706,107 +1716,134 @@ return {
 };
 }
 
-// 【小剧场融合】将小剧场内容注入到日志功能
-function injectTheaterToLogs(theaterContent) {
-    if (!theaterContent || Object.keys(theaterContent).length === 0) return;
+// 根据 AI 指定的 type 字段创建模块
+function _createModuleFromType(type, theater, key) {
+    var content = theater.html || theater.content || '';
+    var data = theater.data || {};
+    var title = theater.title || key;
 
-    // 确保 _worldModules 存在
-    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+    // 已知类型的快速映射
+    var knownTypes = {
+        text: function() { return { type: 'text', title: title, content: content }; },
+        list: function() { return { type: 'list', title: title, items: data.items || [] }; },
+        ranking: function() { return { type: 'ranking', title: title, items: data.items || [] }; },
+        key_value: function() { return { type: 'key_value', title: title, items: data.items || [] }; },
+        cards: function() { return { type: 'cards', title: title, items: data.items || parseItemsContent(content) }; },
+        comments: function() { return { type: 'comments', title: title, items: data.posts || parseForumContent(content) }; },
+        moments: function() { return { type: 'moments', title: title, moments: parseMomentsContent(content) }; },
+        mail: function() { return { type: 'mail', title: title, mails: parseMailContent(content) }; },
+        shop: function() { return { type: 'shop', title: title, goods: parseShopContent(content) }; },
+        diary: function() { return { type: 'diary', title: title, entries: parseDiaryContent(content) }; },
+        chat: function() { injectToChatLog('群聊', theater); return { type: 'chat', npc: '群聊', messages: parseChatContent(content) }; },
+        status: function() { _bridgeStatusToCharacters(theater); return { type: 'status', title: title, content: content, stats: data.stats || [] }; },
+        summary: function() { _bridgeSummaryToMemory(theater); return { type: 'summary', title: title, content: content, summary: data.summary || '' }; },
+        branches: function() { if (typeof renderChoices === 'function' && data.options) renderChoices(data.options); return { type: 'branches', title: title, content: content, options: data.options || [] }; },
+        phone: function() { return { type: 'phone', title: title, content: content, apps: data.apps || [] }; },
+        theater: function() { return { type: 'theater', title: title, content: content, scenes: data.scenes, text: data.text }; },
+        author_note: function() { return { type: 'author_note', title: title, content: theater.content || content }; },
+        achievements: function() { return { type: 'achievements', title: title, items: data.items || [] }; },
+        calendar: function() { return { type: 'calendar', title: title, events: parseCalendarContent(content) }; },
+        profile: function() { _bridgeProfileToRelationships(theater); return { type: 'text', title: title, content: content }; }
+    };
 
-    Object.keys(theaterContent).forEach(function(key) {
-        var theater = theaterContent[key];
-        var targetModule = null;
+    if (knownTypes[type]) return knownTypes[type]();
 
-        // 根据小剧场类型映射到对应的日志功能
-        switch (key) {
-            // 论坛类 -> 论坛
-            case '论坛之愿':
-            case '论坛小剧场':
-            case '文艺盲盒小剧场':
-            case 'gossip':
-            case '八卦':
-            case '论坛':
-            targetModule = { type: 'comments', title: theater.title || '论坛', items: parseForumContent(theater.html || theater.content) };
-            // 如果有结构化数据，使用它
-            if (theater.data && theater.data.posts) {
-                targetModule.items = theater.data.posts;
-            }
-        break;
+    // 未知类型：作为通用文本模块
+    return { type: 'text', title: title, content: content };
+}
 
-        // 群聊类 -> 聊天记录
-        case '群聊之愿':
-        targetModule = { type: 'chat', npc: '群聊', messages: parseChatContent(theater.html || theater.content) };
-        injectToChatLog('群聊', theater);
-        break;
-
-        // 日程类 -> 新增日程模块
-        case '日程之愿':
-        case '日程表':
-        targetModule = { type: 'calendar', title: '日程表', events: parseCalendarContent(theater.html || theater.content) };
-        break;
-
-        // 通知类 -> 邮件
-        case '通知之愿':
-        targetModule = { type: 'mail', title: '系统通知', mails: parseMailContent(theater.html || theater.content) };
-        break;
-
-        // 购物类 -> 商店
-        case '购物之愿':
-        targetModule = { type: 'shop', title: '商店', goods: parseShopContent(theater.html || theater.content) };
-        break;
-
-        // 朋友圈/日常 -> 朋友圈
-        case '每日之愿':
-        case '日常剧场':
-        case '盲盒之愿':
-        targetModule = { type: 'moments', moments: parseMomentsContent(theater.html || theater.content) };
-        break;
-
-        // 桌面/盲盒 -> 物品
-        case '桌面之愿':
-        targetModule = { type: 'cards', title: '物品', items: parseItemsContent(theater.html || theater.content) };
-        break;
-
-        // 日记类 -> 日记
-        case '后台人生':
-        targetModule = { type: 'diary', npc: '后台', entries: parseDiaryContent(theater.html || theater.content) };
-        break;
-
-        // 作话 -> 新增作话模块
-        case '蛾摩拉':
-        targetModule = { type: 'author_note', title: '作者有话说', content: theater.content };
-        break;
-
-        // 【深度融合】状态栏 -> 同时更新游戏NPC系统
-        case '小夜单人状态':
-        case '通用状态':
-        case '古风状态':
-        case '状态面板':
-        case 'status':
-        targetModule = { type: 'status', title: '角色状态', content: theater.html || theater.content };
+// 根据标签名映射小剧场到模块类型（兼容旧标签名）
+function _mapTheaterByKey(key, theater) {
+    var targetModule = null;
+    switch (key) {
+        // 论坛类 -> 论坛
+        case '论坛之愿':
+        case '论坛小剧场':
+        case '文艺盲盒小剧场':
+        case 'gossip':
+        case '八卦':
+        case '论坛':
+        targetModule = { type: 'comments', title: theater.title || '论坛', items: parseForumContent(theater.html || theater.content) };
         // 如果有结构化数据，使用它
-        if (theater.data && theater.data.stats) {
-            targetModule.stats = theater.data.stats;
-            targetModule.ancient = theater.data.ancient || false;
+        if (theater.data && theater.data.posts) {
+            targetModule.items = theater.data.posts;
         }
-    // 【深度融合】将状态数据桥接到游戏NPC系统
-    _bridgeStatusToCharacters(theater);
     break;
 
-    // 档案/报告 -> 世界信息
-    case '档案之愿':
-    case '报告之愿':
-    targetModule = { type: 'text', title: theater.title || key, content: theater.content };
+    // 群聊类 -> 聊天记录
+    case '群聊之愿':
+    targetModule = { type: 'chat', npc: '群聊', messages: parseChatContent(theater.html || theater.content) };
+    injectToChatLog('群聊', theater);
     break;
 
-    // 【新增】手机功能 -> 手机模块
-    case '角色手机':
-    case '手机':
-    case 'phone':
-    targetModule = { type: 'phone', title: '手机', content: theater.html || theater.content };
-    if (theater.data && theater.data.apps) {
-        targetModule.apps = theater.data.apps;
+    // 日程类 -> 新增日程模块
+    case '日程之愿':
+    case '日程表':
+    targetModule = { type: 'calendar', title: '日程表', events: parseCalendarContent(theater.html || theater.content) };
+    break;
+
+    // 通知类 -> 邮件
+    case '通知之愿':
+    targetModule = { type: 'mail', title: '系统通知', mails: parseMailContent(theater.html || theater.content) };
+    break;
+
+    // 购物类 -> 商店
+    case '购物之愿':
+    targetModule = { type: 'shop', title: '商店', goods: parseShopContent(theater.html || theater.content) };
+    break;
+
+    // 朋友圈/日常 -> 朋友圈
+    case '每日之愿':
+    case '日常剧场':
+    case '盲盒之愿':
+    targetModule = { type: 'moments', moments: parseMomentsContent(theater.html || theater.content) };
+    break;
+
+    // 桌面/盲盒 -> 物品
+    case '桌面之愿':
+    targetModule = { type: 'cards', title: '物品', items: parseItemsContent(theater.html || theater.content) };
+    break;
+
+    // 日记类 -> 日记
+    case '后台人生':
+    targetModule = { type: 'diary', npc: '后台', entries: parseDiaryContent(theater.html || theater.content) };
+    break;
+
+    // 作话 -> 新增作话模块
+    case '蛾摩拉':
+    targetModule = { type: 'author_note', title: '作者有话说', content: theater.content };
+    break;
+
+    // 【深度融合】状态栏 -> 同时更新游戏NPC系统
+    case '小夜单人状态':
+    case '通用状态':
+    case '古风状态':
+    case '状态面板':
+    case 'status':
+    targetModule = { type: 'status', title: '角色状态', content: theater.html || theater.content };
+    // 如果有结构化数据，使用它
+    if (theater.data && theater.data.stats) {
+        targetModule.stats = theater.data.stats;
+        targetModule.ancient = theater.data.ancient || false;
     }
+// 【深度融合】将状态数据桥接到游戏NPC系统
+_bridgeStatusToCharacters(theater);
+break;
+
+// 档案/报告 -> 世界信息
+case '档案之愿':
+case '报告之愿':
+targetModule = { type: 'text', title: theater.title || key, content: theater.content };
+break;
+
+// 【新增】手机功能 -> 手机模块
+case '角色手机':
+case '手机':
+case 'phone':
+targetModule = { type: 'phone', title: '手机', content: theater.html || theater.content };
+if (theater.data && theater.data.apps) {
+    targetModule.apps = theater.data.apps;
+}
 break;
 
 // 【深度融合】摘要 -> 同时注入游戏记忆系统和日志模块
@@ -1815,7 +1852,7 @@ case '摘要':
 case 'summary':
 targetModule = { type: 'summary', title: '摘要', content: theater.html || theater.content };
 if (theater.data && theater.data.summary) {
-    targetModule.summary = theater.data.summary;
+targetModule.summary = theater.data.summary;
 }
 // 【深度融合】将预设摘要桥接到游戏EnhancedMemory
 _bridgeSummaryToMemory(theater);
@@ -1827,11 +1864,11 @@ case '选项分支':
 case '分支':
 targetModule = { type: 'branches', title: '选项', content: theater.html || theater.content };
 if (theater.data && theater.data.options) {
-    targetModule.options = theater.data.options;
-    // 同时更新游戏选项
-    if (typeof renderChoices === 'function') {
-        renderChoices(theater.data.options);
-    }
+targetModule.options = theater.data.options;
+// 同时更新游戏选项
+if (typeof renderChoices === 'function') {
+    renderChoices(theater.data.options);
+}
 }
 break;
 
@@ -1841,7 +1878,7 @@ case '物品':
 case 'items':
 targetModule = { type: 'cards', title: '物品', items: parseItemsContent(theater.html || theater.content) };
 if (theater.data && theater.data.items) {
-    targetModule.items = theater.data.items;
+targetModule.items = theater.data.items;
 }
 break;
 
@@ -1851,10 +1888,10 @@ case '文字剧场':
 case '剧场':
 targetModule = { type: 'theater', title: '文字剧场', content: theater.html || theater.content };
 if (theater.data) {
-    if (theater.data.scenes) {
-        targetModule.scenes = theater.data.scenes;
-    } else if (theater.data.text) {
-    targetModule.text = theater.data.text;
+if (theater.data.scenes) {
+    targetModule.scenes = theater.data.scenes;
+} else if (theater.data.text) {
+targetModule.text = theater.data.text;
 }
 }
 break;
@@ -1887,7 +1924,7 @@ case '论坛之塔':
 case '八卦之塔':
 targetModule = { type: 'comments', title: theater.title || '论坛', items: parseForumContent(theater.html || theater.content) };
 if (theater.data && theater.data.posts) {
-    targetModule.items = theater.data.posts;
+targetModule.items = theater.data.posts;
 }
 break;
 
@@ -1991,7 +2028,7 @@ break;
 // 其他 -> 世界信息
 default:
 if (theater.type === 'snow') {
-    targetModule = { type: 'text', title: theater.title || key, content: theater.content };
+targetModule = { type: 'text', title: theater.title || key, content: theater.content };
 } else if (theater.type === 'gossip') {
 targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: new Date().toLocaleString() }] };
 } else if (theater.type === 'phone') {
@@ -2007,21 +2044,44 @@ targetModule = { type: 'cards', title: '物品', items: theater.data?.items || p
 } else if (theater.type === 'ccd') {
 targetModule = { type: 'theater', title: '文字剧场', content: theater.html || theater.content, scenes: theater.data?.scenes, text: theater.data?.text };
 }
+    }
+    return targetModule;
 }
 
-if (targetModule) {
-    // 查找是否已有同类型模块，有则更新，无则添加
-    var existingIdx = gameState._worldModules.findIndex(function(m) {
-        return m.type === targetModule.type && m.title === targetModule.title;
+// 【小剧场融合】将小剧场内容注入到日志功能
+function injectTheaterToLogs(theaterContent) {
+    if (!theaterContent || Object.keys(theaterContent).length === 0) return;
+
+    // 确保 _worldModules 存在
+    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+
+    Object.keys(theaterContent).forEach(function(key) {
+        var theater = theaterContent[key];
+        var targetModule = null;
+
+        // 优先使用 theater 自身的 type 字段（AI 可直接指定模块类型）
+        if (theater.type && typeof theater.type === 'string' && theater.type !== 'theater') {
+            targetModule = _createModuleFromType(theater.type, theater, key);
+        }
+
+        // 如果没有 type 或 type 为 'theater'，走标签名映射
+        if (!targetModule) {
+            targetModule = _mapTheaterByKey(key, theater);
+        }
+
+        if (targetModule) {
+            // 查找是否已有同类型模块，有则更新，无则添加
+            var existingIdx = gameState._worldModules.findIndex(function(m) {
+                return m.type === targetModule.type && m.title === targetModule.title;
+            });
+            if (existingIdx >= 0) {
+                gameState._worldModules[existingIdx] = targetModule;
+            } else {
+                gameState._worldModules.push(targetModule);
+            }
+            console.log('[小剧场融合] 已注入', key, '到', targetModule.type);
+        }
     });
-if (existingIdx >= 0) {
-    gameState._worldModules[existingIdx] = targetModule;
-} else {
-gameState._worldModules.push(targetModule);
-}
-console.log('[小剧场融合] 已注入', key, '到', targetModule.type);
-}
-});
 }
 
 // 【深度融合】将预设<branches>选项桥接到游戏原生renderChoices系统
@@ -2106,53 +2166,56 @@ function _bridgeStatusToCharacters(theaterData) {
     var stats = (theaterData.data && theaterData.data.stats) || [];
     if (stats.length === 0) return;
 
-    // 从状态项中提取角色信息
     var charUpdate = {};
+    var targetCharName = null;
+
+    // 优先处理结构化数据：stats 中带有 field 字段的项直接映射
     stats.forEach(function(stat) {
         if (!stat || !stat.name) return;
-        var name = stat.name.replace(/[：:]/g, '').trim();
         var value = (stat.value || '').replace(/<[^>]+>/g, '').trim();
-        if (!name || !value) return;
+        if (!value) return;
 
-        // 映射常见状态字段到游戏角色属性
+        // 结构化数据：stat.field 直接指定了目标字段
+        if (stat.field) {
+            charUpdate[stat.field] = value;
+            // 如果 field 是 name，提取角色名
+            if (stat.field === 'name' || stat.field === '角色名') {
+                targetCharName = value;
+            }
+            return;
+        }
+
+        // 回退：关键词匹配（兼容旧格式）
+        var name = stat.name.replace(/[：:]/g, '').trim();
         var lowerName = name.toLowerCase();
         if (lowerName.includes('心情') || lowerName.includes('情绪') || lowerName.includes('状态')) {
-            charUpdate.desc = value; // NPC状态描述
+            charUpdate.desc = value;
         } else if (lowerName.includes('位置') || lowerName.includes('地点') || lowerName.includes('所在')) {
-        charUpdate.location = value;
-    } else if (lowerName.includes('穿着') || lowerName.includes('服装') || lowerName.includes('服饰')) {
-    charUpdate.outfit = value;
-}
-});
-
-// 更新NPC的状态（尝试从状态项中提取角色名）
-if (Object.keys(charUpdate).length > 0 && typeof mergeCharacters === 'function') {
-    // 尝试从状态项中提取角色名
-    var targetCharName = null;
-    if (theaterData.data && theaterData.data.title) {
-        targetCharName = theaterData.data.title.replace(/[：:]/g, '').trim();
-    }
-// 如果没找到，尝试从stats中找包含"名字"/"角色"的字段
-if (!targetCharName && stats.length > 0) {
-    stats.forEach(function(stat) {
-        if (!stat || !stat.name) return;
-        var n = stat.name.toLowerCase();
-        if ((n.includes('名字') || n.includes('角色') || n.includes('名称') || n === 'name') && stat.value) {
-            targetCharName = stat.value.replace(/<[^>]+>/g, '').trim();
+            charUpdate.location = value;
+        } else if (lowerName.includes('穿着') || lowerName.includes('服装') || lowerName.includes('服饰')) {
+            charUpdate.outfit = value;
+        } else if (lowerName.includes('名字') || lowerName.includes('角色') || lowerName.includes('名称') || lowerName === 'name') {
+            targetCharName = value;
         }
-});
-}
-// 回退：尝试匹配已有角色
-if (!targetCharName && gameState.allCharacters) {
-    var charNames = Object.keys(gameState.allCharacters);
-    if (charNames.length > 0) targetCharName = charNames[0];
-}
-if (targetCharName) {
-    var update = Object.assign({ name: targetCharName }, charUpdate);
-    mergeCharacters([update]);
-    console.log('[深度融合] 已将状态面板数据桥接到NPC系统:', targetCharName);
-}
-}
+    });
+
+    // 更新NPC的状态
+    if (Object.keys(charUpdate).length > 0 && typeof mergeCharacters === 'function') {
+        // 尝试从标题获取角色名
+        if (!targetCharName && theaterData.data && theaterData.data.title) {
+            targetCharName = theaterData.data.title.replace(/[：:]/g, '').trim();
+        }
+        // 回退：匹配已有角色
+        if (!targetCharName && gameState.allCharacters) {
+            var charNames = Object.keys(gameState.allCharacters);
+            if (charNames.length > 0) targetCharName = charNames[0];
+        }
+        if (targetCharName) {
+            var update = Object.assign({ name: targetCharName }, charUpdate);
+            mergeCharacters([update]);
+            console.log('[深度融合] 已将状态面板数据桥接到NPC系统:', targetCharName);
+        }
+    }
 }
 
 // 【深度融合】将预设的字数/段落配置同步到游戏设置界面
