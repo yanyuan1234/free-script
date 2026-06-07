@@ -255,6 +255,10 @@ function buildProtagonistPrompt() {
     if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
     lines.push('');
     lines.push('你理解主角是玩家操控的角色，player.name 必须等于主角姓名，主角信息只能放在 player 字段，不能放入 characters。');
+    // 如果世界描述中已包含主角详细设定，添加提示避免重复
+    if (gameState.userPrompt && gameState.userPrompt.length > 500) {
+        lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');
+    }
     lines.push('');
     return lines.join('\n');
 }

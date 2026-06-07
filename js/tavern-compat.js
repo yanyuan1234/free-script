@@ -1238,18 +1238,24 @@ var GameMemory = {
     _aiParseSetup: function(fullSetup) {
         var self = this;
 
-        // 构建解析提示词
-        var parsePrompt = '请解析以下游戏设定，提取关键信息。\n\n'
-            + '你理解如何从设定中提取：核心规则（硬性限制/底线/红线）、世界观概括、重要角色（名字/身份/5-10个关键词/200字以内详细描述含性格外貌关系特质）、主角身份、约定承诺、全局关键词。\n\n'
+        // 构建解析提示词（兼容游戏世界观和纯角色卡两种场景）
+        var parsePrompt = '请解析以下游戏/角色设定，提取关键信息。\n\n'
+            + '设定可能是"游戏世界观"（含规则、体系、副本等），也可能是"纯角色卡"（含角色外貌、性格、背景、关系等），请根据实际内容灵活提取。\n\n'
+            + '提取要点：\n'
+            + '- 核心规则：硬性限制/底线/红线/不可违反的原则（如没有可留空数组）\n'
+            + '- 世界观概括：设定所在世界的核心设定（纯角色卡则概括角色的核心人设和处境）\n'
+            + '- 重要角色：名字/身份/5-10个关键词/200字以内详细描述含性格外貌关系特质\n'
+            + '- 主角身份：如果设定中有明确的主角，提取其核心身份标签\n'
+            + '- 约定承诺：角色间的约定/承诺/羁绊\n'
+            + '- 全局关键词：贯穿全文的核心概念词\n\n'
             + '【设定内容】\n' + fullSetup + '\n\n'
             + '输出纯JSON，不要代码块：\n'
             + '{"coreRules":["规则1","规则2"],'
-            + '"worldSummary":"世界观概括",'
+            + '"worldSummary":"世界观/角色核心概括",'
             + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2","关键词3","关键词4","关键词5"],"summary":"200字以内详细描述，包含性格、外貌、与主角关系、关键特质"}],'
             + '"playerIdentity":"主角身份",'
             + '"promises":["约定1","约定2"],'
             + '"setupKeywords":["关键词1","关键词2"]}';
-
         var messages = [
             { role: 'system', content: '你是游戏设定解析专家，只输出纯JSON，不要任何其他文字。' },
             { role: 'user', content: parsePrompt }
@@ -1437,14 +1443,31 @@ var GameMemory = {
         var indexLines = [];
         for (var i = 0; i < lines.length; i++) {
             var line = lines[i].trim();
+            if (!line) continue;
             // 匹配中文标题格式：一、二、三、1. 2. 【】等
             if (/^[一二三四五六七八九十]+[、．.]/.test(line) ||
                 /^（[一二三四五六七八九十]+）/.test(line) ||
                 /^\d+[、．.．]/.test(line) ||
                 /^【[^】]+】$/.test(line) ||
                 /^#+\s/.test(line)) {
-                // 标题行精简到60字符
                 indexLines.push(truncateByChars(line, 60, '...'));
+            }
+        }
+        // 如果结构化标题不足3个，说明是散文式设定（如纯角色卡）
+        // 改为提取每个段落的核心句（第一句或前30字）
+        if (indexLines.length < 3) {
+            indexLines = [];
+            var paragraphs = fullSetup.split(/\n\s*\n/);
+            for (var j = 0; j < paragraphs.length && indexLines.length < 20; j++) {
+                var para = paragraphs[j].trim();
+                if (!para || para.length < 10) continue;
+                // 提取段落的第一句话（以句号/问号/感叹号结尾）
+                var firstSentence = para.match(/^[^。？！\n]{2,40}[。？！]?/);
+                if (firstSentence) {
+                    var sentence = firstSentence[0].trim();
+                    if (sentence.length > 40) sentence = truncateByChars(sentence, 40, '...');
+                    indexLines.push('• ' + sentence);
+                }
             }
         }
         return indexLines.slice(0, 30).join('\n');

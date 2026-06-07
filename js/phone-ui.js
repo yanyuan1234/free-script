@@ -3404,8 +3404,10 @@ function showPresetAction(idx) {
         if (mc.mcName) document.getElementById('setupPlayerName').value = mc.mcName;
         if (mc.mcGender) document.getElementById('setupPlayerGender').value = mc.mcGender;
         if (mc.mcIdentity) document.getElementById('setupPlayerIdentity').value = mc.mcIdentity;
-        if (mc.mcPersonality || mc.mcAppearance) document.getElementById('setupPlayerDesc').value =
-            (mc.mcPersonality || '') + (mc.mcAppearance ? '\n' + mc.mcAppearance : '');
+        if (mc.mcAge) document.getElementById('setupPlayerAge').value = mc.mcAge;
+        if (mc.mcAppearance) document.getElementById('setupPlayerAppearance').value = mc.mcAppearance;
+        if (mc.mcAbility) document.getElementById('setupPlayerAbility').value = mc.mcAbility;
+        if (mc.mcPersonality) document.getElementById('setupPlayerDesc').value = mc.mcPersonality;
         UI.showPage('worldSetupPage');
     });
 
@@ -3708,12 +3710,15 @@ function bindEvents() {
         var prompt = document.getElementById('worldDescription').value.trim();
         var mc = {};
         var mcFields = ['setupPlayerName', 'setupPlayerGender', 'setupPlayerIdentity',
-            'setupPlayerDesc'
+            'setupPlayerAge', 'setupPlayerAppearance', 'setupPlayerAbility', 'setupPlayerDesc'
         ];
         var mcMap = {
             setupPlayerName: 'mcName',
             setupPlayerGender: 'mcGender',
             setupPlayerIdentity: 'mcIdentity',
+            setupPlayerAge: 'mcAge',
+            setupPlayerAppearance: 'mcAppearance',
+            setupPlayerAbility: 'mcAbility',
             setupPlayerDesc: 'mcPersonality'
         };
         mcFields.forEach(function(id) {
@@ -4330,6 +4335,9 @@ function startNewGame() {
         setupPlayerName: 'mcName',
         setupPlayerGender: 'mcGender',
         setupPlayerIdentity: 'mcIdentity',
+        setupPlayerAge: 'mcAge',
+        setupPlayerAppearance: 'mcAppearance',
+        setupPlayerAbility: 'mcAbility',
         setupPlayerDesc: 'mcPersonality'
     };
     Object.keys(mcMap).forEach(function(id) {
