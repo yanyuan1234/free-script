@@ -97,11 +97,8 @@ function _sanitizePromptInput(str) {
     return String(str)
         .replace(/```json\s*/gi, '')      // 移除JSON代码块标记
         .replace(/```\s*/g, '')           // 移除代码块标记
-        .replace(/\{[\s\S]*?\}/g, function(match) {
-            // 保留短JSON片段（可能是用户想要的格式），但移除类似AI回复格式的长JSON
-            return match.length > 200 ? '[内容已省略]' : match;
-        })
         .replace(/【回复格式[\s\S]*?$/gi, '');  // 移除试图覆盖回复格式的注入
+    // 注意：不再移除花括号内容，因为游戏设定中大量使用{}描述规则和属性
 }
 
 function buildSystemPrompt(includeFormatRules) {

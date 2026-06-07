@@ -1221,9 +1221,13 @@ var GameMemory = {
         self._setupLayers.compressed = false;
         self._setupLayers.extractTurn = self.currentTurn;
 
+        // 按次计费优化：长设定需要更大的兜底截断，避免AI解析前丢失关键信息
+        var setupLen = fullSetup.length;
+        var coreRulesBudget = Math.max(800, Math.min(setupLen * 0.15, 4000));
+        var worldSummaryBudget = Math.max(600, Math.min(setupLen * 0.1, 3000));
         // 默认先用简单截断作为核心规则（AI解析完成前的前置方案）
-        self._setupLayers.coreRules = truncateByChars(fullSetup, 800, '...');
-        self._setupLayers.worldSummary = truncateByChars(fullSetup, 600, '...');
+        self._setupLayers.coreRules = truncateByChars(fullSetup, coreRulesBudget, '...');
+        self._setupLayers.worldSummary = truncateByChars(fullSetup, worldSummaryBudget, '...');
         self.saveToStorage();
 
         // AI驱动解析：让AI自己分类、提取关键词、生成摘要
@@ -1251,9 +1255,12 @@ var GameMemory = {
             { role: 'user', content: parsePrompt }
         ];
 
+        // 按次计费优化：长设定需要更多输出token来完整解析
+        var parseMaxTokens = Math.max(2000, Math.min(Math.floor(fullSetup.length / 3), 8000));
+
         // 调用AI解析
         if (typeof callAI === 'function') {
-            callAI(messages, { max_tokens: 2000 }).then(function(response) {
+            callAI(messages, { max_tokens: parseMaxTokens }).then(function(response) {
                 try {
                     var content = response;
                     if (response && response.choices && response.choices[0] && response.choices[0].message) {
@@ -1283,16 +1290,20 @@ var GameMemory = {
         // 核心规则层
         if (parsed.coreRules && parsed.coreRules.length > 0) {
             self._setupLayers.coreRules = parsed.coreRules.join('\n');
-            if (self._setupLayers.coreRules.length > 2000) {
-                self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, 2000, '...');
+            // 按次计费：长设定允许更多核心规则，上限提高到设定长度的20%
+            var coreMax = Math.max(2000, Math.min(self._setupLayers.fullSetup.length * 0.2, 8000));
+            if (self._setupLayers.coreRules.length > coreMax) {
+                self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, coreMax, '...');
             }
         }
 
         // 世界摘要层
         if (parsed.worldSummary) {
             self._setupLayers.worldSummary = parsed.worldSummary;
-            if (self._setupLayers.worldSummary.length > 1500) {
-                self._setupLayers.worldSummary = truncateByChars(self._setupLayers.worldSummary, 1500, '...');
+            // 按次计费：长设定允许更详细的摘要，上限提高到设定长度的15%
+            var summaryMax = Math.max(1500, Math.min(self._setupLayers.fullSetup.length * 0.15, 6000));
+            if (self._setupLayers.worldSummary.length > summaryMax) {
+                self._setupLayers.worldSummary = truncateByChars(self._setupLayers.worldSummary, summaryMax, '...');
             }
         }
 
@@ -2024,7 +2035,13 @@ var GameMemory = {
             if (snap.summary) self.addWorldAnchor('pc_identity', snap.summary, 'worldSnapshot', self.currentTurn);
             if (Array.isArray(snap.characters)) snap.characters.forEach(function(c) { if (c && c.name) { var desc = c.desc ? c.name + '：' + c.desc : c.name; if (c.relation) desc += '（与玩家关系：' + c.relation + '）'; if (typeof c.favorability === 'number') desc += '，好感度' + c.favorability; self.addWorldAnchor('npc_profile', desc, 'worldSnapshot', self.currentTurn); } });
         }
-        if (typeof gameState !== 'undefined' && gameState.userPrompt && self.currentTurn <= 2) self.addWorldAnchor('setting', '玩家开场设定：' + gameState.userPrompt, 'userPrompt', self.currentTurn);
+        if (typeof gameState !== 'undefined' && gameState.userPrompt && self.currentTurn <= 2) {
+            // 按次计费优化：不存完整设定（已在system prompt中注入），只存设定摘要避免重复
+            var setupSummary = gameState.userPrompt.length > 500 
+                ? truncateByChars(gameState.userPrompt, 500, '...(完整设定见系统提示词)') 
+                : gameState.userPrompt;
+            self.addWorldAnchor('setting', '玩家开场设定：' + setupSummary, 'userPrompt', self.currentTurn);
+        }
         if (typeof gameState !== 'undefined' && gameState.customStyle && self.currentTurn <= 2) self.addWorldAnchor('setting', '风格偏好：' + gameState.customStyle, 'userStyle', self.currentTurn);
     },
 
