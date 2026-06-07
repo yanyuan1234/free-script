@@ -1210,47 +1210,155 @@ var GameMemory = {
         var self = this;
         self._setupLayers.fullSetup = fullSetup;
 
-        // 提取核心规则（含"必须/不能/禁止/规则/设定/绝对"等关键词的句子）
-        var coreLines = [];
-        var worldLines = [];
-        var npcLines = [];
-        var identityLines = [];
-        var promiseLines = [];
+        // 智能分段提取（兼容仙侠/奇幻/现代/都市/自由叙事）
+        var coreLines = [];    // 核心规则/硬性限制
+        var worldLines = [];   // 世界观/背景设定
+        var npcLines = [];     // NPC/角色信息
+        var identityLines = []; // 主角身份
+        var promiseLines = []; // 约定/承诺/使命
 
+        // ─── 第一层：关键词匹配（保留，但优化关键词） ───
         var lines = fullSetup.split(/\n/);
+
+        // 扩展后的关键词表（覆盖现代/都市/奇幻/仙侠）
+        var ruleKw = /必须|不能|禁止|绝对不可|务必|严禁|限制|绝不许|唯一规则|底线|红线|铁律|不可逾越|不许|不准|不得/;
+        var worldKw = /世界|大陆|国家|城市|时代|纪元|历法|种族|势力|门派|组织|帝国|王国|学院|宗门|修仙|魔法|科技|文明|阵营|财阀|集团|公司|家族|豪门|商业|经济|社会|阶级|体系|制度|行业|领域|帝国|王朝|联邦|共和国|城市|都市|世界观|背景/;
+        var npcKw = /她叫|他叫|名叫|名字叫|名为|角色|NPC|人物|师傅|师姐|师妹|师兄|师父|徒弟|主角|女主|男主|反派|配角|姐姐|哥哥|弟弟|妹妹|父亲|母亲|爸妈|朋友|基友|损友|闺蜜|恋人|前任|追求者|对手|敌人|盟友/;
+        var identityKw = /你是|玩家角色|主角身份|穿越|重生|转世|身份是|扮演|你叫|你的名字|你是一个|你是个/;
+        var promiseKw = /约定|承诺|誓言|契约|诅咒|宿命|使命|任务|目标|目的|规矩|准则|原则/;
+
         lines.forEach(function(line) {
             var trimmed = line.trim();
             if (!trimmed || trimmed.length < 3) return;
+            if (ruleKw.test(trimmed)) coreLines.push(trimmed);
+            if (worldKw.test(trimmed)) worldLines.push(trimmed);
+            if (npcKw.test(trimmed)) npcLines.push(trimmed);
+            if (identityKw.test(trimmed)) identityLines.push(trimmed);
+            if (promiseKw.test(trimmed)) promiseLines.push(trimmed);
+        });
 
-            // 核心规则：含强制/禁止性关键词
-            if (/(必须|不能|禁止|绝对|不可|务必|严禁|规则|设定|限制|永远|绝不|只能|唯一)/.test(trimmed)) {
-                coreLines.push(trimmed);
+        // ─── 第二层：智能分段提取（按段落语义分析） ───
+        // 将全文按空行或长段落拆分为语义段
+        var paragraphs = fullSetup.split(/\n\s*\n/);
+        if (paragraphs.length <= 1) {
+            // 没有空行分段，按句号分段（每3-5句为一段）
+            var sentences = fullSetup.split(/(?<=[。！？\n])/);
+            paragraphs = [];
+            var chunk = '';
+            var sentenceCount = 0;
+            sentences.forEach(function(s) {
+                chunk += s;
+                sentenceCount++;
+                if (sentenceCount >= 4 || chunk.length > 300) {
+                    paragraphs.push(chunk.trim());
+                    chunk = '';
+                    sentenceCount = 0;
+                }
+            });
+            if (chunk.trim()) paragraphs.push(chunk.trim());
+        }
+
+        // 对每个段落做语义分类
+        paragraphs.forEach(function(para) {
+            if (!para || para.length < 10) return;
+
+            // 规则/限制段：含禁止性表述且语气强硬
+            if (/(绝对不|绝不|不许|不准|不得|禁止|严禁|底线|红线|铁律|必须|务必)/.test(para) && para.length < 200) {
+                if (coreLines.indexOf(para) === -1) coreLines.push(para);
             }
-            // 世界观设定
-            else if (/(世界|大陆|国家|城市|时代|纪元|历法|种族|势力|门派|组织|帝国|王国|学院|宗门|修仙|魔法|科技|文明|阵营)/.test(trimmed)) {
-                worldLines.push(trimmed);
+
+            // 世界观/背景段：描述世界、家族、组织、社会结构
+            if (/(家族|财阀|集团|豪门|公司|势力|组织|世界|社会|阶级|制度|体系|背景|根基|产业|商业|经济|全球|国家|城市|门派|宗门|帝国)/.test(para) && para.length > 50) {
+                if (worldLines.indexOf(para) === -1) worldLines.push(para);
             }
-            // NPC/角色信息
-            else if (/(她叫|他叫|名叫|名字叫|名为|角色|NPC|人物|师傅|师姐|师妹|师兄|师父|徒弟|主角|女主|男主|反派|配角)/.test(trimmed)) {
-                npcLines.push(trimmed);
+
+            // NPC/角色段：描述具体人物（含人名+描述）
+            // 提取含人名的段落
+            var namePattern = /[\u4e00-\u9fff]{2,4}(?=是|的|在|会|能|有|被|把|让|给|对|跟|和|说|做|想|去|来|不|也|都|就|却|还|已|曾|正|将|要|要|最|更|比|从|向|为|与|而|则|因|虽|若|如|只|才|已|于|当|此|这|那)/g;
+            var names = {};
+            var nm;
+            while ((nm = namePattern.exec(para)) !== null) {
+                var name = nm[0];
+                // 过滤常见非人名
+                if (/^(这个|那个|什么|因为|所以|但是|然而|不过|虽然|如果|就是|不是|可以|已经|还是|或者|而且|并且|以及|于是|因此|此时|当时|后来|最后|首先|其次|然后|接着|总之|综上|毕竟|当然|显然|实际上|事实上|不过|另外|此外|同时|往往|常常|总是|从来|曾经|已经|正在|将要|应该|必须|需要|可以|能够|可能|大概|也许|似乎|好像|简直|完全|绝对|非常|特别|十分|相当|极其|格外|尤其|甚至|连|都|也|还|更|最|很|真|太|好|多|少|大|小|长|短|高|低|远|近|快|慢|早|晚|新|旧|好|坏|美|丑|善|恶|强|弱|轻|重|冷|热|明|暗|深|浅|厚|薄|宽|窄|粗|细|干|湿|软|硬|甜|苦|酸|辣|咸|淡|香|臭|脏|净|乱|齐|整|歪|斜|正|反|左|右|上|下|前|后|里|外|中|内|旁|间|边|角|顶|底|头|尾|首|末|初|终|始|本|原|先|现|将|曾|刚|正|已|未|必|须|应|该|可|能|会|要|想|敢|肯|愿|乐|忍|惯|擅|精|通|懂|会|能|得|着|了|过|地|的|得|着|了|过|呢|吗|吧|啊|呀|哇|嗯|哦|哈|嘿|嗨|唉|哎|咦|哟|嘘|哼|呸|嗯|噢|唔|嘛|呗|咧|嘞|喽|啰|哩|兮|焉|哉|矣|耳|尔|乎|也|矣|哉|兮|焉|耳|尔|罢|咧|喽|啰|哩|嘛|呗|嘞)$/.test(name)) return;
+                if (name.length < 2 || name.length > 4) return;
+                names[name] = (names[name] || 0) + 1;
             }
-            // 主角身份
-            else if (/(你是|玩家|主角|我|穿越|重生|转世|身份|名字叫|名为)/.test(trimmed) && trimmed.length < 100) {
-                identityLines.push(trimmed);
+
+            // 出现3次以上的名字很可能是重要角色
+            Object.keys(names).forEach(function(n) {
+                if (names[n] >= 3 && npcLines.every(function(l) { return l.indexOf(n) === -1; })) {
+                    // 提取该角色的关键描述句
+                    var charSentences = para.split(/[。！？]/).filter(function(s) { return s.indexOf(n) >= 0 && s.trim().length > 5; });
+                    if (charSentences.length > 0) {
+                        var charDesc = charSentences.slice(0, 3).join('。');
+                        if (charDesc.length > 150) charDesc = truncateByChars(charDesc, 150, '...');
+                        npcLines.push(n + '：' + charDesc);
+                    }
+                }
+            });
+        });
+
+        // ─── 第三层：全文级别提取 ───
+        // 提取高频人名（出现5次以上 = 核心角色）
+        var allText = fullSetup;
+        var freqNames = {};
+        var nMatch;
+        // 用已知的角色名模式匹配：XX的/XX会/XX是/XX说 等
+        var charNameRe = /([^\x00-\xff]{2,4})(?:是|的|会|能|有|说|做|想|去|来|不|也|都|就|却|还|已|曾|正|将|要|最|更|给|对|跟|和|把|让|被)/g;
+        while ((nMatch = charNameRe.exec(allText)) !== null) {
+            var n = nMatch[1];
+            if (n.length >= 2 && n.length <= 4) {
+                freqNames[n] = (freqNames[n] || 0) + 1;
             }
-            // 约定/承诺
-            else if (/(约定|承诺|誓言|契约|诅咒|宿命|使命|任务|目标|目的)/.test(trimmed)) {
-                promiseLines.push(trimmed);
+        }
+
+        // 高频名字提取角色摘要
+        Object.keys(freqNames).forEach(function(name) {
+            if (freqNames[name] < 5) return;
+            // 跳过常见非人名词汇
+            var stopWords = ['这个','那个','什么','因为','所以','但是','然而','不过','虽然','如果','就是','不是','可以','已经','还是','或者','而且','并且','以及','于是','因此','此时','当时','后来','最后','首先','其次','然后','接着','总之','综上','毕竟','当然','显然','实际上','事实上','另外','此外','同时','往往','常常','总是','从来','曾经','正在','将要','应该','必须','需要','可以','能够','可能','大概','也许','似乎','好像','简直','完全','绝对','非常','特别','十分','相当','极其','格外','尤其','甚至','自己','别人','对方','人家','大家','我们','他们','她们','它们','这里','那里','哪里','什么时候','怎样','如何','为什么','多少','几个','这样','那样','怎样','这么','那么','这些','那些','什么','哪','谁','怎么','为什么','不','没','没有','无','非','莫','勿','别','未'];
+            if (stopWords.indexOf(name) >= 0) return;
+            // 如果NPC行里已经有这个名字，跳过
+            if (npcLines.some(function(l) { return l.indexOf(name + '：') === 0; })) return;
+
+            // 提取该名字相关的关键句
+            var relatedSentences = allText.split(/[。！？\n]/).filter(function(s) {
+                return s.indexOf(name) >= 0 && s.trim().length > 8 && s.trim().length < 100;
+            });
+            if (relatedSentences.length > 0) {
+                // 取最关键的3句（含身份/关系/性格描述的优先）
+                var priority = relatedSentences.sort(function(a, b) {
+                    var aScore = /(是|身份|关系|性格|特点|喜欢|讨厌|擅长|不会|不能|总是|从来|最)/.test(a) ? 1 : 0;
+                    var bScore = /(是|身份|关系|性格|特点|喜欢|讨厌|擅长|不会|不能|总是|从来|最)/.test(b) ? 1 : 0;
+                    return bScore - aScore;
+                });
+                var desc = priority.slice(0, 3).map(function(s) { return s.trim(); }).join('；');
+                if (desc.length > 150) desc = truncateByChars(desc, 150, '...');
+                npcLines.push(name + '：' + desc);
             }
         });
 
-        // 生成核心规则层（始终注入，< 800字）
-        self._setupLayers.coreRules = coreLines.slice(0, 15).join('\n');
+        // ─── 生成核心规则层 ───
+        // 过滤掉纯性格描述（含"绝对/永远"但实际是角色性格的行）
+        var filteredCoreLines = coreLines.filter(function(line) {
+            // 保留：含"不许/禁止/底线/红线/铁律/规矩/准则/原则"的
+            if (/(不许|禁止|底线|红线|铁律|规矩|准则|原则|严禁|不可逾越)/.test(line)) return true;
+            // 保留：含"必须/务必"且不是性格描述的
+            if (/(必须|务必)/.test(line) && !/(喜欢|爱|总是|从来)/.test(line)) return true;
+            // 保留：含"绝不/绝对不"且是规则性质的（含越界/追/纠缠/脚踏等行为限制词）
+            if (/(绝不|绝对不)/.test(line) && /(越界|追|纠缠|脚踏|死缠|撒网|备胎|退缩|交出|被动)/.test(line)) return true;
+            // 过滤掉：含"绝对/永远/绝不"但明显是性格描述的
+            if (/(绝对不|绝不|永远)/.test(line) && /(喜欢|爱|会|能|让|把|给|亲|碰)/.test(line) && !/(越界|追|脚踏|死缠|撒网|备胎)/.test(line)) return false;
+            return true;
+        });
+
+        self._setupLayers.coreRules = filteredCoreLines.slice(0, 15).join('\n');
         if (self._setupLayers.coreRules.length > 800) {
             self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, 800, '...');
         }
 
-        // 生成世界摘要层（始终注入，压缩版）
+        // ─── 生成世界摘要层 ───
         if (worldLines.length > 0) {
             self._setupLayers.worldSummary = worldLines.slice(0, 10).join('\n');
             if (self._setupLayers.worldSummary.length > 600) {
@@ -1262,7 +1370,7 @@ var GameMemory = {
         }
 
         // 自动提取到永久事实
-        self._extractSetupToPermanentFacts(identityLines, worldLines, npcLines, promiseLines, coreLines);
+        self._extractSetupToPermanentFacts(identityLines, worldLines, npcLines, promiseLines, filteredCoreLines);
 
         self._setupLayers.compressed = false;
         self._setupLayers.extractTurn = self.currentTurn;
@@ -1299,20 +1407,42 @@ var GameMemory = {
         if (worldLines.length > 0) {
             self.permanentFacts.settings = self.permanentFacts.settings || [];
             worldLines.slice(0, 8).forEach(function(line) {
-                var content = truncateByChars(line, 100, '...');
+                var content = truncateByChars(line, 150, '...');
                 if (!self.permanentFacts.settings.some(function(a) { return a.content === content; })) {
                     self.permanentFacts.settings.push({ content: content, locked: true });
                 }
             });
         }
 
-        // NPC档案
+        // NPC档案（支持"名字：描述"格式）
         if (npcLines.length > 0) {
             self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
-            npcLines.slice(0, 8).forEach(function(line) {
-                var content = truncateByChars(line, 100, '...');
+            npcLines.slice(0, 10).forEach(function(line) {
+                var content = truncateByChars(line, 150, '...');
                 if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content === content; })) {
                     self.permanentFacts.npcProfiles.push({ content: content, locked: true });
+                }
+                // 同时创建角色表条目
+                var colonIdx = line.indexOf('：');
+                if (colonIdx > 0 && colonIdx <= 4) {
+                    var name = line.substring(0, colonIdx);
+                    if (!self.tables.characters[name]) {
+                        self.tables.characters[name] = {
+                            name: name,
+                            title: '',
+                            relation: '',
+                            mood: '',
+                            location: '',
+                            outfit: '',
+                            favorability: 50,
+                            status: '',
+                            history: [],
+                            lastChangedTurn: self.currentTurn,
+                            gameTime: self.getGameTimeStr(),
+                            accessCount: 0,
+                            locked: false
+                        };
+                    }
                 }
             });
         }
