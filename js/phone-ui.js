@@ -185,8 +185,19 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         '【帖子标题】' + (post.title || '未知') + '\n' +
         '【帖子内容】' + (post.main || post.content || '未知') + '\n' +
         '【已有评论】\n' + (existingComments || '暂无评论') + '\n\n' +
-        '【可选NPC】' + (npcNames.length > 0 ? npcNames.join('、') : '随机生成网名') + '\n\n' +
-        '你理解论坛的运作方式——NPC知道玩家身份，会根据关系和性格自然回复，有人回复玩家、有人回复其他人、有人聊别的话题。被@的NPC会回复。回复简短自然，纯文字。态度多样。如果玩家身份引人注目，加字段 maySpawnNewPost: true。\n' +
+        '【可选NPC】' + (npcNames.length > 0 ? npcNames.join('、') : '随机生成网名') + '\n\n';
+    // 注入增强记忆（让NPC了解剧情进展）
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
+        var _forumMemText = EnhancedMemory.buildSmartInjection();
+        if (_forumMemText) sysMsg += '【剧情记忆】\n' + _forumMemText + '\n\n';
+    }
+    // 注入世界书（让NPC知道世界设定）
+    if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
+        var _forumWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+        var _forumWIText = (typeof _forumWI === 'object' && _forumWI !== null) ? (_forumWI.text || '') : (_forumWI || '');
+        if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
+    }
+    sysMsg += '你理解论坛的运作方式——NPC知道玩家身份，会根据关系和性格自然回复，有人回复玩家、有人回复其他人、有人聊别的话题。被@的NPC会回复。回复简短自然，纯文字。态度多样。如果玩家身份引人注目，加字段 maySpawnNewPost: true。\n' +
         '回复JSON数组：[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n';
     callAI([{
         role: 'system',
@@ -244,8 +255,13 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         '【玩家】' + playerName + '\n' +
         '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
         '【原帖标题】' + (srcPost.title || '未知') + '\n' +
-        '【玩家评论】' + playerComment + '\n\n' +
-        '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
+        '【玩家评论】' + playerComment + '\n\n';
+    // 注入增强记忆（让新帖了解剧情进展）
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
+        var _spawnMemText = EnhancedMemory.buildSmartInjection();
+        if (_spawnMemText) sysMsg += '【剧情记忆】\n' + _spawnMemText + '\n\n';
+    }
+    sysMsg += '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
         '你理解论坛生态——标题吸引眼球(10-20字)，正文引用玩家评论加自己看法(50-100字)，纯文字，角度和原帖不同。';
     callAI([{
         role: 'system',
@@ -4446,8 +4462,13 @@ async function _generateEndingRender(stories) {
         var prompt = '你是一个游戏结局生成器。根据以下游戏剧情，生成一个完整的结局。\n\n' +
             '【玩家设定】\n' + (worldTheme.trim() || '无') + '\n' +
             '【主角】' + playerName + '\n' +
-            '【主要角色】' + (charInfo || '未知') + '\n\n' +
-            '你理解如何为文字冒险游戏创作有深度、有画面感的结局。回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
+            '【主要角色】' + (charInfo || '未知') + '\n\n';
+        // 注入增强记忆（让结局反映实际剧情发展和角色变化）
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
+            var _endingMemText = EnhancedMemory.buildSmartInjection();
+            if (_endingMemText) prompt += '【剧情记忆】\n' + _endingMemText + '\n\n';
+        }
+        prompt += '你理解如何为文字冒险游戏创作有深度、有画面感的结局。回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
             '【剧情】\n' + allText;
 
         var result = await callAI([{

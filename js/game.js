@@ -539,6 +539,14 @@ async function sendAIRequest(userMessage, isInit = false) {
             gameState._depthPrompts = {};
             gameState._positionPrompts = {};
             gameState._afterChatPrompts = [];
+            // 【修复】isInit 也执行世界书扫描，让开局场景能使用世界书设定
+            try {
+                var _initWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+                gameState._wiCachedResult = _initWI;
+                gameState._wiPositionTexts = (typeof _initWI === 'object' && _initWI !== null && _initWI.positionTexts) ? _initWI.positionTexts : null;
+            } catch(e) {
+                console.warn('[isInit] 世界书扫描失败:', e);
+            }
             if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
                 var initPreset = PresetManager.presets[PresetManager.currentPresetIndex];
                 if (initPreset) {
@@ -551,11 +559,35 @@ async function sendAIRequest(userMessage, isInit = false) {
             } else {
                 try { gameState.systemPrompt = buildSystemPrompt(); } catch(e) {}
             }
-            // 无预设时，initializeGame() 已设置好 systemPrompt，无需重复构建
-            messages = gameState.conversationHistory.concat([{
-                role: 'user',
-                content: userMessage
-            }]);
+            // 构建isInit消息列表（含世界书position注入和世界快照）
+            messages = [];
+            // 主系统提示词
+            if (gameState._useSysprompt !== false) {
+                messages.push({ role: 'system', content: gameState.systemPrompt });
+            }
+            // 世界书position注入（与主路径一致的depth 0-5）
+            var _initWIPos = gameState._wiPositionTexts || null;
+            var _initPosPrompts = gameState._positionPrompts || {};
+            if (_initWIPos && _initWIPos.beforeChar) messages.push({ role: 'system', content: '【世界知识库】\n' + _initWIPos.beforeChar.join('\n') });
+            if (_initPosPrompts['0']) messages.push({ role: 'system', content: _initPosPrompts['0'].join('\n\n') });
+            if (_initWIPos && _initWIPos.afterChar) messages.push({ role: 'system', content: '【世界知识库】\n' + _initWIPos.afterChar.join('\n') });
+            if (_initPosPrompts['1']) messages.push({ role: 'system', content: _initPosPrompts['1'].join('\n\n') });
+            // 世界快照（开局时通常为空，但读档重开时可能有数据）
+            if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
+                var _initSnapText = '【当前世界状态】\n';
+                var _initSnap = gameState.worldSnapshot;
+                if (_initSnap.player) {
+                    _initSnapText += '主角: ' + (_initSnap.player.name || '未知');
+                    if (_initSnap.player.identity) _initSnapText += ', 身份: ' + _initSnap.player.identity;
+                    _initSnapText += '\n';
+                }
+                if (_initSnapText.length > 10) messages.push({ role: 'system', content: _initSnapText });
+            }
+            // 聊天历史（跳过旧的system消息，避免重复）
+            var _initHistory = gameState.conversationHistory.slice(1);
+            messages = messages.concat(_initHistory);
+            // 当前用户消息
+            messages.push({ role: 'user', content: userMessage });
         } else {
             // === 按酒馆标准构建消息列表 ===
 
@@ -668,7 +700,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (d5) messages.push({ role: 'system', content: d5 });
 
             // 游戏状态快照（按次计费：注入完整数据，让AI掌握更多剧情信息）
+            // 【去重优化】增强记忆已注入角色状态/物品/事件/任务时，世界快照跳过这些重复部分
             if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
+                var _hasMemInjection = (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection);
                 var snapshotText = '【当前世界状态】\n';
                 var snap = gameState.worldSnapshot;
                 if (snap.player) {
@@ -684,7 +718,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                         });
                     }
                 }
-                if (snap.characters && snap.characters.length > 0) {
+                // 角色状态：增强记忆的"角色状态"层已覆盖，跳过以节省token
+                if (!_hasMemInjection && snap.characters && snap.characters.length > 0) {
                     snapshotText += 'NPC状态:\n';
                     snap.characters.forEach(function(c) {
                         var line = '  ' + c.name;
@@ -700,7 +735,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                         }
                     });
                 }
-                if (snap.bag && snap.bag.length > 0) {
+                // 背包：增强记忆的"持有物品"层已覆盖，跳过以节省token
+                if (!_hasMemInjection && snap.bag && snap.bag.length > 0) {
                     snapshotText += '背包:\n';
                     snap.bag.forEach(function(b) {
                         var line = '  ' + b.name + ' x' + (b.count || 1);
@@ -710,8 +746,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                         snapshotText += line + '\n';
                     });
                 }
-                // 注入任务状态
-                if (snap.quests && snap.quests.length > 0) {
+                // 任务状态：增强记忆的"进行中约定"层已覆盖，跳过以节省token
+                if (!_hasMemInjection && snap.quests && snap.quests.length > 0) {
                     snapshotText += '任务:\n';
                     snap.quests.forEach(function(q) {
                         var line = '  ' + q.title;
@@ -722,14 +758,14 @@ async function sendAIRequest(userMessage, isInit = false) {
                         snapshotText += line + '\n';
                     });
                 }
-                // 注入关系网
+                // 关系网：增强记忆未覆盖，始终注入
                 if (snap.relationships && snap.relationships.length > 0) {
                     snapshotText += '关系网:\n';
                     snap.relationships.forEach(function(r) {
                         snapshotText += '  ' + r.from + ' → ' + r.to + ': ' + r.type + (r.desc ? ' (' + r.desc + ')' : '') + '\n';
                     });
                 }
-                // 注入世界模块
+                // 世界模块：增强记忆未覆盖，始终注入
                 if (snap.world && snap.world.length > 0) {
                     snapshotText += '世界信息:\n';
                     snap.world.forEach(function(w) {
@@ -740,7 +776,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                         snapshotText += line + '\n';
                     });
                 }
-                // 注入游戏时间
+                // 游戏时间：增强记忆未覆盖，始终注入
                 if (snap.gameTime) {
                     var gt = snap.gameTime;
                     snapshotText += '游戏时间: ' + (gt.date || '') + ' ' + (gt.time || '') + ' ' + (gt.period || '');
@@ -751,8 +787,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 messages.push({ role: 'system', content: snapshotText });
             }
 
-            // 重要事件记录
-            if (gameState.keyEvents && gameState.keyEvents.length > 0) {
+            // 重要事件记录：增强记忆的"重要事件"层已覆盖，跳过以节省token
+            if (!(typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) && gameState.keyEvents && gameState.keyEvents.length > 0) {
                 var eventsText = '【重要事件记录】\n';
                 gameState.keyEvents.forEach(function(evt, idx) {
                     eventsText += (idx + 1) + '. ' + evt + '\n';
@@ -3623,6 +3659,14 @@ async function requestNpcReply(playerText) {
             var _npcMemText = EnhancedMemory.buildSmartInjection();
             if (_npcMemText) {
                 systemMsg += '\n【剧情记忆】\n' + _npcMemText + '\n';
+            }
+        }
+        // 注入世界书（让NPC知道世界设定细节）
+        if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
+            var _npcWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+            var _npcWIText = (typeof _npcWI === 'object' && _npcWI !== null) ? (_npcWI.text || '') : (_npcWI || '');
+            if (_npcWIText) {
+                systemMsg += '\n【世界知识】\n' + _npcWIText + '\n';
             }
         }
         // 加上剧情背景
