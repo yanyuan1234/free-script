@@ -2153,11 +2153,8 @@ var GameMemory = {
             if (Array.isArray(snap.characters)) snap.characters.forEach(function(c) { if (c && c.name) { var desc = c.desc ? c.name + '：' + c.desc : c.name; if (c.relation) desc += '（与玩家关系：' + c.relation + '）'; if (typeof c.favorability === 'number') desc += '，好感度' + c.favorability; self.addWorldAnchor('npc_profile', desc, 'worldSnapshot', self.currentTurn); } });
         }
         if (typeof gameState !== 'undefined' && gameState.userPrompt && self.currentTurn <= 2) {
-            // 按次计费优化：不存完整设定（已在system prompt中注入），只存设定摘要避免重复
-            var setupSummary = gameState.userPrompt.length > 500 
-                ? truncateByChars(gameState.userPrompt, 500, '...(完整设定见系统提示词)') 
-                : gameState.userPrompt;
-            self.addWorldAnchor('setting', '玩家开场设定：' + setupSummary, 'userPrompt', self.currentTurn);
+            // 按次计费：完整存储玩家设定到永久事实，不截断
+            self.addWorldAnchor('setting', '玩家开场设定：' + gameState.userPrompt, 'userPrompt', self.currentTurn);
         }
         if (typeof gameState !== 'undefined' && gameState.customStyle && self.currentTurn <= 2) self.addWorldAnchor('setting', '风格偏好：' + gameState.customStyle, 'userStyle', self.currentTurn);
     },
@@ -2543,7 +2540,7 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">场景状态</div><div style="font-size:14px;font-weight:600;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点有场景锁定</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.compressed ? '已压缩（核心规则+世界摘要）' : (gm._setupLayers && gm._setupLayers.fullSetup ? '完整模式（前3轮）' : '未初始化')) + '</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? '完整注入（每轮）' : '未初始化') + '</div></div>'
             + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span><button onclick="MemoryManagerUI.switchTab(\'injection\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">查看详情</button></div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
