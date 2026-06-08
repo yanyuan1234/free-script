@@ -400,7 +400,7 @@ function injectPresetGlobalVars() {
             'open': '开放转述<user>',
             'balanced': '平衡转述<user>',
             'light': '轻度转述<user>',
-            'closed': '禁止转述<user>'
+            'closed': '不转述<user>'
         };
         MacroEngine.setGlobalVar('转述授权', narrateMap[narrate] || '');
     } else {
@@ -442,13 +442,13 @@ function injectPresetGlobalVars() {
     var takeoverEnabled = config.takeover && config.takeover !== 'closed';
     var grabSettings = '';
     if (takeoverEnabled && narrateEnabled) {
-        grabSettings = '允许演绎和转述<user>';
+        grabSettings = '可以演绎和转述<user>';
     } else if (takeoverEnabled) {
-        grabSettings = '允许演绎<user>行动，但禁止转述';
+        grabSettings = '可以演绎<user>行动，但不转述';
     } else if (narrateEnabled) {
-        grabSettings = '允许转述<user>，但禁止演绎';
+        grabSettings = '可以转述<user>，但不演绎';
     } else {
-        grabSettings = '禁止演绎和转述<user>';
+        grabSettings = '不演绎也不转述<user>';
     }
     MacroEngine.setGlobalVar('抢转设置', grabSettings);
     
@@ -1504,14 +1504,14 @@ async function _compressConversation(removed, sys) {
             var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你是剧情记忆管理专家。请将新增内容整合到已有摘要中，生成更新后的摘要。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在500字以内。';
+        summaryPrompt = '你正在维护一份剧情摘要，把新增内容整合到已有摘要中。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在500字以内。';
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
             var text = m.content.length > 800 ? m.content.substring(0, 800) + '...(内容过长已截断)' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你是剧情分析师。请对以下游戏对话进行深度结构化总结。\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。';
+        summaryPrompt = '你正在对一段游戏对话进行结构化总结。\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。';
     }
     var summaryMessages = [{ role: 'system', content: summaryPrompt }, { role: 'user', content: '请对以上内容进行处理：\n\n' + summaryContent }];
     var summary = await callAI(summaryMessages, { temperature: 0.3 });
@@ -3873,14 +3873,14 @@ function saveNpcEdit() {
             return d.key + ': ' + d.value;
         }).join('\n') + '\n';
     }
-    injectText += '请在后续剧情中严格按照以上设定来描写该角色。';
+    injectText += '请在后续剧情中按照以上设定来描写该角色。';
     if (gameState.conversationHistory && gameState.conversationHistory.length > 0) {
         gameState.conversationHistory.push({
             role: 'user',
             content: injectText
         }, {
             role: 'assistant',
-            content: '明白，已更新「' + name + '」的角色设定，后续会严格遵守。'
+            content: '明白，已更新「' + name + '」的角色设定，后续会保持一致。'
         });
     }
     renderNpcList();

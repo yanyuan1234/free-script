@@ -1262,7 +1262,7 @@ var GameMemory = {
             + '- 约定承诺：角色间的约定/承诺/羁绊\n'
             + '- 全局关键词：贯穿全文的核心概念词\n\n'
             + '【设定内容】\n' + fullSetup + '\n\n'
-            + '输出纯JSON，不要代码块：\n'
+            + '直接输出JSON（不要代码块）：\n'
             + '{"coreRules":["规则1","规则2"],'
             + '"worldSummary":"世界观/角色核心概括",'
             + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2","关键词3","关键词4","关键词5"],"summary":"200字以内详细描述，包含性格、外貌、与主角关系、关键特质"}],'
@@ -1270,7 +1270,7 @@ var GameMemory = {
             + '"promises":["约定1","约定2"],'
             + '"setupKeywords":["关键词1","关键词2"]}';
         var messages = [
-            { role: 'system', content: '你是游戏设定解析专家，只输出纯JSON，不要任何其他文字。' },
+            { role: 'system', content: '你正在解析一份游戏/角色设定，提取结构化信息。直接输出JSON，不要代码块包裹。' },
             { role: 'user', content: parsePrompt }
         ];
 

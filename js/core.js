@@ -3303,8 +3303,8 @@ async function extractSetupToMemory() {
             '<span style="color:var(--text-secondary);font-size:13px;">正在解析设定，建立记忆...</span></div>';
     }
 
-    var extractPrompt = '你是一个游戏设定解析器。请从以下玩家设定文本中，提取结构化信息。\n\n' +
-        '要求：\n' +
+    var extractPrompt = '你正在从一份游戏设定中提取结构化信息，方便后续程序处理。\n\n' +
+        '提取要点：\n' +
         '1. 仔细阅读全部设定，提取所有关键角色、世界规则、关系、物品等信息\n' +
         '2. 角色包括：玩家扮演的主角，以及设定中提到的所有重要NPC\n' +
         '3. 每个角色提取：姓名、身份/称号、与主角的关系、好感度倾向（-100到100，陌生人0，亲近正值，敌对负值）、当前状态/性格概述\n' +
@@ -3312,7 +3312,7 @@ async function extractSetupToMemory() {
         '5. 关系：角色之间的关系（不限于与主角的关系，也包括角色之间的关系）\n' +
         '6. 物品：设定中提到的关键物品\n' +
         '7. 主角身份：从设定中提取主角的核心身份标签\n\n' +
-        '严格按以下JSON格式输出，不要输出其他内容：\n' +
+        '直接输出以下JSON格式（不要代码块）：\n' +
         '{\n' +
         '  "pcIdentity": "主角核心身份，一句话概括",\n' +
         '  "worldRules": ["规则1", "规则2"],\n' +
@@ -3330,7 +3330,7 @@ async function extractSetupToMemory() {
 
     try {
         var result = await callAI([
-            { role: 'system', content: '你是游戏设定解析器，只输出JSON，不要输出任何其他内容。' },
+            { role: 'system', content: '你正在提取游戏设定的结构化信息。直接输出JSON，不要代码块包裹。' },
             { role: 'user', content: extractPrompt }
         ], {
             stream: false,
@@ -3496,20 +3496,20 @@ async function extractSetupToMemory() {
             }
 
             try {
-                var compressPrompt = '你是一个游戏设定精简器。以下是一份很长的游戏设定文本，请生成一份精简总结。\n\n' +
-                    '核心要求：\n' +
-                    '1. 所有规则、限制、铁律、机制必须完整保留，一个字都不能丢，用【规则】标签标注\n' +
-                    '2. 角色设定保留核心特质和关键外貌，删减冗余描写，用【角色】标签标注\n' +
-                    '3. 世界观保留核心设定，删减细节描写，用【世界观】标签标注\n' +
-                    '4. 剧情线索和关键物品必须保留，用【关键线索】标签标注\n' +
+                var compressPrompt = '你正在精简一份较长的游戏设定，目标是保留所有功能性信息，只删减描写性冗余。\n\n' +
+                    '精简原则：\n' +
+                    '1. 规则、限制、铁律、机制是设定的骨架，不能丢失——用【规则】标签标注\n' +
+                    '2. 角色设定保留核心特质和关键外貌，删减冗余描写——用【角色】标签标注\n' +
+                    '3. 世界观保留核心设定，删减细节描写——用【世界观】标签标注\n' +
+                    '4. 剧情线索和关键物品是推进故事的关键——用【关键线索】标签标注\n' +
                     '5. 目标长度：约' + targetChars + '字（当前原文约' + setupText.length + '字）\n' +
                     '6. 精简方式：删减描写性冗余，保留所有功能性信息\n' +
                     '7. 不要添加原文没有的内容\n' +
-                    '8. 直接输出精简后的文本，不要输出任何解释或前言\n\n' +
+                    '8. 直接输出精简后的文本，不要加解释或前言\n\n' +
                     '【原始设定】\n' + setupText;
 
                 var compressedResult = await callAI([
-                    { role: 'system', content: '你是游戏设定精简器。保留所有规则和机制，精简描写和叙述。直接输出精简文本。' },
+                    { role: 'system', content: '你正在精简游戏设定。保留所有规则和机制，精简描写和叙述。直接输出精简文本。' },
                     { role: 'user', content: compressPrompt }
                 ], {
                     stream: false,
