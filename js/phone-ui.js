@@ -176,7 +176,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
     });
     var sysMsg = '你是一个社区系统，负责让角色们自然地回复帖子。每个角色根据自己的性格、立场和与玩家的关系来发言——有人热情、有人冷淡、有人吃瓜、有人抬杠，这才是真实的社区。\n\n' +
         '【玩家信息】名字: ' + playerName + '，' + (playerIdentity || '普通玩家') + '\n' +
-        '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
+        '【玩家设定】\n' + (typeof getCompactSetupForSubFunction === 'function' ? getCompactSetupForSubFunction() : (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无')) + '\n' +
         '【当前角色关系】\n' + (function() {
             var rels = gameState.relationships || [];
             if (rels.length === 0) return '暂无关系数据';
@@ -253,7 +253,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
     if (!srcPost) return;
     var sysMsg = '你是一个社区系统。玩家在社区发言引起了关注，有人开了一个新帖子来讨论这件事——这是社区的自然反应。\n\n' +
         '【玩家】' + playerName + '\n' +
-        '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
+        '【玩家设定】\n' + (typeof getCompactSetupForSubFunction === 'function' ? getCompactSetupForSubFunction() : (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无')) + '\n' +
         '【原帖标题】' + (srcPost.title || '未知') + '\n' +
         '【玩家评论】' + playerComment + '\n\n';
     // 注入增强记忆（让新帖了解剧情进展）
@@ -4457,7 +4457,7 @@ async function _generateEndingRender(stories) {
             }).join('、');
         }
         var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
-        var worldTheme = gameState.userPrompt || '';
+        var worldTheme = (typeof getCompactSetupForSubFunction === 'function') ? getCompactSetupForSubFunction() : (gameState.userPrompt || '');
 
         var prompt = '你是一个结局创作专家，你的任务是为这段故事画上一个有深度、有画面感的句号。结局应该与原作世界观和风格一脉相承。\n\n' +
             '【玩家设定】\n' + (worldTheme.trim() || '无') + '\n' +

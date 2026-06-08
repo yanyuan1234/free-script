@@ -1140,22 +1140,22 @@ var GameMemory = {
         var turns = self.workingMemory.turns || [];
         var totalTurns = turns.length;
 
-        // 近层：最近3轮，保留详细
+        // 近层：最近3轮，保留详细（按次计费，保留更多细节）
         var nearTurns = turns.slice(-3);
         self._summaryLayers.near = nearTurns.map(function(t) {
             var parts = [];
-            if (t.user) parts.push('玩家: ' + truncateByChars(t.user, 150, '...'));
-            if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, 150, '...'));
+            if (t.user) parts.push('玩家: ' + truncateByChars(t.user, 300, '...'));
+            if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, 300, '...'));
             return parts.join(' | ');
         });
 
-        // 中层：4-10轮前，压缩为摘要
+        // 中层：4-10轮前，压缩为摘要（按次计费，保留更多细节）
         if (totalTurns > 3) {
             var midTurns = turns.slice(Math.max(0, totalTurns - 10), totalTurns - 3);
             self._summaryLayers.mid = midTurns.map(function(t) {
                 var parts = [];
-                if (t.user) parts.push('玩家: ' + truncateByChars(t.user, 60, '...'));
-                if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, 60, '...'));
+                if (t.user) parts.push('玩家: ' + truncateByChars(t.user, 120, '...'));
+                if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, 120, '...'));
                 return parts.join(' | ');
             });
         }
@@ -1257,7 +1257,8 @@ var GameMemory = {
             + '提取要点：\n'
             + '- 核心规则：硬性限制/底线/红线/不可违反的原则（如没有可留空数组）\n'
             + '- 世界观概括：设定所在世界的核心设定（纯角色卡则概括角色的核心人设和处境）\n'
-            + '- 重要角色：名字/身份/5-10个关键词/200字以内详细描述含性格外貌关系特质\n'
+            + '- 重要角色：名字/身份/5-10个关键词/500字以内详细描述含性格外貌关系特质\n'
+            + '- 角色原型：设定中提到的群体性角色（如"前任们""追求者"等），提取其类型、动机、与主角的关系模式，方便后续剧情生成新角色时参考\n'
             + '- 主角身份：如果设定中有明确的主角，提取其核心身份标签\n'
             + '- 约定承诺：角色间的约定/承诺/羁绊\n'
             + '- 全局关键词：贯穿全文的核心概念词\n\n'
@@ -1265,7 +1266,8 @@ var GameMemory = {
             + '直接输出JSON（不要代码块）：\n'
             + '{"coreRules":["规则1","规则2"],'
             + '"worldSummary":"世界观/角色核心概括",'
-            + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2","关键词3","关键词4","关键词5"],"summary":"200字以内详细描述，包含性格、外貌、与主角关系、关键特质"}],'
+            + '"characters":[{"name":"角色名","identity":"身份","keywords":["关键词1","关键词2","关键词3","关键词4","关键词5"],"summary":"500字以内详细描述，包含性格、外貌、与主角关系、关键特质"}],'
+            + '"characterArchetypes":[{"type":"角色原型类型","motivation":"动机","relationPattern":"与主角的关系模式","example":"举例说明"}],'
             + '"playerIdentity":"主角身份",'
             + '"promises":["约定1","约定2"],'
             + '"setupKeywords":["关键词1","关键词2"]}';
@@ -1275,7 +1277,7 @@ var GameMemory = {
         ];
 
         // 按次计费优化：长设定需要更多输出token来完整解析
-        var parseMaxTokens = Math.max(2000, Math.min(Math.floor(fullSetup.length / 3), 8000));
+        var parseMaxTokens = Math.max(2000, Math.min(Math.floor(fullSetup.length / 2), 16000));
 
         // 调用AI解析
         if (typeof callAI === 'function') {
@@ -1396,8 +1398,20 @@ var GameMemory = {
             });
         }
 
+        // 角色原型 → 永久事实（让AI知道有哪些类型的NPC可以出场）
+        if (parsed.characterArchetypes && parsed.characterArchetypes.length > 0) {
+            self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
+            parsed.characterArchetypes.forEach(function(arch) {
+                var desc = arch.type + '：动机-' + (arch.motivation || '未知') + '，关系模式-' + (arch.relationPattern || '未知');
+                if (arch.example) desc += '（例：' + arch.example + '）';
+                if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content.indexOf(arch.type) === 0; })) {
+                    self.permanentFacts.npcProfiles.push({ content: desc, locked: true, keywords: [arch.type, arch.motivation || ''] });
+                }
+            });
+        }
+
         self.saveToStorage();
-        console.log('[设定解析] AI解析完成，核心规则' + (parsed.coreRules ? parsed.coreRules.length : 0) + '条，角色' + (parsed.characters ? parsed.characters.length : 0) + '个');
+        console.log('[设定解析] AI解析完成，核心规则' + (parsed.coreRules ? parsed.coreRules.length : 0) + '条，角色' + (parsed.characters ? parsed.characters.length : 0) + '个，角色原型' + (parsed.characterArchetypes ? parsed.characterArchetypes.length : 0) + '个');
 
         // 通知UI刷新
         if (typeof GameLinker !== 'undefined') {
@@ -1417,23 +1431,36 @@ var GameMemory = {
 
         var result = '';
 
-        // 核心规则始终完整注入（最高优先级，不可压缩）
-        if (layers.coreRules) {
-            result += '【核心规则】\n' + layers.coreRules + '\n\n';
-        }
+        // 【去重优化】增强记忆已注入核心规则和角色档案时，设定只保留叙述性内容
+        // 避免同一条规则在【设定】和【当前状态与记忆】中重复出现
+        var hasMemoryInjection = (self.permanentFacts &&
+            ((self.permanentFacts.worldRules && self.permanentFacts.worldRules.length > 0) ||
+             (self.permanentFacts.npcProfiles && self.permanentFacts.npcProfiles.length > 0)));
 
-        // 智能注入策略：根据 context size 决定注入完整设定还是精简总结
-        var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
-        var setupTokens = Math.ceil(layers.fullSetup.length / 1.7);
-        var setupRatio = setupTokens / ctxSize;
-
-        if (layers.compressed && layers.compressedSetup && setupRatio > 0.4) {
-            // Context 不够大 + 有精简版 → 注入精简总结
-            // 规则已在 permanentFacts 中完整保留，不会被遗忘
-            result += '【设定精简版】（原文' + layers.originalLength + '字，精简至' + layers.compressedLength + '字，完整规则见【核心设定】）\n' + layers.compressedSetup;
+        if (hasMemoryInjection) {
+            // 记忆系统已有结构化数据 → 设定只注入叙述性内容（外貌、性格描写、背景故事）
+            // 核心规则和角色档案由记忆系统的【核心设定】负责，不重复
+            if (layers.compressed && layers.compressedSetup) {
+                result += '【设定（叙述层）】（核心规则和角色档案已在记忆区注入，此处为描写性内容）\n' + layers.compressedSetup;
+            } else {
+                // 没有精简版时，注入完整设定但标注去重
+                result += '【设定（叙述层）】（核心规则和角色档案已在记忆区注入，此处为描写性内容，如有重复以记忆区为准）\n' + layers.fullSetup;
+            }
         } else {
-            // Context 足够大 或 无精简版 → 注入完整设定
-            result += '【完整设定】\n' + layers.fullSetup;
+            // 记忆系统还没有数据（开局第一轮） → 完整注入
+            if (layers.coreRules) {
+                result += '【核心规则】\n' + layers.coreRules + '\n\n';
+            }
+
+            var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+            var setupTokens = Math.ceil(layers.fullSetup.length / 1.7);
+            var setupRatio = setupTokens / ctxSize;
+
+            if (layers.compressed && layers.compressedSetup && setupRatio > 0.4) {
+                result += '【设定精简版】（原文' + layers.originalLength + '字，精简至' + layers.compressedLength + '字，完整规则见【核心设定】）\n' + layers.compressedSetup;
+            } else {
+                result += '【完整设定】\n' + layers.fullSetup;
+            }
         }
 
         return result;
@@ -1649,57 +1676,56 @@ var GameMemory = {
                 }).join('\n');
 
             case 'events':
-                // 事件：保留重要度标记+核心内容，精简描述
+                // 事件：保留重要度标记+核心内容（按次计费，保留更多细节）
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    // 保留 "🔴[重要度9] 事件内容" 的前60字符
-                    if (line.length > 60) return truncateByChars(line, 60, '...');
+                    if (line.length > 150) return truncateByChars(line, 150, '...');
                     return line;
                 }).join('\n');
 
             case 'items':
-                // 物品：只保留名字+数量+稀有度
+                // 物品：保留名字+数量+稀有度+简要描述（按次计费，保留更多细节）
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    // "• 物品名 x1 [稀有度]" 就够了，去掉描述
                     var match = line.match(/•\s*(.+?)\s*x(\d+)/);
                     if (match) {
                         var rarityMatch = line.match(/\[([^\]]+)\]/);
-                        return '• ' + match[1] + ' x' + match[2] + (rarityMatch ? ' [' + rarityMatch[1] + ']' : '');
+                        var descMatch = line.match(/\s*-\s*(.+)/);
+                        return '• ' + match[1] + ' x' + match[2] + (rarityMatch ? ' [' + rarityMatch[1] + ']' : '') + (descMatch ? ' - ' + truncateByChars(descMatch[1], 30, '...') : '');
                     }
-                    return truncateByChars(line, 40, '...');
+                    return truncateByChars(line, 80, '...');
                 }).join('\n');
 
             case 'summaryLayers':
-                // 摘要：每条精简到30字符
+                // 摘要：每条保留更多细节（按次计费）
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > 30) return truncateByChars(line, 30, '...');
+                    if (line.length > 80) return truncateByChars(line, 80, '...');
                     return line;
                 }).join('\n');
 
             case 'sceneState':
-                // 场景状态：只保留地点名+锁定状态
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > 50) return truncateByChars(line, 50, '...');
-                    return line;
-                }).join('\n');
-
-            case 'changes':
-                // 变化更新：保留名字+变化，去掉时间标签细节
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > 60) return truncateByChars(line, 60, '...');
-                    return line;
-                }).join('\n');
-
-            case 'permanentFacts':
-                // 永久事实：最高优先级，尽量保留，只精简超长条目
+                // 场景状态：保留完整场景信息
                 return headerLine + '\n' + bodyLines.map(function(line) {
                     if (line.length > 100) return truncateByChars(line, 100, '...');
                     return line;
                 }).join('\n');
 
-            default:
-                // 通用压缩：每行精简到60字符
+            case 'changes':
+                // 变化更新：保留完整变化描述（按次计费）
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > 60) return truncateByChars(line, 60, '...');
+                    if (line.length > 150) return truncateByChars(line, 150, '...');
+                    return line;
+                }).join('\n');
+
+            case 'permanentFacts':
+                // 永久事实：最高优先级，按次计费尽量保留完整
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 600) return truncateByChars(line, 600, '...');
+                    return line;
+                }).join('\n');
+
+            default:
+                // 通用压缩：按次计费放宽限制
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.length > 120) return truncateByChars(line, 120, '...');
                     return line;
                 }).join('\n');
         }

@@ -71,6 +71,59 @@ function buildWorldTermsPrompt(_terms) {
         '请在第一回合的world模块title中体现你选定的术语，之后全程保持一致。';
 }
 
+// 【按次计费优化】子功能（论坛/NPC私聊/结局）获取精简版设定
+// 不注入4700字全文，而是用记忆摘要+核心规则代替，避免重复挤占context
+function getCompactSetupForSubFunction() {
+    var parts = [];
+
+    // 优先使用记忆系统的结构化数据
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.permanentFacts) {
+        var pf = EnhancedMemory.permanentFacts;
+
+        // 主角身份
+        if (pf.pcIdentity && pf.pcIdentity.length > 0) {
+            parts.push('【主角身份】');
+            pf.pcIdentity.forEach(function(a) { parts.push('• ' + a.content); });
+        }
+
+        // 世界规则
+        if (pf.worldRules && pf.worldRules.length > 0) {
+            parts.push('【世界规则】');
+            pf.worldRules.forEach(function(a) { parts.push('• ' + a.content); });
+        }
+
+        // 关键角色（完整描述，不截断）
+        if (pf.npcProfiles && pf.npcProfiles.length > 0) {
+            parts.push('【关键角色】');
+            pf.npcProfiles.forEach(function(a) { parts.push('• ' + a.content); });
+        }
+
+        // 玩家承诺
+        if (pf.promises && pf.promises.length > 0) {
+            parts.push('【玩家承诺】');
+            pf.promises.forEach(function(a) { parts.push('• ' + a.content); });
+        }
+
+        // 世界设定
+        if (pf.settings && pf.settings.length > 0) {
+            parts.push('【世界设定】');
+            pf.settings.forEach(function(a) { parts.push('• ' + a.content); });
+        }
+    }
+
+    // 如果记忆系统有数据，用记忆摘要+核心规则；否则回退到原始设定（但截断到1500字）
+    if (parts.length > 0) {
+        return parts.join('\n');
+    }
+
+    // 兜底：没有记忆数据时，截断原始设定
+    var rawSetup = gameState.userPrompt || '';
+    if (rawSetup.length > 1500) {
+        return truncateByChars(rawSetup, 3000, '...(设定较长，仅展示前半部分)');
+    }
+    return rawSetup;
+}
+
 // 【修复A P1-4】清理用户输入中的潜在prompt injection内容
 function _sanitizePromptInput(str) {
     if (!str) return '';
@@ -1504,7 +1557,7 @@ async function _compressConversation(removed, sys) {
             var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你正在维护一份剧情摘要，把新增内容整合到已有摘要中。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在500字以内。';
+        summaryPrompt = '你正在维护一份剧情摘要，把新增内容整合到已有摘要中。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在1500字以内。';
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
@@ -3627,9 +3680,10 @@ async function requestNpcReply(playerText) {
         // 注入主角完整信息，让 NPC 能正确理解和称呼玩家
         var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
         systemMsg += '【玩家信息】\n名字: ' + playerName + '\n';
-        // 注入玩家设定（按次计费无需省token，完整注入让NPC充分了解玩家）
-        if (gameState.userPrompt && gameState.userPrompt.trim()) {
-            systemMsg += '【玩家设定】\n' + gameState.userPrompt.trim() + '\n';
+        // 注入玩家设定（用精简版避免重复挤占context，记忆系统已有结构化数据）
+        var _compactSetup = getCompactSetupForSubFunction();
+        if (_compactSetup && _compactSetup.trim()) {
+            systemMsg += '【玩家设定】\n' + _compactSetup.trim() + '\n';
         }
         // 注入主角状态快照
         if (gameState.worldSnapshot && gameState.worldSnapshot.player) {
@@ -3666,6 +3720,13 @@ async function requestNpcReply(playerText) {
             '5. 可以在消息中穿插文字表情，如[吃瓜][狗头][白眼][无语][偷笑][傲娇][白眼][暗中观察]等，也可以自己创造新的文字表情如[翻白眼][拍桌子][捂脸]等，用[xxx]格式\n' +
             '6. 可以穿插富消息标签：[照片:描述内容]、[定位:地点名称]，和文字混用\n' +
             '7. choices给出3个玩家可以接着说的话\n' + '8. 这是日常对话，不推进主线剧情\n' + '9. 直接输出JSON，不要代码块包裹';
+        // 注入预设写作风格（让NPC私聊与主剧情风格一致）
+        if (typeof PresetManager !== 'undefined' && PresetManager._currentPreset) {
+            var _npcPreset = PresetManager._currentPreset;
+            if (_npcPreset.style && _npcPreset.style.trim()) {
+                systemMsg += '\n【写作风格】\n' + _npcPreset.style.trim() + '\n';
+            }
+        }
         // 构建消息列表
         var chatMessages = [{
             role: 'system',
