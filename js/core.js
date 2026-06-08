@@ -3168,9 +3168,9 @@ return (data.choices && data.choices[0] && data.choices[0].message && data
 });
 }
 // ========================================
-// Context Size 自动检测
+// Context Size 自动检测（动态，不硬编码模型列表）
 // ========================================
-function detectContextSize() {
+async function detectContextSize() {
     // 优先级1：预设中的 max_context
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams && PresetManager.currentParams.max_context) {
         var presetCtx = Number(PresetManager.currentParams.max_context);
@@ -3181,78 +3181,99 @@ function detectContextSize() {
         }
     }
 
-    // 优先级2：从模型名推断
     var model = '';
+    var baseUrl = '';
+    var apiKey = '';
     if (typeof LocalGameAPI !== 'undefined' && LocalGameAPI.getCurrentConfig()) {
-        model = (LocalGameAPI.getCurrentConfig().model || '').toLowerCase();
+        var cfg = LocalGameAPI.getCurrentConfig();
+        model = (cfg.model || '').toLowerCase();
+        baseUrl = cfg.baseUrl || '';
+        apiKey = cfg.apiKey || '';
     }
 
+    // 优先级2：调 /models API 动态获取
+    if (baseUrl && apiKey) {
+        try {
+            var modelsUrl = LocalGameAPI.normalizeUrl(baseUrl) + '/models';
+            var resp = await fetch(modelsUrl, {
+                method: 'GET',
+                headers: { 'Authorization': 'Bearer ' + apiKey },
+                signal: AbortSignal.timeout(5000)
+            });
+            if (resp.ok) {
+                var data = await resp.json();
+                // OpenAI 格式：{ data: [{ id: "model-name", ... }] }
+                var models = data.data || data;
+                if (Array.isArray(models)) {
+                    var target = models.find(function(m) {
+                        var id = (m.id || m.name || '').toLowerCase();
+                        return id === model || id.endsWith('/' + model) || id.endsWith(':' + model);
+                    });
+                    if (target) {
+                        // 部分API返回 context_length / max_context_length
+                        var ctx = target.context_length || target.max_context_length || target.context_window || 0;
+                        if (ctx > 0) {
+                            gameState.contextSize = ctx;
+                            console.log('[Context检测] 来自 /models API: ' + ctx);
+                            return ctx;
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.log('[Context检测] /models API 不可用，尝试其他方式');
+        }
+    }
+
+    // 优先级3：从模型名中提取数字推断
     var ctxSize = 0;
 
-    // GPT 系列
-    if (/gpt-4-32k|gpt4-32k/.test(model)) ctxSize = 32768;
-    else if (/gpt-4o|gpt4o/.test(model)) ctxSize = 128000;
-    else if (/gpt-4-turbo|gpt4-turbo/.test(model)) ctxSize = 128000;
-    else if (/gpt-4[^o]|gpt4[^o]/.test(model)) ctxSize = 8192;
-    else if (/gpt-3\.5-turbo-16k|gpt35-turbo-16k/.test(model)) ctxSize = 16384;
-    else if (/gpt-3\.5|gpt35/.test(model)) ctxSize = 4096;
+    // 3a. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
+    var kMatch = model.match(/(\d+)k/);
+    if (kMatch) ctxSize = parseInt(kMatch[1]) * 1024;
 
-    // Claude 系列
-    else if (/claude-3.*opus/.test(model)) ctxSize = 200000;
-    else if (/claude-3.*sonnet/.test(model)) ctxSize = 200000;
-    else if (/claude-3.*haiku/.test(model)) ctxSize = 200000;
-    else if (/claude-3/.test(model)) ctxSize = 200000;
-    else if (/claude/.test(model)) ctxSize = 100000;
-
-    // DeepSeek 系列
-    else if (/deepseek-r1/.test(model)) ctxSize = 65536;
-    else if (/deepseek-v3|deepseek-chat/.test(model)) ctxSize = 65536;
-    else if (/deepseek/.test(model)) ctxSize = 32768;
-
-    // Qwen 系列
-    else if (/qwen.*72b|qwen.*max/.test(model)) ctxSize = 131072;
-    else if (/qwen.*32b|qwen.*plus/.test(model)) ctxSize = 131072;
-    else if (/qwen/.test(model)) ctxSize = 32768;
-
-    // Gemini 系列
-    else if (/gemini.*1\.5.*pro/.test(model)) ctxSize = 2000000;
-    else if (/gemini.*1\.5.*flash/.test(model)) ctxSize = 1000000;
-    else if (/gemini.*2/.test(model)) ctxSize = 1048576;
-    else if (/gemini/.test(model)) ctxSize = 32768;
-
-    // Llama 系列
-    else if (/llama.*3.*70b|llama.*3.*405b/.test(model)) ctxSize = 131072;
-    else if (/llama.*3/.test(model)) ctxSize = 8192;
-    else if (/llama/.test(model)) ctxSize = 4096;
-
-    // Mistral 系列
-    else if (/mistral.*large/.test(model)) ctxSize = 128000;
-    else if (/mistral.*medium/.test(model)) ctxSize = 32768;
-    else if (/mistral/.test(model)) ctxSize = 32768;
-
-    // Yi 系列
-    else if (/yi.*34b|yi.*large/.test(model)) ctxSize = 200000;
-    else if (/yi/.test(model)) ctxSize = 16384;
-
-    // GLM 系列
-    else if (/glm-4.*long/.test(model)) ctxSize = 1048576;
-    else if (/glm-4/.test(model)) ctxSize = 128000;
-    else if (/glm/.test(model)) ctxSize = 32768;
-
-    // Kimi / Moonshot
-    else if (/kimi|moonshot/.test(model)) ctxSize = 131072;
-
-    // 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
+    // 3b. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
     if (ctxSize === 0) {
-        var kMatch = model.match(/(\d+)k/);
-        if (kMatch) ctxSize = parseInt(kMatch[1]) * 1024;
+        var numMatch = model.match(/[-_](\d{4,})/);
+        if (numMatch) {
+            var num = parseInt(numMatch[1]);
+            if (num >= 2048) ctxSize = num;
+        }
+    }
+
+    // 3c. 动态询问AI自身的context size（完全动态，不硬编码任何模型信息）
+    if (ctxSize === 0 && baseUrl && apiKey) {
+        try {
+            var probeMessages = [
+                { role: 'system', content: 'You are a helpful assistant. Answer concisely.' },
+                { role: 'user', content: 'What is your maximum context window size in tokens? Reply with ONLY a number, no explanation. Example: 128000' }
+            ];
+            var probeResult = await callAI(probeMessages, {
+                stream: false,
+                temperature: 0,
+                max_tokens: 50
+            });
+            if (probeResult) {
+                var probeText = (typeof probeResult === 'string') ? probeResult : (probeResult.content || '');
+                var numOnly = probeText.replace(/[^\d]/g, '');
+                if (numOnly) {
+                    var probeCtx = parseInt(numOnly);
+                    if (probeCtx >= 2048 && probeCtx <= 10000000) {
+                        ctxSize = probeCtx;
+                        console.log('[Context检测] AI自报context: ' + ctxSize);
+                    }
+                }
+            }
+        } catch (e) {
+            console.log('[Context检测] AI自报context失败，使用兜底值');
+        }
     }
 
     // 兜底：默认 8K
     if (ctxSize === 0) ctxSize = 8192;
 
     gameState.contextSize = ctxSize;
-    console.log('[Context检测] 来自模型名推断(' + model + '): ' + ctxSize);
+    console.log('[Context检测] 最终结果(' + model + '): ' + ctxSize);
     return ctxSize;
 }
 
@@ -3455,7 +3476,7 @@ async function extractSetupToMemory() {
         // 智能压缩：如果设定太长，让AI生成精简总结
         // 规则不丢 → permanentFacts 已存；描述精简 → 节省context
         // ========================================
-        var ctxSize = gameState.contextSize || detectContextSize();
+        var ctxSize = gameState.contextSize || (await detectContextSize());
         var setupTokens = Math.ceil(setupText.length / 1.7); // 中文约1.7字/token
         var setupRatio = setupTokens / ctxSize;
 
@@ -3521,10 +3542,10 @@ async function extractSetupToMemory() {
 // ========================================
 // System Prompt
 // ========================================
-function initializeGame() {
+async function initializeGame() {
     try {
-        // 检测 API 模型的 context size
-        detectContextSize();
+        // 检测 API 模型的 context size（异步：可能调/models API或询问AI）
+        await detectContextSize();
 
         // 收集主角设定
         gameState.protagonistSetup = {};
