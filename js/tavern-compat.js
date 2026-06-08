@@ -1087,11 +1087,24 @@ var GameMemory = {
         return attrs;
     },
 
-    // 关键词激活：更新记忆条目的访问计数
+    // 关键词激活：更新记忆条目的访问计数（含衰减机制）
     _updateAccessCounts: function(message) {
         var self = this;
         if (!message || !message.content) return;
         var content = message.content;
+        // 每轮衰减：accessCount乘0.9，防止只增不减导致旧条目永远高权重
+        if (self._lastDecayTurn !== self.currentTurn) {
+            self._lastDecayTurn = self.currentTurn;
+            ['characters', 'items', 'locations'].forEach(function(table) {
+                Object.keys(self.tables[table] || {}).forEach(function(key) {
+                    var entry = self.tables[table][key];
+                    if (entry.accessCount) {
+                        entry.accessCount = Math.round(entry.accessCount * 0.9);
+                        if (entry.accessCount < 1) entry.accessCount = 0;
+                    }
+                });
+            });
+        }
         // 角色被提及时增加访问计数
         Object.keys(self.tables.characters).forEach(function(name) {
             if (content.indexOf(name) >= 0) {
@@ -1472,6 +1485,10 @@ var GameMemory = {
 
     buildInjection: function() {
         var self = this;
+        // 同轮次缓存：同一轮内多次调用直接返回缓存结果
+        if (self._cachedInjectionTurn === self.currentTurn && self._cachedInjection) {
+            return self._cachedInjection;
+        }
         self._adaptBudget();
         var budget = self.budget;
         var currentTurn = self.currentTurn;
@@ -1606,6 +1623,8 @@ var GameMemory = {
             if (!p.changed) self._lastInjectionStats.skippedModules.push(p.key);
         });
         self.lastInjectionTurn = currentTurn;
+        self._cachedInjection = injection;
+        self._cachedInjectionTurn = currentTurn;
         return injection;
     },
 
@@ -2310,6 +2329,8 @@ var GameMemory = {
         if (self._saving) { self._pendingSave = true; return; }
         self._saving = true;
         try {
+            // 保存前清理 _changeLog，只保留最近20条
+            if (self._changeLog && self._changeLog.length > 20) self._changeLog = self._changeLog.slice(-20);
             var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, savedAt: Date.now() };
             var result = safeSetItem('freeScript_memory', JSON.stringify(data));
             if (!result || result.success === false) self._handleSaveFailure(result, data);

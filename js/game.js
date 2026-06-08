@@ -975,7 +975,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 var msg = messages[_rIdx2];
                 if (msg._pinned) continue; // 不移除固定消息
                 if (msg.role === 'user' || msg.role === 'assistant') {
-                    currentTokens -= estimateTokensUtil(msg.content || '');
+                    currentTokens -= estimateTokensUtil(msg.content || '') + 4; // +4为role标签开销
                     messages.splice(_rIdx2, 1);
                     _rIdx2--; // 调整索引
                     removedCount++;
@@ -1005,8 +1005,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 移除请求超时限制，只要API本身不出错就无限等待
         var response;
         // 记录输入token数（按次计费玩家需要知道每次请求用了多少上下文）
-        var inputTokens = estimateTokensForMessages(messages);
-        var contextSize = gameState.contextSize || 8000;
+        // 复用上方裁剪后的 currentTokens，不再重复计算
+        var inputTokens = currentTokens;
         gameState._lastInputTokens = inputTokens;
         gameState._lastContextUsage = Math.round(inputTokens / contextSize * 100);
         console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + gameState._lastContextUsage + '%)');
@@ -1125,11 +1125,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (!gameState.keyEvents) gameState.keyEvents = [];
                 data.keyEvents.forEach(function(evt) {
                     if (evt && typeof evt === 'string' && evt.trim().length > 0) {
-                        // 去重：不添加已有的相同事件
-                        var isDuplicate = gameState.keyEvents.some(function(existing) {
-                            return existing === evt;
-                        });
-                        if (!isDuplicate) {
+                        // 去重：trim后匹配，避免空格差异导致重复
+                        if (!gameState.keyEvents.includes(evt.trim())) {
                             gameState.keyEvents.push(evt.trim());
                         }
                     }
@@ -1573,13 +1570,17 @@ function _parseStructuredSummary(summary) {
         var events = eventMatch[1].split('\n').filter(function(l) { return l.trim(); });
         events.forEach(function(event) {
             if (!gameState.keyEvents) gameState.keyEvents = [];
-            if (gameState.keyEvents.indexOf(event.trim()) === -1) {
+            if (!gameState.keyEvents.includes(event.trim())) {
                 gameState.keyEvents.push(event.trim());
             }
             EnhancedMemory.longTermMemory.importantEvents.push({
                 time: Date.now(),
                 event: event.trim()
             });
+            // 上限50条，防止内存无限增长
+            if (EnhancedMemory.longTermMemory.importantEvents.length > 50) {
+                EnhancedMemory.longTermMemory.importantEvents = EnhancedMemory.longTermMemory.importantEvents.slice(-50);
+            }
         });
     }
     

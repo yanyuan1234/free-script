@@ -2331,8 +2331,8 @@ function injectToChatLog(npcName, theater) {
         theaterType: theater.type
     });
 // 【修复】限制每个NPC聊天记录上限，防止无限增长导致存档膨胀
-if (gameState._chatLogs[npcName].length > 200) {
-    gameState._chatLogs[npcName] = gameState._chatLogs[npcName].slice(-200);
+if (gameState._chatLogs[npcName].length > 50) {
+    gameState._chatLogs[npcName] = gameState._chatLogs[npcName].slice(-50);
 }
 }
 
