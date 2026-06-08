@@ -176,6 +176,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
     });
     var sysMsg = '你是一个游戏论坛系统。玩家刚在论坛发了一条评论，请生成NPC的回复。\n\n' +
         '【玩家信息】名字: ' + playerName + '，' + (playerIdentity || '普通玩家') + '\n' +
+        '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
         '【当前角色关系】\n' + (function() {
             var rels = gameState.relationships || [];
             if (rels.length === 0) return '暂无关系数据';
@@ -241,6 +242,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
     if (!srcPost) return;
     var sysMsg = '你是一个游戏论坛系统。玩家在论坛发言了，有人开了一个新帖子来讨论这件事。\n\n' +
         '【玩家】' + playerName + '\n' +
+        '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
         '【原帖标题】' + (srcPost.title || '未知') + '\n' +
         '【玩家评论】' + playerComment + '\n\n' +
         '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
@@ -4439,10 +4441,10 @@ async function _generateEndingRender(stories) {
             }).join('、');
         }
         var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
-        var worldTheme = (gameState.userPrompt || '').substring(0, 100);
+        var worldTheme = gameState.userPrompt || '';
 
         var prompt = '你是一个游戏结局生成器。根据以下游戏剧情，生成一个完整的结局。\n\n' +
-            '【世界观】' + worldTheme + '\n' +
+            '【玩家设定】\n' + (worldTheme.trim() || '无') + '\n' +
             '【主角】' + playerName + '\n' +
             '【主要角色】' + (charInfo || '未知') + '\n\n' +
             '你理解如何为文字冒险游戏创作有深度、有画面感的结局。回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +

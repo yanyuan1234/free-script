@@ -3602,9 +3602,29 @@ async function requestNpcReply(playerText) {
                 return d.key + ': ' + d.value;
             }).join('\n') + '\n';
         }
-        // 注入主角名字，让 NPC 能正确称呼玩家
+        // 注入主角完整信息，让 NPC 能正确理解和称呼玩家
         var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
-        systemMsg += '【玩家信息】名字: ' + playerName + '\n';
+        systemMsg += '【玩家信息】\n名字: ' + playerName + '\n';
+        // 注入玩家设定（按次计费无需省token，完整注入让NPC充分了解玩家）
+        if (gameState.userPrompt && gameState.userPrompt.trim()) {
+            systemMsg += '【玩家设定】\n' + gameState.userPrompt.trim() + '\n';
+        }
+        // 注入主角状态快照
+        if (gameState.worldSnapshot && gameState.worldSnapshot.player) {
+            var _pSnap = gameState.worldSnapshot.player;
+            if (_pSnap.identity) systemMsg += '身份: ' + _pSnap.identity + '\n';
+            if (_pSnap.personality) systemMsg += '性格: ' + _pSnap.personality + '\n';
+            if (_pSnap.stats && _pSnap.stats.length > 0) {
+                systemMsg += '属性: ' + _pSnap.stats.map(function(s) { return s.label + ':' + s.value; }).join(', ') + '\n';
+            }
+        }
+        // 注入增强记忆（让NPC了解剧情进展和角色关系变化）
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
+            var _npcMemText = EnhancedMemory.buildSmartInjection();
+            if (_npcMemText) {
+                systemMsg += '\n【剧情记忆】\n' + _npcMemText + '\n';
+            }
+        }
         // 加上剧情背景
         if (gameState.rollingSummary) {
             systemMsg += '\n【剧情背景】\n' + gameState.rollingSummary + '\n';

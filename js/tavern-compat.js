@@ -1402,7 +1402,6 @@ var GameMemory = {
         // 如果没有处理过设定，返回null（让旧逻辑处理）
         if (!layers.fullSetup) return null;
 
-        var currentTurn = self.currentTurn || 0;
         var result = '';
 
         // 核心规则始终完整注入（最高优先级，不可压缩）
@@ -1410,27 +1409,9 @@ var GameMemory = {
             result += '【核心规则】\n' + layers.coreRules + '\n\n';
         }
 
-        // 渐进式策略：根据轮次决定设定注入的详细程度
-        if (currentTurn <= 4) {
-            // 阶段1（1-4轮）：完整设定，AI需要完整上下文建立世界
-            result += '【完整设定】\n' + layers.fullSetup;
-        } else if (currentTurn <= 10) {
-            // 阶段2（5-10轮）：核心规则+世界摘要+关键条目标题
-            // 保留设定中每个章节的标题和首句，让AI知道"有什么"
-            if (layers.worldSummary) {
-                result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
-            }
-            // 提取设定中的章节标题行，作为索引让AI知道设定的完整结构
-            var sectionIndex = self._extractSectionIndex(layers.fullSetup);
-            if (sectionIndex) {
-                result += '【设定结构索引】\n' + sectionIndex + '\n\n';
-            }
-        } else {
-            // 阶段3（11轮+）：核心规则+世界摘要（最精简，详细内容由记忆系统按需注入）
-            if (layers.worldSummary) {
-                result += '【世界摘要】\n' + layers.worldSummary + '\n\n';
-            }
-        }
+        // 按次计费模式：始终注入完整设定，不做渐进压缩
+        // 这样AI每一轮都能掌握完整的玩家设定和世界观
+        result += '【完整设定】\n' + layers.fullSetup;
 
         return result;
     },
