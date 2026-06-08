@@ -3168,6 +3168,95 @@ return (data.choices && data.choices[0] && data.choices[0].message && data
 });
 }
 // ========================================
+// Context Size 自动检测
+// ========================================
+function detectContextSize() {
+    // 优先级1：预设中的 max_context
+    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams && PresetManager.currentParams.max_context) {
+        var presetCtx = Number(PresetManager.currentParams.max_context);
+        if (presetCtx > 0) {
+            gameState.contextSize = presetCtx;
+            console.log('[Context检测] 来自预设 max_context: ' + presetCtx);
+            return presetCtx;
+        }
+    }
+
+    // 优先级2：从模型名推断
+    var model = '';
+    if (typeof LocalGameAPI !== 'undefined' && LocalGameAPI.getCurrentConfig()) {
+        model = (LocalGameAPI.getCurrentConfig().model || '').toLowerCase();
+    }
+
+    var ctxSize = 0;
+
+    // GPT 系列
+    if (/gpt-4-32k|gpt4-32k/.test(model)) ctxSize = 32768;
+    else if (/gpt-4o|gpt4o/.test(model)) ctxSize = 128000;
+    else if (/gpt-4-turbo|gpt4-turbo/.test(model)) ctxSize = 128000;
+    else if (/gpt-4[^o]|gpt4[^o]/.test(model)) ctxSize = 8192;
+    else if (/gpt-3\.5-turbo-16k|gpt35-turbo-16k/.test(model)) ctxSize = 16384;
+    else if (/gpt-3\.5|gpt35/.test(model)) ctxSize = 4096;
+
+    // Claude 系列
+    else if (/claude-3.*opus/.test(model)) ctxSize = 200000;
+    else if (/claude-3.*sonnet/.test(model)) ctxSize = 200000;
+    else if (/claude-3.*haiku/.test(model)) ctxSize = 200000;
+    else if (/claude-3/.test(model)) ctxSize = 200000;
+    else if (/claude/.test(model)) ctxSize = 100000;
+
+    // DeepSeek 系列
+    else if (/deepseek-r1/.test(model)) ctxSize = 65536;
+    else if (/deepseek-v3|deepseek-chat/.test(model)) ctxSize = 65536;
+    else if (/deepseek/.test(model)) ctxSize = 32768;
+
+    // Qwen 系列
+    else if (/qwen.*72b|qwen.*max/.test(model)) ctxSize = 131072;
+    else if (/qwen.*32b|qwen.*plus/.test(model)) ctxSize = 131072;
+    else if (/qwen/.test(model)) ctxSize = 32768;
+
+    // Gemini 系列
+    else if (/gemini.*1\.5.*pro/.test(model)) ctxSize = 2000000;
+    else if (/gemini.*1\.5.*flash/.test(model)) ctxSize = 1000000;
+    else if (/gemini.*2/.test(model)) ctxSize = 1048576;
+    else if (/gemini/.test(model)) ctxSize = 32768;
+
+    // Llama 系列
+    else if (/llama.*3.*70b|llama.*3.*405b/.test(model)) ctxSize = 131072;
+    else if (/llama.*3/.test(model)) ctxSize = 8192;
+    else if (/llama/.test(model)) ctxSize = 4096;
+
+    // Mistral 系列
+    else if (/mistral.*large/.test(model)) ctxSize = 128000;
+    else if (/mistral.*medium/.test(model)) ctxSize = 32768;
+    else if (/mistral/.test(model)) ctxSize = 32768;
+
+    // Yi 系列
+    else if (/yi.*34b|yi.*large/.test(model)) ctxSize = 200000;
+    else if (/yi/.test(model)) ctxSize = 16384;
+
+    // GLM 系列
+    else if (/glm-4.*long/.test(model)) ctxSize = 1048576;
+    else if (/glm-4/.test(model)) ctxSize = 128000;
+    else if (/glm/.test(model)) ctxSize = 32768;
+
+    // Kimi / Moonshot
+    else if (/kimi|moonshot/.test(model)) ctxSize = 131072;
+
+    // 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
+    if (ctxSize === 0) {
+        var kMatch = model.match(/(\d+)k/);
+        if (kMatch) ctxSize = parseInt(kMatch[1]) * 1024;
+    }
+
+    // 兜底：默认 8K
+    if (ctxSize === 0) ctxSize = 8192;
+
+    gameState.contextSize = ctxSize;
+    console.log('[Context检测] 来自模型名推断(' + model + '): ' + ctxSize);
+    return ctxSize;
+}
+
+// ========================================
 // 开局设定提取：用AI从玩家设定中提取结构化信息，预填充记忆系统
 // ========================================
 async function extractSetupToMemory() {
@@ -3361,6 +3450,69 @@ async function extractSetupToMemory() {
             (parsed.relationships ? parsed.relationships.length : 0) + '条关系, ' +
             (parsed.items ? parsed.items.length : 0) + '个物品, ' +
             (parsed.worldRules ? parsed.worldRules.length : 0) + '条规则');
+
+        // ========================================
+        // 智能压缩：如果设定太长，让AI生成精简总结
+        // 规则不丢 → permanentFacts 已存；描述精简 → 节省context
+        // ========================================
+        var ctxSize = gameState.contextSize || detectContextSize();
+        var setupTokens = Math.ceil(setupText.length / 1.7); // 中文约1.7字/token
+        var setupRatio = setupTokens / ctxSize;
+
+        console.log('[设定压缩] 设定约' + setupTokens + 'tokens, context ' + ctxSize + ', 占比 ' + (setupRatio * 100).toFixed(1) + '%');
+
+        // 如果设定占 context 40%以上，需要压缩
+        if (setupRatio > 0.4 && setupText.length > 3000) {
+            var targetRatio = 0.25; // 压缩到占context 25%
+            var targetChars = Math.floor(ctxSize * targetRatio * 1.7); // 目标字符数
+
+            // 更新加载状态
+            if (storyEl) {
+                storyEl.innerHTML = '<div style="text-align:center;padding:40px 0;display:flex;flex-direction:column;align-items:center;text-indent:0;">' +
+                    '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:16px;">' +
+                    '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>' +
+                    '<span style="color:var(--text-secondary);font-size:13px;">设定较长，正在生成精简总结（规则不丢）...</span></div>';
+            }
+
+            try {
+                var compressPrompt = '你是一个游戏设定精简器。以下是一份很长的游戏设定文本，请生成一份精简总结。\n\n' +
+                    '核心要求：\n' +
+                    '1. 所有规则、限制、铁律、机制必须完整保留，一个字都不能丢，用【规则】标签标注\n' +
+                    '2. 角色设定保留核心特质和关键外貌，删减冗余描写，用【角色】标签标注\n' +
+                    '3. 世界观保留核心设定，删减细节描写，用【世界观】标签标注\n' +
+                    '4. 剧情线索和关键物品必须保留，用【关键线索】标签标注\n' +
+                    '5. 目标长度：约' + targetChars + '字（当前原文约' + setupText.length + '字）\n' +
+                    '6. 精简方式：删减描写性冗余，保留所有功能性信息\n' +
+                    '7. 不要添加原文没有的内容\n' +
+                    '8. 直接输出精简后的文本，不要输出任何解释或前言\n\n' +
+                    '【原始设定】\n' + setupText;
+
+                var compressedResult = await callAI([
+                    { role: 'system', content: '你是游戏设定精简器。保留所有规则和机制，精简描写和叙述。直接输出精简文本。' },
+                    { role: 'user', content: compressPrompt }
+                ], {
+                    stream: false,
+                    temperature: 0.2,
+                    max_tokens: Math.min(targetChars + 500, 8192)
+                });
+
+                if (compressedResult && compressedResult.trim().length > 200) {
+                    // 存储精简版到 _setupLayers
+                    if (gm._setupLayers) {
+                        gm._setupLayers.compressedSetup = compressedResult.trim();
+                        gm._setupLayers.compressed = true;
+                        gm._setupLayers.originalLength = setupText.length;
+                        gm._setupLayers.compressedLength = compressedResult.trim().length;
+                    }
+                    gm.saveToStorage();
+                    console.log('[设定压缩] 完成：' + setupText.length + '字 → ' + compressedResult.trim().length + '字');
+                }
+            } catch (e) {
+                console.warn('[设定压缩] 失败（不影响游戏，将使用完整设定）:', e && e.message);
+            }
+        } else {
+            console.log('[设定压缩] 无需压缩，设定占比合理');
+        }
     } catch (e) {
         console.warn('[设定提取] 失败（不影响游戏继续）:', e && e.message);
     }
@@ -3371,6 +3523,9 @@ async function extractSetupToMemory() {
 // ========================================
 function initializeGame() {
     try {
+        // 检测 API 模型的 context size
+        detectContextSize();
+
         // 收集主角设定
         gameState.protagonistSetup = {};
         var mcFields = ['mcName', 'mcGender', 'mcAge', 'mcIdentity', 'mcPersonality', 'mcAppearance',

@@ -1409,9 +1409,19 @@ var GameMemory = {
             result += '【核心规则】\n' + layers.coreRules + '\n\n';
         }
 
-        // 按次计费模式：始终注入完整设定，不做渐进压缩
-        // 这样AI每一轮都能掌握完整的玩家设定和世界观
-        result += '【完整设定】\n' + layers.fullSetup;
+        // 智能注入策略：根据 context size 决定注入完整设定还是精简总结
+        var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+        var setupTokens = Math.ceil(layers.fullSetup.length / 1.7);
+        var setupRatio = setupTokens / ctxSize;
+
+        if (layers.compressed && layers.compressedSetup && setupRatio > 0.4) {
+            // Context 不够大 + 有精简版 → 注入精简总结
+            // 规则已在 permanentFacts 中完整保留，不会被遗忘
+            result += '【设定精简版】（原文' + layers.originalLength + '字，精简至' + layers.compressedLength + '字，完整规则见【剧情记忆·永久事实】）\n' + layers.compressedSetup;
+        } else {
+            // Context 足够大 或 无精简版 → 注入完整设定
+            result += '【完整设定】\n' + layers.fullSetup;
+        }
 
         return result;
     },
@@ -2540,7 +2550,7 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">场景状态</div><div style="font-size:14px;font-weight:600;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点有场景锁定</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? '完整注入（每轮）' : '未初始化') + '</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? (gm._setupLayers.compressed ? '精简版（规则在永久事实）' : '完整注入（每轮）') : '未初始化') + '</div></div>'
             + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span><button onclick="MemoryManagerUI.switchTab(\'injection\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">查看详情</button></div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
