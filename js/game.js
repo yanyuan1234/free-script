@@ -6,22 +6,32 @@
 /**
  * 检测当前游戏的世界观主题
  * 基于 gameState.userPrompt 中的关键词判断
- * 返回: 'modern' | 'ancient' | 'xianxia' | 'wasteland' | 'fantasy' | 'other'
+ * 返回: 'modern' | 'ancient' | 'xianxia' | 'wasteland' | 'fantasy' | 'mixed' | 'other'
+ * 'mixed' 表示包含多种世界观元素（如无限流：现代+副本内古代）
  * 'other' 表示未匹配到预设主题，由 AI 自行决定术语
  */
 function detectWorldTheme() {
     var prompt = (gameState && gameState.userPrompt) || '';
     var text = prompt.toLowerCase();
-    // 修仙/仙侠（优先检测，因为可能包含"古代"关键词）
-    if (/修仙|仙侠|灵气|灵石|宗门|道侣|元婴|金丹|筑基|飞升|天劫|仙界|修真|道友|师尊/.test(text)) return 'xianxia';
-    // 古代
-    if (/古代|古风|朝代|皇帝|宫廷|江湖|武侠|侠客|县令|将军|公主|王爷|宫斗|科举|银两/.test(text)) return 'ancient';
-    // 末世/废土
-    if (/末世|废土|丧尸|末日|幸存|避难|变异|辐射|物资|避难所|丧尸世界/.test(text)) return 'wasteland';
-    // 西幻/奇幻
-    if (/魔法|精灵|龙族|骑士|冒险者|公会|魔王|勇者|矮人|哥布林|地下城|中世纪/.test(text)) return 'fantasy';
-    // 现代
-    if (/现代|都市|职场|学校|校园|公司|总裁|同事|微信|手机|网络/.test(text)) return 'modern';
+    // 检测各主题关键词是否存在
+    var hasXianxia = /修仙|仙侠|灵气|灵石|宗门|道侣|元婴|金丹|筑基|飞升|天劫|仙界|修真|道友|师尊/.test(text);
+    var hasAncient = /古代|古风|朝代|皇帝|宫廷|江湖|武侠|侠客|县令|将军|公主|王爷|宫斗|科举|银两/.test(text);
+    var hasWasteland = /末世|废土|丧尸|末日|幸存|避难|变异|辐射|物资|避难所|丧尸世界/.test(text);
+    var hasFantasy = /魔法|精灵|龙族|骑士|冒险者|公会|魔王|勇者|矮人|哥布林|地下城|中世纪/.test(text);
+    var hasModern = /现代|都市|职场|学校|校园|公司|总裁|同事|微信|手机|网络/.test(text);
+    // 检测混合世界观（如无限流：现代框架+副本内多种时代）
+    var hasInfiniteFlow = /无限流|副本|诡异|玩家|通关|任务面板|生存天数|排行榜|游戏系统/.test(text);
+    // 无限流/混合世界观：现代框架下包含多种时代背景
+    if (hasInfiniteFlow) return 'mixed';
+    // 多主题共存但非无限流
+    var themeCount = [hasXianxia, hasAncient, hasWasteland, hasFantasy, hasModern].filter(Boolean).length;
+    if (themeCount >= 2) return 'mixed';
+    // 单一主题
+    if (hasXianxia) return 'xianxia';
+    if (hasAncient) return 'ancient';
+    if (hasWasteland) return 'wasteland';
+    if (hasFantasy) return 'fantasy';
+    if (hasModern) return 'modern';
     // 无法匹配时返回 other，表示由 AI 自行决定术语
     return 'other';
 }
@@ -37,7 +47,9 @@ function getWorldTerms(theme) {
         ancient:  { mail: '飞鸽传书', moments: '江湖传闻', shop: '集市', comments: '茶馆', ranking: '英雄榜', diary: '手札', cards: '密信', currency: '银两', npcMsg: '传话', bag: '行囊', quest: '差事' },
         xianxia:  { mail: '传音符', moments: '修士手札', shop: '灵宝阁', comments: '论道台', ranking: '天道碑', diary: '修炼日志', cards: '机缘', currency: '灵石', npcMsg: '传音', bag: '储物袋', quest: '历练' },
         wasteland:{ mail: '无线电', moments: '幸存者广播', shop: '补给站', comments: '幸存者频道', ranking: '战力榜', diary: '生存记录', cards: '线索', currency: '物资', npcMsg: '对讲机', bag: '背包', quest: '行动' },
-        fantasy:  { mail: '魔法信函', moments: '冒险者留言', shop: '杂货铺', comments: '冒险者公会', ranking: '勇者榜', diary: '冒险日志', cards: '委托', currency: '金币', npcMsg: '传讯', bag: '行囊', quest: '委托' }
+        fantasy:  { mail: '魔法信函', moments: '冒险者留言', shop: '杂货铺', comments: '冒险者公会', ranking: '勇者榜', diary: '冒险日志', cards: '委托', currency: '金币', npcMsg: '传讯', bag: '行囊', quest: '委托' },
+        // 混合世界观（无限流等）：以现代术语为基础，AI根据场景自行切换
+        mixed:    { mail: '系统邮件', moments: '玩家动态', shop: '兑换商城', comments: '玩家论坛', ranking: '排行榜', diary: '副本日志', cards: '任务卡', currency: '积分', npcMsg: '系统消息', bag: '空间仓库', quest: '副本任务' }
     };
     // 'other' 主题不提供预设术语，由 AI 根据世界观自行决定
     return terms[theme] || null;
@@ -60,25 +72,26 @@ function getCurrentWorldTerms() {
 
 /**
  * 生成世界观术语提示词片段
- * 有预设术语时直接列出；无预设时让 AI 自行决定并给出示例
+ * 核心理念：引导AI理解世界观并自行决定术语，而非硬性规定
+ * 预设主题提供参考建议，AI可根据场景灵活调整
  */
 function buildWorldTermsPrompt(_terms) {
     if (_terms) {
-        // 预设主题：直接给出术语映射
-        return '【世界观术语 - 必须遵守】\n' +
-            '当前世界观对应术语：' +
-            '消息=' + _terms.npcMsg + '、' +
-            '邮件=' + _terms.mail + '、' +
-            '朋友圈=' + _terms.moments + '、' +
-            '商店=' + _terms.shop + '、' +
-            '论坛=' + _terms.comments + '、' +
-            '排行榜=' + _terms.ranking + '、' +
-            '日记=' + _terms.diary + '、' +
-            '任务卡片=' + _terms.cards + '、' +
-            '货币=' + _terms.currency + '、' +
-            '背包=' + _terms.bag + '、' +
-            '任务=' + _terms.quest +
-            '\nworld模块的title字段、npcMessages描述、currencyName等必须使用以上术语，不要用现代词汇！';
+        // 预设主题：提供参考术语，AI可根据场景灵活使用
+        return '【世界观术语 - 参考适配】\n' +
+            '当前世界观参考术语：' +
+            '消息→' + _terms.npcMsg + '、' +
+            '邮件→' + _terms.mail + '、' +
+            '朋友圈→' + _terms.moments + '、' +
+            '商店→' + _terms.shop + '、' +
+            '论坛→' + _terms.comments + '、' +
+            '排行榜→' + _terms.ranking + '、' +
+            '日记→' + _terms.diary + '、' +
+            '任务卡片→' + _terms.cards + '、' +
+            '货币→' + _terms.currency + '、' +
+            '背包→' + _terms.bag + '、' +
+            '任务→' + _terms.quest +
+            '\n以上为参考术语，你应根据场景灵活选用。如果当前场景处于不同时代/世界（如副本内），术语应适配该场景而非套用主世界术语。术语的核心原则是：让玩家沉浸，不出戏。';
     }
     // 未匹配预设主题：让 AI 根据世界观自行决定所有术语
     return '【世界观术语 - 极其重要】\n' +
