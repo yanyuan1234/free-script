@@ -72,14 +72,11 @@ function getCurrentWorldTerms() {
 
 /**
  * 生成世界观术语提示词片段
- * 核心理念：引导AI理解世界观并自行决定术语，而非硬性规定
- * 预设主题提供参考建议，AI可根据场景灵活调整
+ * 开局根据世界观性质确定术语，后续全程固定不变
  */
 function buildWorldTermsPrompt(_terms) {
     if (_terms) {
-        // 预设主题：提供参考术语，AI可根据场景灵活使用
-        return '【世界观术语 - 参考适配】\n' +
-            '当前世界观参考术语：' +
+        return '【世界观术语】\n' +
             '消息→' + _terms.npcMsg + '、' +
             '邮件→' + _terms.mail + '、' +
             '朋友圈→' + _terms.moments + '、' +
@@ -91,7 +88,7 @@ function buildWorldTermsPrompt(_terms) {
             '货币→' + _terms.currency + '、' +
             '背包→' + _terms.bag + '、' +
             '任务→' + _terms.quest +
-            '\n以上为参考术语，你应根据场景灵活选用。如果当前场景处于不同时代/世界（如副本内），术语应适配该场景而非套用主世界术语。术语的核心原则是：让玩家沉浸，不出戏。';
+            '\n以上术语由世界观决定，全程固定使用，不要替换或混用其他术语。';
     }
     // 未匹配预设主题：让 AI 根据世界观自行决定所有术语
     return '【世界观术语 - 极其重要】\n' +
