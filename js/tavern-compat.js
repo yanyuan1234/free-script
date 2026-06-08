@@ -1140,40 +1140,38 @@ var GameMemory = {
         var turns = self.workingMemory.turns || [];
         var totalTurns = turns.length;
 
-        // 近层：最近3轮，保留详细（动态截断：大context保留更多细节）
+        // 近层：最近3轮，保留完整内容（不截断，剧情不能断层）
         var nearTurns = turns.slice(-3);
-        var _nearChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().nearTurnChars : 300;
         self._summaryLayers.near = nearTurns.map(function(t) {
             var parts = [];
-            if (t.user) parts.push('玩家: ' + truncateByChars(t.user, _nearChars, '...'));
-            if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, _nearChars, '...'));
+            if (t.user) parts.push('玩家: ' + t.user);
+            if (t.assistant) parts.push('AI: ' + t.assistant);
             return parts.join(' | ');
         });
 
-        // 中层：4-10轮前，压缩为摘要（动态截断：大context保留更多细节）
+        // 中层：4-10轮前，保留完整内容（不截断）
         if (totalTurns > 3) {
             var midTurns = turns.slice(Math.max(0, totalTurns - 10), totalTurns - 3);
-            var _midChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().midTurnChars : 120;
             self._summaryLayers.mid = midTurns.map(function(t) {
                 var parts = [];
-                if (t.user) parts.push('玩家: ' + truncateByChars(t.user, _midChars, '...'));
-                if (t.assistant) parts.push('AI: ' + truncateByChars(t.assistant, _midChars, '...'));
+                if (t.user) parts.push('玩家: ' + t.user);
+                if (t.assistant) parts.push('AI: ' + t.assistant);
                 return parts.join(' | ');
             });
         }
 
-        // 远层：10轮以前，只保留关键句
+        // 远层：10轮以前，提取关键句（不截断单句，选择最重要的句子）
         if (totalTurns > 10) {
             var farTurns = turns.slice(0, totalTurns - 10);
             self._summaryLayers.far = farTurns.map(function(t) {
                 var text = (t.user || '') + (t.assistant || '');
-                // 提取关键句（含关键词的句子）
+                // 提取关键句（含关键词的句子，保留完整语义）
                 var sentences = text.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 5; });
                 var keySentences = sentences.filter(function(s) {
                     return /(约定|承诺|获得|失去|死亡|突破|发现|决定|重要|关键|转折)/.test(s);
                 });
                 if (keySentences.length === 0 && sentences.length > 0) keySentences = [sentences[sentences.length - 1]];
-                return keySentences.map(function(s) { return truncateByChars(s.trim(), 40, '...'); }).join('；');
+                return keySentences.map(function(s) { return s.trim(); }).join('；');
             }).filter(function(s) { return s.length > 0; });
         }
 
@@ -1236,13 +1234,10 @@ var GameMemory = {
         self._setupLayers.compressed = false;
         self._setupLayers.extractTurn = self.currentTurn;
 
-        // 按次计费优化：长设定需要更大的兜底截断，避免AI解析前丢失关键信息
-        var setupLen = fullSetup.length;
-        var coreRulesBudget = Math.max(800, Math.min(setupLen * 0.15, 4000));
-        var worldSummaryBudget = Math.max(600, Math.min(setupLen * 0.1, 3000));
-        // 默认先用简单截断作为核心规则（AI解析完成前的前置方案）
-        self._setupLayers.coreRules = truncateByChars(fullSetup, coreRulesBudget, '...');
-        self._setupLayers.worldSummary = truncateByChars(fullSetup, worldSummaryBudget, '...');
+        // AI解析完成前的兜底方案：不截断，直接用完整设定
+        // 截断会导致规则丢失（规则往往在设定后半段），不如完整保留
+        self._setupLayers.coreRules = fullSetup;
+        self._setupLayers.worldSummary = fullSetup;
         self.saveToStorage();
 
         // AI驱动解析：让AI自己分类、提取关键词、生成摘要
@@ -1310,24 +1305,14 @@ var GameMemory = {
     _applyAIParsedSetup: function(parsed) {
         var self = this;
 
-        // 核心规则层
+        // 核心规则层（AI已经提取了最重要的规则，不截断）
         if (parsed.coreRules && parsed.coreRules.length > 0) {
             self._setupLayers.coreRules = parsed.coreRules.join('\n');
-            // 按次计费：长设定允许更多核心规则，上限提高到设定长度的20%
-            var coreMax = Math.max(2000, Math.min(self._setupLayers.fullSetup.length * 0.2, 8000));
-            if (self._setupLayers.coreRules.length > coreMax) {
-                self._setupLayers.coreRules = truncateByChars(self._setupLayers.coreRules, coreMax, '...');
-            }
         }
 
-        // 世界摘要层
+        // 世界摘要层（AI已经总结了世界观，不截断）
         if (parsed.worldSummary) {
             self._setupLayers.worldSummary = parsed.worldSummary;
-            // 按次计费：长设定允许更详细的摘要，上限提高到设定长度的15%
-            var summaryMax = Math.max(1500, Math.min(self._setupLayers.fullSetup.length * 0.15, 6000));
-            if (self._setupLayers.worldSummary.length > summaryMax) {
-                self._setupLayers.worldSummary = truncateByChars(self._setupLayers.worldSummary, summaryMax, '...');
-            }
         }
 
         // 全局关键词
@@ -1483,7 +1468,7 @@ var GameMemory = {
                 /^\d+[、．.．]/.test(line) ||
                 /^【[^】]+】$/.test(line) ||
                 /^#+\s/.test(line)) {
-                indexLines.push(truncateByChars(line, 60, '...'));
+                indexLines.push(line);
             }
         }
         // 如果结构化标题不足3个，说明是散文式设定（如纯角色卡）
@@ -1498,7 +1483,7 @@ var GameMemory = {
                 var firstSentence = para.match(/^[^。？！\n]{2,40}[。？！]?/);
                 if (firstSentence) {
                     var sentence = firstSentence[0].trim();
-                    if (sentence.length > 40) sentence = truncateByChars(sentence, 40, '...');
+                    // 保留完整首句，截断会丢失段落核心语义
                     indexLines.push('• ' + sentence);
                 }
             }
@@ -1619,19 +1604,27 @@ var GameMemory = {
                 m.text = self._smartCompressModule(m.text, m.key);
                 var saved = originalLen - m.text.length;
                 excess -= saved;
-                // 如果压缩后仍然超限，再进行截断（但保留标题）
+                // 如果压缩后仍然超限，选择关键行保留（不截断，避免语义断裂）
                 if (excess > 0 && m.text.length > excess) {
-                    // 保留标题行（第一行），截断剩余内容
                     var lines = m.text.split('\n');
                     var headerLine = lines[0] || '';
-                    var bodyChars = m.text.length - excess;
-                    if (bodyChars > headerLine.length + 20) {
-                        m.text = truncateByChars(m.text, bodyChars, '...(已精简)');
+                    // 从标题行之后，按行选择保留（优先保留含关键信息的行）
+                    var keptLines = [headerLine];
+                    var usedChars = headerLine.length + 1;
+                    var targetChars = m.text.length - excess;
+                    for (var li = 1; li < lines.length; li++) {
+                        if (usedChars + lines[li].length + 1 <= targetChars) {
+                            keptLines.push(lines[li]);
+                            usedChars += lines[li].length + 1;
+                        }
+                    }
+                    if (keptLines.length > 1) {
+                        m.text = keptLines.join('\n') + '\n(部分内容已精简)';
                     } else {
                         // 只剩标题，总比完全删除好
                         m.text = headerLine + '\n(内容已精简)';
-                        excess -= (originalLen - m.text.length - saved);
                     }
+                    excess -= (originalLen - m.text.length - saved);
                 } else if (excess > 0) {
                     excess -= (originalLen - m.text.length - saved);
                 }
@@ -1659,84 +1652,61 @@ var GameMemory = {
 
     buildSmartInjection: function() { return this.buildInjection(); },
 
-    // 智能压缩模块文本：保留结构（标题/名字），精简详细描述，绝不整块丢弃
-    // 核心思路：AI看到"角色名+关键词"比什么都看不到强100倍
+    // 智能精简模块文本：不截断，用选择+结构化精简代替
+    // 核心原则：剧情游戏靠文字发展，截断会导致剧情断层
+    // 策略：1.保留完整语义 2.去掉冗余修饰 3.内容太多时选择最重要的
     _smartCompressModule: function(text, moduleKey) {
-        if (!text || text.length < 200) return text; // 太短不需要压缩
+        if (!text || text.length < 200) return text; // 太短不需要精简
         var lines = text.split('\n');
         var headerLine = lines[0] || '';
         var bodyLines = lines.slice(1);
 
-        // 不同模块采用不同的压缩策略
+        // 不同模块采用不同的精简策略（绝不截断）
         switch (moduleKey) {
             case 'characters':
-                // 角色状态：保留名字+关系+好感，去掉详细描述
+                // 角色：保留完整信息，只去掉与当前场景无关的次要标签
+                // 绝不截断角色描述——角色是剧情的核心
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    // 保留 "• 角色名[时间](身份) 关系:xxx 好感:xxx" 部分
-                    // 去掉 " | 心情:xxx | 位置:xxx | 状态:xxx" 等次要信息
-                    return line.replace(/\s*\|\s*(心情|位置|outfit|状态):[^\n]*/g, '');
+                    // 去掉 outfit（穿着细节），保留关系/好感/心情/位置/状态
+                    return line.replace(/\s*\|\s*outfit:[^\n]*/g, '');
                 }).join('\n');
 
             case 'events':
-                // 事件：保留重要度标记+核心内容（动态截断）
-                var _evtChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().eventsLineChars : 150;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > _evtChars) return truncateByChars(line, _evtChars, '...');
-                    return line;
-                }).join('\n');
+                // 事件：按重要度选择，不截断单条
+                // 优先保留高重要度事件，低重要度的排后面
+                var sortedEvents = bodyLines.slice().sort(function(a, b) {
+                    var aImportance = (a.match(/重要度(\d+)/) || [0, 0])[1];
+                    var bImportance = (b.match(/重要度(\d+)/) || [0, 0])[1];
+                    return parseInt(bImportance) - parseInt(aImportance);
+                });
+                return headerLine + '\n' + sortedEvents.join('\n');
 
             case 'items':
-                // 物品：保留名字+数量+稀有度+简要描述（动态截断）
-                var _itemChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().itemsLineChars : 80;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    var match = line.match(/•\s*(.+?)\s*x(\d+)/);
-                    if (match) {
-                        var rarityMatch = line.match(/\[([^\]]+)\]/);
-                        var descMatch = line.match(/\s*-\s*(.+)/);
-                        return '• ' + match[1] + ' x' + match[2] + (rarityMatch ? ' [' + rarityMatch[1] + ']' : '') + (descMatch ? ' - ' + truncateByChars(descMatch[1], Math.round(_itemChars * 0.4), '...') : '');
-                    }
-                    return truncateByChars(line, _itemChars, '...');
-                }).join('\n');
+                // 物品：保留完整信息（名字+数量+稀有度+描述）
+                // 物品可能是关键剧情道具，截断描述可能丢失线索
+                return text;
 
             case 'summaryLayers':
-                // 摘要：动态截断
-                var _sumChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().summaryLineChars : 80;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > _sumChars) return truncateByChars(line, _sumChars, '...');
-                    return line;
-                }).join('\n');
+                // 摘要：已经是AI总结的内容，不应该再截断
+                // 如果摘要太长，说明需要AI重新总结，而不是截断
+                return text;
 
             case 'sceneState':
-                // 场景状态：动态截断
-                var _sceneChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().sceneLineChars : 100;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > _sceneChars) return truncateByChars(line, _sceneChars, '...');
-                    return line;
-                }).join('\n');
+                // 场景状态：保留完整信息，场景是当前剧情的舞台
+                return text;
 
             case 'changes':
-                // 变化更新：动态截断
-                var _chgChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().changesLineChars : 150;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > _chgChars) return truncateByChars(line, _chgChars, '...');
-                    return line;
-                }).join('\n');
+                // 变化更新：保留完整变化描述，截断会丢失状态变化
+                return text;
 
             case 'permanentFacts':
-                // 永久事实：最高优先级，动态截断（大context几乎不截断）
-                var _factChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().factsLineChars : 600;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > _factChars) return truncateByChars(line, _factChars, '...');
-                    return line;
-                }).join('\n');
+                // 永久事实：最高优先级，绝对不截断
+                // 这些是AI已经精简过的核心信息，截断等于丢规则
+                return text;
 
             default:
-                // 通用压缩：动态截断
-                var _defChars = (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().defaultLineChars : 120;
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.length > _defChars) return truncateByChars(line, _defChars, '...');
-                    return line;
-                }).join('\n');
+                // 通用：默认不截断，保留完整语义
+                return text;
         }
     },
 
@@ -1829,7 +1799,7 @@ var GameMemory = {
         if (this.plot.worldSetting) lines.push('【世界观】' + this.plot.worldSetting);
         var chs = this.plot.chapters;
         if (chs && chs.length > 0) { lines.push('【' + chs[0].title + '】' + chs[0].summary); if (chs.length > 1) chs.slice(-2).forEach(function(ch) { lines.push('【' + ch.title + '】' + ch.summary); }); }
-        if (this.plot.currentChapter) lines.push('【当前进展】' + truncateByChars(this.plot.currentChapter, 400, '...'));
+        if (this.plot.currentChapter) lines.push('【当前进展】' + this.plot.currentChapter);
         if (this.plot.pendingMysteries && this.plot.pendingMysteries.length > 0) { lines.push('【待解决悬念】'); this.plot.pendingMysteries.forEach(function(m) { lines.push('• ' + m); }); }
         return lines;
     },
@@ -1931,7 +1901,7 @@ var GameMemory = {
             var line = '• ' + it.name;
             if (it.qty > 1) line += ' x' + it.qty + (it.unit || '');
             if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']';
-            if (it.desc) line += ' - ' + truncateByChars(it.desc, 30, '...');
+            if (it.desc) line += ' - ' + it.desc;
             lines.push(line);
         });
         return lines;

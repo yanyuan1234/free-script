@@ -116,11 +116,8 @@ function getCompactSetupForSubFunction() {
         return parts.join('\n');
     }
 
-    // 兜底：没有记忆数据时，截断原始设定
+    // 兜底：没有记忆数据时，用完整设定（不截断，避免规则丢失）
     var rawSetup = gameState.userPrompt || '';
-    if (rawSetup.length > 1500) {
-        return truncateByChars(rawSetup, (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().subFuncSetupChars : 3000, '...(设定较长，仅展示前半部分)');
-    }
     return rawSetup;
 }
 
