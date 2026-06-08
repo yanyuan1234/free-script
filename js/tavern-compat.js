@@ -1430,7 +1430,7 @@ var GameMemory = {
         if (layers.compressed && layers.compressedSetup && setupRatio > 0.4) {
             // Context 不够大 + 有精简版 → 注入精简总结
             // 规则已在 permanentFacts 中完整保留，不会被遗忘
-            result += '【设定精简版】（原文' + layers.originalLength + '字，精简至' + layers.compressedLength + '字，完整规则见【剧情记忆·永久事实】）\n' + layers.compressedSetup;
+            result += '【设定精简版】（原文' + layers.originalLength + '字，精简至' + layers.compressedLength + '字，完整规则见【核心设定】）\n' + layers.compressedSetup;
         } else {
             // Context 足够大 或 无精简版 → 注入完整设定
             result += '【完整设定】\n' + layers.fullSetup;
@@ -1547,15 +1547,15 @@ var GameMemory = {
         
         // 注入头尾模板
         var headers = {
-            permanentFacts: '【记忆·永久事实】\n',
-            changes: '【记忆·变化更新】(第' + currentTurn + '回合)\n',
-            plot: '【记忆·当前剧情】\n',
-            quests: '【记忆·进行中约定】\n',
-            characters: '【记忆·角色状态】\n',
-            events: '【记忆·重要事件】\n',
-            items: '【记忆·持有物品】\n',
-            sceneState: '【记忆·场景状态】\n',
-            summaryLayers: '【记忆·对话摘要】\n'
+            permanentFacts: '【核心设定（始终生效）】\n',
+            changes: '【本轮变化（第' + currentTurn + '回合）】\n',
+            plot: '【剧情进展】\n',
+            quests: '【进行中的约定】\n',
+            characters: '【角色近况】\n',
+            events: '【重要事件】\n',
+            items: '【持有物品】\n',
+            sceneState: '【当前场景】\n',
+            summaryLayers: '【对话摘要】\n'
         };
         var footers = {
             permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n',
@@ -1708,7 +1708,7 @@ var GameMemory = {
     _buildPermanentFactsSection: function() {
         var lines = [];
         var pf = this.permanentFacts;
-        var typeLabels = { pcIdentity: '主角', worldRules: '设定规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺/约定' };
+        var typeLabels = { pcIdentity: '主角身份', worldRules: '世界规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺' };
         var topic = this.detectCurrentTopic();
         var topicKeywords = (topic && topic.keywords) ? topic.keywords : [];
         var topicChars = (topic && topic.characters) ? topic.characters : [];

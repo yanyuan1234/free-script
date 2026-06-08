@@ -60,16 +60,15 @@ function getCurrentWorldTerms() {
  * 所有世界观统一：AI读取设定后自行决定术语，开局确定后全程固定
  */
 function buildWorldTermsPrompt(_terms) {
-    return '【世界观术语 - 极其重要】\n' +
-        '你必须根据当前游戏设定，自行决定所有界面术语！所有模块标题、货币名称、通讯方式等必须完全适配当前世界观，绝对禁止出现不符合世界观的词汇（如古代世界出现"微信""邮件"，修仙世界出现"商店""论坛"等）。\n' +
-        '术语适配示例：\n' +
+    return '【世界观术语】\n' +
+        '你理解每个世界都有自己的语言体系——界面上的模块标题、货币名称、通讯方式等都应该融入世界观，而不是用通用词汇破坏沉浸感。例如：\n' +
         '- 现代都市：消息→消息、邮件→邮件、朋友圈→朋友圈、商店→商店、论坛→论坛、货币→元、背包→背包、任务→任务\n' +
         '- 古代：消息→传话、邮件→飞鸽传书、朋友圈→江湖传闻、商店→集市、论坛→茶馆、货币→银两、背包→行囊、任务→差事\n' +
         '- 修仙：消息→传音、邮件→传音符、朋友圈→修士手札、商店→灵宝阁、论坛→论道台、货币→灵石、背包→储物袋、任务→历练\n' +
         '- 无限流/游戏系统：消息→系统消息、邮件→系统邮件、朋友圈→玩家动态、商店→兑换商城、论坛→玩家论坛、货币→积分、背包→空间仓库、任务→副本任务\n' +
         '- 赛博朋克：消息→全息通讯、邮件→数据包、朋友圈→暗网动态、商店→义体诊所、论坛→黑客频道、货币→信用点、背包→存储芯片、任务→委托\n' +
         '- 太空歌剧：消息→星际通讯、邮件→量子信标、朋友圈→星网动态、商店→空间站市集、论坛→星际议会、货币→星币、背包→货舱、任务→远征\n' +
-        '请在第一回合的 world 模块 title 中体现你选定的术语，后续回合全程保持一致，不再更改。';
+        '请在第一回合的world模块title中体现你选定的术语，之后全程保持一致。';
 }
 
 // 【修复A P1-4】清理用户输入中的潜在prompt injection内容
@@ -117,10 +116,10 @@ function buildSystemPrompt(includeFormatRules) {
     // 【关键】有预设时，只返回游戏上下文（玩家设定/记忆/私聊），格式规则由预设完全控制
     // 预设的 system_prompt=true 条目会追加在此上下文之后，预设才是最高优先级
     if (!includeFormatRules) {
-        return `你是一个拥有完全创作自主权的AI引擎，根据玩家提供的世界观设定，创造沉浸式互动体验。
+        return `你是一个互动叙事引擎，你的工作是让玩家沉浸在一个由他们定义的世界中。
 
 ${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}`;
+${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态与记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}`;
     }
 
     var _maxTokens = gameState.maxTokens || 4096;
@@ -128,29 +127,29 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
     var _termsPrompt = buildWorldTermsPrompt(_terms);
     // 安全取术语，null 时用通用词
     var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
-    var _prompt = `你是一个拥有完全创作自主权的AI引擎，根据玩家提供的世界观设定，创造沉浸式互动体验。
+    _prompt = `你是一个互动叙事引擎，你的工作是让玩家沉浸在一个由他们定义的世界中。你拥有完全的创作自主权——你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
 ${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}
+${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态与记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
 
-【核心原则】
-你拥有完全的创作自主权，以下是你理解的能力：
-- 根据世界观设定，自行决定叙事风格、节奏、氛围，让体验与世界观完美契合
-- 中文输出，JSON格式，story放第一个字段
-- 输出受 max_tokens（约 ${_maxTokens} tokens）限制，自行分配篇幅
-- 选项是主角视角，<giggle>插入NPC心声，<mem>更新状态（character/item/event/time）
-- [章节结束|标题] 标记章节结尾
+【你的工作方式】
+你通过JSON来呈现你的创作——因为前端需要解析它来渲染界面。story是你的叙事正文，放在JSON的第一个字段，这是最重要的内容。你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
+- story里用\\n换行，对话用「」包裹，让叙事流畅自然
+- 选项(choices)是主角视角的决策点，让玩家感到自己在推动故事
+- <giggle>是NPC的内心独白，让角色更立体；<mem>标记状态变化，让世界保持一致
+- [章节结束|标题] 用来标记一个章节的收尾
 
-【用户偏好】（由你灵活解读，不必死板遵循）
+【玩家偏好】
+这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：
 - 字数：{{getglobalvar::字数总要求}}
 - 段落：{{getglobalvar::单段落字数}}
 - 视角：{{getglobalvar::叙述视角}}
 - 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}
 - 演绎：{{getglobalvar::演绎授权}}
 - 转述：{{getglobalvar::转述授权}}
-当上述变量为空时，由你根据世界观和场景自行决定最佳方案。
+当上述变量为空时，你根据世界观和场景自行选择最合适的方案。
 
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
 
@@ -167,7 +166,8 @@ function _buildFormatRules(gs, _t) {
 
     if (turn <= 3) {
         // 前3轮：完整JSON模板（AI需要学习格式）
-        return '【回复格式 - 纯JSON，不要用代码块包裹】\n'
+        return '【输出格式】\n'
+            + '你直接输出JSON（不要用```json代码块包裹），因为前端程序需要解析它。结构如下：\n'
             + '{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], '
             + (hasChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : '')
             + ' "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, '
@@ -184,12 +184,16 @@ function _buildFormatRules(gs, _t) {
             + '"relationships": [{"from": "", "to": "", "type": "", "desc": ""}], '
             + '"keyEvents": [""], "npcMessages": [{"name": "", "avatar": "👤", "content": "", "time": ""}], '
             + '"gameTime": {"date": "", "time": "", "period": "", "weather": "", "era": ""}, "contextSummary": "" }\n\n'
-            + '【关键区分】\n- player 是主角（玩家），characters 是NPC列表，两者不可混淆\n- npcMessages 是即时短消息，正式信件/通知放 mail\n- 直接输出JSON，不要用 ```json 包裹，story字段用 \\n 换行\n- story 必须是 JSON 的第一个字段';
+            + '【容易出错的地方】\n'
+            + '- player是主角（玩家操控的角色），characters是NPC列表——这是两个不同的字段，不要混淆\n'
+            + '- npcMessages是即时短消息（如手机聊天），正式信件/通知放mail\n'
+            + '- 直接输出JSON文本，不要用```json包裹\n'
+            + '- story必须是JSON的第一个字段，这样解析最可靠';
     } else {
         // 第4轮起：精简格式提醒（AI已掌握格式，只需关键提醒）
         return '【格式提醒】继续按已建立的JSON格式输出。story放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<giggle>插入NPC心声，<mem>更新状态变化。'
             + (hasChoices ? '包含choices选项。' : '')
-            + '不要用代码块包裹。';
+            + '直接输出JSON，不要代码块包裹。';
     }
 }
 
@@ -232,7 +236,7 @@ function buildRecentChatContext() {
         return '\n【玩家最近私聊记录】\n' +
             '玩家在剧情之外与部分 NPC 通过手机私聊过，以下是最近对话：\n' +
             blocks.join('\n\n') + '\n' +
-            '你理解私聊中的约定、情绪、情报会自然影响剧情走向和NPC态度，请让私聊的后果在剧情中自然体现。\n';
+            '私聊中的约定、情绪和情报会自然影响剧情走向和NPC态度——让这些后果在剧情中自然体现。\n';
     } catch (e) {
         console.warn('[buildRecentChatContext] 失败：', e);
         return '';
@@ -249,7 +253,7 @@ if (_origStartBtn) {
 function buildProtagonistPrompt() {
     var mc = gameState.protagonistSetup;
     if (!mc || Object.keys(mc).length === 0) return '';
-    var lines = ['【玩家指定的主角设定】'];
+    var lines = ['【主角设定】'];
     if (mc.mcName) lines.push('姓名: ' + mc.mcName);
     if (mc.mcGender) lines.push('性别: ' + mc.mcGender);
     if (mc.mcAge) lines.push('年龄: ' + mc.mcAge);
@@ -259,7 +263,7 @@ function buildProtagonistPrompt() {
     if (mc.mcAbility) lines.push('特殊能力: ' + mc.mcAbility);
     if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
     lines.push('');
-    lines.push('主角是玩家操控的角色，player.name 应等于主角姓名，主角信息放在 player 字段而非 characters。');
+    lines.push('主角是玩家操控的角色——player字段对应主角信息，characters字段对应NPC。');
     // 如果世界描述中已包含主角详细设定，添加提示避免重复
     if (gameState.userPrompt && gameState.userPrompt.length > 500) {
         lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');
@@ -555,7 +559,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (_initPosPrompts['1']) messages.push({ role: 'system', content: _initPosPrompts['1'].join('\n\n') });
             // 世界快照（开局时通常为空，但读档重开时可能有数据）
             if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
-                var _initSnapText = '【当前世界状态】\n';
+                var _initSnapText = '【世界快照】\n';
                 var _initSnap = gameState.worldSnapshot;
                 if (_initSnap.player) {
                     _initSnapText += '主角: ' + (_initSnap.player.name || '未知');
@@ -684,7 +688,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 【去重优化】增强记忆已注入角色状态/物品/事件/任务时，世界快照跳过这些重复部分
             if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
                 var _hasMemInjection = (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection);
-                var snapshotText = '【当前世界状态】\n';
+                var snapshotText = '【世界快照】\n';
                 var snap = gameState.worldSnapshot;
                 if (snap.player) {
                     snapshotText += '主角: ' + (snap.player.name || '未知');
@@ -770,7 +774,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 重要事件记录：增强记忆的"重要事件"层已覆盖，跳过以节省token
             if (!(typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) && gameState.keyEvents && gameState.keyEvents.length > 0) {
-                var eventsText = '【重要事件记录】\n';
+                var eventsText = '【过往事件】\n';
                 gameState.keyEvents.forEach(function(evt, idx) {
                     eventsText += (idx + 1) + '. ' + evt + '\n';
                 });
@@ -3611,7 +3615,7 @@ async function requestNpcReply(playerText) {
         var name = npcChatState.npcName;
         var c = gameState.allCharacters[name] || {};
         // 构建对话上下文
-        var systemMsg = '你现在扮演「' + name + '」这个角色，与玩家进行一对一对话。\n\n' + '【角色信息】\n' + '姓名: ' + name + '\n' +
+        var systemMsg = '你是「' + name + '」，正在和玩家一对一聊天。你不是在扮演谁——你就是这个角色，用你自己的性格、语气和态度来回应。\n\n' + '【角色信息】\n' + '姓名: ' + name + '\n' +
             (c.title ? '身份: ' + c.title + '\n' : '') + (c.relation ? '与主角关系: ' + c.relation + '\n' :
             '') + (c.favorability !== undefined ? '对主角好感度: ' + c.favorability + '（范围-100到100，0为中立）\n' : '') + (c
                 .desc ? '当前状态: ' + c.desc + '\n' : '');
@@ -3655,7 +3659,7 @@ async function requestNpcReply(playerText) {
         if (gameState.rollingSummary) {
             systemMsg += '\n【剧情背景】\n' + gameState.rollingSummary + '\n';
         }
-        systemMsg += '\n【回复要求】\n' + '1. 完全以' + name + '的身份、口吻和性格回复\n' +
+        systemMsg += '\n【回复方式】\n' + '1. 你就是' + name + '，用你自己的方式说话\n' +
             '2. 回复用纯JSON格式: {"replies": ["消息1","消息2",...], "choices": ["选项1","选项2","选项3"]}\n' +
             '3. replies是消息数组，1-6条，由你决定发几条。可以是一条长消息拆成几条短消息，也可以是连续的几句话\n' +
             '4. 每条消息纯文字对话，不要加动作描写、旁白或括号内容，单条30字以内\n' +
