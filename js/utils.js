@@ -89,40 +89,41 @@ function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fall
 // 动态截断策略：根据模型 contextSize 自动调整截断长度
 // ========================================
 // 核心思路：context 越大，截断越宽松；context 越小，截断越激进
-// 基准值以 8K context 为1.0x，按比例缩放
-// 128K → 16x，32K → 4x，16K → 2x，8K → 1x，4K → 0.5x
+// 基准值以 8K context 为1.0x，按比例缩放，无上限
+// 8K→1x, 32K→4x, 128K→16x, 256K→32x, 512K→64x, 1M→128x
 function getContextScale() {
     var ctx = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
     return Math.max(0.5, ctx / 8000);
 }
 
 // 动态截断：根据 context 大小自动计算截断长度
-// baseLen 是 8K context 下的基准长度，实际长度 = baseLen * scale
+// baseLen 是 8K context 下的基准长度，实际长度 = baseLen * scale，无上限
 function dynamicTruncateLen(baseLen) {
     var scale = getContextScale();
     return Math.max(baseLen, Math.round(baseLen * scale));
 }
 
 // 获取各层的动态截断配置（供记忆系统使用）
+// 无上限：256K/512K/1M 的模型会自动获得更大的截断空间
 function getDynamicTruncationConfig() {
     var scale = getContextScale();
     return {
         // 对话摘要层
-        nearTurnChars: Math.max(150, Math.round(300 * scale)),    // 近层：8K=300, 32K=1200, 128K=4800
-        midTurnChars: Math.max(60, Math.round(120 * scale)),      // 中层：8K=120, 32K=480, 128K=1920
+        nearTurnChars: Math.max(150, Math.round(300 * scale)),
+        midTurnChars: Math.max(60, Math.round(120 * scale)),
         // 记忆注入层
-        eventsLineChars: Math.max(60, Math.round(150 * scale)),   // 事件行
-        itemsLineChars: Math.max(40, Math.round(80 * scale)),     // 物品行
-        summaryLineChars: Math.max(30, Math.round(80 * scale)),   // 摘要行
-        sceneLineChars: Math.max(50, Math.round(100 * scale)),    // 场景行
-        changesLineChars: Math.max(60, Math.round(150 * scale)),  // 变化行
-        factsLineChars: Math.max(100, Math.round(600 * scale)),   // 永久事实行
-        defaultLineChars: Math.max(60, Math.round(120 * scale)),  // 通用行
+        eventsLineChars: Math.max(60, Math.round(150 * scale)),
+        itemsLineChars: Math.max(40, Math.round(80 * scale)),
+        summaryLineChars: Math.max(30, Math.round(80 * scale)),
+        sceneLineChars: Math.max(50, Math.round(100 * scale)),
+        changesLineChars: Math.max(60, Math.round(150 * scale)),
+        factsLineChars: Math.max(100, Math.round(600 * scale)),
+        defaultLineChars: Math.max(60, Math.round(120 * scale)),
         // 摘要/设定
-        summaryMaxChars: Math.max(500, Math.round(1500 * scale)), // 摘要字数上限
-        subFuncSetupChars: Math.max(1500, Math.round(3000 * scale)), // 子功能设定截断
+        summaryMaxChars: Math.max(500, Math.round(1500 * scale)),
+        subFuncSetupChars: Math.max(1500, Math.round(3000 * scale)),
         // 角色描述
-        characterSummaryChars: Math.max(200, Math.round(500 * scale)) // 角色描述字数
+        characterSummaryChars: Math.max(200, Math.round(500 * scale))
     };
 }
 

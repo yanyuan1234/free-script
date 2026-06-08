@@ -1278,8 +1278,8 @@ var GameMemory = {
             { role: 'user', content: parsePrompt }
         ];
 
-        // 按次计费优化：长设定需要更多输出token来完整解析
-        var parseMaxTokens = Math.max(2000, Math.min(Math.floor(fullSetup.length / 2), 16000));
+        // 按次计费优化：长设定需要更多输出token来完整解析，无上限
+        var parseMaxTokens = Math.max(2000, Math.floor(fullSetup.length / 2));
 
         // 调用AI解析
         if (typeof callAI === 'function') {
