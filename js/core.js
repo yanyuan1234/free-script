@@ -3168,6 +3168,205 @@ return (data.choices && data.choices[0] && data.choices[0].message && data
 });
 }
 // ========================================
+// 开局设定提取：用AI从玩家设定中提取结构化信息，预填充记忆系统
+// ========================================
+async function extractSetupToMemory() {
+    var setupText = gameState.userPrompt || '';
+    if (!setupText || setupText.trim().length < 50) return;
+
+    // 如果记忆系统已有数据（非首次开局），跳过
+    if (typeof EnhancedMemory !== 'undefined') {
+        var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
+        if (gm) {
+            var hasData = Object.keys(gm.tables.characters).length > 0
+                || Object.keys(gm.permanentFacts).some(function(k) { return gm.permanentFacts[k] && gm.permanentFacts[k].length > 0; });
+            if (hasData) return;
+        }
+    }
+
+    // 显示提取状态
+    var storyEl = document.getElementById('storyText');
+    if (storyEl) {
+        storyEl.innerHTML = '<div style="text-align:center;padding:40px 0;display:flex;flex-direction:column;align-items:center;text-indent:0;">' +
+            '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:16px;">' +
+            '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>' +
+            '<span style="color:var(--text-secondary);font-size:13px;">正在解析设定，建立记忆...</span></div>';
+    }
+
+    var extractPrompt = '你是一个游戏设定解析器。请从以下玩家设定文本中，提取结构化信息。\n\n' +
+        '要求：\n' +
+        '1. 仔细阅读全部设定，提取所有关键角色、世界规则、关系、物品等信息\n' +
+        '2. 角色包括：玩家扮演的主角，以及设定中提到的所有重要NPC\n' +
+        '3. 每个角色提取：姓名、身份/称号、与主角的关系、好感度倾向（-100到100，陌生人0，亲近正值，敌对负值）、当前状态/性格概述\n' +
+        '4. 世界规则：设定中明确提到的规则、限制、铁律\n' +
+        '5. 关系：角色之间的关系（不限于与主角的关系，也包括角色之间的关系）\n' +
+        '6. 物品：设定中提到的关键物品\n' +
+        '7. 主角身份：从设定中提取主角的核心身份标签\n\n' +
+        '严格按以下JSON格式输出，不要输出其他内容：\n' +
+        '{\n' +
+        '  "pcIdentity": "主角核心身份，一句话概括",\n' +
+        '  "worldRules": ["规则1", "规则2"],\n' +
+        '  "characters": [\n' +
+        '    {"name": "角色名", "title": "身份/称号", "relation": "与主角的关系", "favorability": 0, "desc": "性格/状态概述"}\n' +
+        '  ],\n' +
+        '  "relationships": [\n' +
+        '    {"from": "角色A", "to": "角色B", "type": "关系类型", "desc": "关系描述"}\n' +
+        '  ],\n' +
+        '  "items": [\n' +
+        '    {"name": "物品名", "count": 1, "rarity": "品质", "desc": "描述"}\n' +
+        '  ]\n' +
+        '}\n\n' +
+        '【玩家设定】\n' + setupText;
+
+    try {
+        var result = await callAI([
+            { role: 'system', content: '你是游戏设定解析器，只输出JSON，不要输出任何其他内容。' },
+            { role: 'user', content: extractPrompt }
+        ], {
+            stream: false,
+            temperature: 0.3,
+            max_tokens: 4096
+        });
+
+        var parsed = safeJSONParse(result);
+        if (!parsed) {
+            // 尝试从文本中提取JSON
+            var jsonMatch = result && result.match(/\{[\s\S]*\}/);
+            if (jsonMatch) parsed = safeJSONParse(jsonMatch[0]);
+        }
+        if (!parsed) {
+            console.warn('[设定提取] AI返回无法解析，跳过');
+            return;
+        }
+
+        var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
+        if (!gm) return;
+
+        // 1. 主角身份 → permanentFacts.pcIdentity
+        if (parsed.pcIdentity) {
+            gm.addWorldAnchor('pc_identity', parsed.pcIdentity, 'setup_extract', 0);
+        }
+
+        // 2. 世界规则 → permanentFacts.worldRules
+        if (Array.isArray(parsed.worldRules)) {
+            parsed.worldRules.forEach(function(rule) {
+                if (rule && typeof rule === 'string' && rule.trim()) {
+                    gm.addWorldAnchor('world_rule', rule.trim(), 'setup_extract', 0);
+                }
+            });
+        }
+
+        // 3. 角色 → tables.characters + permanentFacts.npcProfiles
+        if (Array.isArray(parsed.characters)) {
+            var playerName = gameState.playerName || (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
+            parsed.characters.forEach(function(c) {
+                if (!c || !c.name) return;
+                // 跳过主角（主角不进NPC表）
+                if (playerName && (c.name === playerName || c.name.includes(playerName) || playerName.includes(c.name))) return;
+                // 写入 tables.characters
+                gm.tables.characters[c.name] = {
+                    name: c.name,
+                    title: c.title || '',
+                    relation: c.relation || '',
+                    mood: '',
+                    location: '',
+                    outfit: '',
+                    favorability: typeof c.favorability === 'number' ? c.favorability : 50,
+                    status: '',
+                    history: [{ turn: 0, changes: c.desc || '开局设定' }],
+                    lastChangedTurn: 0,
+                    gameTime: gm.getGameTimeStr(),
+                    accessCount: 0,
+                    locked: false
+                };
+                // 写入 permanentFacts.npcProfiles
+                var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
+                gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
+                // 同步到 gameState.allCharacters
+                if (typeof gameState !== 'undefined') {
+                    if (!gameState.allCharacters) gameState.allCharacters = {};
+                    gameState.allCharacters[c.name] = {
+                        name: c.name,
+                        title: c.title || '',
+                        relation: c.relation || '',
+                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
+                        desc: c.desc || ''
+                    };
+                }
+            });
+        }
+
+        // 4. 关系 → tables.relationships
+        if (Array.isArray(parsed.relationships)) {
+            parsed.relationships.forEach(function(r) {
+                if (!r || !r.from || !r.to) return;
+                gm.tables.relationships[r.from + '->' + r.to] = {
+                    from: r.from,
+                    to: r.to,
+                    type: r.type || '',
+                    desc: r.desc || '',
+                    lastChangedTurn: 0
+                };
+            });
+            // 同步到 gameState.relationships
+            if (typeof gameState !== 'undefined') {
+                if (!gameState.relationships) gameState.relationships = [];
+                parsed.relationships.forEach(function(r) {
+                    if (!r || !r.from || !r.to) return;
+                    // 去重
+                    var exists = gameState.relationships.some(function(existing) {
+                        return existing.from === r.from && existing.to === r.to;
+                    });
+                    if (!exists) gameState.relationships.push(r);
+                });
+            }
+        }
+
+        // 5. 物品 → tables.items
+        if (Array.isArray(parsed.items)) {
+            parsed.items.forEach(function(item) {
+                if (!item || !item.name) return;
+                gm.tables.items[item.name] = {
+                    name: item.name,
+                    qty: item.count || 1,
+                    unit: '个',
+                    rarity: item.rarity || '普通',
+                    desc: item.desc || '',
+                    obtainedTurn: 0,
+                    lastChangedTurn: 0,
+                    gameTime: gm.getGameTimeStr(),
+                    accessCount: 0,
+                    history: [{ turn: 0, from: 0, to: item.count || 1 }]
+                };
+            });
+            // 同步到 gameState.currentBag
+            if (typeof gameState !== 'undefined') {
+                if (!gameState.currentBag) gameState.currentBag = [];
+                parsed.items.forEach(function(item) {
+                    if (!item || !item.name) return;
+                    var exists = gameState.currentBag.some(function(b) { return b.name === item.name; });
+                    if (!exists) gameState.currentBag.push({ name: item.name, count: item.count || 1, desc: item.desc || '', rarity: item.rarity || '普通' });
+                });
+            }
+        }
+
+        // 保存记忆数据
+        gm.saveToStorage();
+        // 刷新所有关联页面
+        if (typeof GameLinker !== 'undefined') {
+            GameLinker.refreshAll();
+        }
+        console.log('[设定提取] 完成：' +
+            (parsed.characters ? parsed.characters.length : 0) + '个角色, ' +
+            (parsed.relationships ? parsed.relationships.length : 0) + '条关系, ' +
+            (parsed.items ? parsed.items.length : 0) + '个物品, ' +
+            (parsed.worldRules ? parsed.worldRules.length : 0) + '条规则');
+    } catch (e) {
+        console.warn('[设定提取] 失败（不影响游戏继续）:', e && e.message);
+    }
+}
+
+// ========================================
 // System Prompt
 // ========================================
 function initializeGame() {
@@ -3200,7 +3399,13 @@ if (gameState.customStyle && PresetManager.currentPresetIndex < 0) {
 if (typeof GameTimeSystem !== 'undefined') {
     GameTimeSystem.updateUI();
 }
-sendAIRequest('请开始游戏，描述开局场景。', true);
+// 开局前：用AI提取设定，预填充记忆系统（按次计费，多一次API调用无妨）
+extractSetupToMemory().then(function() {
+    sendAIRequest('请开始游戏，描述开局场景。', true);
+}).catch(function(e) {
+    console.warn('[开局设定提取] 失败，直接开局:', e && e.message);
+    sendAIRequest('请开始游戏，描述开局场景。', true);
+});
 } catch (e) {
 console.error('初始化游戏失败:', e);
 UI.toast('游戏初始化失败: ' + translateError(e.message));
