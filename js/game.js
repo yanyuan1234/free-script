@@ -38,67 +38,38 @@ function detectWorldTheme() {
 
 /**
  * 根据世界观主题返回术语映射
- * 预设主题提供快速匹配；'other' 主题返回 null，由提示词中的规则让 AI 自行决定
+ * 已废弃硬编码字典：所有世界观统一由AI根据设定自行决定术语
+ * 保留此函数仅为兼容 _buildFormatRules 中的 _t() 调用，始终返回 null
  */
 function getWorldTerms(theme) {
-    if (!theme) theme = detectWorldTheme();
-    var terms = {
-        modern:   { mail: '邮件', moments: '朋友圈', shop: '商店', comments: '论坛', ranking: '排行榜', diary: '日记', cards: '任务卡片', currency: '元', npcMsg: '消息', bag: '背包', quest: '任务' },
-        ancient:  { mail: '飞鸽传书', moments: '江湖传闻', shop: '集市', comments: '茶馆', ranking: '英雄榜', diary: '手札', cards: '密信', currency: '银两', npcMsg: '传话', bag: '行囊', quest: '差事' },
-        xianxia:  { mail: '传音符', moments: '修士手札', shop: '灵宝阁', comments: '论道台', ranking: '天道碑', diary: '修炼日志', cards: '机缘', currency: '灵石', npcMsg: '传音', bag: '储物袋', quest: '历练' },
-        wasteland:{ mail: '无线电', moments: '幸存者广播', shop: '补给站', comments: '幸存者频道', ranking: '战力榜', diary: '生存记录', cards: '线索', currency: '物资', npcMsg: '对讲机', bag: '背包', quest: '行动' },
-        fantasy:  { mail: '魔法信函', moments: '冒险者留言', shop: '杂货铺', comments: '冒险者公会', ranking: '勇者榜', diary: '冒险日志', cards: '委托', currency: '金币', npcMsg: '传讯', bag: '行囊', quest: '委托' },
-        // 混合世界观（无限流等）：以现代术语为基础，AI根据场景自行切换
-        mixed:    { mail: '系统邮件', moments: '玩家动态', shop: '兑换商城', comments: '玩家论坛', ranking: '排行榜', diary: '副本日志', cards: '任务卡', currency: '积分', npcMsg: '系统消息', bag: '空间仓库', quest: '副本任务' }
-    };
-    // 'other' 主题不提供预设术语，由 AI 根据世界观自行决定
-    return terms[theme] || null;
+    return null;
 }
 
 /**
  * 获取当前世界观的术语（缓存版，避免重复检测）
- * 返回 null 表示未匹配预设主题，需要 AI 自行决定
+ * 始终返回 null，术语由AI自行决定
  */
 var _cachedWorldTheme = null;
 var _cachedWorldTerms = null;
 function getCurrentWorldTerms() {
-    var theme = detectWorldTheme();
-    if (theme !== _cachedWorldTheme) {
-        _cachedWorldTheme = theme;
-        _cachedWorldTerms = getWorldTerms(theme);
-    }
-    return _cachedWorldTerms;
+    return null;
 }
 
 /**
  * 生成世界观术语提示词片段
- * 开局根据世界观性质确定术语，后续全程固定不变
+ * 所有世界观统一：AI读取设定后自行决定术语，开局确定后全程固定
  */
 function buildWorldTermsPrompt(_terms) {
-    if (_terms) {
-        return '【世界观术语】\n' +
-            '消息→' + _terms.npcMsg + '、' +
-            '邮件→' + _terms.mail + '、' +
-            '朋友圈→' + _terms.moments + '、' +
-            '商店→' + _terms.shop + '、' +
-            '论坛→' + _terms.comments + '、' +
-            '排行榜→' + _terms.ranking + '、' +
-            '日记→' + _terms.diary + '、' +
-            '任务卡片→' + _terms.cards + '、' +
-            '货币→' + _terms.currency + '、' +
-            '背包→' + _terms.bag + '、' +
-            '任务→' + _terms.quest +
-            '\n以上术语由世界观决定，全程固定使用，不要替换或混用其他术语。';
-    }
-    // 未匹配预设主题：让 AI 根据世界观自行决定所有术语
     return '【世界观术语 - 极其重要】\n' +
-        '当前世界观不属于常见类型，你必须自行决定所有术语！所有模块标题、货币名称、通讯方式等必须完全适配当前世界观，绝对禁止出现不符合世界观的现代词汇（如古代世界出现"微信""邮件"，修仙世界出现"商店""论坛"等）。\n' +
+        '你必须根据当前游戏设定，自行决定所有界面术语！所有模块标题、货币名称、通讯方式等必须完全适配当前世界观，绝对禁止出现不符合世界观的词汇（如古代世界出现"微信""邮件"，修仙世界出现"商店""论坛"等）。\n' +
         '术语适配示例：\n' +
+        '- 现代都市：消息→消息、邮件→邮件、朋友圈→朋友圈、商店→商店、论坛→论坛、货币→元、背包→背包、任务→任务\n' +
+        '- 古代：消息→传话、邮件→飞鸽传书、朋友圈→江湖传闻、商店→集市、论坛→茶馆、货币→银两、背包→行囊、任务→差事\n' +
+        '- 修仙：消息→传音、邮件→传音符、朋友圈→修士手札、商店→灵宝阁、论坛→论道台、货币→灵石、背包→储物袋、任务→历练\n' +
+        '- 无限流/游戏系统：消息→系统消息、邮件→系统邮件、朋友圈→玩家动态、商店→兑换商城、论坛→玩家论坛、货币→积分、背包→空间仓库、任务→副本任务\n' +
         '- 赛博朋克：消息→全息通讯、邮件→数据包、朋友圈→暗网动态、商店→义体诊所、论坛→黑客频道、货币→信用点、背包→存储芯片、任务→委托\n' +
-        '- 蒸汽朋克：消息→电报、邮件→信件、朋友圈→绅士俱乐部、商店→工坊、论坛→发明家集会、货币→齿轮币、背包→工具箱、任务→合约\n' +
         '- 太空歌剧：消息→星际通讯、邮件→量子信标、朋友圈→星网动态、商店→空间站市集、论坛→星际议会、货币→星币、背包→货舱、任务→远征\n' +
-        '- 民国：消息→传话、邮件→信笺、朋友圈→舞会传闻、商店→洋行、论坛→茶楼、货币→大洋、背包→皮箱、任务→差事\n' +
-        '请在第一回合的 world 模块 title 中体现你选定的术语，后续回合保持一致。';
+        '请在第一回合的 world 模块 title 中体现你选定的术语，后续回合全程保持一致，不再更改。';
 }
 
 // 【修复A P1-4】清理用户输入中的潜在prompt injection内容
