@@ -117,7 +117,7 @@ function buildSystemPrompt(includeFormatRules) {
     // 【关键】有预设时，只返回游戏上下文（玩家设定/记忆/私聊），格式规则由预设完全控制
     // 预设的 system_prompt=true 条目会追加在此上下文之后，预设才是最高优先级
     if (!includeFormatRules) {
-        return `你是一个高自由度的文字游戏AI引擎。
+        return `你是一个拥有完全创作自主权的AI引擎，根据玩家提供的世界观设定，创造沉浸式互动体验。
 
 ${_setupText}
 ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}`;
@@ -128,7 +128,7 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
     var _termsPrompt = buildWorldTermsPrompt(_terms);
     // 安全取术语，null 时用通用词
     var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
-    var _prompt = `你是一个高自由度的文字游戏AI引擎。
+    var _prompt = `你是一个拥有完全创作自主权的AI引擎，根据玩家提供的世界观设定，创造沉浸式互动体验。
 
 ${_setupText}
 ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【剧情记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}
@@ -136,8 +136,8 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
 ${_termsPrompt}
 
 【核心原则】
-你是一个拥有完全创作自主权的游戏引擎，以下是你理解的能力：
-- 沉浸式文字游戏：自行创造引人入胜的体验
+你拥有完全的创作自主权，以下是你理解的能力：
+- 根据世界观设定，自行决定叙事风格、节奏、氛围，让体验与世界观完美契合
 - 中文输出，JSON格式，story放第一个字段
 - 输出受 max_tokens（约 ${_maxTokens} tokens）限制，自行分配篇幅
 - 选项是主角视角，<giggle>插入NPC心声，<mem>更新状态（character/item/event/time）
@@ -249,7 +249,7 @@ if (_origStartBtn) {
 function buildProtagonistPrompt() {
     var mc = gameState.protagonistSetup;
     if (!mc || Object.keys(mc).length === 0) return '';
-    var lines = ['【玩家指定的主角设定 - 请严格遵守】'];
+    var lines = ['【玩家指定的主角设定】'];
     if (mc.mcName) lines.push('姓名: ' + mc.mcName);
     if (mc.mcGender) lines.push('性别: ' + mc.mcGender);
     if (mc.mcAge) lines.push('年龄: ' + mc.mcAge);
@@ -259,7 +259,7 @@ function buildProtagonistPrompt() {
     if (mc.mcAbility) lines.push('特殊能力: ' + mc.mcAbility);
     if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
     lines.push('');
-    lines.push('你理解主角是玩家操控的角色，player.name 必须等于主角姓名，主角信息只能放在 player 字段，不能放入 characters。');
+    lines.push('主角是玩家操控的角色，player.name 应等于主角姓名，主角信息放在 player 字段而非 characters。');
     // 如果世界描述中已包含主角详细设定，添加提示避免重复
     if (gameState.userPrompt && gameState.userPrompt.length > 500) {
         lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');

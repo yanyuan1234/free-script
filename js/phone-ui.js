@@ -174,7 +174,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
     if (gameState.allCharacters) Object.values(gameState.allCharacters).forEach(function(c) {
         if (c.name) npcNames.push(c.name + '(' + (c.title || c.desc || '') + ')');
     });
-    var sysMsg = '你是一个游戏论坛系统。玩家刚在论坛发了一条评论，请生成NPC的回复。\n\n' +
+    var sysMsg = '你是一个互动社区系统。玩家刚在社区发了一条评论，请生成其他角色的回复。\n\n' +
         '【玩家信息】名字: ' + playerName + '，' + (playerIdentity || '普通玩家') + '\n' +
         '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
         '【当前角色关系】\n' + (function() {
@@ -197,7 +197,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         var _forumWIText = (typeof _forumWI === 'object' && _forumWI !== null) ? (_forumWI.text || '') : (_forumWI || '');
         if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
     }
-    sysMsg += '你理解论坛的运作方式——NPC知道玩家身份，会根据关系和性格自然回复，有人回复玩家、有人回复其他人、有人聊别的话题。被@的NPC会回复。回复简短自然，纯文字。态度多样。如果玩家身份引人注目，加字段 maySpawnNewPost: true。\n' +
+    sysMsg += '你理解社区的运作方式——角色根据自身性格和与玩家的关系自然回复，有人回复玩家、有人回复其他人、有人聊别的话题。被@的角色会回复。回复简短自然，纯文字。态度多样。如果玩家身份引人注目，加字段 maySpawnNewPost: true。\n' +
         '回复JSON数组：[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n';
     callAI([{
         role: 'system',
@@ -251,7 +251,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         return m.type === 'comments';
     })[srcPostIdx];
     if (!srcPost) return;
-    var sysMsg = '你是一个游戏论坛系统。玩家在论坛发言了，有人开了一个新帖子来讨论这件事。\n\n' +
+    var sysMsg = '你是一个互动社区系统。玩家在社区发言了，有人开了一个新帖子来讨论这件事。\n\n' +
         '【玩家】' + playerName + '\n' +
         '【玩家设定】\n' + (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无') + '\n' +
         '【原帖标题】' + (srcPost.title || '未知') + '\n' +
@@ -262,7 +262,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         if (_spawnMemText) sysMsg += '【剧情记忆】\n' + _spawnMemText + '\n\n';
     }
     sysMsg += '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
-        '你理解论坛生态——标题吸引眼球(10-20字)，正文引用玩家评论加自己看法(50-100字)，纯文字，角度和原帖不同。';
+        '你理解社区生态——标题吸引眼球(10-20字)，正文引用玩家评论加自己看法(50-100字)，纯文字，角度和原帖不同。';
     callAI([{
         role: 'system',
         content: sysMsg
@@ -4459,7 +4459,7 @@ async function _generateEndingRender(stories) {
         var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
         var worldTheme = gameState.userPrompt || '';
 
-        var prompt = '你是一个游戏结局生成器。根据以下游戏剧情，生成一个完整的结局。\n\n' +
+        var prompt = '你是一个结局创作专家。根据以下剧情，创作一个完整的结局。\n\n' +
             '【玩家设定】\n' + (worldTheme.trim() || '无') + '\n' +
             '【主角】' + playerName + '\n' +
             '【主要角色】' + (charInfo || '未知') + '\n\n';
@@ -4468,12 +4468,12 @@ async function _generateEndingRender(stories) {
             var _endingMemText = EnhancedMemory.buildSmartInjection();
             if (_endingMemText) prompt += '【剧情记忆】\n' + _endingMemText + '\n\n';
         }
-        prompt += '你理解如何为文字冒险游戏创作有深度、有画面感的结局。回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
+        prompt += '你理解如何为故事创作有深度、有画面感的结局，风格应与原作世界观一致。回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
             '【剧情】\n' + allText;
 
         var result = await callAI([{
             role: 'system',
-            content: '你是游戏结局编剧，中文输出。'
+            content: '你是结局创作专家，中文输出。'
         }, {
             role: 'user',
             content: prompt
