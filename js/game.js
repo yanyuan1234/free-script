@@ -119,7 +119,7 @@ function getCompactSetupForSubFunction() {
     // 兜底：没有记忆数据时，截断原始设定
     var rawSetup = gameState.userPrompt || '';
     if (rawSetup.length > 1500) {
-        return truncateByChars(rawSetup, 3000, '...(设定较长，仅展示前半部分)');
+        return truncateByChars(rawSetup, (typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().subFuncSetupChars : 3000, '...(设定较长，仅展示前半部分)');
     }
     return rawSetup;
 }
@@ -1557,7 +1557,7 @@ async function _compressConversation(removed, sys) {
             var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你正在维护一份剧情摘要，把新增内容整合到已有摘要中。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在1500字以内。';
+        summaryPrompt = '你正在维护一份剧情摘要，把新增内容整合到已有摘要中。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在' + ((typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().summaryMaxChars : 1500) + '字以内。';
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
