@@ -1803,7 +1803,9 @@ var PresetManager = {
     }
     });
 
-    // 【关键】将 system_prompt=true 的提示词合并到主系统提示词末尾
+    // 【关键】将 system_prompt=true 的提示词合并到主系统提示词
+    // 预设优先：预设的main prompt（身份定义）放在最前面，游戏数据作为上下文跟在后面
+    // 这样预设的身份定义和核心指令具有最高权重，不会被默认内容稀释
     if (systemPromptParts.length > 0) {
         systemPromptParts.sort(function(a, b) { return (a.injection_order || 100) - (b.injection_order || 100); });
         var spAppend = [];
@@ -1812,7 +1814,7 @@ var PresetManager = {
             if (c.trim()) spAppend.push(c);
             });
         if (spAppend.length > 0) {
-            gameState.systemPrompt = gameState.systemPrompt + '\n\n' + spAppend.join('\n\n');
+            gameState.systemPrompt = spAppend.join('\n\n') + '\n\n' + gameState.systemPrompt;
         }
     }
 
@@ -1926,9 +1928,10 @@ var PresetManager = {
 
             // 同步参数到 gameState（解决滑块更新但 gameState 未变的 bug）
             // syncParamsToUI() 只更新了 DOM，但没有自动更新 gameState
+            // 【修复】使用 != null 而非 || 避免temperature=0等合法值被默认值覆盖
             if (typeof gameState !== 'undefined') {
-                gameState.temperature = this.currentParams.temperature || 0.8;
-                gameState.maxTokens = this.currentParams.max_tokens || 4096;
+                gameState.temperature = this.currentParams.temperature != null ? this.currentParams.temperature : 0.8;
+                gameState.maxTokens = this.currentParams.max_tokens != null ? this.currentParams.max_tokens : 4096;
             }
 
         // 更新所有 slider 的显示值（触发 input 事件更新 Value 显示）

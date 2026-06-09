@@ -163,12 +163,10 @@ function buildSystemPrompt(includeFormatRules) {
     // 【新】收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
     var _chatContextText = buildRecentChatContext();
 
-    // 【关键】有预设时，只返回游戏上下文（玩家设定/记忆/私聊），格式规则由预设完全控制
-    // 预设的 system_prompt=true 条目会追加在此上下文之后，预设才是最高优先级
+    // 【关键】有预设时，只返回纯游戏数据（设定/记忆/私聊），不包含任何默认身份定义和指导性文字
+    // 预设的 system_prompt=true 条目会提供自己的身份定义和格式规则，预设才是最高优先级
     if (!includeFormatRules) {
-        return `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。
-
-${_setupText}
+        return `${_setupText}
 ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}`;
     }
 
