@@ -3952,7 +3952,8 @@ function bindEvents() {
     bindEvent('streamOn', 'click', function() {
         gameState.useStream = true;
         this.classList.add('active');
-        document.getElementById('streamOff').classList.remove('active');
+        var streamOffEl = document.getElementById('streamOff');
+        if (streamOffEl) streamOffEl.classList.remove('active');
         // 同步预设的流式开关
         var presetStreamToggle = document.getElementById('presetStreamToggle');
         if (presetStreamToggle) presetStreamToggle.classList.add('checked');
@@ -3964,7 +3965,8 @@ function bindEvents() {
     bindEvent('streamOff', 'click', function() {
         gameState.useStream = false;
         this.classList.add('active');
-        document.getElementById('streamOn').classList.remove('active');
+        var streamOnEl = document.getElementById('streamOn');
+        if (streamOnEl) streamOnEl.classList.remove('active');
         // 同步预设的流式开关
         var presetStreamToggle = document.getElementById('presetStreamToggle');
         if (presetStreamToggle) presetStreamToggle.classList.remove('checked');
@@ -4270,12 +4272,16 @@ function bindEvents() {
     }
 
     // 初始化流式UI
-    if (gameState.useStream) {
-        document.getElementById('streamOn').classList.add('active');
-        document.getElementById('streamOff').classList.remove('active');
-    } else {
-        document.getElementById('streamOff').classList.add('active');
-        document.getElementById('streamOn').classList.remove('active');
+    var streamOnInit = document.getElementById('streamOn');
+    var streamOffInit = document.getElementById('streamOff');
+    if (streamOnInit && streamOffInit) {
+        if (gameState.useStream) {
+            streamOnInit.classList.add('active');
+            streamOffInit.classList.remove('active');
+        } else {
+            streamOffInit.classList.add('active');
+            streamOnInit.classList.remove('active');
+        }
     }
 
     // 初始化字体大小UI
