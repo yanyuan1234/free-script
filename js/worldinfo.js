@@ -2,10 +2,10 @@
 var WorldInfo = {
     books: [],
     settings: {
-        // scanDepth默认值改为2（与酒馆一致）
+        // scanDepth 默认值改为 2
         scanDepth: 2,
-        // tokenBudget改为百分比模式（与酒馆一致）
-        // 酒馆使用百分比（默认25%），这里存储百分比值
+        // tokenBudget 改为百分比模式
+        // 这里存储百分比值（默认 25%）
         tokenBudget: 25,
         tokenBudgetCap: 0,  // token预算硬上限（0=无限制）
         recursive: true
@@ -110,7 +110,7 @@ var WorldInfo = {
                 this.books = [];
             }
             if (data.settings) {
-                // scanDepth 默认值统一为 2（与酒馆一致）
+                // scanDepth 默认值统一为 2
                 this.settings.scanDepth = data.settings.scanDepth || 2;
                 // tokenBudget 处理：如果值 > 100，认为是旧格式的绝对值，转换为百分比
                 var budget = data.settings.tokenBudget;
@@ -314,7 +314,7 @@ var WorldInfo = {
         var books = this.books;
         if (books.length === 0) {
             if (bookStats) bookStats.textContent = '';
-            container.innerHTML = '<div class="empty-state">暂无世界书<br>点击「新建书」创建，或「导入」加载酒馆格式JSON文件</div>';
+            container.innerHTML = '<div class="empty-state">暂无世界书<br>点击「新建书」创建，或「导入」加载 JSON 文件</div>';
             return;
         }
 
@@ -794,7 +794,7 @@ var WorldInfo = {
     convertEntry: function(raw, uid) {
         if (!raw) return null;
 
-        // 提取extensions子对象（酒馆格式兼容）
+        // 提取 extensions 子对象（V2 格式兼容）
         // 支持多种字段名：extensions, extension, ext
         var ext = raw.extensions || raw.extension || raw.ext || {};
 
@@ -834,7 +834,7 @@ var WorldInfo = {
             'at_depth': 6,                // 指定深度注入
             '@D': 6,
             'outlet': 7,                  // 输出口
-            // 酒馆社区常用别名（保留兼容性）
+            // 常用别名（保留兼容性）
             'EMTop': 2,                   // 示例消息顶部 = before_example
             'EMBottom': 3,                // 示例消息底部 = after_example
             'ANBottom': 5,                // 作者注释底部 = bottom_of_author_note
@@ -876,7 +876,7 @@ var WorldInfo = {
         group: raw.group || ext.group || '',
         groupOverride: !!raw.groupOverride || !!raw.group_override || !!ext.group_override,
         groupWeight: raw.groupWeight || raw.group_weight || ext.group_weight || 100,
-        // probability处理：酒馆V2规范中probability是0-100整数
+        // probability 处理：V2 规范中 probability 是 0-100 整数
         // 但部分旧预设可能使用0-1浮点数，需要兼容两种格式
         probability: (function() {
             var prob = raw.probability !== undefined ? raw.probability : ext.probability;
@@ -957,7 +957,7 @@ var WorldInfo = {
         var depthVal = document.getElementById('wiEditDepthVal');
         if (depthVal) depthVal.textContent = entry.depth || 4;
         var scanDepthEl = document.getElementById('wiEditScanDepth');
-        // 如果条目没有设置scanDepth，显示全局设置的值（默认2，与酒馆一致）
+        // 如果条目没有设置 scanDepth，显示全局设置的值（默认 2）
         var globalScanDepth = this.settings.scanDepth || 2;
         if (scanDepthEl) scanDepthEl.value = (entry.scanDepth != null ? entry.scanDepth : globalScanDepth);
         var scanDepthVal = document.getElementById('wiEditScanDepthVal');
@@ -1274,7 +1274,7 @@ var WorldInfo = {
     _buildExportEntry: function(entry, uid) {
         var pos = typeof entry.position === 'number' ? entry.position : 0;
         var role = typeof entry.role === 'number' ? entry.role : 0;
-        // position反向映射：优先导出字符串别名（与酒馆友好）
+        // position 反向映射：优先导出字符串别名
         var positionReverseMap = {
             0: 'before_char_definitions',
             1: 'after_char_definitions',
@@ -1301,7 +1301,7 @@ var WorldInfo = {
             extensions: {
                 position: pos,
                 exclude_recursion: !!entry.excludeRecursion,
-                // probability直接使用0-100整数（酒馆V2规范）
+                // probability 直接使用 0-100 整数（V2 规范）
                 probability: entry.probability != null ? Math.round(entry.probability) : 100,
                 useProbability: entry.useProbability !== false,
                 depth: entry.depth || 4,
@@ -1428,16 +1428,16 @@ var WorldInfo = {
         this._currentTurn++;
 
         // 【修复4】构建扫描文本（最近N条消息）
-        // 添加角色名前缀（使用 \x01 分隔，与酒馆兼容）
+        // 添加角色名前缀（使用 \x01 分隔）
         // 这样可以支持用正则匹配特定角色的发言，如 /^User:/ 或 /^Assistant:/
         var recentMessages = chatMessages.slice(-scanDepth);
         var scanText = recentMessages.map(function(m) {
             // 提取角色名和内容
             var role = m.role || 'unknown';
             var content = (typeof m === 'string' ? m : (m.content || m.text || ''));
-            // 角色名格式：User/Assistant/System（与酒馆兼容）
+            // 角色名格式：User/Assistant/System
             var roleName = role.charAt(0).toUpperCase() + role.slice(1).toLowerCase();
-            // 使用 \x01 作为分隔符（酒馆使用）
+            // 使用 \x01 作为分隔符
             return roleName + '\x01' + content;
             }).join('\n');
 
@@ -1855,7 +1855,7 @@ var WorldInfo = {
         var deferred = [];  // 优先级较低，等待预算的条目
 
         // 先按 priority 排序（数值越小优先级越高）
-        // priority 默认是 10（与酒馆一致），V2 Spec新增字段
+        // priority 默认是 10（V2 Spec 新增字段）
         activated.sort(function(a, b) {
             var priorityA = a.priority !== undefined ? a.priority : 10;
             var priorityB = b.priority !== undefined ? b.priority : 10;

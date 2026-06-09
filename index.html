@@ -20,7 +20,7 @@
         <link rel="stylesheet" href="css/phone-ui.css">
         <link rel="stylesheet" href="css/systems.css">
         <style>
-            /* === 酒馆预设融合 UI 样式 === */
+            /* === 叙事增强 UI 样式 === */
             .eye-item{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:12px;color:var(--text);transition:all .2s;user-select:none}
             .eye-item:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
             .eye-item input[type="checkbox"]{margin:0;cursor:pointer;flex-shrink:0}
@@ -374,11 +374,11 @@
                         </div>
 
                         <div>
-                            <label class="field-label">选择你的预设 <span class="text-xs text-secondary font-normal">（大佬调教，影响AI文笔风格）</span></label>
+                            <label class="field-label">选择你的预设 <span class="text-xs text-secondary font-normal">（影响 AI 文笔风格）</span></label>
                             <div id="setupPresetSelector" class="pearl-card p-12 cursor-pointer flex-between" onclick="PresetManager.showModal();">
                                 <div>
                                     <div id="setupPresetName" class="text-base font-medium">默认预设</div>
-                                    <div id="setupPresetDesc" class="text-sm text-secondary mt-2">点击选择或导入酒馆预设</div>
+                                    <div id="setupPresetDesc" class="text-sm text-secondary mt-2">点击选择或导入预设</div>
                                 </div>
                                 <svg class="icon size-20 text-secondary"><use href="#icon-chevron-right"/></svg>
                             </div>
@@ -899,7 +899,7 @@
                                 <div class="wi-empty">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
                                     <div>暂无世界书</div>
-                                    <div style="font-size:11px;margin-top:4px;">点击「新建书」创建，或「导入」加载酒馆格式JSON文件</div>
+                                    <div style="font-size:11px;margin-top:4px;">点击「新建书」创建，或「导入」加载 JSON 文件</div>
                                 </div>
                             </div>
                         </div>
@@ -1103,7 +1103,7 @@
                                 <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
                                     <strong style="color:var(--text);">参数说明：</strong><br>
                                     • <b>注入深度(Depth)</b>：条目内容插入到聊天历史的位置（0=最新消息前，越大越靠前）<br>
-                                    • <b>扫描深度(ScanDepth)</b>：扫描最近N条消息来匹配关键词（默认2，与酒馆一致）<br>
+                                    • <b>扫描深度(ScanDepth)</b>：扫描最近 N 条消息来匹配关键词（默认 2）<br>
                                     • <b>Triggers</b>：正则触发器，优先级高于关键词匹配，支持 <code>/pattern/flags</code> 格式
                                 </div>
                                 <!-- 分组 -->
@@ -1243,9 +1243,6 @@
                                         <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定">保守</button>
                                         <button class="tag-btn" onclick="applyParamPreset('balanced')" title="均衡自然">均衡</button>
                                         <button class="tag-btn" onclick="applyParamPreset('creative')" title="高温创意">创意</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格">月读</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格">果实</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格">蛾摩拉</button>
                                         <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
                                     </div>
                                 </div>
@@ -2268,9 +2265,6 @@
                                         <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守</button>
                                         <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡</button>
                                         <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉</button>
                                         <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
                                     </div>
                                     <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;display:none;"></div>
@@ -2380,7 +2374,7 @@
                                     </div>
                                 </div>
                             </div>
-                            <!-- 叙事增强卡片（可折叠）- 融合酒馆预设的优秀特性 -->
+                            <!-- 叙事增强卡片（可折叠） -->
                             <div class="setting-group">
                                 <div class="setting-header" onclick="toggleSettingGroup(this)">
                                     <h3 class="setting-title">叙事增强</h3>
@@ -2534,7 +2528,7 @@
                                 </div>
                                 <div class="setting-item">
                                     <span class="setting-label">摘要阈值</span>
-                                    <select id="summaryThreshold" class="setting-select" title="超过此轮数的旧对话只发送摘要，节省token（来自月读预设的智慧）">
+                                    <select id="summaryThreshold" class="setting-select" title="超过此轮数的旧对话只发送摘要，节省 token">
                                         <option value="4">4轮</option>
                                         <option value="6" selected>6轮（推荐）</option>
                                         <option value="10">10轮</option>
@@ -2782,8 +2776,8 @@
     <!-- ============================================================ -->
 
     <!-- ================================================================ -->
-    <!-- 模块: 酒馆助手兼容层 -->
-    <!-- 描述: TavernHelperCompat - getContext/triggerSlash/toastr/Quick Reply -->
+    <!-- 模块: 预设助手兼容层 -->
+    <!-- 描述: PresetHelperCompat - getContext/triggerSlash/toastr/Quick Reply -->
     <!-- 依赖: 基础设施层、世界书系统、正则管理器 -->
     <!-- ================================================================ -->
 
@@ -2801,8 +2795,7 @@
 
 
 <!-- ============================================================ -->
-<!-- STscript v2.1 酒馆预设兼容引擎 - 自动集成 -->
-<!-- 支持：果实·叶子版3.0 / 月读·Gemini v1.2 / 蛾摩拉☼2.4 -->
+<!-- 预设兼容引擎 - 自动集成 -->
 <!-- ============================================================ -->
 
 

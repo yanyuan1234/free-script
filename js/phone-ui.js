@@ -4369,7 +4369,7 @@ function startNewGame() {
         if (el && el.value.trim()) gameState.protagonistSetup[mcMap[id]] = el.value.trim();
     });
 
-    // 收集作者备注（酒馆Author's Note特性）
+    // 收集作者备注（Author's Note 特性）
     var authorsNoteEl = document.getElementById('authorsNote');
     if (authorsNoteEl && authorsNoteEl.value.trim()) {
         gameState.authorsNote = authorsNoteEl.value.trim();
@@ -4709,7 +4709,7 @@ async function continueStory() {
             if (preset.continue_nudge_prompt) {
                 continuePrompt = preset.continue_nudge_prompt;
             }
-            // 【酒馆兼容】continue_prefill：继续生成时追加assistant消息引导输出
+            // 【兼容】continue_prefill：继续生成时追加 assistant 消息引导输出
             if (preset.params && preset.params.continue_prefill) {
                 continuePrefill = preset.params.continue_prefill;
             }
@@ -5523,7 +5523,7 @@ function saveGameSettings() {
     gameState.autoCompress = document.getElementById('autoCompressOn') && document.getElementById(
         'autoCompressOn').classList.contains('active');
     gameState.summaryThreshold = parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0;
-    // 【酒馆预设融合】保存叙事增强设置
+    // 【叙事增强】保存叙事增强设置
     var writingStyleEl = document.getElementById('settingWritingStyle');
     if (writingStyleEl) gameState.writingStyle = writingStyleEl.value;
     var cotModeEl = document.getElementById('settingCotMode');
@@ -5531,7 +5531,7 @@ function saveGameSettings() {
     var anti429El = document.getElementById('settingAnti429');
     if (anti429El) gameState.anti429Mode = anti429El.checked;
     // squashSystemMessages 已固定开启，不需要从UI读取
-    // === 酒馆预设融合：叙事融合层 v2 ===
+    // === 叙事增强层 v2 ===
     // 章节模式
     var chapterModeEl = document.getElementById('settingChapterMode');
     if (chapterModeEl) gameState.chapterMode = chapterModeEl.value;
@@ -5572,11 +5572,11 @@ function saveGameSettings() {
         generateChoices: gameState.generateChoices,
         maxTokens: gameState.maxTokens,
         defaultParams: defaultParams,
-        // 【酒馆预设融合】叙事增强设置
+        // 【叙事增强】保存叙事增强设置
         writingStyle: gameState.writingStyle,
         cotMode: gameState.cotMode,
         anti429Mode: gameState.anti429Mode,
-        // === 酒馆预设融合 v2 ===
+        // === 叙事增强层 v2 ===
         chapterMode: gameState.chapterMode,
         npcDescriptionRules: gameState.npcDescriptionRules,
         narrativeEyes: gameState.narrativeEyes,
@@ -5601,7 +5601,7 @@ function saveGameSettings() {
 })();
 
 // === 推荐档位切换 ===
-// 一键应用酒馆前辈沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
+// 一键应用预设的采样参数组合（导入玩家预设时会自动覆盖）
 // 注意：字段名是 ID 不会变，_label 仅用于 toast 提示
 var ARCHETYPE_PRESETS = {
     conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📘 短篇' },
@@ -5852,7 +5852,7 @@ function loadGameSettings() {
             // 恢复摘要阈值UI
             var stEl = document.getElementById('summaryThreshold');
             if (stEl) stEl.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
-            // 【酒馆预设融合】恢复叙事增强设置
+            // 【叙事增强】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
             if (d.anti429Mode !== undefined) gameState.anti429Mode = d.anti429Mode;
@@ -5864,7 +5864,7 @@ function loadGameSettings() {
             if (cmEl) cmEl.value = gameState.cotMode || '';
             var a429El = document.getElementById('settingAnti429');
             if (a429El) a429El.checked = !!gameState.anti429Mode;
-            // === 酒馆预设融合 v2 恢复 ===
+            // === 叙事增强层 v2 恢复 ===
             if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
             if (d.npcDescriptionRules !== undefined) gameState.npcDescriptionRules = d.npcDescriptionRules;
             if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {

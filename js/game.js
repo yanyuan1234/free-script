@@ -131,16 +131,16 @@ function _sanitizePromptInput(str) {
     // 注意：不再移除花括号内容，因为游戏设定中大量使用{}描述规则和属性
 }
 
-// === 酒馆预设融合层 ===
-// 把酒馆大佬们沉淀的「优秀预设」融进 Free-Script，作为默认设置
-// 核心原则：导入的酒馆预设优先级最高，本层仅在无预设/无覆盖时生效
+// === 叙事增强层 ===
+// 把行业优秀的预设智慧融进 Free-Script，作为默认设置
+// 核心原则：玩家导入的预设优先级最高，本层仅在无预设/无覆盖时生效
 function buildNarrativeEnhancement() {
     var gs = gameState;
     if (!gs) return '';
     var blocks = [];
 
-    // 【关键】如果当前已加载酒馆预设且有 main/nsfw 等内容，跳过本层注入
-    // 避免与酒馆预设冲突——酒馆预设自带高质量 prompt，本层退位
+    // 【关键】如果当前已加载玩家预设且有 main/nsfw 等内容，跳过本层注入
+    // 避免与玩家预设冲突——玩家预设自带高质量 prompt，本层退位
     if (typeof PresetManager !== 'undefined' && PresetManager.presets) {
         var idx = PresetManager.currentPresetIndex;
         if (idx >= 0 && PresetManager.presets[idx]) {
@@ -150,7 +150,7 @@ function buildNarrativeEnhancement() {
             });
             // 内置预设不参与此判断（内置预设本身就需要本层增强）
             if (hasMain && !p._isBuiltin) {
-                return '';  // 酒馆预设接管，本层静默
+                return '';  // 玩家预设接管，本层静默
             }
         }
     }
@@ -304,15 +304,15 @@ function buildSystemPrompt(includeFormatRules) {
     // 收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
     var _chatContextText = buildRecentChatContext();
 
-    // === 酒馆预设融合层 ===
-    // 来自酒馆大佬们的「世界之眼/章节模式/缄默法则/NPC准则」按 gameState 字段动态注入
-    // 核心原则：如果已加载酒馆预设（main 长度>50），本层退位
+    // === 叙事增强层 ===
+    // 来自行业大佬们的「世界之眼/章节模式/缄默法则/NPC准则」按 gameState 字段动态注入
+    // 核心原则：如果已加载玩家预设（main 长度>50），本层退位
     var _narrativeEnhancement = buildNarrativeEnhancement();
 
     // 【关键】有预设时，只返回纯游戏数据（设定/记忆/私聊），不包含任何默认身份定义和指导性文字
     // 预设的 system_prompt=true 条目会提供自己的身份定义和格式规则，预设才是最高优先级
     // 【注意】格式锚点是游戏运行的硬性要求（不是"默认设置"），必须始终存在
-    // 即使酒馆预设不知道JSON格式，AI也必须输出JSON，否则前端无法解析
+    // 即使玩家预设不知道JSON格式，AI也必须输出JSON，否则前端无法解析
     var _formatAnchor = '';
     var _maxTokensForAnchor = gameState.maxTokens || 4096;
     var _hasChoicesForAnchor = gameState.generateChoices;
@@ -323,7 +323,7 @@ function buildSystemPrompt(includeFormatRules) {
         if (_curP && _curP._isBuiltin) _hasNativePreset = true;
     }
     if (!_hasNativePreset) {
-        // 非内置预设（酒馆导入的或无预设）：注入格式锚点
+        // 非内置预设（玩家导入的或无预设）：注入格式锚点
         _formatAnchor = '\n\n【Free-Script格式要求（不可覆盖）】\n你的输出必须是合法的JSON，因为前端程序需要解析它来渲染界面。直接输出JSON文本，不要用```json代码块包裹。\n结构：{ "story": "叙事正文（用\\n换行，对话用「」包裹，这是最重要的字段，放第一个）"' + (_hasChoicesForAnchor ? ', "choices": [{"id": "A", "text": "选项描述"}]' : '') + ', "player": {"name":"", "identity":"", "stats":[{"label":"","value":""}]}, "characters": [{"name":"", "relation":"", "favorability":0}], "world": [{"type":"text", "title":"", "content":""}], "bag": [{"name":"", "count":1}], "quests": [{"title":"", "status":""}], "gameTime": {"date":"", "time":"", "period":""} }\n用<giggle>插入NPC内心独白，用<mem>标记状态变化。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间。';
     }
 
@@ -344,7 +344,7 @@ ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCus
 
 ${_termsPrompt}
 
-【叙事守则】（来自酒馆大佬们的调参智慧）
+【叙事守则】（来自行业的调参智慧）
 - 抗OOC：角色行为必须符合其性格和动机，不为了剧情需要而强行改变。角色不会突然变得温柔或残暴，除非有充分的理由
 - 抗全知：角色只能知道自己应该知道的信息。NPC不会未卜先知，不会读取主角的内心，不会知晓未曾经历的事件
 - 抗刻板：避免将角色简化为标签。强势≠控制，弱势≠依赖，女性角色保有完全的选择权与拒绝权
@@ -508,7 +508,7 @@ function buildProtagonistPrompt() {
 
 /**
  * 【关键修复】注入预设所需的全局变量
- * 模拟酒馆助手脚本的行为，在每次请求前设置全局变量
+ * 模拟预设助手脚本的行为，在每次请求前设置全局变量
  * 这些变量在预设提示词中以 {{getglobalvar::变量名}} 引用
  * 【重要】此函数必须在处理预设提示词之前调用！
  */
@@ -646,7 +646,7 @@ function injectPresetGlobalVars() {
     };
     MacroEngine.setGlobalVar('talk', talkMap[aiMode] || '');
     
-    // === 推进节奏（来自月读预设的智慧） ===
+    // === 推进节奏（叙事节奏智能控制） ===
     var pacing = config.pacing || '';
     if (pacing) {
         var pacingMap = {
@@ -660,8 +660,8 @@ function injectPresetGlobalVars() {
     } else {
         MacroEngine.setGlobalVar('推进节奏', '');
     }
-    
-    // === 文风选择（来自果实预设的梦境风味系统） ===
+
+    // === 文风选择（4 种内置文风） ===
     var writingStyle = config.writingStyle || gameState.writingStyle || '';
     if (writingStyle) {
         var styleMap = {
@@ -675,7 +675,7 @@ function injectPresetGlobalVars() {
         MacroEngine.setGlobalVar('文风指导', '');
     }
 
-    // === 思维链模式（来自蛾摩拉预设的COT控制） ===
+    // === 思维链模式（COT 推理控制） ===
     var cotMode = gameState.cotMode || '';
     if (cotMode === 'enabled') {
         MacroEngine.setGlobalVar('起始标签', '<thinking>');
@@ -683,12 +683,12 @@ function injectPresetGlobalVars() {
         MacroEngine.setGlobalVar('起始标签', '');
     }
 
-    // 注入其他常用的酒馆宏变量
+    // 注入其他常用的宏变量
     if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', gameState.playerName || '玩家');
     if (!MacroEngine.getGlobalVar('char')) MacroEngine.setGlobalVar('char', (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色');
     MacroEngine.setGlobalVar('original', gameState._lastOriginalContent || '');
-    
-    // === 象牙塔预设需要的额外变量 ===
+
+    // === 玩家预设需要的额外变量 ===
     // user_input: 用户最新输入内容
     var lastUserInput = '';
     var history = gameState.conversationHistory || [];
@@ -746,51 +746,33 @@ function applyLengthPreset(preset) {
 }
 
 /**
- * 应用参数推荐预设（融合4份酒馆预设的调参智慧）
+ * 应用参数推荐预设（一键切换采样参数组合）
  */
 function applyParamPreset(preset) {
     var presets = {
         conservative: {
-            name: '保守模式（月读风格·低温稳定）',
+            name: '保守模式·低温稳定',
             temperature: 0.88, top_p: 0.88, top_k: 0,
             frequency_penalty: 0.2, presence_penalty: 0.2,
             max_tokens: 4096, description: '低温+低惩罚，输出稳定可控，适合需要一致性的叙事'
         },
         balanced: {
-            name: '均衡模式（果实风格·自然丰富）',
+            name: '均衡模式·自然丰富',
             temperature: 1.3, top_p: 0.91, top_k: 64,
             frequency_penalty: 0, presence_penalty: 0,
             max_tokens: 8192, description: '中高温+TopK，输出自然丰富，适合大多数场景'
         },
         creative: {
-            name: '创意模式（蛾摩拉风格·高温奔放）',
+            name: '创意模式·高温奔放',
             temperature: 1.71, top_p: 0.9, top_k: 0,
             frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事（推荐Gemini）'
-        },
-        moonread: {
-            name: '月读风格',
-            temperature: 0.88, top_p: 0.88, top_k: 0,
-            frequency_penalty: 0.2, presence_penalty: 0.2,
-            max_tokens: 4096, description: '低温稳定，抓人设、不超雄、无过度描写'
-        },
-        fruit: {
-            name: '果实风格',
-            temperature: 1.3, top_p: 0.91, top_k: 64,
-            frequency_penalty: 0, presence_penalty: 0,
-            max_tokens: 3000, description: '均衡自然，外表自然内里丰富'
-        },
-        gomorrah: {
-            name: '蛾摩拉风格',
-            temperature: 1.71, top_p: 0.9, top_k: 0,
-            frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 30000, description: '超高温长篇，适合Gemini（DeepSeek命中缓存低）'
+            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事'
         },
         default: {
             name: '默认参数',
             temperature: 0.8, top_p: 0.9, top_k: 0,
             frequency_penalty: 0, presence_penalty: 0,
-            max_tokens: 4096, description: 'Free-Script默认参数'
+            max_tokens: 4096, description: 'Free-Script 默认参数'
         }
     };
     var p = presets[preset];
@@ -924,7 +906,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 当前用户消息
             messages.push({ role: 'user', content: userMessage });
         } else {
-            // === 按酒馆标准构建消息列表 ===
+            // === 按标准顺序构建消息列表 ===
 
             // 1. 重建系统提示词（只包含游戏基础规则，不含预设prompts和世界书）
             try {
@@ -958,8 +940,8 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             var recent = gameState.conversationHistory.slice(1).slice(-MAX_HISTORY);
 
-            // 【月读智慧】摘要阈值：超过此轮数的旧对话只发送摘要，节省token
-            // 来自月读预设的"6楼外只发摘要"策略
+            // 【摘要策略】超过此轮数的旧对话只发送摘要，节省 token
+            // 内置"超阈值裁剪旧对话"策略
             var summaryThreshold = gameState.summaryThreshold || 0;
             if (summaryThreshold > 0 && recent.length > summaryThreshold * 2) {
                 // 保留最近N轮的完整对话，旧对话用摘要替代
@@ -976,15 +958,15 @@ async function sendAIRequest(userMessage, isInit = false) {
             var wiPositionTexts = gameState._wiPositionTexts || null;
             var positionPrompts = gameState._positionPrompts || {};
 
-            // 3. 按酒馆标准顺序构建消息列表
+            // 3. 按标准顺序构建消息列表
             messages = [];
 
             // [0] 主系统提示词
-            // 支持 use_sysprompt 配置（月读预设设为 false）
-            // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
-            // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            // 【防429模式】在系统提示词前注入随机噪声（来自果实预设的智慧）
-            // 部分API会对系统提示词进行内容审查，随机噪声可以降低触发概率
+            // 支持 use_sysprompt 配置（部分玩家预设设为 false）
+            // 【玩家预设兼容】use_sysprompt=false 时，不使用 system 角色，
+            // 而是把系统提示词内容作为第一条 user 消息发送（标准行为）
+            // 【防 429 模式】在系统提示词前注入随机噪声
+            // 部分 API 会对系统提示词进行内容审查，随机噪声可以降低触发概率
             if (gameState.anti429Mode) {
                 var noisePool = ['⚙️⚙️⚙️','λ-calc','##$$%%','v_tensor','!#FF00','<<∅>>','//ignore','μ-808','HALT','EXECUTE','##!!~~','(e^πi)','CRC32','β_decay','ψ-state','||END||','量子纠缠','&&&**','@SYS_null'];
                 var noise1 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
@@ -1001,7 +983,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             // 辅助函数：合并世界书和预设提示词
-            // 【可配置顺序】默认世界书在前（酒馆常规行为），部分预设期望预设在前
+            // 【可配置顺序】默认世界书在前（标准行为），部分预设期望预设在前
             // 通过 gameState._wiFirst 控制：true(默认)=世界书在前；false=预设在世界书前面
             function mergePositionContent(wiTexts, presetTexts) {
                 var wiFirst = gameState._wiFirst !== false; // 默认为 true
@@ -1160,7 +1142,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 messages.push({ role: 'system', content: eventsText });
             }
 
-            // 【多角色叙事指导】当场景中有多个NPC时自动注入（来自蛾摩拉预设的智慧）
+            // 【多角色叙事指导】当场景中有多个 NPC 时自动注入
             // 只在当前场景确实有多个活跃角色时注入，避免对所有世界都触发
             var _activeCharCount = 0;
             if (gameState.worldSnapshot && gameState.worldSnapshot.characters) {
@@ -1187,7 +1169,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             var chatHistoryStart = messages.length; // 记录聊天历史在消息数组中的起始位置
             messages = messages.concat(recent);
 
-            // 【酒馆特性】Author's Note（作者备注）
+            // 【Author's Note】作者备注
             // 在聊天历史尾部、用户消息之前注入可自定义的提示词
             // 作用：让玩家可以在每轮对话中微调AI的行为，而不需要修改整个系统提示词
             // 例如："请侧重描写殷允的心理活动" 或 "这章要出现一个新角色"
@@ -1209,7 +1191,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 当前用户消息
             messages.push({ role: 'user', content: userMessage });
 
-            // 深度注入提示词 (depth >= 6) - 从聊天历史末尾计算位置（与酒馆一致）
+            // 深度注入提示词 (depth >= 6) - 从聊天历史末尾计算位置（标准行为）
             if (gameState._depthPrompts && Object.keys(gameState._depthPrompts).length > 0) {
                 var macroEnvForDepth = {
                     user: gameState.playerName || '玩家',
@@ -1226,7 +1208,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                         if (p.enabled !== false && p.content && p.content.trim()) {
                             var processedContent = typeof p.content === 'string' && !p.content.includes('{{') ? p.content : MacroEngine.process(p.content.trim(), macroEnvForDepth);
                             if (processedContent.trim()) {
-                                // 【酒馆兼容】injection_position:
+                                // 【兼容】injection_position:
                                 //   0 = RELATIVE（默认，从聊天底部往上数，depth=N → 倒数第N条之后）
                                 //   1 = ABSOLUTE（从聊天顶部往下数，depth=N → 正数第N条之后）
                                 var isAbsolute = p.injection_position === 1;
@@ -1236,7 +1218,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                                     // ABSOLUTE：从 chatHistoryStart 往后数 depth 条
                                     insertIndex = chatHistoryStart + depth;
                                 } else {
-                                    // RELATIVE（酒馆默认）：从聊天末尾往回数 depth 条
+                                    // RELATIVE（默认）：从聊天末尾往回数 depth 条
                                     insertIndex = chatEndIndex - depth;
                                 }
                                 // 边界保护：不允许插入到聊天历史之前（系统提示词区域），
@@ -1249,8 +1231,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 });
             }
         }
-        // squash_system_messages 支持（在深度注入之后执行，确保所有system消息都被合并）
-        // 果实预设要求将所有相邻的 system 消息合并为一条
+        // squash_system_messages 支持（在深度注入之后执行，确保所有 system 消息都被合并）
+        // 内置：所有相邻的 system 消息合并为一条
         if (gameState._squashSystemMessages === true) {
             var squashed = [];
             for (var si = 0; si < messages.length; si++) {
@@ -1264,7 +1246,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             console.log('[消息构建] 已合并相邻system消息 (squash_system_messages)');
         }
         // 注入 impersonation_prompt（用户人设）
-        // 酒馆中 impersonation_prompt 被插入到最后一条 assistant 消息之后
+        // 被插入到最后一条 assistant 消息之后
         if (gameState._impersonationPrompt && gameState._impersonationPrompt.trim()) {
             // 找到最后一条 assistant 消息的位置，在其后插入
             var lastAssistantIdx = -1;
@@ -1281,7 +1263,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 });
             }
         }
-        // 对所有消息内容进行宏处理（兼容酒馆预设中的宏）
+        // 对所有消息内容进行宏处理（兼容玩家预设中的宏）
         // 传入 env 参数，使 {{original}} 等环境宏可用
         var macroEnv = {
             user: gameState.playerName || '玩家',
@@ -1291,13 +1273,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         messages.forEach(function(msg) {
             if (msg.content && typeof msg.content === 'string') {
                 msg.content = MacroEngine.process(msg.content, macroEnv);
-                // 清理空变量导致的连续空行（来自酒馆预设的空setvar）
+                // 清理空变量导致的连续空行（空 setvar 兜底）
                 msg.content = msg.content.replace(/\n{3,}/g, '\n\n').trim();
             }
         });
-        // 清理历史消息中的装饰性标签（减少token浪费）
-        // 这些标签对AI生成没有帮助，但会占用大量上下文
-        // 月读预设通过正则脚本实现此功能，这里作为内置兜底
+        // 清理历史消息中的装饰性标签（减少 token 浪费）
+        // 这些标签对 AI 生成没有帮助，但会占用大量上下文
+        // 内置兜底：与玩家预设的 regex_scripts 行为一致
         var decorTags = /<(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
         messages.forEach(function(msg, idx) {
             if (msg.content && typeof msg.content === 'string' && msg.role === 'assistant') {
@@ -1364,20 +1346,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             });
         }
 
-        // 【酒馆兼容】assistant_prefill：在消息末尾追加一个assistant消息
+        // 【兼容】assistant_prefill：在消息末尾追加一个 assistant 消息
         // 某些模型（如Gemini）需要prefill来引导输出格式
         if (gameState._assistantPrefill && gameState._assistantPrefill.trim()) {
             messages.push({ role: 'assistant', content: gameState._assistantPrefill });
         }
 
-        // 【酒馆兼容】continue_prefill：继续生成时追加assistant消息引导输出
+        // 【兼容】continue_prefill：继续生成时追加 assistant 消息引导输出
         // 与 assistant_prefill 不同：assistant_prefill 每次请求都生效，continue_prefill 只在"继续生成"时生效
         if (gameState._continuePrefill && gameState._continuePrefill.trim()) {
             messages.push({ role: 'assistant', content: gameState._continuePrefill });
         }
 
-        // 【酒馆特性】智能上下文管理
-        // 自动计算当前消息的token数，如果接近上下文窗口上限，从最旧的聊天消息开始移除
+        // 【智能上下文管理】
+        // 自动计算当前消息的 token 数，如果接近上下文窗口上限，从最旧的聊天消息开始移除
         // 保留系统消息和固定消息，只移除普通的user/assistant历史消息
         var contextSize = gameState.contextSize || 8000;
         var reservedForOutput = Math.floor(contextSize * 0.15); // 留15%给输出
@@ -2077,8 +2059,8 @@ async function autoCompressContext() {
         var keep = dialogOnly.slice(-30);
         var removed = dialogOnly.slice(0, -30);
 
-        // 【酒馆特性】消息Pinning：固定重要消息不被压缩
-        // 消息上有 _pinned=true 标记的，即使在前30条之外也要保留
+        // 【消息 Pinning】固定重要消息不被压缩
+        // 消息上有 _pinned=true 标记的，即使在前 30 条之外也要保留
         var pinnedMessages = removed.filter(function(m) { return m._pinned === true; });
         if (pinnedMessages.length > 0) {
             // 把固定消息从removed移到keep
@@ -2133,7 +2115,7 @@ async function manualCompress(btn) {
         var rest = gameState.conversationHistory.slice(1);
         var keep = rest.slice(-30);
         var removed = rest.slice(0, -30);
-        // 【酒馆特性】消息Pinning：固定消息不被压缩
+        // 【消息 Pinning】固定消息不被压缩
         var pinnedMessages = removed.filter(function(m) { return m._pinned === true; });
         if (pinnedMessages.length > 0) {
             removed = removed.filter(function(m) { return m._pinned !== true; });

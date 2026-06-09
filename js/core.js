@@ -94,7 +94,8 @@ var UI = {
         ct.appendChild(t);
         TimerManager.setTimeout('uiToast', function() {
             if (t.parentNode) t.remove();
-            }, 2500);
+            // 【UI 优化】5 秒后自动消失，给玩家充足阅读时间
+            }, 5000);
         },
     showPage: function(id) {
         var el = document.getElementById(id);
@@ -1064,15 +1065,15 @@ _moments: [],
 _npcDiaries: {},
 _mail: [],
 _diary: [],
-// 【酒馆预设融合】新增叙事增强字段
-anti429Mode: false,          // 防429模式（来自果实预设）
-writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
-cotMode: '',                 // 思维链模式（来自蛾摩拉预设）
-summaryThreshold: 6,         // 摘要阈值（来自月读预设）
-_squashSystemMessages: true, // 合并system消息（来自果实预设，默认开启）
-// === 章节模式（来自果实预设的长篇剧情规范） ===
+// === 叙事增强字段（内置默认，可被导入预设覆盖） ===
+anti429Mode: false,          // 防 429 模式
+writingStyle: '',            // 文风选择
+cotMode: '',                 // 思维链模式
+summaryThreshold: 6,         // 摘要阈值
+_squashSystemMessages: true, // 合并 system 消息（默认开启）
+// === 章节模式（长篇剧情规范） ===
 chapterMode: 'off',          // off / chapter / longform
-// === 叙事基调（来自月读预设的10眼系统） ===
+// === 叙事基调（10 眼系统） ===
 // 全部默认开启，固定为游戏叙事基础规范，玩家无需感知
 narrativeEyes: {
     realistic: true,         // 现实感：可验证的因果与常识
@@ -1086,7 +1087,7 @@ narrativeEyes: {
     balanced: true,          // 戏剧平衡：戏剧性与合理性平衡
     mystery: true            // 超自然：现实与超常模糊边界
 },
-// === 干练文风（来自蛾摩拉预设的词句肃清） ===
+// === 干练文风（词句肃清系统） ===
 // 10 项基础规范默认开启，1 项 NSFW 专用默认关闭
 squelchRules: {
     oilyCliches: true,       // 油腻套路：嘴角勾起弧度/捏下巴 等
@@ -1105,7 +1106,7 @@ squelchRules: {
 npcDescriptionRules: true,   // 男帅女美、禁止脸谱化、禁用丑相关形容
 // === 推荐参数档位（一键切换 4 档叙事参数） ===
 presetArchetype: 'free',     // conservative / natural / passionate / delicate / free
-// === 标签美化库（来自象牙塔预设的HTML/CSS美化） ===
+// === 标签美化库（HTML/CSS 美化） ===
 beautifyLibrary: {
     phone: false,            // <手机> 标签 → iPhone 风格
     status: false,           // <状态> 标签 → 像素/古风/现代风
@@ -1113,7 +1114,7 @@ beautifyLibrary: {
     theater: false,          // <小剧场> 标签 → 博客/微博风格
     summary: false           // <meow_FM> 标签 → 课堂笔记风格
 },
-// === 预设助手大总结书签（来自象牙塔预设的summarize功能） ===
+// === 预设助手大总结书签（剧情助手 · 总结功能） ===
 summaryBookmarks: []         // [{ id, label, timestamp, hidden }]
 };
 }
@@ -1878,7 +1879,7 @@ function _mapTheaterByKey(key, theater) {
     targetModule = { type: 'diary', npc: '后台', entries: parseDiaryContent(theater.html || theater.content) };
     break;
 
-    // 作话 -> 新增作话模块
+    // 作话 -> 新增作话模块（兼容玩家预设中使用的特定 moduleName）
     case '蛾摩拉':
     targetModule = { type: 'author_note', title: '作者有话说', content: theater.content };
     break;
@@ -1965,7 +1966,7 @@ targetModule.text = theater.data.text;
 }
 break;
 
-// 【新增】象牙塔预设 - 塔类小剧场映射
+// 【兼容】塔类小剧场映射（兼容玩家导入的预设模块名）
 case '恋爱之塔':
 case '恋爱小剧场':
 case '恋爱之愿':

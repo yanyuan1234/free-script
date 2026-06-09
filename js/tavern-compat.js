@@ -12,7 +12,7 @@ var TavernHelperCompat = {
     // 初始化
     init: function() {
         this._initToastr();
-        console.log('[TavernHelperCompat] 酒馆助手兼容层已初始化');
+        console.log('[TavernHelperCompat] 预设助手兼容层已初始化');
     },
     
     // 1. getContext() 兼容层
@@ -20,7 +20,7 @@ var TavernHelperCompat = {
     getContext: function() {
         if (this._context) return this._context;
         
-        // 构建聊天消息列表（与酒馆格式一致）
+        // 构建聊天消息列表（与标准格式一致）
         var chat = [];
         // 修复：检查 conversationHistory 是数组（防御旧存档/损坏数据）
         if (gameState && Array.isArray(gameState.conversationHistory)) {
@@ -346,7 +346,7 @@ _executeSingleCommand: function(cmdStr) {
             result=''; break;
         case 'pass': result=argsStr; break;
         case 'comment': case '#': result=''; break;
-        // 更多酒馆常用命令
+        // 更多常用命令
         case 'swipe':
             if(typeof sendAIRequest==='function') TimerManager.setTimeout('swipeAI', function(){sendAIRequest('请重新生成');},100);
             result=''; break;
@@ -483,7 +483,7 @@ on: function(event, cb) {
 },
 emit: function(event, data) { var l=this._eventListeners[event]; if(l)l.forEach(function(cb){try{cb(data);}catch(e){console.error('[TavernHelper] listener error:',e);}}); },
 
-// 5. Quick Reply 按钮（增强版 - 支持酒馆完整字段）
+// 5. Quick Reply 按钮（增强版）
 parseQuickReplies: function(data) {
     if(!data||!data.button||!data.button.buttons) return [];
     this._quickReplies = data.button.buttons.filter(function(b){
@@ -690,7 +690,7 @@ _executeScriptCode: function(code, sourceName) {
 
 // 7. 主入口
 loadFromPreset: function(presetData) {
-    console.log('[TavernHelper] 正在加载酒馆助手兼容层...');
+    console.log('[TavernHelper] 正在加载预设助手兼容层...');
     this._initToastr();
     var th = presetData.tavern_helper||presetData.extensions_tavern_helper||null;
     if(th){
@@ -698,21 +698,21 @@ loadFromPreset: function(presetData) {
         if(th.button) this.parseQuickReplies(th);
         if(th.data&&th.data.presets) this._loadPresetConfigs(th.data.presets);
     }
-    // 【修复】从 SPreset 扩展中提取快捷回复（兼容果实预设）
+    // 【修复】从 SPreset 扩展中提取快捷回复（兼容玩家预设）
     var sp = presetData.SPreset || presetData.extensions_SPreset || null;
     if (sp && sp.button && sp.button.buttons) {
         this.parseQuickReplies({ button: sp.button });
     }
-    // 【修复】从预设的 spresetButtons 字段加载快捷回复（果实预设）
+    // 【修复】从预设的 spresetButtons 字段加载快捷回复（玩家预设）
     if (presetData.spresetButtons && presetData.spresetButtons.length > 0) {
         this.parseQuickReplies({ button: { buttons: presetData.spresetButtons } });
     }
-    // 【修复】触发 APP_READY 事件（酒馆助手脚本可能依赖此事件）
+    // 【修复】触发 APP_READY 事件（助手脚本可能依赖此事件）
     TimerManager.setTimeout('appReady', function() {
         TavernHelperCompat.emit('APP_READY', {});
         console.log('[TavernHelper] APP_READY 事件已触发');
     }, 500);
-    console.log('[TavernHelper] ✅ 酒馆助手兼容层加载完成');
+    console.log('[TavernHelper] ✅ 预设助手兼容层加载完成');
 },
 
 _loadPresetConfigs: function(presets) {
@@ -728,7 +728,7 @@ _loadPresetConfigs: function(presets) {
             });
         });
     }
-    // 【修复P0-1补充】将酒馆助手预设配置同步到当前预设的 wordCountConfig
+    // 【修复 P0-1 补充】将助手预设配置同步到当前预设的 wordCountConfig
     // 这样 injectPresetGlobalVars 就能读取到正确的字数/视角等配置
     if (typeof PresetManager !== 'undefined' && PresetManager.currentPresetIndex >= 0) {
         var currentPreset = PresetManager.presets[PresetManager.currentPresetIndex];
@@ -759,11 +759,11 @@ _loadPresetConfigs: function(presets) {
 getPresetConfig: function() { return this._presetConfig||{}; }
 };
 
-// 全局暴露（酒馆脚本需要）
+// 全局暴露（脚本需要）
 window.getContext = function(){return TavernHelperCompat.getContext();};
 window.triggerSlash = function(cmd){return TavernHelperCompat.triggerSlash(cmd);};
 
-// 【修复】补全 SillyTavern API，让酒馆助手脚本能正常运行
+// 【修复】补全 SillyTavern API，让助手脚本能正常运行
 window.SillyTavern = {
 getContext: function(){return TavernHelperCompat.getContext();},
 chat: [],
@@ -818,7 +818,7 @@ TavernHelperCompat._removeListener = function(event, cb){
 };
 }
 
-console.log('[TavernHelper] 酒馆助手兼容层已加载 (SillyTavern API 已补全)');
+console.log('[TavernHelper] 预设助手兼容层已加载 (SillyTavern API 已补全)');
 
 // 自初始化：确保即使 initApp 在定义之前执行，init 也能被调用
 if (typeof initApp !== 'undefined' && initApp._initialized) {
@@ -3047,14 +3047,14 @@ window.MemoryManagerUI = MemoryManagerUI;
  * ============================================================================
  * STscript Engine v2.1 for 自由剧本 (Free Script)
  * ============================================================================
- * 完整兼容 SillyTavern / 酒馆助手 的 STscript 语法解析引擎
+ * 完整兼容 SillyTavern / 助手的 STscript 语法解析引擎
  * 
- * v2.1 更新（蛾摩拉2.4适配）：
- * - 新增：{{random:选项1::选项2}} 单冒号语法（蛾摩拉变体）
+ * v2.1 更新：
+ * - 新增：{{random:选项1::选项2}} 单冒号语法
  * - 新增：{{trim}} 去除首尾空白
  * - 新增：entryGrouping 条目分组支持
- * - 增强：jailbreak 兼容 identifier 方式（蛾摩拉无 isJailbreak 字段）
- * - 增强：变量名支持中文（蛾摩拉大量使用中文变量名）
+ * - 增强：jailbreak 兼容 identifier 方式
+ * - 增强：变量名支持中文
  * - 修复：setvar 值中含 :: 时的贪婪匹配问题
  * 
  * v2.0 更新：
@@ -3376,7 +3376,7 @@ _processRandom(text) {
 const self = this;
 // 合并处理：{{random::选项1::选项2}} 和 {{random:选项1::选项2}} 和逗号分隔
 // 性能优化：原来有3次正则替换（其中2次正则完全相同），现在合并为2次
-// {{random::...}} 双冒号格式（果实/月读 + 蛾摩拉逗号分隔变体）
+// {{random::...}} 双冒号格式（兼容玩家预设）
 text = text.replace(/\{\{random::([^}]+)\}\}/g, function(_, opts) {
     // 同时支持 :: 分隔和 , 分隔
     if (opts.includes(',')) {
@@ -3384,7 +3384,7 @@ text = text.replace(/\{\{random::([^}]+)\}\}/g, function(_, opts) {
     }
     return self._pickRandom(opts.split('::'));
 });
-// {{random:...}} 单冒号格式（蛾摩拉变体）
+// {{random:...}} 单冒号格式（变体）
 text = text.replace(/\{\{random:([^}]+)\}\}/g, function(_, opts) {
     return self._pickRandom(opts.split('::'));
 });
@@ -3428,7 +3428,7 @@ text = text.replace(/\{\{([a-zA-Z_][a-zA-Z0-9_]*)\}\}/g, (_, n) => TemplateVars.
 return text;
 },
 
-// ── XML宏替换（月读预设大量使用 <user>/<char> 标签） ──
+// ── XML 宏替换（玩家预设大量使用 <user>/<char> 标签） ──
 _replaceXmlMacros(text) {
 const userName = TemplateVars.get('user');
 const charName = TemplateVars.get('char');
@@ -3481,7 +3481,7 @@ return prompts.map(p => {
     /**
     * 根据 prompt_order 构建有序prompt列表
     * @param {Array} prompts - 原始prompts
-    * @param {Array} promptOrder - prompt_order数组（月读/蛾摩拉预设特有）
+    * @param {Array} promptOrder - prompt_order 数组（玩家预设兼容）
     * @returns {Array} 排序后的prompts
     */
     applyPromptOrder(prompts, promptOrder) {
@@ -3509,7 +3509,7 @@ return prompts.map(p => {
     },
 
     /**
-    * 应用 entryGrouping（蛾摩拉2.4条目分组）
+    * 应用 entryGrouping（玩家预设兼容）
     * @param {Array} prompts - 原始prompts
     * @param {Array} groups - entryGrouping数组
     * @returns {Object} { prompts, groups }
@@ -3640,7 +3640,7 @@ return prompts.map(p => {
             const disabled = script.disabled === true || script.enabled === false;
             if (disabled) continue;
 
-            // ── placement 过滤（月读格式） ──
+            // ── placement 过滤（标准格式） ──
             // placement: [1] = user input, [2] = AI output
             const placement = script.placement || [];
             if (placement.length > 0) {
@@ -3649,15 +3649,15 @@ return prompts.map(p => {
                 // 默认都执行（如果没有placement限制）
             }
 
-        // ── promptOnly / markdownOnly 过滤（月读格式） ──
+        // ── promptOnly / markdownOnly 过滤（标准格式） ──
         if (script.promptOnly === true && !isPrompt) continue;
         if (script.markdownOnly === true && !isMarkdown) continue;
 
-        // ── minDepth / maxDepth 过滤（月读格式） ──
+        // ── minDepth / maxDepth 过滤（标准格式） ──
         if (script.minDepth !== null && script.minDepth !== undefined && messageDepth < script.minDepth) continue;
         if (script.maxDepth !== null && script.maxDepth !== undefined && messageDepth > script.maxDepth) continue;
 
-        // ── run_on / runOnEdit 过滤（果实/月读格式） ──
+        // ── run_on / runOnEdit 过滤（标准格式） ──
         const runOn = script.run_on || script.runOnEdit;
         // runOnEdit 在两个阶段都运行，run_on 只在指定阶段运行
         // 这里简化为：都执行
@@ -3672,11 +3672,11 @@ return prompts.map(p => {
     },
 
     /**
-    * 应用单个正则脚本（兼容果实+月读两种格式）
+    * 应用单个正则脚本（兼容多种格式）
     */
     _applyScript(text, script) {
-        // 月读格式: findRegex / replaceString
-        // 果实格式: find / replace + flags
+        // 格式 A: findRegex / replaceString
+        // 格式 B: find / replace + flags
         let findStr = script.findRegex || script.find || script.pattern || '';
         let replaceStr = script.replaceString || script.replace || script.replacement || '';
 
@@ -3684,7 +3684,7 @@ return prompts.map(p => {
 
         let regex;
         if (findStr.startsWith('/') && findStr.includes('/', 1)) {
-            // /pattern/flags 格式（月读常用）
+            // /pattern/flags 格式（常用）
             const lastSlash = findStr.lastIndexOf('/');
             const pattern = findStr.slice(1, lastSlash);
             const flags = findStr.slice(lastSlash + 1) || '';
@@ -3694,14 +3694,14 @@ return prompts.map(p => {
             regex = new RegExp(findStr, flags);
         }
 
-    // trimStrings（月读格式：额外要trim的字符串）
+    // trimStrings（额外要 trim 的字符串）
     if (script.trimStrings && Array.isArray(script.trimStrings)) {
         for (const ts of script.trimStrings) {
             if (ts) text = text.replace(new RegExp(this._escapeRegex(ts), 'g'), '');
         }
     }
 
-    // substituteRegex（月读格式：0=不替换, 1=替换为regex）
+    // substituteRegex（0=不替换, 1=替换为 regex）
     if (script.substituteRegex === 1 && replaceStr) {
         try { replaceStr = new RegExp(replaceStr).source; } catch (e) { /* keep as-is */ }
     }
@@ -3746,7 +3746,7 @@ if (preset.prompt_order && preset.prompt_order.length > 0) {
     prompts = this.injector.applyPromptOrder(prompts, preset.prompt_order[0]?.order || preset.prompt_order);
 }
 
-// 如果有 entryGrouping，应用分组（蛾摩拉2.4）
+// 如果有 entryGrouping，应用分组（玩家预设兼容）
 let entryGroups = [];
 if (preset.extensions?.entryGrouping) {
     const result = this.injector.applyEntryGrouping(prompts, preset.extensions.entryGrouping);
@@ -3808,7 +3808,7 @@ return this.regex.execute(text, scripts, {
 getVar(name, scope = 'local') {
     if (!name) return '';
     // 【桥接】走 MacroEngine：自动 trim + 纯数字字符串转 Number，
-    // 保证 {{getvar::xxx}} 在酒馆/STscript 语法和游戏宏语法里行为一致
+    // 保证 {{getvar::xxx}} 在 STscript 语法和游戏宏语法里行为一致
     if (scope === 'local' && typeof MacroEngine !== 'undefined' && MacroEngine.getLocalVar) {
         try { return MacroEngine.getLocalVar(String(name)); } catch (e) { /* fallthrough */ }
     }
@@ -3857,7 +3857,7 @@ setVar(name, value, scope = 'local') {
 GlobalCleanup.registerListener(document, 'DOMContentLoaded', () => {
 if (!global.stscriptEngine) {
     global.stscriptEngine = new STscriptEngine();
-    console.log('[STscript v2.1] 引擎已初始化 — 兼容果实/月读/蛾摩拉预设');
+    console.log('[STscript v2.1] 引擎已初始化 — 兼容主流玩家预设');
 }
 });
     }
@@ -3871,9 +3871,9 @@ if (!global.stscriptEngine) {
  * ============================================================================
  * 将 STscript 引擎与现有游戏逻辑无缝集成
  * 
- * v2.1 更新（蛾摩拉2.4适配）：
+ * v2.1 更新：
  * - 新增：entryGrouping 条目分组自动提取
- * - 新增：预设自动识别支持蛾摩拉类型
+ * - 新增：预设自动识别类型
  * - 增强：_normalizePreset 提取 entryGrouping
  * 
  * v2.0 更新：
@@ -3882,7 +3882,7 @@ if (!global.stscriptEngine) {
  * - 新增：tavern_helper 脚本解析（提取commands/quickSwitchProfiles）
  * - 新增：美化正则自动应用（markdown渲染阶段）
  * - 新增：消息深度追踪（minDepth/maxDepth过滤）
- * - 增强：预设导入自动识别格式（果实/月读/通用）
+ * - 增强：预设导入自动识别格式（多种主流格式）
  * ============================================================================
  */
 
@@ -3927,9 +3927,9 @@ if (!global.stscriptEngine) {
     },
 
     /**
-    * 标准化预设格式（兼容果实/月读/通用）
-    * 月读: { prompts, prompt_order, extensions: { regex_scripts, tavern_helper } }
-    * 果实: { prompts, extensions: { regex_scripts, tavern_helper: { scripts } } }
+    * 标准化预设格式（兼容多种主流预设）
+    * 标准 V2: { prompts, prompt_order, extensions: { regex_scripts, tavern_helper } }
+    * 标准 V1: { prompts, extensions: { regex_scripts, tavern_helper: { scripts } } }
     * 通用: { prompts, regexScripts }
     */
     _normalizePreset(preset) {
@@ -3955,7 +3955,7 @@ if (!global.stscriptEngine) {
         p.spresetConfig = p.extensions.SPreset;
     }
 
-    // 提取 entryGrouping（蛾摩拉2.4）
+    // 提取 entryGrouping（玩家预设兼容）
     if (p.extensions?.entryGrouping) {
         p.entryGrouping = p.extensions.entryGrouping;
     }
@@ -4177,7 +4177,7 @@ init();
  * ============================================================================
  * 预设配置管理器 v2.1
  * ============================================================================
- * 支持【果实·叶子版3.0】、【月读·Gemini v1.2】和【蛾摩拉☼2.4】三个预设的配置管理
+ * 支持多份主流预设的配置管理（沉浸/均衡/长篇等风格）
  * ============================================================================
  */
 
@@ -4185,7 +4185,7 @@ init();
     'use strict';
 
     // ============================================================================
-    // 月读预设配置
+    // 沉浸风格预设配置
     // ============================================================================
     var MoonReadPresetConfig = {
     name: "【月读】Gemini v1.2 @电波系",
@@ -4286,7 +4286,7 @@ init();
     };
 
     // ============================================================================
-    // 果实预设配置（保留v1）
+    // 均衡风格预设配置（保留 v1）
     // ============================================================================
     var FruitPresetConfig = {
     name: "【MoM】果实·叶子版3.0",
@@ -4302,7 +4302,7 @@ init();
     };
 
     // ============================================================================
-    // 蛾摩拉预设配置
+    // 长篇风格预设配置
     // ============================================================================
     var GomorrahPresetConfig = {
     name: "[MoM]蛾摩拉☼2.4",
@@ -4376,7 +4376,7 @@ const hasFruit = prompts.some(p =>
 
 if (hasMoonRead || name.includes('月读')) return 'moonread';
 if (hasFruit || name.includes('果实') || name.includes('mom')) return 'fruit';
-// 蛾摩拉检测
+// 风格 C 检测（基于玩家预设的命名约定）
 const hasGomorrah = prompts.some(p =>
     p.identifier === 'main' && (p.name || '').includes('身份定义')
 );
@@ -4432,11 +4432,11 @@ const regexScripts = preset.regexScripts || preset.extensions?.regex_scripts || 
 if (regexScripts.length > 0) {
     result.info.push(`共 ${regexScripts.length} 个正则脚本`);
 
-    // 检查月读格式
+    // 检查标准格式 A
     const hasFindRegex = regexScripts.some(s => s.findRegex);
     const hasFind = regexScripts.some(s => s.find);
-    if (hasFindRegex) result.info.push('正则格式: 月读 (findRegex)');
-    if (hasFind) result.info.push('正则格式: 果实 (find)');
+    if (hasFindRegex) result.info.push('正则格式: 格式 A (findRegex)');
+    if (hasFind) result.info.push('正则格式: 格式 B (find)');
 
     // 检查美化正则
     const beautyScripts = regexScripts.filter(s => s.markdownOnly === true);
@@ -4452,8 +4452,8 @@ if (preset.prompt_order) {
 
 // 检查tavern_helper
 if (preset.extensions?.tavern_helper?.scripts) {
-    result.info.push('包含酒馆助手脚本');
-    result.warnings.push('酒馆助手脚本中的triggerSlash/toastr等API不可用，但commands配置已提取');
+    result.info.push('包含助手脚本');
+    result.warnings.push('助手脚本中的 triggerSlash/toastr 等 API 不可用，但 commands 配置已提取');
 }
 
 // 检查STscript语法

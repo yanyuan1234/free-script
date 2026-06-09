@@ -24,7 +24,7 @@ async function initApp() {
         // 初始化宏引擎
         if (typeof MacroEngine !== 'undefined' && MacroEngine.init) MacroEngine.init();
         // 初始化记忆管理系统（已合并到 MemoryManagerUI，无需单独初始化）
-        // 初始化酒馆助手兼容层
+        // 初始化预设助手兼容层
         // 添加 typeof 检查，因为 TavernHelperCompat 在后续 script 块中定义
         // 当 initApp 在 script 块末尾直接调用时，后续块可能尚未加载
         if (typeof TavernHelperCompat !== 'undefined') {

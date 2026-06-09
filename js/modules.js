@@ -349,7 +349,7 @@ var PresetManager = {
     init: function() {
         this.load();
         // 【内置预设】首次使用时注入Free-Script原生预设
-        // 这些预设学习了酒馆大佬的调教智慧，但完全适配Free-Script的JSON输出格式
+        // 这些预设学习了行业的调教智慧，但完全适配 Free-Script 的 JSON 输出格式
         if (this.presets.length === 0) {
             this._injectBuiltinPresets();
         }
@@ -373,16 +373,16 @@ var PresetManager = {
         safeSetItem('freeScript_apiPresets', JSON.stringify(this.presets));
         },
 
-    // 【内置预设】注入Free-Script原生预设
-    // 学习了酒馆大佬（月读/果实/蛾摩拉）的调教智慧，完全适配Free-Script的JSON输出
+    // 【内置预设】注入 Free-Script 原生预设
+    // 学习了行业优秀的调教智慧，完全适配 Free-Script 的 JSON 输出
     _injectBuiltinPresets: function() {
         var self = this;
 
         // ═══════════════════════════════════════════════════════════
-        // 预设1：沉浸叙事（学习月读·Gemini的细腻叙事智慧）
+        // 预设1：沉浸叙事（细腻叙事）
         // ═══════════════════════════════════════════════════════════
         var moonreadNative = self.parsePreset({
-            name: '🌙沉浸叙事（月读风格）',
+            name: '🌙沉浸叙事',
             prompts: [
                 {
                     identifier: 'main',
@@ -424,14 +424,14 @@ var PresetManager = {
         }, 'moonread-native');
 
         // ═══════════════════════════════════════════════════════════
-        // 预设2：果实叙事（学习果实·叶子版的均衡风格）
+        // 预设2：均衡叙事（自然丰富）
         // ═══════════════════════════════════════════════════════════
         var fruitNative = self.parsePreset({
-            name: '🍎果实叙事（均衡风格）',
+            name: '🍎均衡叙事',
             prompts: [
                 {
                     identifier: 'main',
-                    name: '🍎果实叙事',
+                    name: '🍎均衡叙事',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
@@ -470,10 +470,10 @@ var PresetManager = {
         }, 'fruit-native');
 
         // ═══════════════════════════════════════════════════════════
-        // 预设3：蛾摩拉叙事（学习蛾摩拉☼2.4的长篇叙事智慧）
+        // 预设3：长篇叙事（高温奔放）
         // ═══════════════════════════════════════════════════════════
         var gomorrahNative = self.parsePreset({
-            name: '☼长篇叙事（蛾摩拉风格）',
+            name: '☼长篇叙事',
             prompts: [
                 {
                     identifier: 'main',
@@ -829,7 +829,7 @@ var PresetManager = {
 
         if (this.presets.length === 0) {
             if (currentInfo) currentInfo.style.display = 'none';
-            container.innerHTML = '<div class="empty-state">暂无预设<br>点击「导入酒馆预设」或选择内置预设</div>';
+            container.innerHTML = '<div class="empty-state">暂无预设<br>点击「导入预设」或选择内置预设</div>';
             return;
         }
 
@@ -922,7 +922,7 @@ var PresetManager = {
     };
     },
 
-    // 导入酒馆预设
+    // 导入预设
     importFromFile: function(file) {
         const self = this;
         var reader = new FileReader();
@@ -973,7 +973,7 @@ var PresetManager = {
     reader.readAsText(file);
     },
 
-    // 解析酒馆预设格式
+    // 解析预设格式
     parsePreset: function(data, fileName) {
         // 辅助函数：安全取值，避免 0 被 falsy 吞掉
         function safeNum(a, b, c, def) {
@@ -983,7 +983,7 @@ var PresetManager = {
             return def;
         }
         // 提取参数（支持多种字段名，兼容 Chat Completion 和 Text Completion 两种格式）
-        // 包含所有酒馆支持的采样参数
+        // 包含所有支持的采样参数
         var params = {
             temperature: safeNum(data.temp, data.temperature, 0.8),
             top_p: safeNum(data.top_p, null, 0.9),
@@ -995,7 +995,7 @@ var PresetManager = {
             min_p: safeNum(data.min_p, null, 0),
             top_a: safeNum(data.top_a, null, 0),
             repetition_penalty: safeNum(data.repetition_penalty, data.rep_pen, 1),
-            // 新增：酒馆支持的额外采样参数
+            // 新增：额外采样参数
             typical_p: safeNum(data.typical_p, null, 1),
             min_length: safeNum(data.min_length, null, 0),
             max_time: safeNum(data.max_time, null, null),
@@ -1024,7 +1024,7 @@ var PresetManager = {
             tool_reasoning_mode: data.tool_reasoning_mode || 'disabled',
             // DeepSeek V4 等模型的推理参数
             reasoning_effort: data.reasoning_effort || null,
-            // 酒馆预设行为控制参数
+            // 预设行为控制参数
             show_thoughts: data.show_thoughts !== undefined ? data.show_thoughts : null,
             use_sysprompt: data.use_sysprompt !== undefined ? data.use_sysprompt : true,
             squash_system_messages: data.squash_system_messages || false,
@@ -1039,7 +1039,7 @@ var PresetManager = {
         // 预设名称
         var name = data.name || data.preset || (fileName ? fileName.replace(/\.json$/i, '') : ('导入预设 ' + new Date().toLocaleDateString()));
 
-        // 提取 prompts 数组（酒馆预设的核心内容）
+        // 提取 prompts 数组（预设的核心内容）
         var importedPrompts = [];
         if (data.prompts && Array.isArray(data.prompts)) {
             // 获取 prompt_order 中的启用状态和排列顺序
@@ -1090,7 +1090,7 @@ var PresetManager = {
     // 跳过纯注释内容（被 {{// ... }} 包裹的）
     var trimmedContent = p.content.trim();
     if (trimmedContent.startsWith('{{//') && trimmedContent.endsWith('}}')) return;
-    // 跳过酒馆内置标记位
+    // 跳过内置标记位
     // 注意：enhanceDefinitions 是一个有效的提示词，保留其内容
     // 来源：SillyTavern PromptManager.js - enhanceDefinitions 会增强角色定义
     // 【修复】不再跳过内置标记位，保留它们用于注入
@@ -1123,14 +1123,14 @@ var PresetManager = {
             injection_depth: p.injection_depth || 4,
             // 【修复排序】优先使用 prompt_order 中的位置作为 injection_order
             // 如果 prompt 自身设置了 injection_order 且不是默认值100，则保留原值
-            // 否则使用 prompt_order 中的位置索引，确保排列顺序与酒馆一致
+            // 否则使用 prompt_order 中的位置索引，确保排列顺序一致
             injection_order: (p.injection_order != null && p.injection_order !== 100)
             ? p.injection_order
             : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
             system_prompt: !!p.system_prompt,
             isJailbreak: true,  // 标记为越狱提示词，放在聊天历史之后
             enabled: isEnabled,  // 保留原有的启用状态
-            // 酒馆V2新增字段
+            // V2 新增字段
             forbid_overrides: !!p.forbid_overrides,
             injection_trigger: p.injection_trigger || []
             });
@@ -1150,14 +1150,14 @@ var PresetManager = {
         : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
         system_prompt: !!p.system_prompt,
         enabled: isEnabled,  // 保留原有的启用状态
-        // 酒馆V2新增字段
+        // V2 新增字段
         forbid_overrides: !!p.forbid_overrides,
         injection_trigger: p.injection_trigger || []
         });
     });
 
     // 【修复排序】按 prompt_order 的顺序重排 importedPrompts
-    // 酒馆中 data.prompts 的数组顺序不等于用户拖拽的排列顺序
+    // data.prompts 的数组顺序不等于用户拖拽的排列顺序
     // 真正的排序由 prompt_order 决定，必须以此为准
     if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
         var orderGroup = data.prompt_order.find(function(g) { return g && g.character_id === 100000; })
@@ -1184,16 +1184,16 @@ var PresetManager = {
     // 去重：同一条正则可能同时存在于两个位置
     //
     // 【注释说明 - 正则脚本的两种来源】
-    // 来源1: extensions.regex_scripts — 酒馆标准正则脚本存储位置
+    // 来源 1: extensions.regex_scripts — 标准正则脚本存储位置
     //   这是 SillyTavern 核心代码识别的路径，正则扩展（Regex Extension）从这里读写预设正则
     //   参考：SillyTavern engine.js 中 getScriptsByType(SCRIPT_TYPES.PRESET) 的读取逻辑
     //   读取路径：preset.extensions.regex_scripts
     //
-    // 来源2: extensions.SPreset.RegexBinding.regexes — 酒馆助手（TavernHelper）扩展的正则绑定
-    //   这是第三方扩展 TavernHelper 的自定义字段，不是酒馆核心代码识别的路径
+    // 来源 2: extensions.SPreset.RegexBinding.regexes — 助手扩展的正则绑定
+    //   这是第三方扩展 TavernHelper 的自定义字段，不是核心代码识别的路径
     //   TavernHelper 用它来管理预设绑定的正则脚本（合并/覆盖标准正则）
-    //   大佬的预设如果使用了酒馆助手，正则可能同时存在于两个位置
-    //   保留此路径是为了兼容使用酒馆助手的预设
+    //   预设如果使用了助手扩展，正则可能同时存在于两个位置
+    //   保留此路径是为了兼容使用助手扩展的预设
     var importedRegex = [];
     var regexNameSet = {};
     function addRegexUnique(list) {
@@ -1209,16 +1209,16 @@ var PresetManager = {
     if (data.extensions && data.extensions.regex_scripts && Array.isArray(data.extensions.regex_scripts)) {
         addRegexUnique(data.extensions.regex_scripts);
     }
-    // 来源2: 酒馆助手（TavernHelper）扩展的正则绑定路径
-    // 注意：这不是酒馆核心路径，是 TavernHelper 第三方扩展使用的字段
+    // 来源 2: 助手扩展的正则绑定路径
+    // 注意：这不是核心路径，是 TavernHelper 第三方扩展使用的字段
     if (data.extensions && data.extensions.SPreset && data.extensions.SPreset.RegexBinding
     && data.extensions.SPreset.RegexBinding.regexes && Array.isArray(data.extensions.SPreset.RegexBinding.regexes)) {
         addRegexUnique(data.extensions.SPreset.RegexBinding.regexes);
     }
 
-    // 保存 tavern_helper 脚本信息（酒馆助手扩展的JS脚本）
+    // 保存 tavern_helper 脚本信息（助手扩展的 JS 脚本）
     var tavernHelperScripts = [];
-    var tavernHelperPresetConfig = null; // 【修复P0-1】提取酒馆助手预设配置
+    var tavernHelperPresetConfig = null; // 【修复 P0-1】提取助手预设配置
     if (data.extensions && data.extensions.tavern_helper && data.extensions.tavern_helper.scripts) {
         tavernHelperScripts = data.extensions.tavern_helper.scripts;
     }
@@ -1234,13 +1234,13 @@ var PresetManager = {
         entryGrouping = data.extensions.entryGrouping;
     }
 
-    // 【修复】提取 entryStates（条目状态，月读/象牙塔预设使用）
+    // 【修复】提取 entryStates（条目状态，玩家预设兼容）
     var entryStates = null;
     if (data.extensions && data.extensions.entryStates) {
         entryStates = data.extensions.entryStates;
     }
 
-    // 【修复】提取 regexBindings（象牙塔预设使用的正则绑定）
+    // 【修复】提取 regexBindings（玩家预设使用的正则绑定）
     var regexBindings = null;
     if (data.extensions && data.extensions.regexBindings) {
         regexBindings = data.extensions.regexBindings;
@@ -1266,14 +1266,14 @@ var PresetManager = {
     // 保存 SPreset 配置（预设绑定的扩展配置）
     var spresetConfig = data.extensions && data.extensions.SPreset ? data.extensions.SPreset : null;
 
-    // 【修复】从 SPreset.button 提取快捷回复（果实预设使用）
+    // 【修复】从 SPreset.button 提取快捷回复（玩家预设兼容）
     var spresetButtons = null;
     if (data.extensions && data.extensions.SPreset && data.extensions.SPreset.button && data.extensions.SPreset.button.buttons) {
         spresetButtons = data.extensions.SPreset.button.buttons;
     }
 
     // 【新增】提取更多预设功能
-    // 提取小剧场配置（月读预设等）
+    // 提取小剧场配置（玩家预设兼容）
     var theaterConfig = null;
     if (data.extensions && data.extensions.theater) {
         theaterConfig = data.extensions.theater;
@@ -1315,7 +1315,7 @@ var PresetManager = {
         apiExtensions = data.extensions.api;
     }
 
-    // 【修复P0-1】从酒馆助手预设配置中构建 wordCountConfig
+    // 【修复 P0-1】从助手预设配置中构建 wordCountConfig
     var wordCountConfig = null;
     if (tavernHelperPresetConfig) {
         wordCountConfig = {
@@ -1356,13 +1356,13 @@ var PresetManager = {
         customVariables: customVariables,
         triggers: triggers,
         apiExtensions: apiExtensions,
-        // 【修复P0-1】字数控制配置（从酒馆助手预设中提取）
+        // 【修复 P0-1】字数控制配置（从助手预设中提取）
         wordCountConfig: wordCountConfig,
-        // 酒馆兼容：用户人设提示词
+        // 兼容：用户人设提示词
         impersonation_prompt: data.impersonation_prompt || '',
         continue_nudge_prompt: data.continue_nudge_prompt || '[Continue your last message...]',
         names_behavior: data.names_behavior != null ? data.names_behavior : 0,
-        // 酒馆兼容：工具推理模式
+        // 兼容：工具推理模式
         tool_reasoning_mode: data.tool_reasoning_mode || 'disabled',
         imported: true,
         time: new Date().toLocaleString()
@@ -1467,7 +1467,7 @@ var PresetManager = {
 
         // 角色标签颜色
         var roleColors = { 'system': '#8b5cf6', 'user': '#10b981', 'assistant': '#f59e0b' };
-        // 位置标签（使用酒馆标准 injection_depth 映射）
+        // 位置标签（标准 injection_depth 映射）
         var posLabels = { 0: '角色前', 1: '角色后', 2: '示例前', 3: '示例后', 4: 'AN顶部', 5: 'AN底部' };
         // injection_position 标签
         var ipLabels = { 0: '聊天前', 1: '聊天后' };
@@ -1722,7 +1722,7 @@ var PresetManager = {
     * 预设JSON中已配置好的参数（如temperature、reasoning_effort等）不要动
     *
     * 需要手动配置的项目：
-    * 1. 自动解析标签（前缀/后缀）- 酒馆设置界面配置
+    * 1. 自动解析标签（前缀/后缀）
     * 2. 命中缓存设置 - API设置界面配置
     * 3. 提示词后处理 - API设置界面配置
     * 4. 附加参数 - API设置界面配置
@@ -1735,7 +1735,7 @@ var PresetManager = {
         var presetConfigs = []; // 预设已配置的项目（仅记录，不动）
 
         // === 1. 自动解析标签配置 ===
-        // 【关键】这是需要用户在酒馆里手动配置的，不在预设JSON中
+        // 【关键】这是需要在外部手动配置的，不在预设 JSON 中
         // 检测预设中是否有思维链相关内容，如果有则提醒用户需要配置自动解析
         var hasThinkingContent = false;
         var thinkingTagType = null;
@@ -1834,7 +1834,7 @@ var PresetManager = {
     }
     },
 
-    // 【新增】加载 entryStates 预设版本快照（象牙塔/月读预设使用）
+    // 【新增】加载 entryStates 预设版本快照（玩家预设兼容）
     _loadEntryStates: function(preset) {
         if (!preset || !preset.entryStates) return;
         var states = preset.entryStates;
@@ -1926,8 +1926,8 @@ var PresetManager = {
             original: gameState._lastOriginalContent || ''
             };
 
-        // 【酒馆标准提示词分流】
-        // 酒馆 injection_depth 含义:
+        // 【标准提示词分流】
+        // injection_depth 含义:
         //   0 = 角色定义前 (BEFORE_CHAR)
         //   1 = 角色定义后 (AFTER_CHAR)
         //   2 = 示例消息前 (EM_TOP)
@@ -1935,13 +1935,13 @@ var PresetManager = {
         //   4 = 作者注释顶部 (AN_TOP)
         //   5 = 作者注释底部 (AN_BOTTOM)
         //   >= 6 = 聊天历史深度（从末尾往回数）
-        // 酒馆 injection_position 含义:
+        // injection_position 含义:
         //   0 = RELATIVE (从聊天底部往上数)
         //   1 = ABSOLUTE (从聊天顶部往下数)
         preset.prompts.forEach(function(p) {
             if (p.enabled === false) return;
 
-            // 【酒馆兼容】marker=true 的提示词是位置标记，不产生内容
+            // 兼容：marker=true 的提示词是位置标记，不产生内容
             if (p.marker === true) return;
 
             if (!p.content || !p.content.trim()) return;
@@ -1964,7 +1964,7 @@ var PresetManager = {
         }
 
     // 【关键】system_prompt=true 的提示词合并到主系统提示词
-    // 酒馆中 main prompt 等标记为 system_prompt=true 的提示词
+    // main prompt 等标记为 system_prompt=true 的提示词
     // 会被拼接到系统提示词中，具有最高权重
     if (p.system_prompt === true) {
         systemPromptParts.push(p);
@@ -2029,7 +2029,7 @@ var PresetManager = {
         depthPrompts[d].forEach(function(p) {
             var c = MacroEngine.process(p.content.trim(), macroEnv);
             if (c.trim()) {
-                // 【酒馆兼容】injection_position: 0=RELATIVE(默认，从聊天底部往上数)
+                // 兼容：injection_position: 0=RELATIVE(默认，从聊天底部往上数)
                 //                                1=ABSOLUTE(从聊天顶部往下数)
                 // game.js 的深度注入逻辑会按这个标志决定从哪一端开始数
                 gameState._depthPrompts[d].push({
@@ -2060,7 +2060,7 @@ var PresetManager = {
         gameState._impersonationPrompt = '';
     }
 
-    // 【酒馆兼容】设置 assistant_prefill
+    // 兼容：设置 assistant_prefill
     if (preset.params && preset.params.assistant_prefill) {
         gameState._assistantPrefill = MacroEngine.process(preset.params.assistant_prefill, macroEnv);
     } else {
@@ -2161,8 +2161,8 @@ var PresetManager = {
         gameState._useSysprompt = preset.params.use_sysprompt !== undefined ? preset.params.use_sysprompt : true;
         gameState._squashSystemMessages = preset.params.squash_system_messages || false;
         gameState._namesBehavior = preset.params.names_behavior || 0;
-        // 【酒馆兼容】世界书/预设提示词合并顺序：true=世界书在前（默认），false=预设在世界书前
-        // 酒馆标准参数名 world_info_position_first（部分预设可能用 prompt_world_info_first）
+        // 兼容：世界书/预设提示词合并顺序：true=世界书在前（默认），false=预设在世界书前
+        // 标准参数名 world_info_position_first（部分预设可能用 prompt_world_info_first）
         var wiFirstVal = preset.params.world_info_position_first;
         if (wiFirstVal === undefined) wiFirstVal = preset.params.prompt_world_info_first;
         gameState._wiFirst = (wiFirstVal === false) ? false : true;
@@ -2184,7 +2184,7 @@ var PresetManager = {
     // 切换预设时，自动切换预设绑定的正则脚本
     // 预设正则与全局正则分开存储，切换预设时自动切换
     // 优先使用已解析的 _parsedRegexScripts
-    // 【修改】增加安全确认机制，仿酒馆 preset_allowed_regex
+    // 【修改】增加安全确认机制，仿 preset_allowed_regex
     // 首次加载含正则的预设时弹窗询问用户，确认后才应用正则
     var presetScripts = preset._parsedRegexScripts || preset.regexScripts;
     if (presetScripts && presetScripts.length > 0) {
@@ -2207,9 +2207,9 @@ var PresetManager = {
     RegexManager.clearPresetScripts();
     }
 
-    // 加载酒馆助手脚本（兼容层）
+    // 加载助手脚本（兼容层）
     if (preset.tavernHelperScripts && preset.tavernHelperScripts.length > 0) {
-        console.log('[Preset] 检测到酒馆助手脚本:', preset.tavernHelperScripts.length, '个');
+        console.log('[Preset] 检测到助手脚本:', preset.tavernHelperScripts.length, '个');
         if (typeof TavernHelperCompat !== 'undefined') {
             TavernHelperCompat.loadScripts({ scripts: preset.tavernHelperScripts });
         }
@@ -2225,7 +2225,7 @@ var PresetManager = {
         }
     }
 
-    // 【修复】从 spresetButtons 加载快捷回复（果实预设）
+    // 【修复】从 spresetButtons 加载快捷回复（玩家预设）
     if (preset.spresetButtons && preset.spresetButtons.length > 0) {
         console.log('[Preset] 检测到 SPreset 快捷回复按钮:', preset.spresetButtons.length, '个');
         if (typeof TavernHelperCompat !== 'undefined') {
@@ -2324,7 +2324,7 @@ var PresetManager = {
         descEl.textContent = desc.length > 0 ? desc.join(' | ') : '已加载';
         } else {
         nameEl.textContent = '默认预设';
-        descEl.textContent = '点击选择或导入酒馆预设';
+        descEl.textContent = '点击选择或导入预设';
         }
     },
 
@@ -2442,7 +2442,7 @@ var PresetManager = {
                 });
         }
 
-        // 包含酒馆助手脚本
+        // 包含助手脚本
         if (preset.tavernHelperScripts && preset.tavernHelperScripts.length > 0) {
             exportData.extensions.tavern_helper = {
                 scripts: preset.tavernHelperScripts
@@ -2496,7 +2496,7 @@ var RegexManager = {
     _currentView: 'groups',  // 'groups' 或 'detail'
     _detailGroupType: null,  // 'global' 或 'preset'
     _detailGroupIdx: null,  // 预设索引（仅 preset 类型时使用）
-    // 预设正则允许列表（仿酒馆 preset_allowed_regex 安全机制）
+    // 预设正则允许列表（仿 preset_allowed_regex 安全机制）
     // 参考：SillyTavern extension_settings.preset_allowed_regex
     // 存储格式：{ "预设名": true } — 记录用户已允许使用正则的预设
     // 首次加载含正则的预设时弹窗确认，确认后记录在此，后续不再弹窗
@@ -2554,7 +2554,7 @@ var RegexManager = {
     },
 
     // 设置当前预设的正则脚本（切换预设时调用）
-    // 【修改】增加 allowed 检查，仿酒馆的安全机制
+    // 【修改】增加 allowed 检查，仿安全机制
     setPresetScripts: function(scripts, presetName) {
         this._presetScripts = scripts || [];
         console.log('[RegexManager] 已切换预设正则脚本:', this._presetScripts.length, '条');
@@ -2999,7 +2999,7 @@ renderScriptList: function() {
 }
 },
 
-// 导入酒馆正则脚本
+// 导入正则脚本
 importFromFile: function(file) {
     const self = this;
     var reader = new FileReader();
@@ -3028,7 +3028,7 @@ UI.toast('导入失败: ' + translateError(err.message));
 reader.readAsText(file);
 },
 
-// 解析酒馆正则格式
+// 解析正则格式
 parseRegexScripts: function(data) {
     var scripts = [];
     const self = this;
@@ -3064,7 +3064,7 @@ parseSingleRegex: function(data, isImport) {
     if (!data) return null;
 
     // placement 默认行为：
-    // 酒馆中 placement 为空数组 [] 表示不应用于任何位置
+    // placement 为空数组 [] 表示不应用于任何位置
     // 如果 placement 未定义，需要区分是导入的还是新建的：
     // - 导入的正则：placement 未定义表示不自动应用（除非明确包含 1 或 2）
     // - 新建的正则（isImport=false）：默认应用输入和输出
@@ -3079,8 +3079,8 @@ parseSingleRegex: function(data, isImport) {
     if (hasExplicitPlacement && !isEmptyPlacement) {
         // placement是数组
         if (Array.isArray(data.placement)) {
-            applyInput = data.placement.includes(2);  // 2 = USER_INPUT (酒馆标准)
-            applyOutput = data.placement.includes(1); // 1 = MD_DISPLAY (AI输出, 酒馆标准)
+            applyInput = data.placement.includes(2);  // 2 = USER_INPUT（标准）
+            applyOutput = data.placement.includes(1); // 1 = MD_DISPLAY（AI 输出，标准）
             // 保留额外 placement 值（3, 5, 6 等）
             data.placement.forEach(function(p) {
                 if (p !== 1 && p !== 2) extraPlacements.push(p);
@@ -3096,13 +3096,13 @@ else if (typeof data.placement === 'number') {
 
 // 【修复关键逻辑】
 // 只有在没有明确 placement 且不是导入的情况下，才默认应用（兼容旧格式/新建正则）
-// 从酒馆导入的正则，如果没有 placement 设置，应该不自动应用
+// 导入的正则，如果没有 placement 设置，应该不自动应用
 else if (!hasExplicitPlacement && !isImport) {
     // 旧格式或新建的正则，默认应用
     applyInput = true;
     applyOutput = true;
 }
-// 如果是导入的但 placement 未定义，或 placement 为空数组，保持不应用（酒馆行为）
+// 如果是导入的但 placement 未定义，或 placement 为空数组，保持不应用（标准行为）
 
 // trimStrings 格式转换：支持字符串（逗号分隔）或数组
 function normalizeTrimStrings(val) {
@@ -3323,7 +3323,7 @@ UI.toast('已清空 ' + count + ' 条全局正则脚本');
 // ===== 执行引擎 =====
 
 // placement常量定义（与SillyTavern一致）
-// 酒馆标准: 1=MD显示(AI输出), 2=用户输入, 3=斜杠命令, 4=世界信息, 5=宏/命令, 6=推理
+// 标准: 1=MD 显示(AI 输出), 2=用户输入, 3=斜杠命令, 4=世界信息, 5=宏/命令, 6=推理
 PLACEMENT: {
     MD_DISPLAY: 1,     // MD显示 - AI输出渲染后
     USER_INPUT: 2,     // 用户输入
@@ -3369,7 +3369,7 @@ switch(placement) {
     break;
     case 'worldInfo':
     case 'world_info':
-    // 酒馆标准: 4 = WORLD_INFO
+    // 标准: 4 = WORLD_INFO
     shouldApply = placements.includes(4) || placements.includes('WORLD_INFO');
     break;
     case 'reasoning':
@@ -3692,7 +3692,7 @@ var MacroEngine = {
     getTheaterContent: function(theaterType) {
         // 检测各种小剧场变量
         var theaterVars = {
-            // 月读预设 - 之愿系列
+            // 之愿系列（小剧场）
             '盲盒之愿': this.getLocalVar('盲盒之愿') || this.getLocalVar('blind_box'),
             '每日之愿': this.getLocalVar('每日之愿') || this.getLocalVar('daily'),
             '涩涩之愿': this.getLocalVar('涩涩之愿') || this.getLocalVar('nsfw_wish'),
@@ -3711,7 +3711,7 @@ var MacroEngine = {
             '报告之愿': this.getLocalVar('报告之愿') || this.getLocalVar('report_wish'),
             '问卷之愿': this.getLocalVar('问卷之愿') || this.getLocalVar('survey_wish'),
 
-            // 果实预设
+            // 自然风格小剧场
             '小剧场规范': this.getLocalVar('小剧场规范'),
             'snow': this.getLocalVar('snow'),
             'emoji_snow': this.getLocalVar('emoji_snow'),
@@ -3719,16 +3719,16 @@ var MacroEngine = {
             '日常剧场': this.getLocalVar('日常剧场'),
             '后台人生': this.getLocalVar('后台人生'),
 
-            // 蛾摩拉预设
+            // 长篇风格小剧场
             '小剧场': this.getLocalVar('小剧场'),
-            '蛾摩拉': this.getLocalVar('蛾摩拉'), // 作者有话说
+            '蛾摩拉': this.getLocalVar('蛾摩拉'), // 作者有话说（兼容玩家预设中的特定变量名）
             '日程表': this.getLocalVar('日程表'),
             '小夜单人状态': this.getLocalVar('小夜单人状态'),
 
             // 通用
             '剧场COT': this.getLocalVar('剧场COT'),
 
-            // 【新增】酒馆预设标签识别
+            // 【新增】预设标签识别
             // <gossip> → 论坛
             'gossip': this.getLocalVar('gossip'),
             '八卦': this.getLocalVar('八卦'),
@@ -3765,7 +3765,7 @@ var MacroEngine = {
             '文字剧场': this.getLocalVar('文字剧场'),
             '剧场': this.getLocalVar('剧场'),
 
-            // 【新增】象牙塔预设 - 更多小剧场类型
+            // 【兼容】更多小剧场类型（玩家预设）
             '恋爱之愿': this.getLocalVar('恋爱之愿'),
             '同人之愿': this.getLocalVar('同人之愿'),
             '回忆之愿': this.getLocalVar('回忆之愿'),
@@ -3844,7 +3844,7 @@ var MacroEngine = {
             return result;
         }
 
-        // 检测 <author_note> 标签（蛾摩拉作话）
+        // 检测 <author_note> 标签（作者有话说）
         var authorMatch = content.match(/<author_note>([\s\S]*?)<\/author_note>/i);
         if (authorMatch) {
             result.type = 'author_note';
@@ -4276,7 +4276,7 @@ var MacroEngine = {
 
     /**
     * 核心方法：处理文本中的所有宏
-    * 按照酒馆的执行顺序分三组处理
+    * 按照标准执行顺序分三组处理
     * @param {string} text - 要处理的文本
     * @param {object} env - 可选的环境变量覆盖
     * @param {string} env.original - {{original}} 宏的替换值（未经宏处理的原始内容）
@@ -4429,7 +4429,7 @@ var MacroEngine = {
     // 注释宏（最后执行）
     text = text.replace(/\{\{\/\/([\s\S]*?)\}\}/gm, '');
 
-    // ===== 补全酒馆常用宏 =====
+    // ===== 补全常用宏 =====
 
     // 字符串操作宏
     text = text.replace(/\{\{uppercase\s*::\s*([^}]+?)\}\}/gi, function(_, t) { return (t||'').toUpperCase(); });
@@ -4500,7 +4500,7 @@ var MacroEngine = {
         });
 
     // ===== 管道宏机制 {{value|pipe1|pipe2|...}} =====
-    // 酒馆标准：将前一步的输出作为下一步的输入，支持链式操作
+    // 标准：将前一步的输出作为下一步的输入，支持链式操作
     // 例如 {{getvar::name|uppercase|trim}} 或 {{char|lowercase}}
     text = this._applyPipeMacros(text);
 
@@ -4702,7 +4702,7 @@ var MacroEngine = {
 
     /**
     * 管道宏处理器 {{value|pipe1|pipe2|...}}
-    * 酒馆标准：将前一步的输出作为下一步的输入
+    * 标准：将前一步的输出作为下一步的输入
     */
     _applyPipeMacros: function(text) {
         const self = this;

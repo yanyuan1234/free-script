@@ -93,7 +93,7 @@
         // ── Hook 5: renderStory - 已移除 ──
         // 与 Hook 6 (RegexManager.applyToOutput) 重复，已在 Hook 6 中统一处理
 
-        // ── Hook 6: 增强 RegexManager 支持月读/蛾摩拉正则格式 ──
+        // ── Hook 6: 增强 RegexManager 支持多份预设的正则格式 ──
         if (typeof RegexManager !== 'undefined') {
             // 保存原始 applyToOutput
             var origApplyToOutput = RegexManager.applyToOutput;
@@ -102,7 +102,7 @@
                     // 先用游戏原始正则处理
                     text = origApplyToOutput.call(this, text);
 
-                    // 再用STscript引擎处理（兼容月读/蛾摩拉格式）
+                    // 再用 STscript 引擎处理（兼容多份预设）
                     if (window.gameAdapter && window.gameAdapter.currentPreset) {
                         text = window.gameAdapter.processResponse(text, {
                             messageDepth: (typeof gameState !== 'undefined') ?
@@ -130,7 +130,7 @@
         }
 
         // ── Hook 7: 预设导入增强 ──
-        // 当用户导入酒馆预设JSON时，自动标准化格式
+        // 当用户导入预设 JSON 时，自动标准化格式
         if (typeof PresetManager !== 'undefined' && PresetManager.importPreset) {
             var origImport = PresetManager.importPreset;
             PresetManager.importPreset = function(data) {
@@ -179,7 +179,7 @@
         }
 
         console.log('[STscript] ✅ 集成完成！兼容引擎已激活');
-        console.log('[STscript] 支持预设：果实·叶子版 / 月读·Gemini / 蛾摩拉☼');
+        console.log('[STscript] 预设兼容引擎已加载（支持多份主流预设）');
     }
 
     // 启动集成
