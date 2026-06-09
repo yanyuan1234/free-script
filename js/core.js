@@ -1069,7 +1069,7 @@ anti429Mode: false,          // 防429模式（来自果实预设）
 writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
 cotMode: '',                 // 思维链模式（来自蛾摩拉预设）
 summaryThreshold: 6,         // 摘要阈值（来自月读预设）
-_squashSystemMessages: false // 合并system消息（来自果实预设）
+_squashSystemMessages: true // 合并system消息（来自果实预设，默认开启）
 };
 }
 

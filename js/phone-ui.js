@@ -5523,11 +5523,8 @@ function saveGameSettings() {
     if (cotModeEl) gameState.cotMode = cotModeEl.value;
     var anti429El = document.getElementById('settingAnti429');
     if (anti429El) gameState.anti429Mode = anti429El.checked;
-    var squashEl = document.getElementById('settingSquashSystem');
-    if (squashEl) gameState._squashSystemMessages = squashEl.checked;
-    // 摘要阈值也同步到新位置
-    var stEl2 = document.getElementById('settingSummaryThreshold');
-    if (stEl2) gameState.summaryThreshold = parseInt(stEl2.value) || 0;
+    // squashSystemMessages 已固定开启，不需要从UI读取
+    // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
     safeSetItem('freeScript_settings', JSON.stringify({
         useStream: gameState.useStream,
@@ -5542,8 +5539,7 @@ function saveGameSettings() {
         // 【酒馆预设融合】叙事增强设置
         writingStyle: gameState.writingStyle,
         cotMode: gameState.cotMode,
-        anti429Mode: gameState.anti429Mode,
-        squashSystemMessages: gameState._squashSystemMessages
+        anti429Mode: gameState.anti429Mode
     }));
     applyFontSize();
 }
@@ -5734,7 +5730,7 @@ function loadGameSettings() {
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
             if (d.anti429Mode !== undefined) gameState.anti429Mode = d.anti429Mode;
-            if (d.squashSystemMessages !== undefined) gameState._squashSystemMessages = d.squashSystemMessages;
+            // squashSystemMessages 固定开启，不再从存档恢复（预设可覆盖）
             // 恢复叙事增强UI
             var wsEl = document.getElementById('settingWritingStyle');
             if (wsEl) wsEl.value = gameState.writingStyle || '';
@@ -5742,10 +5738,6 @@ function loadGameSettings() {
             if (cmEl) cmEl.value = gameState.cotMode || '';
             var a429El = document.getElementById('settingAnti429');
             if (a429El) a429El.checked = !!gameState.anti429Mode;
-            var sqEl = document.getElementById('settingSquashSystem');
-            if (sqEl) sqEl.checked = !!gameState._squashSystemMessages;
-            var stEl2 = document.getElementById('settingSummaryThreshold');
-            if (stEl2) stEl2.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
         }

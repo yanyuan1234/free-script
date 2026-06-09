@@ -2391,7 +2391,8 @@
                                 </div>
                                 <div class="setting-body" style="display:none;">
                                     <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        来自酒馆大佬们的创作智慧，提升叙事质量的核心开关
+                                        来自酒馆大佬们的创作智慧，提升叙事质量<br>
+                                        <span style="color:var(--text-tertiary);">已自动启用：抗OOC/抗全知/抗刻板规则、多角色叙事指导、空变量清理、system消息合并、智能摘要</span>
                                     </div>
                                     <!-- 文风选择 -->
                                     <div class="setting-row">
@@ -2416,25 +2417,7 @@
                                     <div class="setting-row">
                                         <label class="field-label">防429模式</label>
                                         <label class="switch"><input type="checkbox" id="settingAnti429" onchange="gameState.anti429Mode=this.checked;"><span class="slider"></span></label>
-                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">注入随机噪声降低API审查触发</span>
-                                    </div>
-                                    <!-- 合并system消息 -->
-                                    <div class="setting-row">
-                                        <label class="field-label">合并system消息</label>
-                                        <label class="switch"><input type="checkbox" id="settingSquashSystem" onchange="gameState._squashSystemMessages=this.checked;"><span class="slider"></span></label>
-                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">将相邻system消息合并为一条（节省消息数）</span>
-                                    </div>
-                                    <!-- 摘要阈值 -->
-                                    <div class="setting-row">
-                                        <label class="field-label">摘要阈值</label>
-                                        <select id="settingSummaryThreshold" class="setting-select" onchange="gameState.summaryThreshold=parseInt(this.value)||0;">
-                                            <option value="4">4轮</option>
-                                            <option value="6" selected>6轮（推荐）</option>
-                                            <option value="10">10轮</option>
-                                            <option value="20">20轮</option>
-                                            <option value="0">不限制</option>
-                                        </select>
-                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">超过此轮数的旧对话只发摘要</span>
+                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">遇到429报错时再开启</span>
                                     </div>
                                 </div>
                             </div>
