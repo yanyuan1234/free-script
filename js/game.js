@@ -607,6 +607,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 主系统提示词
             if (gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
+            } else if (gameState.systemPrompt && gameState.systemPrompt.trim()) {
+                messages.push({ role: 'user', content: gameState.systemPrompt });
             }
             // 世界书position注入（与主路径一致的depth 0-5）
             var _initWIPos = gameState._wiPositionTexts || null;
@@ -675,8 +677,13 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // [0] 主系统提示词
             // 支持 use_sysprompt 配置（月读预设设为 false）
+            // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
+            // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
             if (gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
+            } else if (gameState.systemPrompt && gameState.systemPrompt.trim()) {
+                // use_sysprompt=false：内容不丢弃，改为 user 角色发送
+                messages.push({ role: 'user', content: gameState.systemPrompt });
             }
 
             // 辅助函数：合并世界书和预设提示词
