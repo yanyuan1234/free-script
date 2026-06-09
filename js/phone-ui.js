@@ -5531,6 +5531,31 @@ function saveGameSettings() {
     var anti429El = document.getElementById('settingAnti429');
     if (anti429El) gameState.anti429Mode = anti429El.checked;
     // squashSystemMessages 已固定开启，不需要从UI读取
+    // === 酒馆预设融合：叙事融合层 v2 ===
+    // 章节模式
+    var chapterModeEl = document.getElementById('settingChapterMode');
+    if (chapterModeEl) gameState.chapterMode = chapterModeEl.value;
+    // NPC 描写准则
+    var npcRulesEl = document.getElementById('settingNpcRules');
+    if (npcRulesEl) gameState.npcDescriptionRules = npcRulesEl.checked;
+    // 叙事之眼（10眼）
+    if (!gameState.narrativeEyes) gameState.narrativeEyes = {};
+    document.querySelectorAll('[data-eye]').forEach(function(el) {
+        var k = el.getAttribute('data-eye');
+        gameState.narrativeEyes[k] = el.checked;
+    });
+    // 缄默法则（11条）
+    if (!gameState.squelchRules) gameState.squelchRules = {};
+    document.querySelectorAll('[data-squelch]').forEach(function(el) {
+        var k = el.getAttribute('data-squelch');
+        gameState.squelchRules[k] = el.checked;
+    });
+    // 标签美化库
+    if (!gameState.beautifyLibrary) gameState.beautifyLibrary = {};
+    document.querySelectorAll('[data-beautify]').forEach(function(el) {
+        var k = el.getAttribute('data-beautify');
+        gameState.beautifyLibrary[k] = el.checked;
+    });
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
     safeSetItem('freeScript_settings', JSON.stringify({
@@ -5546,7 +5571,14 @@ function saveGameSettings() {
         // 【酒馆预设融合】叙事增强设置
         writingStyle: gameState.writingStyle,
         cotMode: gameState.cotMode,
-        anti429Mode: gameState.anti429Mode
+        anti429Mode: gameState.anti429Mode,
+        // === 酒馆预设融合 v2 ===
+        chapterMode: gameState.chapterMode,
+        npcDescriptionRules: gameState.npcDescriptionRules,
+        narrativeEyes: gameState.narrativeEyes,
+        squelchRules: gameState.squelchRules,
+        beautifyLibrary: gameState.beautifyLibrary,
+        presetArchetype: gameState.presetArchetype
     }));
     applyFontSize();
     // 保存成功提示
@@ -5563,6 +5595,82 @@ function saveGameSettings() {
         document.body.appendChild(inp);
     }
 })();
+
+// === 酒馆预设融合：推荐档位切换 ===
+// 一键应用酒馆大佬沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
+var ARCHETYPE_PRESETS = {
+    conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '🎯 保守叙事' },
+    natural:      { temperature: 0.95, top_p: 0.95, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '🌊 自然叙事' },
+    passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '🔥 激情叙事' },
+    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '🌙 细腻叙事' }
+};
+function applyArchetype(name) {
+    var p = ARCHETYPE_PRESETS[name];
+    if (!p) return;
+    // 写入 PresetManager（这是 callAI 真正读取的源）
+    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        PresetManager.currentParams.temperature = p.temperature;
+        PresetManager.currentParams.top_p = p.top_p;
+        PresetManager.currentParams.frequency_penalty = p.frequency_penalty;
+        PresetManager.currentParams.presence_penalty = p.presence_penalty;
+        PresetManager.currentParams.repeat_penalty = p.repeat_penalty;
+        if (typeof PresetManager.syncParamsToUI === 'function') PresetManager.syncParamsToUI();
+    }
+    if (typeof gameState !== 'undefined') {
+        gameState.temperature = p.temperature;
+        gameState.presetArchetype = name;
+    }
+    // UI 反馈
+    document.querySelectorAll('.archetype-card').forEach(function(el) {
+        el.classList.toggle('active', el.getAttribute('data-archetype') === name);
+    });
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('已应用档位：' + p._label + '（导入酒馆预设时会被覆盖）');
+}
+
+// === 酒馆预设融合：触发大总结 ===
+// 来自象牙塔预设的 summarize_full/summarize_chapter 能力
+function triggerGrandSummary(mode) {
+    if (typeof gameState === 'undefined') return;
+    var messages = [];
+    var userInput = '';
+    if (mode === 'chapter') {
+        userInput = '【系统指令】请对最近一轮的剧情进行【本章大总结】。' +
+                    '停止推进剧情，输出以下结构：\n' +
+                    '- 核心事件（按时间顺序）\n' +
+                    '- 角色关系变化\n' +
+                    '- 关键物品/约定\n' +
+                    '- 世界状态更新\n' +
+                    '使用简洁陈述句，避免修饰，保留重要细节。';
+    } else if (mode === 'full') {
+        userInput = '【系统指令】请对全部历史剧情进行【全文大总结】。' +
+                    '停止推进剧情，输出以下结构：\n' +
+                    '- 时间线（按日期组织）\n' +
+                    '- 核心事件汇总\n' +
+                    '- 角色关系发展\n' +
+                    '- 关键转折点\n' +
+                    '- 当前世界状态\n' +
+                    '使用简洁陈述句，按逻辑顺序组织信息。';
+    } else if (mode === 'check') {
+        userInput = '【系统指令】请对最近10轮剧情进行【连贯性检查】。' +
+                    '检查以下方面：\n' +
+                    '- 角色行为是否一致\n' +
+                    '- 时间线是否合理\n' +
+                    '- 是否存在前后矛盾\n' +
+                    '- 是否有未解决的伏笔\n' +
+                    '输出检查报告，不要推进剧情。';
+    }
+    if (!userInput) return;
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('正在触发' + (mode === 'chapter' ? '本章' : mode === 'full' ? '全文' : '连贯性') + '大总结...');
+    // 直接调用 sendAIRequest
+    if (typeof sendAIRequest === 'function') {
+        sendAIRequest(userInput, false);
+    } else {
+        // 兜底：写入 conversationHistory
+        if (gameState.conversationHistory) {
+            gameState.conversationHistory.push({ role: 'user', content: userInput });
+        }
+    }
+}
 async function exportSaves() {
     try {
         var allSaves = await SaveDB.getAll();
@@ -5747,6 +5855,39 @@ function loadGameSettings() {
             if (cmEl) cmEl.value = gameState.cotMode || '';
             var a429El = document.getElementById('settingAnti429');
             if (a429El) a429El.checked = !!gameState.anti429Mode;
+            // === 酒馆预设融合 v2 恢复 ===
+            if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
+            if (d.npcDescriptionRules !== undefined) gameState.npcDescriptionRules = d.npcDescriptionRules;
+            if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
+                gameState.narrativeEyes = d.narrativeEyes;
+            }
+            if (d.squelchRules && typeof d.squelchRules === 'object') {
+                gameState.squelchRules = d.squelchRules;
+            }
+            if (d.beautifyLibrary && typeof d.beautifyLibrary === 'object') {
+                gameState.beautifyLibrary = d.beautifyLibrary;
+            }
+            if (d.presetArchetype !== undefined) gameState.presetArchetype = d.presetArchetype;
+            // 恢复 UI 控件
+            var chModeEl = document.getElementById('settingChapterMode');
+            if (chModeEl) chModeEl.value = gameState.chapterMode || 'off';
+            var npcEl = document.getElementById('settingNpcRules');
+            if (npcEl) npcEl.checked = gameState.npcDescriptionRules !== false;
+            document.querySelectorAll('[data-eye]').forEach(function(el) {
+                var k = el.getAttribute('data-eye');
+                el.checked = gameState.narrativeEyes && gameState.narrativeEyes[k] === true;
+            });
+            document.querySelectorAll('[data-squelch]').forEach(function(el) {
+                var k = el.getAttribute('data-squelch');
+                el.checked = gameState.squelchRules && gameState.squelchRules[k] === true;
+            });
+            document.querySelectorAll('[data-beautify]').forEach(function(el) {
+                var k = el.getAttribute('data-beautify');
+                el.checked = gameState.beautifyLibrary && gameState.beautifyLibrary[k] === true;
+            });
+            document.querySelectorAll('.archetype-card').forEach(function(el) {
+                el.classList.toggle('active', el.getAttribute('data-archetype') === gameState.presetArchetype);
+            });
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
         }

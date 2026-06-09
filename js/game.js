@@ -131,6 +131,147 @@ function _sanitizePromptInput(str) {
     // 注意：不再移除花括号内容，因为游戏设定中大量使用{}描述规则和属性
 }
 
+// === 酒馆预设融合层 ===
+// 把酒馆大佬们沉淀的「优秀预设」融进 Free-Script，作为默认设置
+// 核心原则：导入的酒馆预设优先级最高，本层仅在无预设/无覆盖时生效
+function buildNarrativeEnhancement() {
+    var gs = gameState;
+    if (!gs) return '';
+    var blocks = [];
+
+    // 【关键】如果当前已加载酒馆预设且有 main/nsfw 等内容，跳过本层注入
+    // 避免与酒馆预设冲突——酒馆预设自带高质量 prompt，本层退位
+    if (typeof PresetManager !== 'undefined' && PresetManager.presets) {
+        var idx = PresetManager.currentPresetIndex;
+        if (idx >= 0 && PresetManager.presets[idx]) {
+            var p = PresetManager.presets[idx];
+            var hasMain = (p.prompts || []).some(function(x) {
+                return x.identifier === 'main' && x.content && x.content.trim().length > 50;
+            });
+            // 内置预设不参与此判断（内置预设本身就需要本层增强）
+            if (hasMain && !p._isBuiltin) {
+                return '';  // 酒馆预设接管，本层静默
+            }
+        }
+    }
+
+    // === 1. 章节模式（来自果实预设） ===
+    if (gs.chapterMode && gs.chapterMode !== 'off') {
+        if (gs.chapterMode === 'chapter') {
+            blocks.push('【章节模式·开启】\n本回合 = 一个章节。\n- 引入 10-20% → 发展 40-60% → （高潮）→ 收尾 10-20%\n- 章末必须留未竟：情绪/未竟动作/未答疑问\n- 一章聚焦一个场景/情况，不跨场景\n- 单章字数 1500-3000 字，按设定阈值执行');
+        } else if (gs.chapterMode === 'longform') {
+            blocks.push('【长篇沉浸·开启】\n- 沉浸式长段落，单段 250-600 字\n- 拒绝碎片化换行，禁止一两句就换段\n- 把对话、动作、环境、心理整合为高密度完整段');
+        }
+    }
+
+    // === 2. 世界之眼（来自月读预设的 10 眼系统） ===
+    if (gs.narrativeEyes) {
+        var eyes = [];
+        var eyeMap = {
+            realistic:    '[真实之眼] 角色受身份、资源、关系与环境约束；冲突有代价，选择有回响，情节靠行动与后果推进',
+            ideal:        '[理想之眼] 聚焦人与人之间的温柔联结，以情感修复与双向靠近为主线；叙事偏明亮细腻',
+            ensemble:     '[群像之眼] 多角色共驱世界，每名关键角色都有独立立场、诉求与底线',
+            daily:        '[余温之眼] 重视停顿、闲谈、重复习惯与未说出口的话，通过日常摩擦建立真实羁绊',
+            heartbeat:    '[怦然之眼] 情绪浓度强化，角色对用户的在意必须是可感知的、浓郁的',
+            undercurrent: '[暗潮之眼] 对话之外保留潜台词与利益博弈，信任可建立也可动摇',
+            fate:         '[命运之眼] 强调"选择-后果-再选择"的循环结构；旧事件在后文持续回响',
+            comedy:       '[喜剧之眼] 轻荒诞世界观，夸张设定+反差角色，但情感动机必须真实',
+            balanced:     '[均衡之眼] 维持戏剧性与合理性的动态平衡，高张力桥段后必须补足逻辑落点',
+            mystery:      '[迷雾之眼] 现实与超常边界长期模糊，线索常以象征、传闻与错觉出现'
+        };
+        for (var k in eyeMap) {
+            if (gs.narrativeEyes[k]) eyes.push(eyeMap[k]);
+        }
+        if (eyes.length > 0) {
+            blocks.push('【叙事之眼·当前启用的 ' + eyes.length + ' 个】\n' + eyes.join('\n'));
+        }
+    }
+
+    // === 3. NPC 描写准则（来自蛾摩拉预设） ===
+    if (gs.npcDescriptionRules) {
+        blocks.push('【NPC 描写准则】\n- 男帅女美，爱干净，禁止邋遢脏乱或散发臭味\n- NPC 性格也可以很出彩，禁止脸谱化恶意\n- NPC 能力也可以超越主角，符合剧情逻辑即可\n- 禁用：磕碜/其貌不扬/歪瓜裂枣/指甲藏垢/肥/肥宅/臃肿/油腻/黑泥/邋遢/流浪汉/抠脚/横肉/淫邪 等与丑相关的形容');
+    }
+
+    // === 4. 缄默法则/词句肃清（来自蛾摩拉预设·生成前引导） ===
+    // 注意：实际净化在 _squelchPostProcess 中执行（输出后处理）
+    // 这里只在 prompt 中明确告知 AI，避免它产生这些表达
+    if (gs.squelchRules) {
+        var sr = gs.squelchRules;
+        var rules = [];
+        if (sr.oilyCliches)         rules.push('【油腻套路】禁止"嘴角勾起弧度/捏下巴"，改为"浅笑/轻笑/微笑"');
+        if (sr.bodyCloseups)        rules.push('【身体特写】禁止"胸膛震动/胸腔起伏/喉结滚出/手部工业糖精特写"，整句删除');
+        if (sr.anatomyTerms)        rules.push('【解剖名词】禁用"耻骨/肋骨/肩胛骨/肌理"，替换为"小穴/腿心/胸/手/手指"');
+        if (sr.cognitiveInability)  rules.push('【认知失能】禁用"难以言喻/无法名状/不易察觉/近乎/不轻不重"，直接删除');
+        if (sr.mandative)           rules.push('【强制情态】禁用"不容置疑/不容置喙/不容分说"，删除');
+        if (sr.referenceDep)        rules.push('【参照依赖】禁用"不是A而是B/比任何A都/不像A倒像B/平日里A"，删除');
+        if (sr.extremeAdverbs)      rules.push('【极端程度副词】禁用"极其/极/极度"，删除或替换');
+        if (sr.pronouns)            rules.push('【赘余指示代词】删除"那个/那种/那股"，让具体事物做主语');
+        if (sr.metaphors)           rules.push('【假想情境式比喻】禁用"仿佛/像是/好似+动词短语"，出现即删');
+        if (sr.metaphorBlacklist)   rules.push('【喻体黑名单】禁用：石子/雕像/珍宝/艺术品/棋子/炸弹/救命稻草/浮木/烙印/骨血/羽毛/火焰/无形的(手/墙)/猎物/困兽/小动物/小兽/探针/刺/手术刀/弓弦/锤子');
+        if (sr.forbidden)           rules.push('【禁词拦截】必须删除"嘴角勾起弧度/捏下巴/胸膛震动/胸腔起伏/喉结滚出/嗓音低沉而富有磁性"等模板化描写');
+        if (rules.length > 0) {
+            blocks.push('【缄默法则·词句肃清】（来自蛾摩拉预设的智慧）\n' + rules.join('\n'));
+        }
+    }
+
+    if (blocks.length === 0) return '';
+    return '\n\n【叙事融合·来自酒馆大佬的智慧】\n' + blocks.join('\n\n') + '\n';
+}
+
+// 缄默法则·输出后处理
+// 在 AI 返回文本后，对 JSON story 字段执行净化，删除 AI 漏网的违禁表达
+function _squelchPostProcess(story) {
+    var gs = gameState;
+    if (!gs || !gs.squelchRules || !story) return story;
+    var sr = gs.squelchRules;
+
+    // 第一层：整句删除模式（强约束）
+    var sentenceKillers = [];
+    if (sr.bodyCloseups) {
+        sentenceKillers = sentenceKillers.concat([
+            // 身体特写：胸膛震动/胸腔起伏/喉结滚出/手部特写
+            /胸膛[^。\n]{0,15}震动[^。\n]*[。\n]/g,
+            /胸腔[^。\n]{0,15}起伏[^。\n]*[。\n]/g,
+            /喉结[^。\n]{0,8}滚出[^。\n]*[。\n]/g,
+            /[^。\n]{0,8}(掌心|指节|指骨|骨节)[^。\n]{0,8}(分明|泛白|作响|修长|修长)[^。\n]*[。\n]/g
+        ]);
+    }
+    if (sr.oilyCliches) {
+        sentenceKillers = sentenceKillers.concat([
+            // 油腻套路
+            /嘴角[^。\n]{0,5}勾起[^。\n]{0,5}弧度[^。\n]*[。\n]/g,
+            /捏[着住][^。\n]{0,5}(下巴|脸颊|脸庞)[^。\n]*[。\n]/g,
+            /嗓音[^。\n]{0,8}低沉[^。\n]{0,8}而[^。\n]{0,5}富有[^。\n]{0,5}磁性[^。\n]*[。\n]/g
+        ]);
+    }
+
+    for (var i = 0; i < sentenceKillers.length; i++) {
+        story = story.replace(sentenceKillers[i], '');
+    }
+
+    // 第二层：词级净化
+    if (sr.extremeAdverbs) {
+        story = story.replace(/极其|极度|极为/g, '');
+    }
+    if (sr.mandative) {
+        story = story.replace(/不容置喙|不容置疑|不容分说/g, '');
+    }
+    if (sr.cognitiveInability) {
+        story = story.replace(/难以言喻|无法名状|不易察觉|不轻不重/g, '');
+    }
+    if (sr.metaphorBlacklist) {
+        // 喻体黑名单：删除"仿佛/像/似+喻体"整段（中间允许"一团/一个/了"等量词）
+        var _blacklist = '石子|石头|雕像|珍宝|艺术品|棋子|炸弹|救命稻草|浮木|烙印|骨血|羽毛|火焰|无形的(手|墙)|猎物|困兽|小动物|小兽|探针|刺|手术刀|弓弦|锤子';
+        story = story.replace(new RegExp('(仿佛|好像|好似|似乎|如同|就好似|就像是?)([^。，；\\n]{0,8})(' + _blacklist + ')', 'g'), '');
+        story = story.replace(new RegExp('(' + _blacklist + ')([^。，；\\n]{0,4})(一般?|一样|似的)', 'g'), '');
+    }
+
+    // 第三层：清理因删除产生的多余空白
+    story = story.replace(/[ \t]{2,}/g, ' ').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+
+    return story;
+}
+
 function buildSystemPrompt(includeFormatRules) {
     if (includeFormatRules === undefined) includeFormatRules = true;
     var _wiResult = gameState._wiCachedResult || WorldInfo.buildInjection(gameState.conversationHistory || []);
@@ -160,8 +301,13 @@ function buildSystemPrompt(includeFormatRules) {
         if (_layeredSetup !== null) _setupText = _layeredSetup;
     }
 
-    // 【新】收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
+    // 收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
     var _chatContextText = buildRecentChatContext();
+
+    // === 酒馆预设融合层 ===
+    // 来自酒馆大佬们的「世界之眼/章节模式/缄默法则/NPC准则」按 gameState 字段动态注入
+    // 核心原则：如果已加载酒馆预设（main 长度>50），本层退位
+    var _narrativeEnhancement = buildNarrativeEnhancement();
 
     // 【关键】有预设时，只返回纯游戏数据（设定/记忆/私聊），不包含任何默认身份定义和指导性文字
     // 预设的 system_prompt=true 条目会提供自己的身份定义和格式规则，预设才是最高优先级
@@ -183,7 +329,7 @@ function buildSystemPrompt(includeFormatRules) {
 
     if (!includeFormatRules) {
         return `${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
+${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
     }
 
     var _maxTokens = gameState.maxTokens || 4096;
@@ -194,7 +340,7 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
     _prompt = `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
 ${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}
+${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
 

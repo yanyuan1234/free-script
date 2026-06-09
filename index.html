@@ -19,6 +19,23 @@
         <link rel="stylesheet" href="css/pages.css">
         <link rel="stylesheet" href="css/phone-ui.css">
         <link rel="stylesheet" href="css/systems.css">
+        <style>
+            /* === 酒馆预设融合 UI 样式 === */
+            .eye-item{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:12px;color:var(--text);transition:all .2s;user-select:none}
+            .eye-item:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
+            .eye-item input[type="checkbox"]{margin:0;cursor:pointer;flex-shrink:0}
+            .eye-item span{flex:1;font-weight:500}
+            .archetype-card{cursor:pointer;padding:12px 14px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:2px solid var(--border,rgba(255,255,255,0.1));border-radius:10px;transition:all .2s}
+            .archetype-card:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
+            .archetype-card.active{border-color:var(--accent,var(--primary,#6366f1));background:var(--accent-soft,rgba(99,102,241,0.1))}
+            .archetype-card-title{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)}
+            .archetype-card-desc{font-size:11px;color:var(--text-secondary);line-height:1.4}
+            .archetype-card-params{font-size:10px;color:var(--text-tertiary);margin-top:6px;font-family:monospace}
+            .beautify-card{cursor:pointer;padding:10px 12px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;transition:all .2s;display:flex;align-items:center;gap:8px;font-size:12px}
+            .beautify-card:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08))}
+            .beautify-card.active{border-color:var(--accent,var(--primary,#6366f1));background:var(--accent-soft,rgba(99,102,241,0.1))}
+            .beautify-card input{margin:0}
+        </style>
         </head>
     <body>
         <!-- 加载指示器：JS加载期间显示，initApp完成后隐藏 -->
@@ -2398,6 +2415,145 @@
                                         <label class="field-label">防429模式</label>
                                         <label class="switch"><input type="checkbox" id="settingAnti429" onchange="gameState.anti429Mode=this.checked;"><span class="slider"></span></label>
                                         <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">遇到429报错时再开启</span>
+                                    </div>
+                                    <!-- 章节模式（来自果实预设） -->
+                                    <div class="setting-row">
+                                        <label class="field-label">章节模式</label>
+                                        <select id="settingChapterMode" class="select-field" onchange="gameState.chapterMode=this.value;">
+                                            <option value="off" selected>关闭（自由模式）</option>
+                                            <option value="chapter">章节模式（一回合=一章）</option>
+                                            <option value="longform">长篇沉浸（250-600字/段）</option>
+                                        </select>
+                                    </div>
+                                    <!-- NPC 描写准则（来自蛾摩拉预设） -->
+                                    <div class="setting-row">
+                                        <label class="field-label">NPC 描写准则</label>
+                                        <label class="switch"><input type="checkbox" id="settingNpcRules" checked onchange="gameState.npcDescriptionRules=this.checked;"><span class="slider"></span></label>
+                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">男帅女美/禁止脸谱化/禁用丑相关</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 叙事之眼（来自月读预设 10 眼） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">叙事之眼</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自月读预设的「世界之眼」系统，多选叠加，按需启用地基之上的叙事风格<br>
+                                        <span style="color:var(--text-tertiary);">已默认开启「真实/理想/群像」三眼，构成稳定叙事骨架</span>
+                                    </div>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                        <label class="eye-item"><input type="checkbox" data-eye="realistic" checked><span>👁 真实之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="ideal" checked><span>💗 理想之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="ensemble" checked><span>👥 群像之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="daily"><span>🍵 余温之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="heartbeat"><span>💓 怦然之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="undercurrent"><span>🌊 暗潮之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="fate"><span>🌀 命运之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="comedy"><span>😄 喜剧之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="balanced"><span>⚖ 均衡之眼</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-eye="mystery"><span>🌫 迷雾之眼</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 缄默法则（来自蛾摩拉预设·词句肃清） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">缄默法则</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自蛾摩拉预设的「词句肃清」协议：禁止油腻套路/身体特写/认知失能/假想比喻等模板化表达<br>
+                                        <span style="color:var(--text-tertiary);">不仅在 prompt 中引导 AI，还会在 AI 输出后做正则净化（双保险）</span>
+                                    </div>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                        <label class="eye-item"><input type="checkbox" data-squelch="oilyCliches" checked><span>🚫 油腻套路</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="bodyCloseups" checked><span>🚫 身体特写</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="anatomyTerms"><span>🚫 解剖名词（NSFW用）</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="cognitiveInability" checked><span>🚫 认知失能</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="mandative" checked><span>🚫 强制情态</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="referenceDep" checked><span>🚫 参照依赖</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="extremeAdverbs" checked><span>🚫 极端副词</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="pronouns"><span>🚫 赘余代词</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="metaphors" checked><span>🚫 假想比喻</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="metaphorBlacklist" checked><span>🚫 喻体黑名单</span></label>
+                                        <label class="eye-item"><input type="checkbox" data-squelch="forbidden" checked><span>🚫 禁词拦截</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 推荐参数档位（来自四份预设的经验值） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">推荐档位</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自酒馆大佬们沉淀的经验值，一键切换采样参数组合<br>
+                                        <span style="color:var(--text-tertiary);">导入酒馆预设时，预设的参数会自动覆盖档位设置</span>
+                                    </div>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+                                        <div class="archetype-card" data-archetype="conservative" onclick="applyArchetype('conservative')">
+                                            <div class="archetype-card-title">🎯 保守叙事</div>
+                                            <div class="archetype-card-desc">短篇/快节奏/清晰稳定</div>
+                                            <div class="archetype-card-params">temp 0.6 · top_p 0.9</div>
+                                        </div>
+                                        <div class="archetype-card" data-archetype="natural" onclick="applyArchetype('natural')">
+                                            <div class="archetype-card-title">🌊 自然叙事</div>
+                                            <div class="archetype-card-desc">中篇/均衡/通用推荐</div>
+                                            <div class="archetype-card-params">temp 0.95 · top_p 0.95</div>
+                                        </div>
+                                        <div class="archetype-card" data-archetype="passionate" onclick="applyArchetype('passionate')">
+                                            <div class="archetype-card-title">🔥 激情叙事</div>
+                                            <div class="archetype-card-desc">长篇/热血/想象力澎湃</div>
+                                            <div class="archetype-card-params">temp 1.3 · top_p 0.91</div>
+                                        </div>
+                                        <div class="archetype-card" data-archetype="delicate" onclick="applyArchetype('delicate')">
+                                            <div class="archetype-card-title">🌙 细腻叙事</div>
+                                            <div class="archetype-card-desc">日常/情感/克制含蓄</div>
+                                            <div class="archetype-card-params">temp 0.88 · top_p 0.88 · fp 0.2</div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 标签美化库（来自象牙塔预设的HTML/CSS美化） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">标签美化库</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自象牙塔预设的 HTML/CSS 美化系统，让 AI 输出更有视觉表现力<br>
+                                        <span style="color:var(--text-tertiary);">开关后，AI 在标签内输出对应内容时会被自动美化为卡片/界面</span>
+                                    </div>
+                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+                                        <label class="beautify-card"><input type="checkbox" data-beautify="phone"><span>📱 &lt;手机&gt; → iPhone 风格</span></label>
+                                        <label class="beautify-card"><input type="checkbox" data-beautify="status"><span>🎋 &lt;状态&gt; → 古风/像素</span></label>
+                                        <label class="beautify-card"><input type="checkbox" data-beautify="gossip"><span>💬 &lt;gossip&gt; → 群聊风</span></label>
+                                        <label class="beautify-card"><input type="checkbox" data-beautify="theater"><span>🎬 &lt;小剧场&gt; → 博客风</span></label>
+                                        <label class="beautify-card"><input type="checkbox" data-beautify="summary"><span>📜 &lt;meow_FM&gt; → 笔记风</span></label>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 预设助手大总结（来自象牙塔预设的summarize功能） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">预设助手</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自象牙塔预设的「预设助手」能力：触发 AI 执行全文大总结/本章总结<br>
+                                        <span style="color:var(--text-tertiary);">大总结会写入长期记忆（增强记忆的"约定"层），供后续剧情调用</span>
+                                    </div>
+                                    <div style="display:grid;grid-template-columns:1fr;gap:8px;">
+                                        <button class="wi-btn" onclick="triggerGrandSummary('chapter')">📝 触发本章大总结（让AI总结最近剧情）</button>
+                                        <button class="wi-btn" onclick="triggerGrandSummary('full')">📚 触发全文大总结（让AI压缩全部历史）</button>
+                                        <button class="wi-btn" onclick="triggerGrandSummary('check')">🔍 触发剧情连贯性检查</button>
                                     </div>
                                 </div>
                             </div>

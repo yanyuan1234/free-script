@@ -1069,7 +1069,51 @@ anti429Mode: false,          // 防429模式（来自果实预设）
 writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
 cotMode: '',                 // 思维链模式（来自蛾摩拉预设）
 summaryThreshold: 6,         // 摘要阈值（来自月读预设）
-_squashSystemMessages: true // 合并system消息（来自果实预设，默认开启）
+_squashSystemMessages: true, // 合并system消息（来自果实预设，默认开启）
+// === 章节模式（来自果实预设的长篇剧情规范） ===
+chapterMode: 'off',          // off / chapter / longform
+// === 世界之眼多选开关（来自月读预设的10眼系统） ===
+narrativeEyes: {
+    // 基础叙事原则（默认开启，是酒馆大佬共识的"地基"）
+    realistic: true,         // 真实之眼：可验证的因果与常识
+    ideal: true,             // 理想之眼：温柔联结与情感修复
+    ensemble: true,          // 群像之眼：多角色共驱
+    daily: false,            // 余温之眼：日常切片与关系温度
+    heartbeat: false,        // 怦然之眼：情绪浓度强化
+    undercurrent: false,     // 暗潮之眼：潜台词与利益博弈
+    fate: false,             // 命运之眼：选择-后果-再选择
+    comedy: false,           // 喜剧之眼：轻荒诞世界观
+    balanced: false,         // 均衡之眼：戏剧性与合理性平衡
+    mystery: false           // 迷雾之眼：现实与超常模糊边界
+},
+// === 缄默法则/词句肃清（来自蛾摩拉预设的反套路规则） ===
+squelchRules: {
+    oilyCliches: true,       // 油腻套路：嘴角勾起弧度/捏下巴 等
+    bodyCloseups: true,      // 身体特写：胸膛震动/手部工业糖精特写
+    anatomyTerms: false,     // 解剖名词：耻骨/肋骨/肌理（NSFW 场景才建议开）
+    cognitiveInability: true,// 认知失能：难以言喻/无法名状
+    mandative: true,         // 强制情态：不容置疑
+    referenceDep: true,      // 参照依赖：不是A而是B
+    extremeAdverbs: true,    // 极端程度副词：极其/极度
+    pronouns: false,         // 赘余指示代词：那个/那种
+    metaphors: true,         // 假想情境式比喻：像是在.../仿佛...
+    metaphorBlacklist: true, // 喻体黑名单：石子/羽毛/烙印
+    forbidden: true          // 禁词拦截：嘴角勾起弧度/捏下巴
+},
+// === NPC 描写准则（默认注入，导入预设时可被覆盖） ===
+npcDescriptionRules: true,   // 男帅女美、禁止脸谱化、禁用丑相关形容
+// === 推荐参数档位（一键切换 4 档叙事参数） ===
+presetArchetype: 'free',     // conservative / natural / passionate / delicate / free
+// === 标签美化库（来自象牙塔预设的HTML/CSS美化） ===
+beautifyLibrary: {
+    phone: false,            // <手机> 标签 → iPhone 风格
+    status: false,           // <状态> 标签 → 像素/古风/现代风
+    gossip: false,           // <gossip> 标签 → 群聊风格
+    theater: false,          // <小剧场> 标签 → 博客/微博风格
+    summary: false           // <meow_FM> 标签 → 课堂笔记风格
+},
+// === 预设助手大总结书签（来自象牙塔预设的summarize功能） ===
+summaryBookmarks: []         // [{ id, label, timestamp, hidden }]
 };
 }
 
@@ -1686,6 +1730,24 @@ if (!storyText || storyText.trim() === '') {
 }
 }
 }
+}
+
+// === 缄默法则·输出后处理 ===
+// 对提取出的 storyText 应用 _squelchPostProcess，删除 AI 漏网的违禁表达
+if (typeof _squelchPostProcess === 'function' && storyText) {
+    try {
+        var squelchedStory = _squelchPostProcess(storyText);
+        if (squelchedStory !== storyText) {
+            console.log('[缄默法则] 已净化 story 文本');
+            storyText = squelchedStory;
+            // 如果 data 也有 story 字段，单独更新（不影响其它字段）
+            if (data && typeof data === 'object') {
+                data.story = squelchedStory;
+            }
+        }
+    } catch (e) {
+        console.warn('[缄默法则] 净化失败（不影响主流程）:', e && e.message);
+    }
 }
 
 // 【小剧场融合】提取小剧场内容
