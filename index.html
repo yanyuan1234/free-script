@@ -2221,13 +2221,28 @@
                                     <button class="tag-btn" data-fontsize="large">大</button>
                                 </div>
                             </div>
-                            <!-- 参数设置卡片（可折叠） -->
+                            <!-- 参数设置卡片（可折叠）- 含快捷预设 -->
                             <div class="setting-group">
                                 <div class="setting-header" onclick="toggleSettingGroup(this)">
                                     <h3 class="setting-title">参数设置</h3>
                                     <span class="toggle-icon">▼</span>
                                 </div>
                                 <div class="setting-body" style="display:none;">
+                                    <!-- 快捷参数预设 -->
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        一键切换参数组合，自动填入下方参数
+                                    </div>
+                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-bottom:12px;">
+                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
+                                    </div>
+                                    <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;display:none;"></div>
+                                    <!-- 手动参数调整 -->
                                     <div class="setting-row">
                                         <label class="field-label">剧情长度（max_tokens）</label>
                                         <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
@@ -2361,28 +2376,6 @@
                                     </div>
                                 </div>
                             </div>
-                            <!-- 参数推荐预设卡片（可折叠） -->
-                            <div class="setting-group">
-                                <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">参数推荐预设</h3>
-                                    <span class="toggle-icon">▼</span>
-                                </div>
-                                <div class="setting-body" style="display:none;">
-                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        来自酒馆大佬们的调参智慧，一键应用推荐参数组合
-                                    </div>
-                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;">
-                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守模式</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡模式</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意模式</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('default')" title="Free-Script默认参数">默认参数</button>
-                                    </div>
-                                    <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-top:8px;display:none;"></div>
-                                </div>
-                            </div>
                             <!-- 叙事增强卡片（可折叠）- 融合酒馆预设的优秀特性 -->
                             <div class="setting-group">
                                 <div class="setting-header" onclick="toggleSettingGroup(this)">
@@ -2419,30 +2412,6 @@
                                         <label class="switch"><input type="checkbox" id="settingAnti429" onchange="gameState.anti429Mode=this.checked;"><span class="slider"></span></label>
                                         <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">遇到429报错时再开启</span>
                                     </div>
-                                </div>
-                            </div>
-                            <!-- 快捷参数卡片（可折叠） -->
-                            <div class="setting-group">
-                                <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">快捷参数</h3>
-                                    <span class="toggle-icon">▼</span>
-                                </div>
-                                <div class="setting-body" style="display:none;">
-                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        一键切换参数组合：保守=稳定可控，均衡=自然丰富，创意=高温奔放
-                                    </div>
-                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;">
-                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守模式</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡模式</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意模式</button>
-                                    </div>
-                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-top:8px;">
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认参数</button>
-                                    </div>
-                                    <div id="paramPresetInfo2" style="font-size:11px;color:var(--text-tertiary);margin-top:8px;display:none;"></div>
                                 </div>
                             </div>
                             <hr class="settings-divider">
