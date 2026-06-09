@@ -1219,6 +1219,19 @@
                         <!-- 参数调节区域（可折叠） -->
                         <div style="overflow-y:auto;">
                             <div class="wi-section">
+                                <!-- 快捷参数预设 -->
+                                <div style="padding:8px 12px;border-bottom:1px solid var(--border);">
+                                    <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px;">一键切换参数组合</div>
+                                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定">保守</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="均衡自然">均衡</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="高温创意">创意</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格">月读</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格">果实</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格">蛾摩拉</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
+                                    </div>
+                                </div>
                                 <div class="wi-section-title flex-between cursor-pointer" id="presetParamsToggle">
                                     <span>参数调节</span>
                                     <span id="presetParamsToggleIcon" class="text-sm-tertiary" style="transition:transform 0.2s;">▼</span>
@@ -2270,28 +2283,30 @@
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">长度预设</label>
-                                        <select id="wcLengthPreset" class="select-field" onchange="applyLengthPreset(this.value)">
+                                        <select id="wcLengthPreset" class="select-field" onchange="applyLengthPreset(this.value);var d=document.getElementById('wcCustomDetail');if(d){d.style.display=this.value==='custom'?'block':'none';}">
                                             <option value="short">短篇 (500-1000字, 5-7段)</option>
                                             <option value="medium" selected>中篇 (1500-3000字, 15-17段)</option>
                                             <option value="long">长篇 (4000-6000字, 20-25段)</option>
                                             <option value="custom">自定义</option>
                                         </select>
                                     </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">最少字数</label>
-                                        <input type="number" class="input-field" id="wcMin" value="1500" min="100" max="10000" style="max-width:100px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">最多字数</label>
-                                        <input type="number" class="input-field" id="wcMax" value="3000" min="100" max="30000" style="max-width:100px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">最少段落数</label>
-                                        <input type="number" class="input-field" id="wcParaMin" value="15" min="1" max="100" style="max-width:80px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">最多段落数</label>
-                                        <input type="number" class="input-field" id="wcParaMax" value="17" min="1" max="100" style="max-width:80px;">
+                                    <div id="wcCustomDetail" style="display:none;">
+                                        <div class="setting-row">
+                                            <label class="field-label">最少字数</label>
+                                            <input type="number" class="input-field" id="wcMin" value="1500" min="100" max="10000" style="max-width:100px;">
+                                        </div>
+                                        <div class="setting-row">
+                                            <label class="field-label">最多字数</label>
+                                            <input type="number" class="input-field" id="wcMax" value="3000" min="100" max="30000" style="max-width:100px;">
+                                        </div>
+                                        <div class="setting-row">
+                                            <label class="field-label">最少段落数</label>
+                                            <input type="number" class="input-field" id="wcParaMin" value="15" min="1" max="100" style="max-width:80px;">
+                                        </div>
+                                        <div class="setting-row">
+                                            <label class="field-label">最多段落数</label>
+                                            <input type="number" class="input-field" id="wcParaMax" value="17" min="1" max="100" style="max-width:80px;">
+                                        </div>
                                     </div>
                                     <div class="setting-row">
                                         <label class="field-label">段落风格</label>

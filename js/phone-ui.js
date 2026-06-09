@@ -5543,6 +5543,8 @@ function saveGameSettings() {
         anti429Mode: gameState.anti429Mode
     }));
     applyFontSize();
+    // 保存成功提示
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('设置已保存');
 }
 (function() {
     if (!document.getElementById('importFileInput')) {

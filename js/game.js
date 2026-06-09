@@ -578,9 +578,9 @@ function injectPresetGlobalVars() {
  */
 function applyLengthPreset(preset) {
     var presets = {
-        short:  { min: 500,  max: 1000, paraMin: 5,  paraMax: 7  },
-        medium: { min: 1500, max: 3000, paraMin: 15, paraMax: 17 },
-        long:   { min: 4000, max: 6000, paraMin: 20, paraMax: 25 }
+        short:  { min: 500,  max: 1000, paraMin: 5,  paraMax: 7,  style: 'short' },
+        medium: { min: 1500, max: 3000, paraMin: 15, paraMax: 17, style: 'medium' },
+        long:   { min: 4000, max: 6000, paraMin: 20, paraMax: 25, style: 'long' }
     };
     var p = presets[preset];
     if (!p) return;
@@ -589,10 +589,12 @@ function applyLengthPreset(preset) {
     var elMax = document.getElementById('wcMax');
     var elParaMin = document.getElementById('wcParaMin');
     var elParaMax = document.getElementById('wcParaMax');
+    var elStyle = document.getElementById('wcParagraphStyle');
     if (elMin) elMin.value = p.min;
     if (elMax) elMax.value = p.max;
     if (elParaMin) elParaMin.value = p.paraMin;
     if (elParaMax) elParaMax.value = p.paraMax;
+    if (elStyle && p.style) elStyle.value = p.style;
 }
 
 /**
