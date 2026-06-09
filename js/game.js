@@ -230,6 +230,8 @@ ${_termsPrompt}
 - 演绎：{{getglobalvar::演绎授权}}
 - 转述：{{getglobalvar::转述授权}}
 - 节奏：{{getglobalvar::推进节奏}}
+- 文风：{{getglobalvar::文风指导}}
+- 思维链：{{getglobalvar::起始标签}}
 当上述变量为空时，你根据世界观和场景自行选择最合适的方案。
 
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
@@ -816,15 +818,12 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (summaryThreshold > 0 && recent.length > summaryThreshold * 2) {
                 // 保留最近N轮的完整对话，旧对话用摘要替代
                 var keepCount = summaryThreshold * 2; // 每轮=1 user + 1 assistant
-                var oldMessages = recent.slice(0, recent.length - keepCount);
                 var newMessages = recent.slice(recent.length - keepCount);
-                
-                // 如果有摘要，用摘要替代旧对话
-                if (gameState.rollingSummary && gameState.rollingSummary.trim()) {
-                    recent = newMessages; // 只保留最近N轮
-                    // 摘要会在后面作为"前情摘要"注入
-                    console.log('[摘要阈值] 旧对话' + oldMessages.length + '条已用摘要替代，保留最近' + newMessages.length + '条');
-                }
+
+                // 无论是否有摘要，都只保留最近N轮（避免上下文溢出）
+                // 如果有摘要，旧对话信息已包含在摘要中；如果没有摘要，旧对话也需要裁剪以节省token
+                recent = newMessages;
+                console.log('[摘要阈值] 保留最近' + newMessages.length + '条对话（阈值=' + summaryThreshold + '轮）');
             }
 
             // 2. 获取世界书分组数据
@@ -1016,7 +1015,16 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             // 【多角色叙事指导】当场景中有多个NPC时自动注入（来自蛾摩拉预设的智慧）
-            if (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 1) {
+            // 只在当前场景确实有多个活跃角色时注入，避免对所有世界都触发
+            var _activeCharCount = 0;
+            if (gameState.worldSnapshot && gameState.worldSnapshot.characters) {
+                // 统计当前场景中活跃的角色（有最近互动记录的）
+                gameState.worldSnapshot.characters.forEach(function(c) {
+                    // 有好感度或关系描述的角色视为活跃
+                    if (c.relation || typeof c.favorability === 'number' || c.desc) _activeCharCount++;
+                });
+            }
+            if (_activeCharCount > 1) {
                 var multiCharText = '【多角色叙事原则】\n当前场景有多个角色在场，请遵守：\n- 每个角色有独立的行动线和说话节奏，不围绕主角统一行动\n- 对话轮流进行，避免一个角色连续说多段话\n- 不同角色对同一事件应有不同反应，体现性格差异\n- 非焦点角色也应有所动作（哪怕只是背景反应），让场景有层次感\n- 角色之间的互动不只通过主角中转，他们之间也可以直接对话';
                 messages.push({ role: 'system', content: multiCharText });
             }
@@ -1054,21 +1062,6 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 当前用户消息
             messages.push({ role: 'user', content: userMessage });
-
-            // squash_system_messages 支持
-            // 果实预设要求将所有相邻的 system 消息合并为一条
-            if (gameState._squashSystemMessages === true) {
-                var squashed = [];
-                for (var si = 0; si < messages.length; si++) {
-                    if (messages[si].role === 'system' && squashed.length > 0 && squashed[squashed.length - 1].role === 'system') {
-                        squashed[squashed.length - 1].content += '\n\n' + messages[si].content;
-                    } else {
-                        squashed.push({ role: messages[si].role, content: messages[si].content });
-                    }
-                }
-                messages = squashed;
-                console.log('[消息构建] 已合并相邻system消息 (squash_system_messages)');
-            }
 
             // 深度注入提示词 (depth >= 6) - 从聊天历史末尾计算位置（与酒馆一致）
             if (gameState._depthPrompts && Object.keys(gameState._depthPrompts).length > 0) {
@@ -1109,6 +1102,20 @@ async function sendAIRequest(userMessage, isInit = false) {
                     });
                 });
             }
+        }
+        // squash_system_messages 支持（在深度注入之后执行，确保所有system消息都被合并）
+        // 果实预设要求将所有相邻的 system 消息合并为一条
+        if (gameState._squashSystemMessages === true) {
+            var squashed = [];
+            for (var si = 0; si < messages.length; si++) {
+                if (messages[si].role === 'system' && squashed.length > 0 && squashed[squashed.length - 1].role === 'system') {
+                    squashed[squashed.length - 1].content += '\n\n' + messages[si].content;
+                } else {
+                    squashed.push({ role: messages[si].role, content: messages[si].content });
+                }
+            }
+            messages = squashed;
+            console.log('[消息构建] 已合并相邻system消息 (squash_system_messages)');
         }
         // 注入 impersonation_prompt（用户人设）
         // 酒馆中 impersonation_prompt 被插入到最后一条 assistant 消息之后
