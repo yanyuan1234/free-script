@@ -165,9 +165,25 @@ function buildSystemPrompt(includeFormatRules) {
 
     // 【关键】有预设时，只返回纯游戏数据（设定/记忆/私聊），不包含任何默认身份定义和指导性文字
     // 预设的 system_prompt=true 条目会提供自己的身份定义和格式规则，预设才是最高优先级
+    // 【注意】格式锚点是游戏运行的硬性要求（不是"默认设置"），必须始终存在
+    // 即使酒馆预设不知道JSON格式，AI也必须输出JSON，否则前端无法解析
+    var _formatAnchor = '';
+    var _maxTokensForAnchor = gameState.maxTokens || 4096;
+    var _hasChoicesForAnchor = gameState.generateChoices;
+    // 检测当前是否有预设——内置预设的main prompt已包含格式说明，不需要重复注入
+    var _hasNativePreset = false;
+    if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
+        var _curP = PresetManager.presets[PresetManager.currentPresetIndex];
+        if (_curP && _curP._isBuiltin) _hasNativePreset = true;
+    }
+    if (!_hasNativePreset) {
+        // 非内置预设（酒馆导入的或无预设）：注入格式锚点
+        _formatAnchor = '\n\n【Free-Script格式要求（不可覆盖）】\n你的输出必须是合法的JSON，因为前端程序需要解析它来渲染界面。直接输出JSON文本，不要用```json代码块包裹。\n结构：{ "story": "叙事正文（用\\n换行，对话用「」包裹，这是最重要的字段，放第一个）"' + (_hasChoicesForAnchor ? ', "choices": [{"id": "A", "text": "选项描述"}]' : '') + ', "player": {"name":"", "identity":"", "stats":[{"label":"","value":""}]}, "characters": [{"name":"", "relation":"", "favorability":0}], "world": [{"type":"text", "title":"", "content":""}], "bag": [{"name":"", "count":1}], "quests": [{"title":"", "status":""}], "gameTime": {"date":"", "time":"", "period":""} }\n用<giggle>插入NPC内心独白，用<mem>标记状态变化。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间。';
+    }
+
     if (!includeFormatRules) {
         return `${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}`;
+${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
     }
 
     var _maxTokens = gameState.maxTokens || 4096;
