@@ -2050,6 +2050,13 @@ var PresetManager = {
         gameState._impersonationPrompt = '';
     }
 
+    // 【酒馆兼容】设置 assistant_prefill
+    if (preset.params && preset.params.assistant_prefill) {
+        gameState._assistantPrefill = MacroEngine.process(preset.params.assistant_prefill, macroEnv);
+    } else {
+        gameState._assistantPrefill = '';
+    }
+
     // 设置 names_behavior
     gameState._namesBehavior = preset.names_behavior || 0;
     },

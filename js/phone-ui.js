@@ -4696,16 +4696,23 @@ async function continueStory() {
     if (isWaiting) return;
     // 【修复】使用预设的 continue_nudge_prompt，而非硬编码文本
     var continuePrompt = '[Continue your last message...]';
+    var continuePrefill = '';
     try {
         if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.presets[PresetManager.currentPresetIndex]) {
             var preset = PresetManager.presets[PresetManager.currentPresetIndex];
             if (preset.continue_nudge_prompt) {
                 continuePrompt = preset.continue_nudge_prompt;
             }
+            // 【酒馆兼容】continue_prefill：继续生成时追加assistant消息引导输出
+            if (preset.params && preset.params.continue_prefill) {
+                continuePrefill = preset.params.continue_prefill;
+            }
         }
     } catch(e) {
         console.warn('[continueStory] 获取 continue_nudge_prompt 失败:', e);
     }
+    // 设置 continue_prefill 标记，sendAIRequest 会读取
+    gameState._continuePrefill = continuePrefill;
     // 防 unhandledrejection：捕获异步错误
     try {
         var p = sendAIRequest(continuePrompt);
@@ -4718,6 +4725,8 @@ async function continueStory() {
     } catch (e) {
         console.error('[继续剧情] 同步错误:', e);
     }
+    // 清除标记
+    gameState._continuePrefill = '';
 }
 function deleteLastTurn() {
     // 检查撤销历史

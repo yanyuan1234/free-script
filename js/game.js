@@ -1028,12 +1028,36 @@ async function sendAIRequest(userMessage, isInit = false) {
                 content: gameState._jailbreakPrompt
             });
         }
+        // 注入 afterChat 提示词（放在聊天历史之后、越狱之后）
+        // 用于每轮都提醒AI的关键信息（如格式要求、角色状态等）
+        if (Array.isArray(gameState._afterChatPrompts) && gameState._afterChatPrompts.length > 0) {
+            gameState._afterChatPrompts.forEach(function(acp) {
+                if (acp && acp.content && acp.content.trim()) {
+                    messages.splice(messages.length - 1, 0, {
+                        role: acp.role || 'system',
+                        content: acp.content
+                    });
+                }
+            });
+        }
         // 注入 assistant 角色的 prompt（以 assistant 角色注入）
         if (gameState._assistantPrompt && gameState._assistantPrompt.trim()) {
             messages.splice(messages.length - 1, 0, {
                 role: 'assistant',
                 content: gameState._assistantPrompt
             });
+        }
+
+        // 【酒馆兼容】assistant_prefill：在消息末尾追加一个assistant消息
+        // 某些模型（如Gemini）需要prefill来引导输出格式
+        if (gameState._assistantPrefill && gameState._assistantPrefill.trim()) {
+            messages.push({ role: 'assistant', content: gameState._assistantPrefill });
+        }
+
+        // 【酒馆兼容】continue_prefill：继续生成时追加assistant消息引导输出
+        // 与 assistant_prefill 不同：assistant_prefill 每次请求都生效，continue_prefill 只在"继续生成"时生效
+        if (gameState._continuePrefill && gameState._continuePrefill.trim()) {
+            messages.push({ role: 'assistant', content: gameState._continuePrefill });
         }
 
         // 【酒馆特性】智能上下文管理
@@ -1071,7 +1095,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         var options = {
             stream: gameState.useStream,
-            temperature: gameState.temperature || 0.8,
+            temperature: gameState.temperature != null ? gameState.temperature : 0.8,
             onChunk: function(delta, fullText) {
                 onStreamChunk(delta, fullText);
             }
@@ -3781,7 +3805,7 @@ async function requestNpcReply(playerText) {
         }
         var response = await callAI(chatMessages, {
             stream: false,
-            temperature: gameState.temperature || 0.8,
+            temperature: gameState.temperature != null ? gameState.temperature : 0.8,
             max_tokens: 1024,
             antiRepeat: true,
             // 【修复R1】使用NPC聊天专用的AbortController
