@@ -5596,13 +5596,14 @@ function saveGameSettings() {
     }
 })();
 
-// === 酒馆预设融合：推荐档位切换 ===
-// 一键应用酒馆大佬沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
+// === 推荐档位切换 ===
+// 一键应用酒馆前辈沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
+// 注意：字段名是 ID 不会变，_label 仅用于 toast 提示
 var ARCHETYPE_PRESETS = {
-    conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '🎯 保守叙事' },
-    natural:      { temperature: 0.95, top_p: 0.95, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '🌊 自然叙事' },
-    passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '🔥 激情叙事' },
-    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '🌙 细腻叙事' }
+    conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📘 短篇' },
+    natural:      { temperature: 0.95, top_p: 0.95, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📗 中篇' },
+    passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📙 长篇' },
+    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '📕 细腻' }
 };
 function applyArchetype(name) {
     var p = ARCHETYPE_PRESETS[name];
@@ -5624,16 +5625,18 @@ function applyArchetype(name) {
     document.querySelectorAll('.archetype-card').forEach(function(el) {
         el.classList.toggle('active', el.getAttribute('data-archetype') === name);
     });
-    if (typeof UI !== 'undefined' && UI.toast) UI.toast('已应用档位：' + p._label + '（导入酒馆预设时会被覆盖）');
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('已切换到「' + p._label + '」写法（导入他人预设时会被覆盖）');
 }
 
-// === 酒馆预设融合：触发大总结 ===
-// 来自象牙塔预设的 summarize_full/summarize_chapter 能力
+// === 触发剧情助手 ===
+// 让 AI 自动完成剧情总结/检查等体力活
 function triggerGrandSummary(mode) {
     if (typeof gameState === 'undefined') return;
     var messages = [];
     var userInput = '';
+    var modeLabel = '';
     if (mode === 'chapter') {
+        modeLabel = '本章剧情';
         userInput = '【系统指令】请对最近一轮的剧情进行【本章大总结】。' +
                     '停止推进剧情，输出以下结构：\n' +
                     '- 核心事件（按时间顺序）\n' +
@@ -5642,6 +5645,7 @@ function triggerGrandSummary(mode) {
                     '- 世界状态更新\n' +
                     '使用简洁陈述句，避免修饰，保留重要细节。';
     } else if (mode === 'full') {
+        modeLabel = '全部剧情';
         userInput = '【系统指令】请对全部历史剧情进行【全文大总结】。' +
                     '停止推进剧情，输出以下结构：\n' +
                     '- 时间线（按日期组织）\n' +
@@ -5651,6 +5655,7 @@ function triggerGrandSummary(mode) {
                     '- 当前世界状态\n' +
                     '使用简洁陈述句，按逻辑顺序组织信息。';
     } else if (mode === 'check') {
+        modeLabel = '剧情连贯性';
         userInput = '【系统指令】请对最近10轮剧情进行【连贯性检查】。' +
                     '检查以下方面：\n' +
                     '- 角色行为是否一致\n' +
@@ -5660,7 +5665,7 @@ function triggerGrandSummary(mode) {
                     '输出检查报告，不要推进剧情。';
     }
     if (!userInput) return;
-    if (typeof UI !== 'undefined' && UI.toast) UI.toast('正在触发' + (mode === 'chapter' ? '本章' : mode === 'full' ? '全文' : '连贯性') + '大总结...');
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('正在生成「' + modeLabel + '」总结...');
     // 直接调用 sendAIRequest
     if (typeof sendAIRequest === 'function') {
         sendAIRequest(userInput, false);
