@@ -198,6 +198,14 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
 
 ${_termsPrompt}
 
+【叙事守则】（来自酒馆大佬们的调参智慧）
+- 抗OOC：角色行为必须符合其性格和动机，不为了剧情需要而强行改变。角色不会突然变得温柔或残暴，除非有充分的理由
+- 抗全知：角色只能知道自己应该知道的信息。NPC不会未卜先知，不会读取主角的内心，不会知晓未曾经历的事件
+- 抗刻板：避免将角色简化为标签。强势≠控制，弱势≠依赖，女性角色保有完全的选择权与拒绝权
+- 抗发情：角色不会无缘无故地对主角产生强烈好感或欲望，好感度需要时间培养
+- 关系自然：角色之间保留各自的生活轴线和性格重心，不能因为主角出现就统一变成围绕其旋转的情绪体
+- 情绪克制：强烈情绪必须被自然稀释，避免夸张戏剧冲突。安静、克制、复杂、含蓄，才是真实的人际互动
+
 【你的工作方式】
 你的创作通过JSON传递给前端程序来渲染界面。理解这个机制后你就知道为什么格式很重要：前端代码按字段名读取数据，所以字段名必须准确；story放在最前面是因为解析器优先读取它。
 你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
@@ -505,6 +513,28 @@ function injectPresetGlobalVars() {
         MacroEngine.setGlobalVar('推进节奏', '');
     }
     
+    // === 文风选择（来自果实预设的梦境风味系统） ===
+    var writingStyle = config.writingStyle || gameState.writingStyle || '';
+    if (writingStyle) {
+        var styleMap = {
+            'baimiao': '此乃【白描之梦】\n- 禁止使用多个形容词叠加描述，但也要避免说明书化和平铺直叙，应当体现文学的美感\n- 由动词、名称主宰\n- 克制用词，不走极端，禁止使用"极其/极度/极为"等表达\n- 温和、克制、谨慎地塑造',
+            'liudong': '此乃【流动之梦】\n- 叙事跟随感知流淌，感官印象先于事件浮现——气味、温度、光线、声音是叙事入口\n- 时间感可以扭曲：一瞬间可以延展为漫长凝视，一段时光可以在一行中滑过\n- 内心意识与外部场景互相渗透，边界是模糊的\n- 情绪从不被直接命名，而是在流淌的感知中自然显现',
+            'lengjun': '此乃【冷峻之梦】\n- 叙事如镜头，保持克制的距离，不介入，不评判，不渲染\n- 句子短促，信息密度高；对话简短直接，省去一切多余的情绪说明\n- 用行为与细节替代内心独白，读者自行推断情感\n- 冷静直面荒诞与痛苦——既不回避，也不放大',
+            'nongmo': '此乃【浓墨之梦】\n- 色彩、光影、气味、温度可以承载情感，景物随人物内心微微变形\n- 允许繁复的意象与精准的形容词，但须服务于情感而非纯粹堆砌\n- 情感以具体的物理感受外化——不直接命名，却处处可感\n- 每个细节都带有主观温度，文字本身就是情绪的投射'
+        };
+        MacroEngine.setGlobalVar('文风指导', styleMap[writingStyle] || '');
+    } else {
+        MacroEngine.setGlobalVar('文风指导', '');
+    }
+
+    // === 思维链模式（来自蛾摩拉预设的COT控制） ===
+    var cotMode = gameState.cotMode || '';
+    if (cotMode === 'enabled') {
+        MacroEngine.setGlobalVar('起始标签', '<thinking>');
+    } else {
+        MacroEngine.setGlobalVar('起始标签', '');
+    }
+
     // 注入其他常用的酒馆宏变量
     if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', gameState.playerName || '玩家');
     if (!MacroEngine.getGlobalVar('char')) MacroEngine.setGlobalVar('char', (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色');
@@ -566,94 +596,94 @@ function applyLengthPreset(preset) {
 }
 
 /**
- * 应用参数推荐预设（来自酒馆大佬的调参智慧）
- * 一键设置 temperature/top_p/top_k/max_tokens 等参数
+ * 应用参数推荐预设（融合4份酒馆预设的调参智慧）
  */
-function applyParamPreset(presetName) {
-    var paramPresets = {
+function applyParamPreset(preset) {
+    var presets = {
+        conservative: {
+            name: '保守模式（月读风格·低温稳定）',
+            temperature: 0.88, top_p: 0.88, top_k: 0,
+            frequency_penalty: 0.2, presence_penalty: 0.2,
+            max_tokens: 4096, description: '低温+低惩罚，输出稳定可控，适合需要一致性的叙事'
+        },
+        balanced: {
+            name: '均衡模式（果实风格·自然丰富）',
+            temperature: 1.3, top_p: 0.91, top_k: 64,
+            frequency_penalty: 0, presence_penalty: 0,
+            max_tokens: 8192, description: '中高温+TopK，输出自然丰富，适合大多数场景'
+        },
+        creative: {
+            name: '创意模式（蛾摩拉风格·高温奔放）',
+            temperature: 1.71, top_p: 0.9, top_k: 0,
+            frequency_penalty: 0.65, presence_penalty: 0.75,
+            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事（推荐Gemini）'
+        },
         moonread: {
             name: '月读风格',
-            desc: '适合细腻叙事，感官细节丰富，节奏从容',
-            temperature: 1.0,
-            topP: 0.95,
-            topK: 64,
-            frequencyPenalty: 0,
-            presencePenalty: 0,
-            maxTokens: 8192,
-            contextLength: 8192
+            temperature: 0.88, top_p: 0.88, top_k: 0,
+            frequency_penalty: 0.2, presence_penalty: 0.2,
+            max_tokens: 4096, description: '低温稳定，抓人设、不超雄、无过度描写'
         },
         fruit: {
             name: '果实风格',
-            desc: '均衡叙事，细节与推进并重，风格自然',
-            temperature: 1.3,
-            topP: 0.91,
-            topK: 64,
-            frequencyPenalty: 0,
-            presencePenalty: 0,
-            maxTokens: 3000,
-            contextLength: 8192
+            temperature: 1.3, top_p: 0.91, top_k: 64,
+            frequency_penalty: 0, presence_penalty: 0,
+            max_tokens: 3000, description: '均衡自然，外表自然内里丰富'
         },
         gomorrah: {
             name: '蛾摩拉风格',
-            desc: '长篇叙事，高创意度，适合深度剧情',
-            temperature: 1.71,
-            topP: 0.9,
-            topK: 0,
-            frequencyPenalty: 0,
-            presencePenalty: 0,
-            maxTokens: 30000,
-            contextLength: 32768
+            temperature: 1.71, top_p: 0.9, top_k: 0,
+            frequency_penalty: 0.65, presence_penalty: 0.75,
+            max_tokens: 30000, description: '超高温长篇，适合Gemini（DeepSeek命中缓存低）'
         },
-        'default': {
+        default: {
             name: '默认参数',
-            desc: 'Free-Script默认设置，适合大多数场景',
-            temperature: 0.8,
-            topP: 0.9,
-            topK: 0,
-            frequencyPenalty: 0,
-            presencePenalty: 0,
-            maxTokens: 4096,
-            contextLength: 8192
+            temperature: 0.8, top_p: 0.9, top_k: 0,
+            frequency_penalty: 0, presence_penalty: 0,
+            max_tokens: 4096, description: 'Free-Script默认参数'
         }
     };
-    
-    var p = paramPresets[presetName];
+    var p = presets[preset];
     if (!p) return;
-    
-    // 设置UI控件的值
-    var el = function(id) { return document.getElementById(id); };
-    if (el('settingTemperature')) el('settingTemperature').value = p.temperature;
-    if (el('settingTopP')) el('settingTopP').value = p.topP;
-    if (el('settingTopK')) el('settingTopK').value = p.topK;
-    if (el('settingFreqPen')) el('settingFreqPen').value = p.frequencyPenalty;
-    if (el('settingPresPen')) el('settingPresPen').value = p.presencePenalty;
-    if (el('settingStoryLength')) el('settingStoryLength').value = p.maxTokens;
-    if (el('settingContextLength')) el('settingContextLength').value = p.contextLength;
-    
-    // 同步更新gameState
+
+    // 应用到游戏设置UI
+    var elTemp = document.getElementById('settingTemperature');
+    var elTopP = document.getElementById('settingTopP');
+    var elTopK = document.getElementById('settingTopK');
+    var elFreqPen = document.getElementById('settingFreqPen');
+    var elPresPen = document.getElementById('settingPresPen');
+    var elMaxTokens = document.getElementById('settingStoryLength');
+
+    if (elTemp) elTemp.value = p.temperature;
+    if (elTopP) elTopP.value = p.top_p;
+    if (elTopK) elTopK.value = p.top_k;
+    if (elFreqPen) elFreqPen.value = p.frequency_penalty;
+    if (elPresPen) elPresPen.value = p.presence_penalty;
+    if (elMaxTokens) elMaxTokens.value = p.max_tokens;
+
+    // 同步到gameState
     gameState.temperature = p.temperature;
-    gameState.maxTokens = p.maxTokens;
-    
+    gameState.maxTokens = p.max_tokens;
+
+    // 同步到PresetManager
+    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        PresetManager.currentParams.temperature = p.temperature;
+        PresetManager.currentParams.top_p = p.top_p;
+        PresetManager.currentParams.top_k = p.top_k;
+        PresetManager.currentParams.frequency_penalty = p.frequency_penalty;
+        PresetManager.currentParams.presence_penalty = p.presence_penalty;
+        PresetManager.currentParams.max_tokens = p.max_tokens;
+        PresetManager.saveCurrentParams();
+        PresetManager.syncParamsToUI();
+    }
+
     // 显示信息
-    var infoEl = el('paramPresetInfo');
+    var infoEl = document.getElementById('paramPresetInfo');
     if (infoEl) {
         infoEl.style.display = 'block';
-        infoEl.textContent = '已应用「' + p.name + '」— ' + p.desc + 
-            ' (temp=' + p.temperature + ', top_p=' + p.topP + ', max_tokens=' + p.maxTokens + ')';
+        infoEl.textContent = '已应用: ' + p.name + ' — ' + p.description;
     }
-    
-    // 高亮当前选中的按钮
-    var buttons = document.querySelectorAll('.setting-group .tag-btn');
-    buttons.forEach(function(btn) {
-        btn.classList.remove('active');
-        if (btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf(presetName) !== -1) {
-            btn.classList.add('active');
-        }
-    });
-    
-    if (typeof UI !== 'undefined' && UI.toast) {
-        UI.toast('已应用「' + p.name + '」参数预设');
-    }
+    if (typeof UI !== 'undefined') UI.toast('已应用参数: ' + p.name);
 }
 
 async function sendAIRequest(userMessage, isInit = false) {
@@ -817,6 +847,16 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 支持 use_sysprompt 配置（月读预设设为 false）
             // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
+            // 【防429模式】在系统提示词前注入随机噪声（来自果实预设的智慧）
+            // 部分API会对系统提示词进行内容审查，随机噪声可以降低触发概率
+            if (gameState.anti429Mode) {
+                var noisePool = ['⚙️⚙️⚙️','λ-calc','##$$%%','v_tensor','!#FF00','<<∅>>','//ignore','μ-808','HALT','EXECUTE','##!!~~','(e^πi)','CRC32','β_decay','ψ-state','||END||','量子纠缠','&&&**','@SYS_null'];
+                var noise1 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
+                var noise2 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
+                var noise3 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
+                messages.push({ role: 'system', content: '[Cortex_Init]⚡\n#latent_seed_λx9b42🌀→//ENTROPY_BURST\n' + noise1 + '::' + noise2 + '::' + noise3 + '\n##START##\n⚡INIT_END⚡' });
+            }
+
             if (gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
             } else if (gameState.systemPrompt && gameState.systemPrompt.trim()) {
@@ -984,6 +1024,12 @@ async function sendAIRequest(userMessage, isInit = false) {
                 messages.push({ role: 'system', content: eventsText });
             }
 
+            // 【多角色叙事指导】当场景中有多个NPC时自动注入（来自蛾摩拉预设的智慧）
+            if (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 1) {
+                var multiCharText = '【多角色叙事原则】\n当前场景有多个角色在场，请遵守：\n- 每个角色有独立的行动线和说话节奏，不围绕主角统一行动\n- 对话轮流进行，避免一个角色连续说多段话\n- 不同角色对同一事件应有不同反应，体现性格差异\n- 非焦点角色也应有所动作（哪怕只是背景反应），让场景有层次感\n- 角色之间的互动不只通过主角中转，他们之间也可以直接对话';
+                messages.push({ role: 'system', content: multiCharText });
+            }
+
             // 远期摘要
             if (gameState.rollingSummary) {
                 messages.push({
@@ -1101,6 +1147,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         messages.forEach(function(msg) {
             if (msg.content && typeof msg.content === 'string') {
                 msg.content = MacroEngine.process(msg.content, macroEnv);
+                // 清理空变量导致的连续空行（来自酒馆预设的空setvar）
+                msg.content = msg.content.replace(/\n{3,}/g, '\n\n').trim();
             }
         });
         // 清理历史消息中的装饰性标签（减少token浪费）

@@ -5516,6 +5516,18 @@ function saveGameSettings() {
     gameState.autoCompress = document.getElementById('autoCompressOn') && document.getElementById(
         'autoCompressOn').classList.contains('active');
     gameState.summaryThreshold = parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0;
+    // 【酒馆预设融合】保存叙事增强设置
+    var writingStyleEl = document.getElementById('settingWritingStyle');
+    if (writingStyleEl) gameState.writingStyle = writingStyleEl.value;
+    var cotModeEl = document.getElementById('settingCotMode');
+    if (cotModeEl) gameState.cotMode = cotModeEl.value;
+    var anti429El = document.getElementById('settingAnti429');
+    if (anti429El) gameState.anti429Mode = anti429El.checked;
+    var squashEl = document.getElementById('settingSquashSystem');
+    if (squashEl) gameState._squashSystemMessages = squashEl.checked;
+    // 摘要阈值也同步到新位置
+    var stEl2 = document.getElementById('settingSummaryThreshold');
+    if (stEl2) gameState.summaryThreshold = parseInt(stEl2.value) || 0;
     gameState.generateChoices = true;
     safeSetItem('freeScript_settings', JSON.stringify({
         useStream: gameState.useStream,
@@ -5526,7 +5538,12 @@ function saveGameSettings() {
         summaryThreshold: gameState.summaryThreshold,
         generateChoices: gameState.generateChoices,
         maxTokens: gameState.maxTokens,
-        defaultParams: defaultParams
+        defaultParams: defaultParams,
+        // 【酒馆预设融合】叙事增强设置
+        writingStyle: gameState.writingStyle,
+        cotMode: gameState.cotMode,
+        anti429Mode: gameState.anti429Mode,
+        squashSystemMessages: gameState._squashSystemMessages
     }));
     applyFontSize();
 }
@@ -5713,6 +5730,22 @@ function loadGameSettings() {
             // 恢复摘要阈值UI
             var stEl = document.getElementById('summaryThreshold');
             if (stEl) stEl.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
+            // 【酒馆预设融合】恢复叙事增强设置
+            if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
+            if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
+            if (d.anti429Mode !== undefined) gameState.anti429Mode = d.anti429Mode;
+            if (d.squashSystemMessages !== undefined) gameState._squashSystemMessages = d.squashSystemMessages;
+            // 恢复叙事增强UI
+            var wsEl = document.getElementById('settingWritingStyle');
+            if (wsEl) wsEl.value = gameState.writingStyle || '';
+            var cmEl = document.getElementById('settingCotMode');
+            if (cmEl) cmEl.value = gameState.cotMode || '';
+            var a429El = document.getElementById('settingAnti429');
+            if (a429El) a429El.checked = !!gameState.anti429Mode;
+            var sqEl = document.getElementById('settingSquashSystem');
+            if (sqEl) sqEl.checked = !!gameState._squashSystemMessages;
+            var stEl2 = document.getElementById('settingSummaryThreshold');
+            if (stEl2) stEl2.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
         }

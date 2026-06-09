@@ -2372,12 +2372,94 @@
                                         来自酒馆大佬们的调参智慧，一键应用推荐参数组合
                                     </div>
                                     <div class="setting-row" style="flex-wrap:wrap;gap:6px;">
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：适合细腻叙事">月读风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：适合均衡叙事">果实风格</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：适合长篇叙事">蛾摩拉风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守模式</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡模式</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意模式</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉风格</button>
                                         <button class="tag-btn" onclick="applyParamPreset('default')" title="Free-Script默认参数">默认参数</button>
                                     </div>
                                     <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-top:8px;display:none;"></div>
+                                </div>
+                            </div>
+                            <!-- 叙事增强卡片（可折叠）- 融合酒馆预设的优秀特性 -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">叙事增强</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自酒馆大佬们的创作智慧，提升叙事质量的核心开关
+                                    </div>
+                                    <!-- 文风选择 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">文风选择</label>
+                                        <select id="settingWritingStyle" class="select-field" onchange="gameState.writingStyle=this.value;if(typeof MacroEngine!=='undefined')MacroEngine.setGlobalVar('文风指导','');">
+                                            <option value="" selected>默认（不限定）</option>
+                                            <option value="baimiao">白描（克制精准·动词主导）</option>
+                                            <option value="liudong">流动（感官流淌·意识渗透）</option>
+                                            <option value="lengjun">冷峻（镜头距离·信息密度）</option>
+                                            <option value="nongmo">浓墨（意象繁复·情感外化）</option>
+                                        </select>
+                                    </div>
+                                    <!-- 思维链模式 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">思维链模式</label>
+                                        <select id="settingCotMode" class="select-field" onchange="gameState.cotMode=this.value;">
+                                            <option value="" selected>关闭</option>
+                                            <option value="enabled">开启（自动解析thinking标签）</option>
+                                        </select>
+                                    </div>
+                                    <!-- 防429模式 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">防429模式</label>
+                                        <label class="switch"><input type="checkbox" id="settingAnti429" onchange="gameState.anti429Mode=this.checked;"><span class="slider"></span></label>
+                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">注入随机噪声降低API审查触发</span>
+                                    </div>
+                                    <!-- 合并system消息 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">合并system消息</label>
+                                        <label class="switch"><input type="checkbox" id="settingSquashSystem" onchange="gameState._squashSystemMessages=this.checked;"><span class="slider"></span></label>
+                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">将相邻system消息合并为一条（节省消息数）</span>
+                                    </div>
+                                    <!-- 摘要阈值 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">摘要阈值</label>
+                                        <select id="settingSummaryThreshold" class="setting-select" onchange="gameState.summaryThreshold=parseInt(this.value)||0;">
+                                            <option value="4">4轮</option>
+                                            <option value="6" selected>6轮（推荐）</option>
+                                            <option value="10">10轮</option>
+                                            <option value="20">20轮</option>
+                                            <option value="0">不限制</option>
+                                        </select>
+                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">超过此轮数的旧对话只发摘要</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 快捷参数卡片（可折叠） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">快捷参数</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        一键切换参数组合：保守=稳定可控，均衡=自然丰富，创意=高温奔放
+                                    </div>
+                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;">
+                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守模式</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡模式</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意模式</button>
+                                    </div>
+                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-top:8px;">
+                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认参数</button>
+                                    </div>
+                                    <div id="paramPresetInfo2" style="font-size:11px;color:var(--text-tertiary);margin-top:8px;display:none;"></div>
                                 </div>
                             </div>
                             <hr class="settings-divider">
