@@ -1101,7 +1101,9 @@ var PresetManager = {
     // jailbreak: 越狱提示词（放在聊天历史之后）
     // main: 主系统提示词（标记为系统提示词）
     // nsfw: NSFW提示词（标记为越狱提示词）
-    if (p.identifier === 'jailbreak' || p.identifier === 'nsfw') {
+    // 【修复】如果prompt同时标记了 system_prompt=true，尊重该标记，不强制归为越狱
+    // Free-Script原生预设中nsfw可能是身份定义而非越狱
+    if ((p.identifier === 'jailbreak' || p.identifier === 'nsfw') && p.system_prompt !== true) {
         importedPrompts.push({
             identifier: p.identifier || '',
             name: p.name || '',
@@ -1939,7 +1941,9 @@ var PresetManager = {
             var role = p.role || 'system';
 
             // 越狱提示词
-            if (p.identifier === 'jailbreak' || p.identifier === 'nsfw' || p.isJailbreak) {
+            // 【修复】如果prompt标记了system_prompt=true，不强制归为越狱
+            // Free-Script原生预设中nsfw可能是身份定义，应走system_prompt路径
+            if ((p.identifier === 'jailbreak' || p.identifier === 'nsfw' || p.isJailbreak) && p.system_prompt !== true) {
                 jailbreakPrompts.push(p);
                 return;
             }
