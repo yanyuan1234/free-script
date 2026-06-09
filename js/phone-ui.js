@@ -5501,15 +5501,16 @@ function saveGameSettings() {
         narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed',
         pacing: document.getElementById('wcPacing') ? document.getElementById('wcPacing').value : 'steady'
     };
-    // 保存默认参数设置（预设会覆盖这些）
+    // 保存默认参数设置（从预设管理器读取，设置页已移除手动输入框）
+    var pm = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams : null;
     var defaultParams = {
-        contextLength: parseInt(document.getElementById('settingContextLength') ? document.getElementById('settingContextLength').value : 8192) || 8192,
-        temperature: parseFloat(document.getElementById('settingTemperature') ? document.getElementById('settingTemperature').value : 0.8) || 0.8,
-        topP: parseFloat(document.getElementById('settingTopP') ? document.getElementById('settingTopP').value : 0.9) || 0.9,
-        topK: parseInt(document.getElementById('settingTopK') ? document.getElementById('settingTopK').value : 0) || 0,
-        frequencyPenalty: parseFloat(document.getElementById('settingFreqPen') ? document.getElementById('settingFreqPen').value : 0) || 0,
-        presencePenalty: parseFloat(document.getElementById('settingPresPen') ? document.getElementById('settingPresPen').value : 0) || 0,
-        repeatPenalty: parseFloat(document.getElementById('settingRepeatPen') ? document.getElementById('settingRepeatPen').value : 1.1) || 1.1
+        contextLength: pm ? (pm.context_length || pm.openai_max_context || 8192) : 8192,
+        temperature: pm ? pm.temperature : 0.8,
+        topP: pm ? pm.top_p : 0.9,
+        topK: pm ? (pm.top_k || 0) : 0,
+        frequencyPenalty: pm ? (pm.frequency_penalty || 0) : 0,
+        presencePenalty: pm ? (pm.presence_penalty || 0) : 0,
+        repeatPenalty: pm ? (pm.repeat_penalty || 1.1) : 1.1
     };
     // 使用预设温度而非硬编码，避免覆盖预设设置
     gameState.temperature = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams.temperature : defaultParams.temperature;
@@ -5742,17 +5743,18 @@ function loadGameSettings() {
             console.warn('加载设置失败，使用默认值:', e);
         }
     }
-    // 恢复默认参数UI（预设未加载时生效）
+    // 恢复默认参数（设置页已移除手动输入框，参数由预设管理器控制）
+    // 如果预设未加载且有保存的默认参数，同步到PresetManager
     var hasPresetLoaded = (typeof PresetManager !== 'undefined' && PresetManager.currentPresetIndex >= 0);
-    if (!hasPresetLoaded && defaultParams) {
-        var el2 = function(id) { return document.getElementById(id); };
-        if (el2('settingContextLength')) el2('settingContextLength').value = defaultParams.contextLength || 8192;
-        if (el2('settingTemperature')) el2('settingTemperature').value = defaultParams.temperature !== undefined ? defaultParams.temperature : 0.8;
-        if (el2('settingTopP')) el2('settingTopP').value = defaultParams.topP !== undefined ? defaultParams.topP : 0.9;
-        if (el2('settingTopK')) el2('settingTopK').value = defaultParams.topK !== undefined ? defaultParams.topK : 0;
-        if (el2('settingFreqPen')) el2('settingFreqPen').value = defaultParams.frequencyPenalty !== undefined ? defaultParams.frequencyPenalty : 0;
-        if (el2('settingPresPen')) el2('settingPresPen').value = defaultParams.presencePenalty !== undefined ? defaultParams.presencePenalty : 0;
-        if (el2('settingRepeatPen')) el2('settingRepeatPen').value = defaultParams.repeatPenalty !== undefined ? defaultParams.repeatPenalty : 1.1;
+    if (!hasPresetLoaded && defaultParams && typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        PresetManager.currentParams.temperature = defaultParams.temperature !== undefined ? defaultParams.temperature : 0.8;
+        PresetManager.currentParams.top_p = defaultParams.topP !== undefined ? defaultParams.topP : 0.9;
+        PresetManager.currentParams.top_k = defaultParams.topK !== undefined ? defaultParams.topK : 0;
+        PresetManager.currentParams.frequency_penalty = defaultParams.frequencyPenalty !== undefined ? defaultParams.frequencyPenalty : 0;
+        PresetManager.currentParams.presence_penalty = defaultParams.presencePenalty !== undefined ? defaultParams.presencePenalty : 0;
+        PresetManager.currentParams.repeat_penalty = defaultParams.repeatPenalty !== undefined ? defaultParams.repeatPenalty : 1.1;
+        PresetManager.currentParams.context_length = defaultParams.contextLength || 8192;
+        PresetManager.syncParamsToUI();
     }
     applyFontSize();
 }

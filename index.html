@@ -1298,6 +1298,15 @@
                                             <input type="range" id="presetMinP" class="wi-slider" min="0" max="1" step="0.05" value="0">
                                             <div class="slider-desc">最小概率阈值过滤低概率词</div>
                                         </div>
+                                        <!-- Repeat Penalty -->
+                                        <div class="preset-slider-group">
+                                            <div class="slider-header">
+                                                <span class="slider-label">Repeat Penalty</span>
+                                                <span class="slider-value" id="presetRepeatPenValue">1.1</span>
+                                            </div>
+                                            <input type="range" id="presetRepeatPen" class="wi-slider" min="1" max="2" step="0.05" value="1.1">
+                                            <div class="slider-desc">重复惩罚，降低已出现词的概率</div>
+                                        </div>
                                     </div>
                                     <!-- 应用参数按钮 -->
                                     <div class="wi-btn-row mt-16">
@@ -2223,7 +2232,7 @@
                                 <div class="setting-body" style="display:none;">
                                     <!-- 快捷参数预设 -->
                                     <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        一键切换参数组合，自动填入下方参数
+                                        一键切换参数组合，自动应用
                                     </div>
                                     <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-bottom:12px;">
                                         <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守</button>
@@ -2235,46 +2244,16 @@
                                         <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
                                     </div>
                                     <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;display:none;"></div>
-                                    <!-- 手动参数调整 -->
+                                    <!-- 常用运行时参数 -->
                                     <div class="setting-row">
                                         <label class="field-label">剧情长度（max_tokens）</label>
                                         <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
                                             value="2048" placeholder="AI每轮最大生成字数" style="max-width:120px;">
                                     </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">上下文长度</label>
-                                        <input type="number" class="input-field" id="settingContextLength" min="256" max="128000"
-                                            value="8192" step="256" style="max-width:120px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">Temperature</label>
-                                        <input type="number" class="input-field" id="settingTemperature" min="0" max="2"
-                                            value="0.8" step="0.1" style="max-width:80px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">Top P</label>
-                                        <input type="number" class="input-field" id="settingTopP" min="0" max="1"
-                                            value="0.9" step="0.05" style="max-width:80px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">Top K</label>
-                                        <input type="number" class="input-field" id="settingTopK" min="0" max="100"
-                                            value="0" step="1" style="max-width:80px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">Freq Penalty</label>
-                                        <input type="number" class="input-field" id="settingFreqPen" min="-2" max="2"
-                                            value="0" step="0.1" style="max-width:80px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">Pres Penalty</label>
-                                        <input type="number" class="input-field" id="settingPresPen" min="-2" max="2"
-                                            value="0" step="0.1" style="max-width:80px;">
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">Repeat Penalty</label>
-                                        <input type="number" class="input-field" id="settingRepeatPen" min="1" max="2"
-                                            value="1.1" step="0.05" style="max-width:80px;">
+                                    <!-- 精细调参入口 -->
+                                    <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text-secondary);line-height:1.5;display:flex;justify-content:space-between;align-items:center;">
+                                        <span>Temperature/TopP/TopK/惩罚等参数</span>
+                                        <button class="tag-btn" onclick="document.getElementById('settingsModal').style.display='none';PresetManager.showModal();" style="flex-shrink:0;">去预设管理调参</button>
                                     </div>
                                 </div>
                             </div>

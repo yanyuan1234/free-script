@@ -596,6 +596,13 @@ var PresetManager = {
         var minPValueEl = document.getElementById('presetMinPValue');
         if (minPValueEl) minPValueEl.textContent = this.currentParams.min_p || 0;
     }
+    // Sync presetRepeatPen
+    var repeatPenEl = document.getElementById('presetRepeatPen');
+    if (repeatPenEl) {
+        repeatPenEl.value = this.currentParams.repeat_penalty || 1.1;
+        var repeatPenValueEl = document.getElementById('presetRepeatPenValue');
+        if (repeatPenValueEl) repeatPenValueEl.textContent = this.currentParams.repeat_penalty || 1.1;
+    }
     // Sync presetStreamToggle display state
     var streamToggle = document.getElementById('presetStreamToggle');
     if (streamToggle) {
@@ -638,6 +645,9 @@ var PresetManager = {
         // Read presetMinP
         var minPEl = document.getElementById('presetMinP');
         if (minPEl) this.currentParams.min_p = parseFloat(minPEl.value) || 0;
+        // Read presetRepeatPen
+        var repeatPenEl = document.getElementById('presetRepeatPen');
+        if (repeatPenEl) this.currentParams.repeat_penalty = parseFloat(repeatPenEl.value) || 1.1;
         // Read presetStreamToggle state
         var streamToggle = document.getElementById('presetStreamToggle');
         if (streamToggle) {
@@ -774,7 +784,7 @@ var PresetManager = {
     }
 
     // 滑块实时更新显示值
-    ['presetTemp', 'presetTopP', 'presetFreqPen', 'presetPresPen', 'presetTopK', 'presetMinP'].forEach(function(id) {
+    ['presetTemp', 'presetTopP', 'presetFreqPen', 'presetPresPen', 'presetTopK', 'presetMinP', 'presetRepeatPen'].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.addEventListener('input', function() {

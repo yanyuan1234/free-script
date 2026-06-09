@@ -646,26 +646,15 @@ function applyParamPreset(preset) {
     var p = presets[preset];
     if (!p) return;
 
-    // 应用到游戏设置UI
-    var elTemp = document.getElementById('settingTemperature');
-    var elTopP = document.getElementById('settingTopP');
-    var elTopK = document.getElementById('settingTopK');
-    var elFreqPen = document.getElementById('settingFreqPen');
-    var elPresPen = document.getElementById('settingPresPen');
+    // 应用到剧情长度UI（设置页唯一保留的参数输入框）
     var elMaxTokens = document.getElementById('settingStoryLength');
-
-    if (elTemp) elTemp.value = p.temperature;
-    if (elTopP) elTopP.value = p.top_p;
-    if (elTopK) elTopK.value = p.top_k;
-    if (elFreqPen) elFreqPen.value = p.frequency_penalty;
-    if (elPresPen) elPresPen.value = p.presence_penalty;
     if (elMaxTokens) elMaxTokens.value = p.max_tokens;
 
     // 同步到gameState
     gameState.temperature = p.temperature;
     gameState.maxTokens = p.max_tokens;
 
-    // 同步到PresetManager
+    // 同步到PresetManager（参数统一由预设管理器控制）
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
         PresetManager.currentParams.temperature = p.temperature;
         PresetManager.currentParams.top_p = p.top_p;
