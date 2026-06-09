@@ -5535,21 +5535,25 @@ function saveGameSettings() {
     // 章节模式
     var chapterModeEl = document.getElementById('settingChapterMode');
     if (chapterModeEl) gameState.chapterMode = chapterModeEl.value;
-    // NPC 描写准则
-    var npcRulesEl = document.getElementById('settingNpcRules');
-    if (npcRulesEl) gameState.npcDescriptionRules = npcRulesEl.checked;
-    // 叙事之眼（10眼）
-    if (!gameState.narrativeEyes) gameState.narrativeEyes = {};
-    document.querySelectorAll('[data-eye]').forEach(function(el) {
-        var k = el.getAttribute('data-eye');
-        gameState.narrativeEyes[k] = el.checked;
-    });
-    // 缄默法则（11条）
+    // NPC 描写准则（已固定为默认开，UI 已移除开关）
+    gameState.npcDescriptionRules = true;
+    // 叙事基调（10眼）已固定为默认开，UI 不再展示
+    // 干练文风 10 项已固定为默认开，仅 1 项 NSFW 可选
     if (!gameState.squelchRules) gameState.squelchRules = {};
-    document.querySelectorAll('[data-squelch]').forEach(function(el) {
-        var k = el.getAttribute('data-squelch');
-        gameState.squelchRules[k] = el.checked;
-    });
+    // 强制设置 10 项为 true
+    gameState.squelchRules.oilyCliches = true;
+    gameState.squelchRules.bodyCloseups = true;
+    gameState.squelchRules.cognitiveInability = true;
+    gameState.squelchRules.mandative = true;
+    gameState.squelchRules.referenceDep = true;
+    gameState.squelchRules.extremeAdverbs = true;
+    gameState.squelchRules.pronouns = true;
+    gameState.squelchRules.metaphors = true;
+    gameState.squelchRules.metaphorBlacklist = true;
+    gameState.squelchRules.forbidden = true;
+    // NSFW 解剖名词开关
+    var anatomyEl = document.getElementById('settingAnatomyTerms');
+    if (anatomyEl) gameState.squelchRules.anatomyTerms = anatomyEl.checked;
     // 标签美化库
     if (!gameState.beautifyLibrary) gameState.beautifyLibrary = {};
     document.querySelectorAll('[data-beautify]').forEach(function(el) {
@@ -5876,16 +5880,11 @@ function loadGameSettings() {
             // 恢复 UI 控件
             var chModeEl = document.getElementById('settingChapterMode');
             if (chModeEl) chModeEl.value = gameState.chapterMode || 'off';
-            var npcEl = document.getElementById('settingNpcRules');
-            if (npcEl) npcEl.checked = gameState.npcDescriptionRules !== false;
-            document.querySelectorAll('[data-eye]').forEach(function(el) {
-                var k = el.getAttribute('data-eye');
-                el.checked = gameState.narrativeEyes && gameState.narrativeEyes[k] === true;
-            });
-            document.querySelectorAll('[data-squelch]').forEach(function(el) {
-                var k = el.getAttribute('data-squelch');
-                el.checked = gameState.squelchRules && gameState.squelchRules[k] === true;
-            });
+            // NSFW 解剖名词开关（仅 1 项可定制）
+            var anatomyEl = document.getElementById('settingAnatomyTerms');
+            if (anatomyEl) anatomyEl.checked = gameState.squelchRules && gameState.squelchRules.anatomyTerms === true;
+            // 叙事基调/干练文风 9 项已固定为默认开启，不再暴露 UI 开关
+            // 美化标签、写法档位（玩家可选）
             document.querySelectorAll('[data-beautify]').forEach(function(el) {
                 var k = el.getAttribute('data-beautify');
                 el.checked = gameState.beautifyLibrary && gameState.beautifyLibrary[k] === true;

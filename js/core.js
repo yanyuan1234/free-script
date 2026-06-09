@@ -1072,33 +1072,34 @@ summaryThreshold: 6,         // 摘要阈值（来自月读预设）
 _squashSystemMessages: true, // 合并system消息（来自果实预设，默认开启）
 // === 章节模式（来自果实预设的长篇剧情规范） ===
 chapterMode: 'off',          // off / chapter / longform
-// === 世界之眼多选开关（来自月读预设的10眼系统） ===
+// === 叙事基调（来自月读预设的10眼系统） ===
+// 全部默认开启，固定为游戏叙事基础规范，玩家无需感知
 narrativeEyes: {
-    // 基础叙事原则（默认开启，是酒馆大佬共识的"地基"）
-    realistic: true,         // 真实之眼：可验证的因果与常识
-    ideal: true,             // 理想之眼：温柔联结与情感修复
-    ensemble: true,          // 群像之眼：多角色共驱
-    daily: false,            // 余温之眼：日常切片与关系温度
-    heartbeat: false,        // 怦然之眼：情绪浓度强化
-    undercurrent: false,     // 暗潮之眼：潜台词与利益博弈
-    fate: false,             // 命运之眼：选择-后果-再选择
-    comedy: false,           // 喜剧之眼：轻荒诞世界观
-    balanced: false,         // 均衡之眼：戏剧性与合理性平衡
-    mystery: false           // 迷雾之眼：现实与超常模糊边界
+    realistic: true,         // 现实感：可验证的因果与常识
+    ideal: true,             // 温情：温柔联结与情感修复
+    ensemble: true,          // 多角色：多角色共驱
+    daily: true,             // 日常感：日常切片与关系温度
+    heartbeat: true,         // 情绪强：情绪浓度强化
+    undercurrent: true,      // 潜台词：潜台词与利益博弈
+    fate: true,              // 因果链：选择-后果-再选择
+    comedy: true,            // 轻松幽默：轻荒诞世界观
+    balanced: true,          // 戏剧平衡：戏剧性与合理性平衡
+    mystery: true            // 超自然：现实与超常模糊边界
 },
-// === 缄默法则/词句肃清（来自蛾摩拉预设的反套路规则） ===
+// === 干练文风（来自蛾摩拉预设的词句肃清） ===
+// 10 项基础规范默认开启，1 项 NSFW 专用默认关闭
 squelchRules: {
     oilyCliches: true,       // 油腻套路：嘴角勾起弧度/捏下巴 等
     bodyCloseups: true,      // 身体特写：胸膛震动/手部工业糖精特写
     anatomyTerms: false,     // 解剖名词：耻骨/肋骨/肌理（NSFW 场景才建议开）
-    cognitiveInability: true,// 认知失能：难以言喻/无法名状
-    mandative: true,         // 强制情态：不容置疑
-    referenceDep: true,      // 参照依赖：不是A而是B
-    extremeAdverbs: true,    // 极端程度副词：极其/极度
-    pronouns: false,         // 赘余指示代词：那个/那种
-    metaphors: true,         // 假想情境式比喻：像是在.../仿佛...
-    metaphorBlacklist: true, // 喻体黑名单：石子/羽毛/烙印
-    forbidden: true          // 禁词拦截：嘴角勾起弧度/捏下巴
+    cognitiveInability: true,// 难以形容：难以言喻/无法名状
+    mandative: true,         // 强制语气：不容置疑
+    referenceDep: true,      // 对比句式：不是A而是B
+    extremeAdverbs: true,    // 夸张副词：极其/极度
+    pronouns: true,          // 重复代词：那个/那种
+    metaphors: true,         // 假设比喻：像是在.../仿佛...
+    metaphorBlacklist: true, // 老套比喻：石子/羽毛/烙印
+    forbidden: true          // 模板描写：嘴角勾起弧度/捏下巴
 },
 // === NPC 描写准则（默认注入，导入预设时可被覆盖） ===
 npcDescriptionRules: true,   // 男帅女美、禁止脸谱化、禁用丑相关形容

@@ -2388,8 +2388,8 @@
                                 </div>
                                 <div class="setting-body" style="display:none;">
                                     <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        来自酒馆大佬们的创作智慧，提升叙事质量<br>
-                                        <span style="color:var(--text-tertiary);">已自动启用：抗OOC/抗全知/抗刻板规则、多角色叙事指导、空变量清理、system消息合并、智能摘要</span>
+                                        已自动启用：抗OOC/抗全知/抗刻板规则、多角色叙事指导、10 项叙事基调、10 项干练文风、NPC 好看原则、空变量清理、system 消息合并、智能摘要、模型上下文保护<br>
+                                        <span style="color:var(--text-tertiary);">以下只显示你需要经常调整的项，其它智能能力在后台默默工作</span>
                                     </div>
                                     <!-- 文风选择 -->
                                     <div class="setting-row">
@@ -2425,62 +2425,11 @@
                                             <option value="longform">长篇模式（每段 250-600 字）</option>
                                         </select>
                                     </div>
-                                    <!-- NPC 描写规则（让所有角色都好看） -->
+                                    <!-- NSFW 描写开关：默认关闭，需要时开启 -->
                                     <div class="setting-row">
-                                        <label class="field-label">NPC 好看原则</label>
-                                        <label class="switch"><input type="checkbox" id="settingNpcRules" checked onchange="gameState.npcDescriptionRules=this.checked;"><span class="slider"></span></label>
-                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">角色形象端正、性格鲜明</span>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- 叙事基调（来自酒馆前辈经验，多选叠加） -->
-                            <div class="setting-group">
-                                <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">叙事基调</h3>
-                                    <span class="toggle-icon">▼</span>
-                                </div>
-                                <div class="setting-body" style="display:none;">
-                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        选择故事的整体感觉和讲述方式，按需勾选<br>
-                                        <span style="color:var(--text-tertiary);">默认开启「现实感 / 温情 / 多角色」三项，构成稳定叙事骨架</span>
-                                    </div>
-                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                        <label class="eye-item"><input type="checkbox" data-eye="realistic" checked><span>🌍 现实感</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="ideal" checked><span>💗 温情</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="ensemble" checked><span>👥 多角色</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="daily"><span>🍵 日常感</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="heartbeat"><span>💓 情绪强</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="undercurrent"><span>🌊 潜台词</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="fate"><span>🌀 因果链</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="comedy"><span>😄 轻松幽默</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="balanced"><span>⚖ 戏剧平衡</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-eye="mystery"><span>🌫 超自然</span></label>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- 干练文风（自动去除 AI 常用的模板化表达） -->
-                            <div class="setting-group">
-                                <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">干练文风</h3>
-                                    <span class="toggle-icon">▼</span>
-                                </div>
-                                <div class="setting-body" style="display:none;">
-                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        自动去除 AI 常用的"油腻""模板化"描写，让文字更自然<br>
-                                        <span style="color:var(--text-tertiary);">不仅在 prompt 中引导 AI，还会在 AI 输出后做自动净化（双保险）</span>
-                                    </div>
-                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                        <label class="eye-item"><input type="checkbox" data-squelch="oilyCliches" checked><span>🚫 油腻套路</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="bodyCloseups" checked><span>🚫 身体特写</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="anatomyTerms"><span>🚫 解剖名词（NSFW用）</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="cognitiveInability" checked><span>🚫 难以形容</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="mandative" checked><span>🚫 强制语气</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="referenceDep" checked><span>🚫 对比句式</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="extremeAdverbs" checked><span>🚫 夸张副词</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="pronouns"><span>🚫 重复代词</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="metaphors" checked><span>🚫 假设比喻</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="metaphorBlacklist" checked><span>🚫 老套比喻</span></label>
-                                        <label class="eye-item"><input type="checkbox" data-squelch="forbidden" checked><span>🚫 模板描写</span></label>
+                                        <label class="field-label">NSFW 描写</label>
+                                        <label class="switch"><input type="checkbox" id="settingAnatomyTerms" onchange="if(gameState.squelchRules){gameState.squelchRules.anatomyTerms=this.checked;}"><span class="slider"></span></label>
+                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">允许 AI 使用解剖学名词（NSFW 场景专用）</span>
                                     </div>
                                 </div>
                             </div>
