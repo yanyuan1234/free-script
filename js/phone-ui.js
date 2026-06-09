@@ -5498,7 +5498,8 @@ function saveGameSettings() {
         perspective: document.getElementById('wcPerspective') ? document.getElementById('wcPerspective').value : 'third_person_limited',
         userPronoun: document.getElementById('wcUserPronoun') ? document.getElementById('wcUserPronoun').value : 'second_person',
         takeover: document.getElementById('wcTakeover') ? document.getElementById('wcTakeover').value : 'closed',
-        narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed'
+        narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed',
+        pacing: document.getElementById('wcPacing') ? document.getElementById('wcPacing').value : 'steady'
     };
     // 保存默认参数设置（预设会覆盖这些）
     var defaultParams = {
@@ -5514,6 +5515,7 @@ function saveGameSettings() {
     gameState.temperature = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams.temperature : defaultParams.temperature;
     gameState.autoCompress = document.getElementById('autoCompressOn') && document.getElementById(
         'autoCompressOn').classList.contains('active');
+    gameState.summaryThreshold = parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0;
     gameState.generateChoices = true;
     safeSetItem('freeScript_settings', JSON.stringify({
         useStream: gameState.useStream,
@@ -5521,6 +5523,7 @@ function saveGameSettings() {
         fontSize: gameState.fontSize,
         wordCountConfig: gameState.wordCountConfig,
         autoCompress: gameState.autoCompress,
+        summaryThreshold: gameState.summaryThreshold,
         generateChoices: gameState.generateChoices,
         maxTokens: gameState.maxTokens,
         defaultParams: defaultParams
@@ -5684,6 +5687,7 @@ function loadGameSettings() {
             gameState.temperature = d.temperature || 0.8;
             gameState.fontSize = d.fontSize || 16;
             gameState.autoCompress = d.autoCompress !== false;
+            gameState.summaryThreshold = d.summaryThreshold !== undefined ? d.summaryThreshold : 6;
             gameState.useStream = d.useStream !== false;
             gameState.generateChoices = true;
             if (d.maxTokens) gameState.maxTokens = d.maxTokens;
@@ -5704,7 +5708,11 @@ function loadGameSettings() {
                 if (el('wcUserPronoun')) el('wcUserPronoun').value = wc.userPronoun || 'second_person';
                 if (el('wcTakeover')) el('wcTakeover').value = wc.takeover || 'closed';
                 if (el('wcNarrate')) el('wcNarrate').value = wc.narrate || 'closed';
+                if (el('wcPacing')) el('wcPacing').value = wc.pacing || 'steady';
             }
+            // 恢复摘要阈值UI
+            var stEl = document.getElementById('summaryThreshold');
+            if (stEl) stEl.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
         }

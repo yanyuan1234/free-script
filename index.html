@@ -2349,6 +2349,35 @@
                                             <option value="open">开放转述user</option>
                                         </select>
                                     </div>
+                                    <div class="setting-row">
+                                        <label class="field-label">推进节奏</label>
+                                        <select id="wcPacing" class="select-field">
+                                            <option value="slow">慢火浸润（极度细腻）</option>
+                                            <option value="steady" selected>稳态推进（均衡推荐）</option>
+                                            <option value="balanced">均衡脉冲（中等节奏）</option>
+                                            <option value="fast">高压疾行（快速推进）</option>
+                                            <option value="free">自由变奏（自动调节）</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 参数推荐预设卡片（可折叠） -->
+                            <div class="setting-group">
+                                <div class="setting-header" onclick="toggleSettingGroup(this)">
+                                    <h3 class="setting-title">参数推荐预设</h3>
+                                    <span class="toggle-icon">▼</span>
+                                </div>
+                                <div class="setting-body" style="display:none;">
+                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
+                                        来自酒馆大佬们的调参智慧，一键应用推荐参数组合
+                                    </div>
+                                    <div class="setting-row" style="flex-wrap:wrap;gap:6px;">
+                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：适合细腻叙事">月读风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：适合均衡叙事">果实风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：适合长篇叙事">蛾摩拉风格</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('default')" title="Free-Script默认参数">默认参数</button>
+                                    </div>
+                                    <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-top:8px;display:none;"></div>
                                 </div>
                             </div>
                             <hr class="settings-divider">
@@ -2375,6 +2404,16 @@
                                         <option value="0.7">70%</option>
                                         <option value="0.8" selected>80%</option>
                                         <option value="0.9">90%</option>
+                                    </select>
+                                </div>
+                                <div class="setting-item">
+                                    <span class="setting-label">摘要阈值</span>
+                                    <select id="summaryThreshold" class="setting-select" title="超过此轮数的旧对话只发送摘要，节省token（来自月读预设的智慧）">
+                                        <option value="4">4轮</option>
+                                        <option value="6" selected>6轮（推荐）</option>
+                                        <option value="10">10轮</option>
+                                        <option value="20">20轮</option>
+                                        <option value="0">不限制</option>
                                     </select>
                                 </div>
                                 <div class="setting-actions">

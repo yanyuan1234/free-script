@@ -221,6 +221,7 @@ ${_termsPrompt}
 - 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}
 - 演绎：{{getglobalvar::演绎授权}}
 - 转述：{{getglobalvar::转述授权}}
+- 节奏：{{getglobalvar::推进节奏}}
 当上述变量为空时，你根据世界观和场景自行选择最合适的方案。
 
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
@@ -489,6 +490,21 @@ function injectPresetGlobalVars() {
     };
     MacroEngine.setGlobalVar('talk', talkMap[aiMode] || '');
     
+    // === 推进节奏（来自月读预设的智慧） ===
+    var pacing = config.pacing || '';
+    if (pacing) {
+        var pacingMap = {
+            'slow': '慢火浸润：极度细腻，每个感官细节都值得停留，场景转换缓慢而沉浸',
+            'steady': '稳态推进：均衡节奏，细节与推进并重，适合大多数叙事',
+            'balanced': '均衡脉冲：中等节奏，关键场景细腻、过渡场景简练',
+            'fast': '高压疾行：快速推进，紧凑有力，适合紧张刺激的场景',
+            'free': '自由变奏：根据场景氛围自动调节节奏，平静时细腻、紧张时加速'
+        };
+        MacroEngine.setGlobalVar('推进节奏', pacingMap[pacing] || '');
+    } else {
+        MacroEngine.setGlobalVar('推进节奏', '');
+    }
+    
     // 注入其他常用的酒馆宏变量
     if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', gameState.playerName || '玩家');
     if (!MacroEngine.getGlobalVar('char')) MacroEngine.setGlobalVar('char', (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色');
@@ -547,6 +563,97 @@ function applyLengthPreset(preset) {
     if (elMax) elMax.value = p.max;
     if (elParaMin) elParaMin.value = p.paraMin;
     if (elParaMax) elParaMax.value = p.paraMax;
+}
+
+/**
+ * 应用参数推荐预设（来自酒馆大佬的调参智慧）
+ * 一键设置 temperature/top_p/top_k/max_tokens 等参数
+ */
+function applyParamPreset(presetName) {
+    var paramPresets = {
+        moonread: {
+            name: '月读风格',
+            desc: '适合细腻叙事，感官细节丰富，节奏从容',
+            temperature: 1.0,
+            topP: 0.95,
+            topK: 64,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            maxTokens: 8192,
+            contextLength: 8192
+        },
+        fruit: {
+            name: '果实风格',
+            desc: '均衡叙事，细节与推进并重，风格自然',
+            temperature: 1.3,
+            topP: 0.91,
+            topK: 64,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            maxTokens: 3000,
+            contextLength: 8192
+        },
+        gomorrah: {
+            name: '蛾摩拉风格',
+            desc: '长篇叙事，高创意度，适合深度剧情',
+            temperature: 1.71,
+            topP: 0.9,
+            topK: 0,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            maxTokens: 30000,
+            contextLength: 32768
+        },
+        'default': {
+            name: '默认参数',
+            desc: 'Free-Script默认设置，适合大多数场景',
+            temperature: 0.8,
+            topP: 0.9,
+            topK: 0,
+            frequencyPenalty: 0,
+            presencePenalty: 0,
+            maxTokens: 4096,
+            contextLength: 8192
+        }
+    };
+    
+    var p = paramPresets[presetName];
+    if (!p) return;
+    
+    // 设置UI控件的值
+    var el = function(id) { return document.getElementById(id); };
+    if (el('settingTemperature')) el('settingTemperature').value = p.temperature;
+    if (el('settingTopP')) el('settingTopP').value = p.topP;
+    if (el('settingTopK')) el('settingTopK').value = p.topK;
+    if (el('settingFreqPen')) el('settingFreqPen').value = p.frequencyPenalty;
+    if (el('settingPresPen')) el('settingPresPen').value = p.presencePenalty;
+    if (el('settingStoryLength')) el('settingStoryLength').value = p.maxTokens;
+    if (el('settingContextLength')) el('settingContextLength').value = p.contextLength;
+    
+    // 同步更新gameState
+    gameState.temperature = p.temperature;
+    gameState.maxTokens = p.maxTokens;
+    
+    // 显示信息
+    var infoEl = el('paramPresetInfo');
+    if (infoEl) {
+        infoEl.style.display = 'block';
+        infoEl.textContent = '已应用「' + p.name + '」— ' + p.desc + 
+            ' (temp=' + p.temperature + ', top_p=' + p.topP + ', max_tokens=' + p.maxTokens + ')';
+    }
+    
+    // 高亮当前选中的按钮
+    var buttons = document.querySelectorAll('.setting-group .tag-btn');
+    buttons.forEach(function(btn) {
+        btn.classList.remove('active');
+        if (btn.getAttribute('onclick') && btn.getAttribute('onclick').indexOf(presetName) !== -1) {
+            btn.classList.add('active');
+        }
+    });
+    
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('已应用「' + p.name + '」参数预设');
+    }
 }
 
 async function sendAIRequest(userMessage, isInit = false) {
@@ -681,6 +788,23 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             var recent = gameState.conversationHistory.slice(1).slice(-MAX_HISTORY);
+
+            // 【月读智慧】摘要阈值：超过此轮数的旧对话只发送摘要，节省token
+            // 来自月读预设的"6楼外只发摘要"策略
+            var summaryThreshold = gameState.summaryThreshold || 0;
+            if (summaryThreshold > 0 && recent.length > summaryThreshold * 2) {
+                // 保留最近N轮的完整对话，旧对话用摘要替代
+                var keepCount = summaryThreshold * 2; // 每轮=1 user + 1 assistant
+                var oldMessages = recent.slice(0, recent.length - keepCount);
+                var newMessages = recent.slice(recent.length - keepCount);
+                
+                // 如果有摘要，用摘要替代旧对话
+                if (gameState.rollingSummary && gameState.rollingSummary.trim()) {
+                    recent = newMessages; // 只保留最近N轮
+                    // 摘要会在后面作为"前情摘要"注入
+                    console.log('[摘要阈值] 旧对话' + oldMessages.length + '条已用摘要替代，保留最近' + newMessages.length + '条');
+                }
+            }
 
             // 2. 获取世界书分组数据
             var wiPositionTexts = gameState._wiPositionTexts || null;
