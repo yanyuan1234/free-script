@@ -1559,17 +1559,17 @@ var GameMemory = {
         var summaryLines = self._buildSummaryLayersSection();
         if (summaryLines.length > 0) parts.push({ key: 'summaryLayers', priority: 3, lines: summaryLines, changed: true });
         
-        // 注入头尾模板
+        // 注入头尾模板——标题不仅标注分类，还告诉AI这层信息的用途
         var headers = {
-            permanentFacts: '【核心设定（始终生效）】\n',
-            changes: '【本轮变化（第' + currentTurn + '回合）】\n',
-            plot: '【剧情进展】\n',
-            quests: '【进行中的约定】\n',
-            characters: '【角色近况】\n',
-            events: '【重要事件】\n',
-            items: '【持有物品】\n',
-            sceneState: '【当前场景】\n',
-            summaryLayers: '【对话摘要】\n'
+            permanentFacts: '【核心设定（始终生效，冲突时以此为准）】\n',
+            changes: '【本轮变化（第' + currentTurn + '回合，比旧状态更准确）】\n',
+            plot: '【剧情进展（当前故事线）】\n',
+            quests: '【进行中的约定（玩家承诺和任务）】\n',
+            characters: '【角色近况（比世界快照中的角色数据更实时）】\n',
+            events: '【重要事件（影响后续剧情的关键节点）】\n',
+            items: '【持有物品（比世界快照中的背包数据更实时）】\n',
+            sceneState: '【当前场景（角色所在的环境）】\n',
+            summaryLayers: '【对话摘要（早期对话的浓缩版，细节以原文为准）】\n'
         };
         var footers = {
             permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n',

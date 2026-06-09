@@ -166,10 +166,10 @@ function buildSystemPrompt(includeFormatRules) {
     // 【关键】有预设时，只返回游戏上下文（玩家设定/记忆/私聊），格式规则由预设完全控制
     // 预设的 system_prompt=true 条目会追加在此上下文之后，预设才是最高优先级
     if (!includeFormatRules) {
-        return `你是一个互动叙事引擎，你的工作是让玩家沉浸在一个由他们定义的世界中。
+        return `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。
 
 ${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态与记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}`;
+${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}`;
     }
 
     var _maxTokens = gameState.maxTokens || 4096;
@@ -177,19 +177,27 @@ ${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${b
     var _termsPrompt = buildWorldTermsPrompt(_terms);
     // 安全取术语，null 时用通用词
     var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
-    _prompt = `你是一个互动叙事引擎，你的工作是让玩家沉浸在一个由他们定义的世界中。你拥有完全的创作自主权——你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
+    _prompt = `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
 ${_setupText}
-${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态与记忆】\n' + _memoryText + '\n' : ''}${_chatContextText}
+${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
 
 【你的工作方式】
-你通过JSON来呈现你的创作——因为前端需要解析它来渲染界面。story是你的叙事正文，放在JSON的第一个字段，这是最重要的内容。你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
-- story里用\\n换行，对话用「」包裹，让叙事流畅自然
-- 选项(choices)是主角视角的决策点，让玩家感到自己在推动故事
+你的创作通过JSON传递给前端程序来渲染界面。理解这个机制后你就知道为什么格式很重要：前端代码按字段名读取数据，所以字段名必须准确；story放在最前面是因为解析器优先读取它。
+你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
+- story是你的叙事正文，用\\n换行，对话用「」包裹——这是玩家阅读的核心内容
+- choices是主角视角的决策点，让玩家感到自己在推动故事
 - <giggle>是NPC的内心独白，让角色更立体；<mem>标记状态变化，让世界保持一致
 - [章节结束|标题] 用来标记一个章节的收尾
+
+【信息优先级】
+你在多条消息中收到了大量信息。当它们之间出现矛盾时，按以下规则判断：
+1. 标记为"始终生效"的核心设定 > 其他所有信息
+2. 本轮变化 > 旧的状态记录（变化意味着旧信息已过时）
+3. 增强记忆中的角色/物品/事件状态 > 世界快照中的同类信息（快照是旧数据，记忆是实时更新的）
+4. 玩家的最新指令 > 之前的任何指令
 
 【玩家偏好】
 这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：
@@ -215,9 +223,9 @@ function _buildFormatRules(gs, _t) {
     var hasChoices = gs.generateChoices;
 
     if (turn <= 3) {
-        // 前3轮：完整JSON模板（AI需要学习格式）
+        // 前3轮：完整JSON模板 + 理解式说明（让AI理解为什么这样设计，而不只是照做）
         return '【输出格式】\n'
-            + '你直接输出JSON（不要用```json代码块包裹），因为前端程序需要解析它。结构如下：\n'
+            + '前端程序会解析你的JSON输出来渲染界面，所以格式正确性直接影响玩家体验。理解每个字段的用途，你就自然不会搞混：\n'
             + '{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], '
             + (hasChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : '')
             + ' "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, '
@@ -234,13 +242,13 @@ function _buildFormatRules(gs, _t) {
             + '"relationships": [{"from": "", "to": "", "type": "", "desc": ""}], '
             + '"keyEvents": [""], "npcMessages": [{"name": "", "avatar": "👤", "content": "", "time": ""}], '
             + '"gameTime": {"date": "", "time": "", "period": "", "weather": "", "era": ""}, "contextSummary": "" }\n\n'
-            + '【容易出错的地方】\n'
-            + '- player是主角（玩家操控的角色），characters是NPC列表——这是两个不同的字段，不要混淆\n'
-            + '- npcMessages是即时短消息（如手机聊天），正式信件/通知放mail\n'
-            + '- 直接输出JSON文本，不要用```json包裹\n'
-            + '- story必须是JSON的第一个字段，这样解析最可靠';
+            + '【字段用途说明——理解了就不会搞混】\n'
+            + '- player = 玩家操控的主角（第一视角的角色），characters = 其他NPC——它们是不同角色，所以是不同字段\n'
+            + '- npcMessages = 即时短消息（手机聊天），mail = 正式信件/通知——通讯方式不同，字段不同\n'
+            + '- 直接输出纯JSON文本，不要用```json包裹——因为前端解析器期望的是原始JSON字符串\n'
+            + '- story放在JSON第一个字段——因为解析器按顺序读取，story是最重要的内容，放最前面解析最可靠';
     } else {
-        // 第4轮起：精简格式提醒（AI已掌握格式，只需关键提醒）
+        // 第4轮起：精简格式提醒（AI已理解格式逻辑，只需关键提醒）
         return '【格式提醒】继续按已建立的JSON格式输出。story放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<giggle>插入NPC心声，<mem>更新状态变化。'
             + (hasChoices ? '包含choices选项。' : '')
             + '直接输出JSON，不要代码块包裹。';
