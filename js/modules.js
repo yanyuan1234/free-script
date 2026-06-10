@@ -686,10 +686,21 @@ var PresetManager = {
         this._eventsBound = true;
         const self = this;
 
-        // 主页面按钮
+        // 主页面按钮 - 现在打开API配置（而非预设管理）
         var menuBtn = document.getElementById('btnMenuPresets');
         if (menuBtn) {
-            menuBtn.addEventListener('click', function() { self.showModal(); });
+            menuBtn.addEventListener('click', function() {
+                if (typeof renderAPISettings === 'function') renderAPISettings();
+                else self.showModal();
+            });
+        }
+
+        // 主页面设置按钮 - 打开游戏设置
+        var menuSettingsBtn = document.getElementById('btnMenuSettings');
+        if (menuSettingsBtn) {
+            menuSettingsBtn.addEventListener('click', function() {
+                if (typeof openSettingsModal === 'function') openSettingsModal();
+            });
         }
 
         // 剧情页按钮

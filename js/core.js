@@ -331,7 +331,7 @@ var UI = {
         ct.appendChild(t);
         TimerManager.setTimeout('uiToast', function() {
             if (t.parentNode) t.remove();
-            }, 2500);
+            }, 3000);
         },
     showPage: function(id) {
         var el = document.getElementById(id);

@@ -1062,42 +1062,8 @@ function renderLogPage() {
     }
     updateLogFeatureVisibility();
 
-    // 联动：在日志页顶部显示"近期重要事件"摘要（来自记忆系统）
-    // 【性能优化】summaryEl 只创建一次，后续渲染只更新内容
-    var summaryEl = document.getElementById('logMemorySummary');
-    if (!summaryEl) {
-        summaryEl = document.createElement('div');
-        summaryEl.id = 'logMemorySummary';
-        summaryEl.style.cssText = 'margin:10px 16px 0;padding:12px 14px;background:linear-gradient(135deg,#fff3e0 0%,#fce4ec 100%);border-radius:10px;font-size:12px;line-height:1.7;cursor:pointer;';
-        var mainC = document.getElementById('logMainContent');
-        if (mainC) mainC.insertBefore(summaryEl, mainC.firstChild);
-        summaryEl.addEventListener('click', function() {
-            if (window.MemoryManagerUI) {
-                MemoryManagerUI.show();
-                if (window.UI) UI.showPage('memoryPage');
-            }
-        });
-    }
-    try {
-        if (window.EnhancedMemory && EnhancedMemory.longTermMemory) {
-            var events = EnhancedMemory.longTermMemory.importantEvents || [];
-            var recent3 = events.slice(-3).reverse();
-            if (recent3.length > 0) {
-                var html = '🧠 <b>近期记忆</b> · 点击查看全部<br>';
-                recent3.forEach(function(e) {
-                    var imp = e.importance || 5;
-                    var dot = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
-                    html += dot + ' ' + escapeHtml((e.content || '').substring(0, 40)) + (e.content && e.content.length > 40 ? '…' : '') + '<br>';
-                });
-                summaryEl.innerHTML = html;
-                summaryEl.style.display = '';
-            } else {
-                summaryEl.style.display = 'none';
-            }
-        } else {
-            summaryEl.style.display = 'none';
-        }
-    } catch (e) { console.warn('[LogPage] 记忆摘要渲染失败:', e); }
+    // 近期记忆已迁移到记忆管理页面的"近期记忆"标签页
+    // 日志页面不再显示近期记忆摘要
 
     // 事件委托
     var logFeatureGrid = document.getElementById('logFeatureGrid');
