@@ -303,13 +303,15 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         '{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}';
     // 【一致性修复】注入预设写作风格，与主剧情/私聊同步
     sysMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
-    callAI([{
+    // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user（与其他 side function 一致）
+    var _spawnMsg = _applyUseSysprompt([{
         role: 'system',
         content: sysMsg
     }, {
         role: 'user',
         content: '生成新帖子'
-    }], {
+    }]);
+    callAI(_spawnMsg, {
         stream: false
     }).then(function(resp) {
         try {
