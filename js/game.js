@@ -323,8 +323,14 @@ function buildSystemPrompt(includeFormatRules) {
         if (_curP && _curP._isBuiltin) _hasNativePreset = true;
     }
     if (!_hasNativePreset) {
-        // 非内置预设（酒馆导入的或无预设）：注入格式锚点
-        _formatAnchor = '\n\n【Free-Script格式要求（不可覆盖）】\n你的输出必须是合法的JSON，因为前端程序需要解析它来渲染界面。直接输出JSON文本，不要用```json代码块包裹。\n结构：{ "story": "叙事正文（用\\n换行，对话用「」包裹，这是最重要的字段，放第一个）"' + (_hasChoicesForAnchor ? ', "choices": [{"id": "A", "text": "选项描述"}]' : '') + ', "player": {"name":"", "identity":"", "stats":[{"label":"","value":""}]}, "characters": [{"name":"", "relation":"", "favorability":0}], "world": [{"type":"text", "title":"", "content":""}], "bag": [{"name":"", "count":1}], "quests": [{"title":"", "status":""}], "gameTime": {"date":"", "time":"", "period":""} }\n用<giggle>插入NPC内心独白，用<mem>标记状态变化。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间。';
+        // 非内置预设（酒馆导入的或无预设）：注入格式引导
+        // 【说明】JSON 格式不是「不可覆盖的硬规定」，而是「让前端能正常渲染的最稳妥选择」。
+        // 如果酒馆预设本身有更具体的格式要求，AI 应该遵循预设；但默认情况下，可解析的 JSON 是最省心的。
+        _formatAnchor = '\n\n【你的输出会怎么被使用】\n' +
+            '你的输出会喂给前端解析器来渲染界面——解析器按字段名读取数据，story 字段是玩家最关心的内容，所以放第一个字段最稳妥。\n' +
+            '保持一个可被解析的格式（JSON），玩家就能正常看到你的故事；如果你想自由发挥，markdown 代码块、纯文本都会被解析器忽略，导致玩家看不到内容。\n' +
+            '字段参考：{ "story": "叙事正文（用\\n换行，对话用「」包裹）"' + (_hasChoicesForAnchor ? ', "choices": [{"id": "A", "text": "选项描述"}]' : '') + ', "player": {"name":"", "identity":"", "stats":[{"label":"","value":""}]}, "characters": [{"name":"", "relation":"", "favorability":0}], "world": [{"type":"text", "title":"", "content":""}], "bag": [{"name":"", "count":1}], "quests": [{"title":"", "status":""}], "gameTime": {"date":"", "time":"", "period":""} }\n' +
+            '用<giggle>插入NPC内心独白，用<mem>标记状态变化。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间，自己分配。';
     }
 
     if (!includeFormatRules) {
@@ -396,7 +402,7 @@ function _buildFormatRules(gs, _t) {
     if (turn <= 3) {
         // 前3轮：完整JSON模板 + 理解式说明（让AI理解为什么这样设计，而不只是照做）
         return '【输出格式】\n'
-            + '前端程序会解析你的JSON输出来渲染界面，所以格式正确性直接影响玩家体验。理解每个字段的用途，你就自然不会搞混：\n'
+            + '前端程序会解析你的JSON输出来渲染界面。理解每个字段的用途，你就自然不会搞混：\n'
             + '{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], '
             + (hasChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : '')
             + ' "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, '
@@ -416,13 +422,13 @@ function _buildFormatRules(gs, _t) {
             + '【字段用途说明——理解了就不会搞混】\n'
             + '- player = 玩家操控的主角（第一视角的角色），characters = 其他NPC——它们是不同角色，所以是不同字段\n'
             + '- npcMessages = 即时短消息（手机聊天），mail = 正式信件/通知——通讯方式不同，字段不同\n'
-            + '- 直接输出纯JSON文本，不要用```json包裹——因为前端解析器期望的是原始JSON字符串\n'
-            + '- story放在JSON第一个字段——因为解析器按顺序读取，story是最重要的内容，放最前面解析最可靠';
+            + '- 原始JSON文本最稳——markdown代码块```json 包裹会让解析器读取失败，玩家就看不到内容了\n'
+            + '- story 放在JSON第一个字段——因为解析器按顺序读取，story 是最重要的内容，放最前面解析最可靠';
     } else {
         // 第4轮起：精简格式提醒（AI已理解格式逻辑，只需关键提醒）
-        return '【格式提醒】继续按已建立的JSON格式输出。story放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<giggle>插入NPC心声，<mem>更新状态变化。'
+        return '【格式提醒】继续按已建立的JSON格式输出。story 放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<giggle>插入NPC心声，<mem>更新状态变化。'
             + (hasChoices ? '包含choices选项。' : '')
-            + '直接输出JSON，不要代码块包裹。';
+            + '保持可解析的 JSON 结构，markdown 代码块会让玩家看不到内容。';
     }
 }
 
@@ -1923,14 +1929,23 @@ async function _compressConversation(removed, sys) {
             var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你正在维护一份剧情摘要，把新增内容整合到已有摘要中。\n\n## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n## 新增对话内容\n' + summaryContent + '\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。摘要控制在' + ((typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().summaryMaxChars : 1500) + '字以内。';
+        // 【提示词重设计】从「命令式」改为「编剧视角 + 信任模型」
+        summaryPrompt = '你正在帮一位游戏编剧维护剧情摘要——下面是已有摘要和这次新增的对话内容，请把新内容无缝整合到摘要里，让旧摘要与新内容融为一体，而不是简单的拼接。\n\n' +
+            '你懂什么是好的剧情摘要：保留关键因果（谁做了什么→导致什么）、角色变化（态度/关系/状态的转折）、未解决的悬念；删掉重复的描写、流水账、对话中无意义的客套。\n' +
+            '目标是让一个没读过原文的人读摘要也能 30 秒内 get 到「现在剧情走到哪了」。\n\n' +
+            '已有摘要控制在 ' + ((typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().summaryMaxChars : 1500) + ' 字以内。\n\n' +
+            '## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n' +
+            '## 新增对话内容\n' + summaryContent;
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
             var text = m.content.length > 800 ? m.content.substring(0, 800) + '...(内容过长已截断)' : m.content;
             return role + '\n' + text;
         }).join('\n\n---\n\n');
-        summaryPrompt = '你正在对一段游戏对话进行结构化总结。\n\n你理解如何高效地总结剧情——保留关键信息、删除冗余、关注因果和角色变化。';
+        // 【提示词重设计】从「命令式」改为「编剧视角 + 信任模型」
+        summaryPrompt = '你正在帮一位游戏编剧做剧情摘要——把一段游戏对话浓缩成能快速回顾的文本。\n\n' +
+            '你懂什么是好的剧情摘要：保留关键因果（谁做了什么→导致什么）、角色变化（态度/关系/状态的转折）、未解决的悬念；删掉重复的描写、流水账、对话中无意义的客套。\n' +
+            '目标是让一个没读过原文的人读摘要也能 30 秒内 get 到「这段剧情发生了什么」。';
     }
     var summaryMessages = [{ role: 'system', content: summaryPrompt }, { role: 'user', content: '请对以上内容进行处理：\n\n' + summaryContent }];
     var summary = await callAI(summaryMessages, { temperature: 0.3 });
@@ -4090,8 +4105,9 @@ async function requestNpcReply(playerText) {
             '- 富消息可以偶尔用：[照片:海边日落][定位:图书馆] 等，混在文字里\n' +
             '- 给出3个玩家可以接着说的话，让玩家感到有选择空间\n' +
             '- 这是日常私聊，专注于角色之间的关系和反应\n\n' +
-            '【程序需要的输出格式】\n' +
-            '直接输出JSON对象（不要用```代码块包裹）：\n' +
+            '【程序需要的输出】\n' +
+            '你的输出会喂给聊天界面渲染——保持 JSON 结构，replies 是 NPC 发的消息列表，choices 是给玩家点的选项。\n' +
+            '原始 JSON 文本最稳；markdown 代码块包裹会让聊天界面渲染失败，玩家就看不到消息了。\n' +
             '{"replies": ["消息1","消息2",...], "choices": ["玩家回复1","回复2","回复3"]}';
         // 注入预设写作风格（让NPC私聊与主剧情风格一致）
         if (typeof PresetManager !== 'undefined' && PresetManager._currentPreset) {

@@ -207,12 +207,13 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         var _forumWIText = (typeof _forumWI === 'object' && _forumWI !== null) ? (_forumWI.text || '') : (_forumWI || '');
         if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
     }
-    // 【提示词重设计】从"社区自然状态"硬性描述改为场景化引导
+    // 【提示词重设计】让 AI 理解「真实社区」的质感，再交给它自由发挥
     sysMsg += '【一个真实的社区是什么样的】\n' +
         '想象一个热闹的讨论区：不同性格的网友会基于自己的立场自然发言——有人热心、有人抬杠、有人围观、有人阴阳怪气，这才是真实的网络生态。\n' +
-        '被@到的角色大概率会回复。回复要短平快，像真人发评论。如果某个角色的发言太火，可能引发新帖讨论——觉得会引发就加上 maySpawnNewPost: true。\n\n' +
+        '被@到的角色大概率会回复。回复要短平快，像真人发评论。\n' +
+        '如果某个角色的发言太火，可能引发新帖讨论——你觉得会引发就加上 maySpawnNewPost: true，交给程序决定要不要触发。\n\n' +
         '【程序需要的输出】\n' +
-        '直接输出一个JSON数组：\n' +
+        '你的输出会喂给论坛界面渲染——保持 JSON 结构，原始文本最稳，markdown 代码块包裹会让评论显示失败。\n' +
         '[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n' +
         '当决定触发新帖时，包装成对象：{"replies": [...], "maySpawnNewPost": true}';
     callAI([{
@@ -289,11 +290,11 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         var _spawnWIText = (typeof _spawnWI === 'object' && _spawnWI !== null) ? (_spawnWI.text || '') : (_spawnWI || '');
         if (_spawnWIText) sysMsg += '【世界知识】\n' + _spawnWIText + '\n\n';
     }
-    // 【提示词重设计】用"好帖子的样子"代替硬性"特征"列表
+    // 【提示词重设计】让 AI 理解「好帖子」的质感，再交给它自由发挥
     sysMsg += '【好帖子的样子】\n' +
         '想象一个真实的网络帖子：标题能让人一眼想点进来（10-20字，能引发好奇或共鸣），正文有立场和观点，引用玩家原话加上自己的看法（50-100字），角度和原帖不同让人有新鲜感。\n\n' +
         '【程序需要的输出】\n' +
-        '直接输出一个JSON对象：\n' +
+        '你的输出会喂给论坛界面渲染——保持 JSON 结构，原始文本最稳，markdown 代码块包裹会让新帖显示失败。\n' +
         '{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}';
     callAI([{
         role: 'system',
@@ -4512,14 +4513,12 @@ async function _generateEndingRender(stories) {
             var _endingWIText = (typeof _endingWI === 'object' && _endingWI !== null) ? (_endingWI.text || '') : (_endingWI || '');
             if (_endingWIText) prompt += '【世界知识】\n' + _endingWIText + '\n\n';
         }
-        // 【提示词重设计】去掉重复的"直接输出JSON"，加"好结局"特征引导
+        // 【提示词重设计】让 AI 理解「好结局」的质感，再交给它自由发挥
         prompt += '【好结局的样子】\n' +
-            '- 标题：3-8字，点出故事的核心情感或转折，让人想点进去看\n' +
-            '- 概述：1-2段，浓缩整段旅程的意义，与主角的内心变化呼应\n' +
-            '- 后记：可以更感性一点，像作者写给读者的悄悄话，留下余韵\n' +
-            '- names：列出关键角色，顿号分隔\n\n' +
+            '想象你正在给一个故事画句号——标题要让人想点进去看（3-8字，点出核心情感或转折），概述是 1-2 段浓缩旅程意义的文字（与主角的内心变化呼应），后记可以更感性一点（像作者写给读者的悄悄话，留下余韵），names 列出关键角色用顿号分隔。\n' +
+            '你理解这是结局——它要和整段旅程呼应，而不是凭空冒出来的随机内容。\n\n' +
             '【程序需要的输出】\n' +
-            '直接输出一个JSON对象：\n' +
+            '你的输出会喂给结局页渲染——保持 JSON 结构，原始文本最稳，markdown 代码块包裹会让玩家看不到内容。\n' +
             '{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"角色1、角色2、角色3"}\n\n' +
             '【剧情】\n' + allText;
 
