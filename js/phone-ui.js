@@ -810,21 +810,6 @@ function getStoryList() {
 // 保留空函数（仅清空旧数据），避免残留的 _moments / _npcDiaries 污染新内容。
 // 朋友圈：由 AI 返回的 world[].type === 'moments' 提供（renderMomentsPage 读取 _worldModules）
 // 日记：由 AI 返回的 world[].type === 'diary' 提供（renderDiaryPage 读取 _worldModules）
-function generateLocalContent() {
-    // no-op: 一切走 API
-}
-
-// 根据剧情生成朋友圈（已禁用）
-function generateMomentsFromStory(npcs, storyText) {
-    // no-op: 一切走 API
-    return;
-}
-
-// 根据剧情生成日记（已禁用）
-function generateDiaryFromStory(npcs, storyText) {
-    // no-op: 一切走 API
-    return;
-}
 // ========================================
 // 预设装饰组件管理器 (PresetAppManager)
 // 自动解析AI输出中的XML装饰标签，将其提取为日志页面中的动态app
@@ -1457,142 +1442,6 @@ function renderChatPage() {
         '</div></div>';
     return html;
 }
-// =================================================================
-// 通知中心：刷新红点 + 打开/关闭弹窗
-// =================================================================
-function computeNotificationCounts() {
-    try {
-        // 邮件未读
-        var unreadMail = 0;
-        var mailModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'mail'; });
-        mailModules.forEach(function(mod) {
-            (mod.items || []).forEach(function(m) { if (m && !m.read) unreadMail++; });
-        });
-        if ((gameState._mails || []).length) {
-            (gameState._mails || []).forEach(function(m) { if (m && !m.read) unreadMail++; });
-        }
-        // 聊天未读（NPC 主动消息，已读快照差值）
-        var unreadChat = 0;
-        var seen = (gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat) || {};
-        var logs = gameState._chatLogs || {};
-        Object.keys(logs).forEach(function(name) {
-            var arr = logs[name] || [];
-            var npcSent = arr.filter(function(m) {
-                if (!m) return false;
-                if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
-                return (m.text || '').trim();
-            }).length;
-            var seenCount = seen[name] || 0;
-            unreadChat += Math.max(0, npcSent - seenCount);
-        });
-        var total = unreadMail + unreadChat;
-        return { unreadMail: unreadMail, unreadChat: unreadChat, total: total };
-    } catch (e) {
-        console.warn('[notif] computeNotificationCounts failed:', e);
-        return { unreadMail: 0, unreadChat: 0, total: 0 };
-    }
-}
-function refreshNotificationBadge() {
-    try {
-        var counts = computeNotificationCounts();
-        var badge = document.getElementById('notifBadge');
-        if (badge) {
-            if (counts.total > 0) {
-                badge.style.display = 'inline-flex';
-                badge.textContent = counts.total > 99 ? '99+' : String(counts.total);
-            } else {
-                badge.style.display = 'none';
-                badge.textContent = '0';
-            }
-        }
-        // 同步菜单/通知徽章（如有）
-        var menuBadge = document.getElementById('menuNotifBadge');
-        if (menuBadge) {
-            if (counts.total > 0) {
-                menuBadge.style.display = 'inline-flex';
-                menuBadge.textContent = counts.total > 99 ? '99+' : String(counts.total);
-            } else {
-                menuBadge.style.display = 'none';
-            }
-        }
-        return counts;
-    } catch (e) {
-        console.warn('[notif] refreshNotificationBadge failed:', e);
-        return { unreadMail: 0, unreadChat: 0, total: 0 };
-    }
-}
-function openNotificationCenter() {
-    try {
-        var counts = computeNotificationCounts();
-        var list = document.getElementById('notificationCenterList');
-        var titleEl = document.getElementById('notificationCenterTitle');
-        if (titleEl) titleEl.textContent = '通知中心 (' + counts.total + ')';
-        if (list) {
-            var html = '';
-            // 邮件
-            var mailModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'mail'; });
-            var allMails = [];
-            mailModules.forEach(function(mod) { (mod.items || []).forEach(function(it) { allMails.push(it); }); });
-            if (allMails.length === 0) allMails = gameState._mails || [];
-            var unreadMails = allMails.filter(function(m) { return m && !m.read; });
-            unreadMails.forEach(function(m) {
-                var sender = m.from || m.sender || '未知';
-                var subject = m.subject || '无主题';
-                html += '<div class="pearl-card" style="padding:10px 12px;margin-bottom:8px;cursor:pointer;" onclick="openMailDetail(' + allMails.indexOf(m) + ');closeNotificationCenter();">' +
-                    '<div style="font-size:13px;font-weight:600;color:#1a73e8;">' + escapeHtml(sender) + '</div>' +
-                    '<div style="font-size:14px;color:#333;margin-top:2px;">' + escapeHtml(subject) + '</div>' +
-                    '<div style="font-size:11px;color:#999;margin-top:4px;">' + escapeHtml(m.time || m.date || '') + '</div></div>';
-            });
-            // 聊天（NPC 主动消息）
-            var seen = (gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat) || {};
-            var logs = gameState._chatLogs || {};
-            Object.keys(logs).forEach(function(name) {
-                var arr = logs[name] || [];
-                var npcSent = arr.filter(function(m) {
-                    if (!m) return false;
-                    if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
-                    return (m.text || '').trim();
-                });
-                var seenCount = seen[name] || 0;
-                var unreadNpc = Math.max(0, npcSent.length - seenCount);
-                if (unreadNpc > 0) {
-                    var last = npcSent[npcSent.length - 1];
-                    var preview = (last && last.text) ? last.text : '';
-                    if (preview.length > 30) preview = preview.substring(0, 30) + '...';
-                    html += '<div class="pearl-card" style="padding:10px 12px;margin-bottom:8px;cursor:pointer;" onclick="closeNotificationCenter();openNpcChat(\'' + name.replace(/\\/g, '\\\\').replace(/'/g, "\\'") + '\');">' +
-                        '<div style="font-size:13px;font-weight:600;color:#07C160;">' + escapeHtml(name) + '</div>' +
-                        '<div style="font-size:14px;color:#333;margin-top:2px;">' + escapeHtml(preview) + '</div>' +
-                        '<div style="font-size:11px;color:#999;margin-top:4px;">' + unreadNpc + ' 条未读</div></div>';
-                }
-            });
-            if (!html) {
-                html = '<div style="padding:40px 20px;text-align:center;color:#999;font-size:13px;">暂无未读通知</div>';
-            }
-            list.innerHTML = html;
-        }
-        if (typeof UI !== 'undefined' && UI.showModal) {
-            UI.showModal('notificationCenterModal');
-        } else {
-            var m = document.getElementById('notificationCenterModal');
-            if (m) m.style.display = 'flex';
-        }
-    } catch (e) {
-        console.warn('[notif] openNotificationCenter failed:', e);
-    }
-}
-function closeNotificationCenter() {
-    try {
-        if (typeof UI !== 'undefined' && UI.hideModal) {
-            UI.hideModal('notificationCenterModal');
-        } else {
-            var m = document.getElementById('notificationCenterModal');
-            if (m) m.style.display = 'none';
-        }
-    } catch (e) {}
-}
-// 兼容旧调用名
-function toggleNotifCenter() { openNotificationCenter(); }
-
 function renderQuestsPage() {
     return null;
 }
@@ -3186,10 +3035,6 @@ function renderBag(items) {
 // ========================================
 // 收藏 & 导出
 // ========================================
-// updateReviewPanel: 收藏面板刷新（占位，后续可扩展）
-function updateReviewPanel() {
-    if (typeof renderRecapPage === 'function') renderRecapPage();
-}
 function exportStoryText() {
     var stories = getStoryList();
     if (stories.length === 0) {
@@ -3332,30 +3177,6 @@ function getPresets() {
 }
 function savePresets(list) {
     safeSetItem('freeScript_presets', JSON.stringify(list));
-}
-function loadWorldPreset(idx) {
-    var presets = getPresets();
-    if (!presets[idx]) return;
-    var gpEl = document.getElementById('worldDescription');
-    if (gpEl) gpEl.value = presets[idx].prompt || '';
-    var mcFields = ['mcName', 'mcGender', 'mcAge', 'mcIdentity', 'mcPersonality', 'mcAppearance',
-        'mcAbility', 'mcExtra'
-    ];
-    var mc = presets[idx].mc || {};
-    mcFields.forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.value = mc[id] || '';
-    });
-    var pbEl = document.getElementById('presetBody');
-    if (pbEl) pbEl.classList.remove('open');
-}
-function deleteWorldPreset(idx) {
-    UI.confirm('删除世界', '确定删除这个世界？').then(function(ok) { if (!ok) return;
-    var presets = getPresets();
-    presets.splice(idx, 1);
-    savePresets(presets);
-    renderPresetList();
-    }).catch(function(err) { console.error('[世界预设] 操作失败:', err); });
 }
 function renderPresetPages() {
     var presets = getPresets();

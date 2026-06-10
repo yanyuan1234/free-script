@@ -1686,6 +1686,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 data
             );
         }
+        // 成就系统检查
+        if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) {
+            try { AchievementSystem.checkAchievements(); } catch (e) {}
+        }
             // === 货币系统 ===
             if (data.currency !== undefined) gameState.currency = data.currency;
             if (data.currencyName) gameState.currencyName = data.currencyName;
@@ -4490,7 +4494,7 @@ function refreshAllPanels() {
     try { renderNpcList(); } catch (e) { console.warn('renderNpcList error:', e); }
     try { renderQuests(); } catch (e) { console.warn('renderQuests error:', e); }
     try { renderBag(); } catch (e) { console.warn('renderBag error:', e); }
-    try { if (typeof QuestSystem !== 'undefined' && QuestSystem.renderAchievements) QuestSystem.renderAchievements(); } catch (e) { console.warn('AchievementSystem error:', e); }
+    try { if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) AchievementSystem.checkAchievements(); } catch (e) { console.warn('AchievementSystem error:', e); }
     UI.toast('面板已刷新');
 }
 // --- NPC列表渲染 ---
