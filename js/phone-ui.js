@@ -202,8 +202,9 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         if (_forumMemText) sysMsg += '【剧情记忆】\n' + _forumMemText + '\n\n';
     }
     // 注入世界书（让NPC知道世界设定）
+    // 【P1性能优化】优先使用本轮已缓存的世界书扫描结果
     if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-        var _forumWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+        var _forumWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
         var _forumWIText = (typeof _forumWI === 'object' && _forumWI !== null) ? (_forumWI.text || '') : (_forumWI || '');
         if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
     }
@@ -216,13 +217,17 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         '你的输出会喂给论坛界面渲染——保持 JSON 结构，原始文本最稳，markdown 代码块包裹会让评论显示失败。\n' +
         '[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n' +
         '当决定触发新帖时，包装成对象：{"replies": [...], "maySpawnNewPost": true}';
-    callAI([{
+    // 【一致性修复】注入预设写作风格，与主剧情/私聊同步
+    sysMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
+    // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user
+    var _forumMsg = _applyUseSysprompt([{
         role: 'system',
         content: sysMsg
     }, {
         role: 'user',
         content: '请生成NPC回复'
-    }], {
+    }]);
+    callAI(_forumMsg, {
         stream: false
     }).then(function(resp) {
         try {
@@ -296,6 +301,8 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         '【程序需要的输出】\n' +
         '你的输出会喂给论坛界面渲染——保持 JSON 结构，原始文本最稳，markdown 代码块包裹会让新帖显示失败。\n' +
         '{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}';
+    // 【一致性修复】注入预设写作风格，与主剧情/私聊同步
+    sysMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
     callAI([{
         role: 'system',
         content: sysMsg
@@ -4551,8 +4558,9 @@ async function _generateEndingRender(stories) {
             if (_endingMemText) prompt += '【剧情记忆】\n' + _endingMemText + '\n\n';
         }
         // 注入世界书（让结局风格符合世界设定——P1 修复：结局生成前漏注世界书）
+        // 【P1性能优化】优先使用本轮已缓存的世界书扫描结果
         if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-            var _endingWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+            var _endingWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
             var _endingWIText = (typeof _endingWI === 'object' && _endingWI !== null) ? (_endingWI.text || '') : (_endingWI || '');
             if (_endingWIText) prompt += '【世界知识】\n' + _endingWIText + '\n\n';
         }
@@ -4563,15 +4571,18 @@ async function _generateEndingRender(stories) {
             '【程序需要的输出】\n' +
             '你的输出会喂给结局页渲染——保持 JSON 结构，原始文本最稳，markdown 代码块包裹会让玩家看不到内容。\n' +
             '{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"角色1、角色2、角色3"}\n\n' +
+            (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '') +
             '【剧情】\n' + allText;
 
-        var result = await callAI([{
+        // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user
+        var _endingMsg = _applyUseSysprompt([{
             role: 'system',
             content: '你是一位讲故事的人，正在为一段旅程画上有余韵的句号。'
         }, {
             role: 'user',
             content: prompt
-        }], {
+        }]);
+        var result = await callAI(_endingMsg, {
             stream: false,
             max_tokens: 2048,
             temperature: 0.7

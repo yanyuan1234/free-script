@@ -116,9 +116,78 @@ function getCompactSetupForSubFunction() {
         return parts.join('\n');
     }
 
-    // 兜底：没有记忆数据时，用完整设定（不截断，避免规则丢失）
+    // 兜底：没有记忆数据时，用 AI 提炼的精简设定（如果有），否则用原始设定
+    // 【P0一致性修复】避免长设定游戏里 4700 字全文重复挤占 context
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._setupLayers) {
+        var layers = EnhancedMemory._setupLayers;
+        if (layers.compressed && layers.compressedSetup) {
+            return '【设定（精简版）】\n' + layers.compressedSetup;
+        }
+        if (layers.worldSummary) {
+            return '【设定（AI摘要）】\n' + layers.worldSummary;
+        }
+    }
     var rawSetup = gameState.userPrompt || '';
     return rawSetup;
+}
+
+// 【一致性修复】子功能（论坛/结局）注入预设写作风格
+// 与主剧情/NPC 私聊的 preset.style 保持一致——切风格后所有功能表现同步
+// 返回形如 【写作风格】\n{style}\n 的纯文本，无风格时返回空字符串
+function getPresetStyleBlock() {
+    try {
+        if (typeof PresetManager === 'undefined') return '';
+        var p = PresetManager._currentPreset;
+        if (!p || !p.style || !p.style.trim()) return '';
+        return '【写作风格】\n' + p.style.trim() + '\n';
+    } catch (e) {
+        return '';
+    }
+}
+
+// 【P0边界修复】use_sysprompt=false（月读预设）时把 messages 里的 system role 转为 user role
+// 专用 prompt（NPC 私聊/论坛/结局）原本硬编码 system，兼容不接 system 的中转站
+function _applyUseSysprompt(messages) {
+    if (!Array.isArray(messages)) return messages;
+    if (gameState && gameState._useSysprompt === false) {
+        var converted = [];
+        for (var i = 0; i < messages.length; i++) {
+            var m = messages[i];
+            if (m && m.role === 'system' && m.content) {
+                converted.push({ role: 'user', content: m.content });
+            } else {
+                converted.push(m);
+            }
+        }
+        return converted;
+    }
+    return messages;
+}
+
+// 【P1性能优化】统一的世界书扫描入口，支持轮次级缓存
+// NPC 私聊/论坛/结局/剧情主路径都通过此函数获取世界书注入，避免同一轮内重复扫描
+// 缓存失效时机：跨轮（totalTurns 变化）
+function getWorldInfoInjection() {
+    if (typeof WorldInfo === 'undefined' || !WorldInfo.buildInjection) return null;
+    var currentTurn = (gameState._stats && gameState._stats.totalTurns) || 0;
+    var cache = gameState._wiCachedResult;
+    var cacheTurn = gameState._wiCachedTurn;
+    if (cache && cacheTurn === currentTurn) {
+        return cache;
+    }
+    // 缓存失效或首次调用，重新扫描
+    try {
+        var fresh = WorldInfo.buildInjection(gameState.conversationHistory || []);
+        gameState._wiCachedResult = fresh;
+        gameState._wiCachedTurn = currentTurn;
+        if (gameState._wiPositionTexts == null || cacheTurn !== currentTurn) {
+            gameState._wiPositionTexts = (fresh && fresh.positionTexts) ? fresh.positionTexts : null;
+        }
+        return fresh;
+    } catch (e) {
+        console.warn('[getWorldInfoInjection] 扫描失败:', e);
+        return null;
+    }
 }
 
 // 【修复A P1-4】清理用户输入中的潜在prompt injection内容
@@ -274,12 +343,37 @@ function _squelchPostProcess(story) {
 
 function buildSystemPrompt(includeFormatRules) {
     if (includeFormatRules === undefined) includeFormatRules = true;
-    var _wiResult = gameState._wiCachedResult || WorldInfo.buildInjection(gameState.conversationHistory || []);
-    gameState._wiCachedResult = _wiResult;
+    // 【P1性能优化】通过统一入口获取世界书注入，命中本轮缓存时跳过扫描
+    var _wiResult = getWorldInfoInjection();
     var _wiText = (typeof _wiResult === 'object' && _wiResult !== null) ? (_wiResult.text || '') : (_wiResult || '');
 
     // 存储世界书分组数据供 sendAIRequest 使用（不再拼入system prompt）
     gameState._wiPositionTexts = (typeof _wiResult === 'object' && _wiResult !== null && _wiResult.positionTexts) ? _wiResult.positionTexts : null;
+
+    // 【P0 token优化】玩家偏好：检测到任何一个偏好变量被设置时，才注入整段偏好章节
+    // 节省 ~380 token（玩家没设置偏好时的常见情况）
+    var _PREF_KEYS = ['字数总要求','单段落字数','叙述视角','char代词','user代词','演绎授权','转述授权','推进节奏','文风指导','起始标签'];
+    var _hasAnyPref = false;
+    if (typeof MacroEngine !== 'undefined' && MacroEngine.getGlobalVar) {
+        for (var _pki = 0; _pki < _PREF_KEYS.length; _pki++) {
+            var _pv = MacroEngine.getGlobalVar(_PREF_KEYS[_pki]);
+            if (_pv && String(_pv).trim()) { _hasAnyPref = true; break; }
+        }
+    }
+    var _prefSection = _hasAnyPref
+        ? '【玩家偏好】\n' +
+          '这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：\n' +
+          '- 字数：{{getglobalvar::字数总要求}}\n' +
+          '- 段落：{{getglobalvar::单段落字数}}\n' +
+          '- 视角：{{getglobalvar::叙述视角}}\n' +
+          '- 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}\n' +
+          '- 演绎：{{getglobalvar::演绎授权}}\n' +
+          '- 转述：{{getglobalvar::转述授权}}\n' +
+          '- 节奏：{{getglobalvar::推进节奏}}\n' +
+          '- 文风：{{getglobalvar::文风指导}}\n' +
+          '- 思维链：{{getglobalvar::起始标签}}\n' +
+          '当上述变量为空时，你根据世界观和场景自行选择最合适的方案。\n\n'
+        : '';
 
     // 注入增强记忆
     var _memoryText = '';
@@ -407,19 +501,7 @@ world 数组里的模块会渲染到不同的世界面板，何时用哪种你�
 3. 增强记忆中的角色/物品/事件状态 > 世界快照中的同类信息（快照是旧数据，记忆是实时更新的）
 4. 玩家的最新指令 > 之前的任何指令
 
-【玩家偏好】
-这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：
-- 字数：{{getglobalvar::字数总要求}}
-- 段落：{{getglobalvar::单段落字数}}
-- 视角：{{getglobalvar::叙述视角}}
-- 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}
-- 演绎：{{getglobalvar::演绎授权}}
-- 转述：{{getglobalvar::转述授权}}
-- 节奏：{{getglobalvar::推进节奏}}
-- 文风：{{getglobalvar::文风指导}}
-- 思维链：{{getglobalvar::起始标签}}
-当上述变量为空时，你根据世界观和场景自行选择最合适的方案。
-
+${_prefSection}
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
 
 ${_buildFormatRules(gameState, _t)}`;
@@ -917,9 +999,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             gameState._positionPrompts = {};
             gameState._afterChatPrompts = [];
             // 【修复】isInit 也执行世界书扫描，让开局场景能使用世界书设定
+            // 【P1性能优化】走统一入口，自动写入缓存供后续主路径复用
             try {
-                var _initWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
-                gameState._wiCachedResult = _initWI;
+                var _initWI = getWorldInfoInjection();
                 gameState._wiPositionTexts = (typeof _initWI === 'object' && _initWI !== null && _initWI.positionTexts) ? _initWI.positionTexts : null;
             } catch(e) {
                 console.warn('[isInit] 世界书扫描失败:', e);
@@ -979,8 +1061,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 gameState._afterChatPrompts = [];
 
                 // 【优化】先执行一次世界书扫描，缓存结果避免重复扫描
-                var _cachedWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
-                gameState._wiCachedResult = _cachedWI;
+                // 【P1性能优化】走统一入口，按 totalTurns 失效
+                var _cachedWI = getWorldInfoInjection();
                 gameState._wiPositionTexts = (_cachedWI && _cachedWI.positionTexts) ? _cachedWI.positionTexts : null;
 
                 if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
@@ -1283,9 +1365,13 @@ async function sendAIRequest(userMessage, isInit = false) {
                                     // RELATIVE（酒馆默认）：从聊天末尾往回数 depth 条
                                     insertIndex = chatEndIndex - depth;
                                 }
-                                // 边界保护：不允许插入到聊天历史之前（系统提示词区域），
-                                // 也不允许越过最后一条 user 消息
-                                insertIndex = Math.max(chatHistoryStart, Math.min(insertIndex, chatEndIndex));
+                                // 【P0边界修复】depth 超出对话历史范围时直接跳过，
+                                // 避免被错误地压到 system 区域污染主 system 提示词
+                                if (insertIndex < chatHistoryStart) {
+                                    return; // skip this prompt
+                                }
+                                // 越过最后一条 user 消息时夹回 user 之前
+                                insertIndex = Math.min(insertIndex, chatEndIndex);
                                 messages.splice(insertIndex, 0, { role: 'system', content: processedContent });
                             }
                         }
@@ -1323,6 +1409,22 @@ async function sendAIRequest(userMessage, isInit = false) {
                     role: 'system',
                     content: gameState._impersonationPrompt
                 });
+            } else {
+                // 【P0边界修复】刚开局时没有 assistant 消息，impersonation 被静默丢弃——
+                // 兜底：注入到聊天历史开始位置（system 区之后、user 之前）
+                // 这样无论是不是开局，impersonation 都能被 AI 看到
+                if (typeof chatHistoryStart === 'number' && chatHistoryStart >= 0 && chatHistoryStart <= messages.length) {
+                    messages.splice(chatHistoryStart, 0, {
+                        role: 'system',
+                        content: gameState._impersonationPrompt
+                    });
+                } else {
+                    // 极端兜底：插到最末尾
+                    messages.push({
+                        role: 'system',
+                        content: gameState._impersonationPrompt
+                    });
+                }
             }
         }
         // 对所有消息内容进行宏处理（兼容酒馆预设中的宏）
@@ -1977,9 +2079,11 @@ async function _compressConversation(removed, sys) {
             return role + '\n' + text;
         }).join('\n\n---\n\n');
         // 【提示词重设计】从「命令式」改为「编剧视角 + 信任模型」
+        // 【P0一致性修复】明确要求保留专有名词一致性，避免摘要与正文用词错位
         summaryPrompt = '你正在帮一位游戏编剧维护剧情摘要——下面是已有摘要和这次新增的对话内容，请把新内容无缝整合到摘要里，让旧摘要与新内容融为一体，而不是简单的拼接。\n\n' +
             '你懂什么是好的剧情摘要：保留关键因果（谁做了什么→导致什么）、角色变化（态度/关系/状态的转折）、未解决的悬念；删掉重复的描写、流水账、对话中无意义的客套。\n' +
             '目标是让一个没读过原文的人读摘要也能 30 秒内 get 到「现在剧情走到哪了」。\n\n' +
+            '【硬性要求】人名、地名、势力名、物品名、技能名、特殊术语等专有名词必须与原文保持一字不差——不要同义改写、不要用代词替换、不要简化合成词。这些名字会作为后续剧情检索的锚点，改了就搜不到了。\n\n' +
             '已有摘要控制在 ' + ((typeof getDynamicTruncationConfig === 'function') ? getDynamicTruncationConfig().summaryMaxChars : 1500) + ' 字以内。\n\n' +
             '## 已有摘要\n' + EnhancedMemory.longTermMemory.masterSummary + '\n\n' +
             '## 新增对话内容\n' + summaryContent;
@@ -4137,8 +4241,9 @@ async function requestNpcReply(playerText) {
             }
         }
         // 注入世界书（让NPC知道世界设定细节）
+        // 【P1性能优化】走统一入口，本轮内复用主路径的扫描结果
         if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-            var _npcWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+            var _npcWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
             var _npcWIText = (typeof _npcWI === 'object' && _npcWI !== null) ? (_npcWI.text || '') : (_npcWI || '');
             if (_npcWIText) {
                 systemMsg += '\n【世界知识】\n' + _npcWIText + '\n';
@@ -4164,12 +4269,7 @@ async function requestNpcReply(playerText) {
             '原始 JSON 文本最稳；markdown 代码块包裹会让聊天界面渲染失败，玩家就看不到消息了。\n' +
             '{"replies": ["消息1","消息2",...], "choices": ["玩家回复1","回复2","回复3"]}';
         // 注入预设写作风格（让NPC私聊与主剧情风格一致）
-        if (typeof PresetManager !== 'undefined' && PresetManager._currentPreset) {
-            var _npcPreset = PresetManager._currentPreset;
-            if (_npcPreset.style && _npcPreset.style.trim()) {
-                systemMsg += '\n【写作风格】\n' + _npcPreset.style.trim() + '\n';
-            }
-        }
+        systemMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
         // 构建消息列表
         var chatMessages = [{
             role: 'system',
@@ -4196,6 +4296,8 @@ async function requestNpcReply(playerText) {
                 content: playerText
             });
         }
+        // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user
+        chatMessages = _applyUseSysprompt(chatMessages);
         var response = await callAI(chatMessages, {
             stream: false,
             temperature: gameState.temperature != null ? gameState.temperature : 0.8,
