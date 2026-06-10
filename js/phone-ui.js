@@ -256,10 +256,22 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         '【玩家设定】\n' + (typeof getCompactSetupForSubFunction === 'function' ? getCompactSetupForSubFunction() : (gameState.userPrompt && gameState.userPrompt.trim() ? gameState.userPrompt.trim() : '无')) + '\n' +
         '【原帖标题】' + (srcPost.title || '未知') + '\n' +
         '【玩家评论】' + playerComment + '\n\n';
+    // 注入玩家身份快照（让新帖符合玩家身份）
+    if (gameState.worldSnapshot && gameState.worldSnapshot.player) {
+        var _fp = gameState.worldSnapshot.player;
+        if (_fp.identity) sysMsg += '【主角身份】' + _fp.identity + '\n';
+        if (_fp.personality) sysMsg += '【主角性格】' + _fp.personality + '\n';
+    }
     // 注入增强记忆（让新帖了解剧情进展）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
         var _spawnMemText = EnhancedMemory.buildSmartInjection();
         if (_spawnMemText) sysMsg += '【剧情记忆】\n' + _spawnMemText + '\n\n';
+    }
+    // 注入世界书（让新帖符合世界设定——P1 修复：跨帖生成前漏注世界书）
+    if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
+        var _spawnWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+        var _spawnWIText = (typeof _spawnWI === 'object' && _spawnWI !== null) ? (_spawnWI.text || '') : (_spawnWI || '');
+        if (_spawnWIText) sysMsg += '【世界知识】\n' + _spawnWIText + '\n\n';
     }
     sysMsg += '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
         '好帖子的特征：标题吸引眼球(10-20字)，正文引用玩家评论加自己看法(50-100字)，角度和原帖不同。';
