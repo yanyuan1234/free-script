@@ -186,6 +186,16 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         '【帖子内容】' + (post.main || post.content || '未知') + '\n' +
         '【已有评论】\n' + (existingComments || '暂无评论') + '\n\n' +
         '【可选NPC】' + (npcNames.length > 0 ? npcNames.join('、') : '随机生成网名') + '\n\n';
+    // 注入主角身份快照（P2 修复：让论坛 NPC 了解玩家身份/性格/属性）
+    if (gameState.worldSnapshot && gameState.worldSnapshot.player) {
+        var _fp2 = gameState.worldSnapshot.player;
+        if (_fp2.identity) sysMsg += '【主角身份】' + _fp2.identity + '\n';
+        if (_fp2.personality) sysMsg += '【主角性格】' + _fp2.personality + '\n';
+        if (_fp2.stats && _fp2.stats.length > 0) {
+            sysMsg += '【主角属性】' + _fp2.stats.map(function(s) { return s.label + ':' + s.value; }).join(', ') + '\n';
+        }
+        sysMsg += '\n';
+    }
     // 注入增强记忆（让NPC了解剧情进展）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
         var _forumMemText = EnhancedMemory.buildSmartInjection();
@@ -4485,6 +4495,12 @@ async function _generateEndingRender(stories) {
         if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
             var _endingMemText = EnhancedMemory.buildSmartInjection();
             if (_endingMemText) prompt += '【剧情记忆】\n' + _endingMemText + '\n\n';
+        }
+        // 注入世界书（让结局风格符合世界设定——P1 修复：结局生成前漏注世界书）
+        if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
+            var _endingWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+            var _endingWIText = (typeof _endingWI === 'object' && _endingWI !== null) ? (_endingWI.text || '') : (_endingWI || '');
+            if (_endingWIText) prompt += '【世界知识】\n' + _endingWIText + '\n\n';
         }
         prompt += '回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
             '【剧情】\n' + allText;
