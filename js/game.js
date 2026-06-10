@@ -330,7 +330,7 @@ function buildSystemPrompt(includeFormatRules) {
             '你的输出会喂给前端解析器来渲染界面——解析器按字段名读取数据，story 字段是玩家最关心的内容，所以放第一个字段最稳妥。\n' +
             '保持一个可被解析的格式（JSON），玩家就能正常看到你的故事；如果你想自由发挥，markdown 代码块、纯文本都会被解析器忽略，导致玩家看不到内容。\n' +
             '字段参考：{ "story": "叙事正文（用\\n换行，对话用「」包裹）"' + (_hasChoicesForAnchor ? ', "choices": [{"id": "A", "text": "选项描述"}]' : '') + ', "player": {"name":"", "identity":"", "stats":[{"label":"","value":""}]}, "characters": [{"name":"", "relation":"", "favorability":0}], "world": [{"type":"text", "title":"", "content":""}], "bag": [{"name":"", "count":1}], "quests": [{"title":"", "status":""}], "gameTime": {"date":"", "time":"", "period":""} }\n' +
-            '用<giggle>插入NPC内心独白，用<mem>标记状态变化。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间，自己分配。';
+            '用<giggle>插入角色心声（每回合 2-5 个，散在不同段落），用<mem>标记状态变化（事件/任务/角色字段/物品/地点），用[章节结束|标题]标记长章节收尾。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间，自己分配。';
     }
 
     if (!includeFormatRules) {
@@ -363,8 +363,42 @@ ${_termsPrompt}
 你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
 - story是你的叙事正文，用\\n换行，对话用「」包裹——这是玩家阅读的核心内容
 - choices是主角视角的决策点，让玩家感到自己在推动故事
-- <giggle>是NPC的内心独白，让角色更立体；<mem>标记状态变化，让世界保持一致
-- [章节结束|标题] 用来标记一个章节的收尾
+- [章节结束|标题] 用来标记长章节或情绪转折的收尾
+
+【心声系统 <giggle>】
+心声是"角色没说出口的话"——它让场景有温度，让对话有潜台词。每回合的剧情里穿插 2-5 个 <giggle>...</giggle>，散在不同段落中，玩家点击段落末尾的图标就能看到角色的真实想法。
+- 格式：<giggle>角色名：他们的真实想法</giggle>
+- 心声不是台词，是"没说的部分"——口是心非、潜台词、旁观者吐槽都行
+- 在场角色都能发声（不只 NPC，主角的内心戏也算心声）
+- 2-5 是范围不是硬规定：对话密集、节奏紧张时少一点（2-3 个），场景丰富、关系复杂时多一点（4-5 个），自己根据节奏判断
+
+【状态变化 <mem>】
+当重要状态变化时，用 <mem> 主动标记，让记忆系统能精准记录：
+- 事件：<mem type="event" action="add">主角向林婉表白了</mem>
+- 任务：<mem type="quest" action="add">找到失踪的妹妹</mem>，完成时用 action="resolve"
+- 时间推进：<mem type="time" day="3" period="afternoon" />
+- 角色字段：<mem type="character" name="林婉" field="favorability" value="75" />
+- 物品：<mem type="item" name="传家玉佩" qty="1" action="add" />
+- 地点：<mem type="location" name="地下密室" field="status" value="已探索" />
+- 关系或物品数量变化时记得用 <mem> 标记——不写的话记忆系统只能靠正则推断，容易漏
+
+【世界模块使用时机】
+world 数组里的模块会渲染到不同的世界面板，何时用哪种你自己判断：
+- type=text：场景描述、机关解读、剧情注解
+- type=list / ranking：清单、排名（门派排行、势力榜）
+- type=key_value：属性表、状态详情
+- type=cards：任务卡片、成就卡片
+- type=comments：论坛讨论（玩家做出引发讨论的事时用——暴露身份、做出格举动）
+- type=moments：朋友圈动态（玩家或 NPC 做出值得刷屏的事时用）
+- type=mail：邮件/通知（NPC 主动联系、事件触发、邀请时用）
+- type=shop：商店/可购买内容（场景中遇到可交易对象时用）
+- type=diary：角色日记（重要剧情节点后用某 NPC 视角记录内心）
+
+【持续维护】
+- characters 数组里每个 NPC 的 favorability 要随剧情实时更新，关系变化时别忘改
+- 物品获得/消耗时更新 bag 数组
+- 任务完成时更新 quests 状态
+- 长回合（>800 字）或情绪大转折时用 [章节结束|标题] 给玩家一个呼吸点
 
 【信息优先级】
 你在多条消息中收到了大量信息。当它们之间出现矛盾时，按以下规则判断：
@@ -426,9 +460,9 @@ function _buildFormatRules(gs, _t) {
             + '- story 放在JSON第一个字段——因为解析器按顺序读取，story 是最重要的内容，放最前面解析最可靠';
     } else {
         // 第4轮起：精简格式提醒（AI已理解格式逻辑，只需关键提醒）
-        return '【格式提醒】继续按已建立的JSON格式输出。story 放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。用<giggle>插入NPC心声，<mem>更新状态变化。'
-            + (hasChoices ? '包含choices选项。' : '')
-            + '保持可解析的 JSON 结构，markdown 代码块会让玩家看不到内容。';
+        return '【格式提醒】继续按已建立的JSON格式输出。story 放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。\n' +
+            '别忘了三个叙事工具：每回合 2-5 个 <giggle>心声、状态变化用 <mem> 标记、长章节用 [章节结束|标题]。\n' +
+            '保持可解析的 JSON 结构，markdown 代码块会让玩家看不到内容。';
     }
 }
 
@@ -499,9 +533,19 @@ function buildProtagonistPrompt() {
     if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
     lines.push('');
     lines.push('主角是玩家操控的角色——player字段对应主角信息，characters字段对应NPC。');
-    // 如果世界描述中已包含主角详细设定，添加提示避免重复
-    if (gameState.userPrompt && gameState.userPrompt.length > 500) {
+    // 主角身份可能从三处出现：① 表单字段（这里）② 世界描述（player/identity 字段）③ 记忆系统（pcIdentity）
+    // 告诉 AI 这三处应该是同一份信息，冲突时按权威度判断
+    var hasUserPrompt = gameState.userPrompt && gameState.userPrompt.length > 200;
+    var hasMemoryIdentity = typeof EnhancedMemory !== 'undefined'
+        && EnhancedMemory.permanentFacts
+        && EnhancedMemory.permanentFacts.pcIdentity
+        && EnhancedMemory.permanentFacts.pcIdentity.length > 0;
+    if (hasUserPrompt && hasMemoryIdentity) {
+        lines.push('提示：主角身份已在【世界描述】和【核心设定】中给出，此处仅作对照。三处冲突时以【核心设定】 > 【世界描述】 > 此处 为准。');
+    } else if (hasUserPrompt) {
         lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');
+    } else if (hasMemoryIdentity) {
+        lines.push('提示：主角身份已在【核心设定】中给出，以【核心设定】为准。');
     }
     lines.push('');
     return lines.join('\n');
