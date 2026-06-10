@@ -2374,23 +2374,10 @@ var GameMemory = {
         var self = this; var data = null;
         try { data = JSON.parse(localStorage.getItem('freeScript_memory') || 'null'); } catch(e) { data = null; }
         if (!data || data.version !== 3) return false;
-        if (typeof data.currentTurn === 'number') self.currentTurn = data.currentTurn;
-        if (typeof data.lastInjectionTurn === 'number') self.lastInjectionTurn = data.lastInjectionTurn;
-        if (data.gameClock) self.gameClock = data.gameClock;
-        if (data.permanentFacts) self.permanentFacts = data.permanentFacts;
-        if (data.tables) self.tables = data.tables;
-        if (data.plot) self.plot = data.plot;
-        if (data.events) self.events = data.events;
-        if (data.timeline) self.timeline = data.timeline;
-        if (data.quests) self.quests = data.quests;
-        if (data.workingMemory) self.workingMemory = data.workingMemory;
-        if (data.budget) self.budget = data.budget;
-        if (data.compressionConfig) self.compressionConfig = data.compressionConfig;
-        if (data.stats) self.stats = data.stats;
-        if (data._changeLog) self._changeLog = data._changeLog;
-        if (data._injectionSnapshots) self._injectionSnapshots = data._injectionSnapshots;
-        if (data._summaryLayers) self._summaryLayers = data._summaryLayers;
-        if (data._setupLayers) self._setupLayers = data._setupLayers;
+        // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
+        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers'];
+        for (var i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
+        // 嵌套对象默认值补全
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         if (!self.workingMemory.messages) self.workingMemory.messages = [];
         if (!self.workingMemory.recentMessages) self.workingMemory.recentMessages = [];
@@ -2521,6 +2508,85 @@ var MemoryManagerUI = {
     _esc: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); },
     _escAttr: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n').replace(/\r/g, '\\r'); },
 
+    // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline
+    // arg 支持 string / number（数字不加引号，字符串加引号并转义）
+    _btn: function(action, fnName, arg) {
+        var argStr;
+        if (arg === undefined || arg === null) {
+            argStr = '';
+        } else if (typeof arg === 'number') {
+            argStr = String(arg);
+        } else {
+            argStr = '\'' + this._escAttr(arg) + '\'';
+        }
+        var onclick = 'MemoryManagerUI.' + fnName + (argStr ? '(' + argStr + ')' : '()');
+        var presets = {
+            edit:   { color: 'var(--accent)',  bg: 'none',         border: 'var(--border)',   text: '编辑',    fontSize: '12px', padding: '4px 8px'   },
+            delete: { color: '#f44',           bg: 'none',         border: 'var(--border)',   text: '删除',    fontSize: '12px', padding: '4px 8px'   },
+            cancel: { color: 'var(--text)',    bg: 'transparent',  border: 'var(--border)',   text: '取消',    fontSize: '13px', padding: '10px 20px' },
+            save:   { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '保存',    fontSize: '13px', padding: '10px 20px' },
+            add:    { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '+ 添加',  fontSize: '12px', padding: '6px 14px'  },
+            addOutline: { color: 'var(--accent)', bg: 'none',       border: 'var(--accent)',  text: '+ 添加',  fontSize: '11px', padding: '4px 10px'  },
+            editOutline: { color: 'var(--accent)', bg: 'none',      border: 'var(--accent)',  text: '编辑',    fontSize: '11px', padding: '4px 10px'  },
+            refresh: { color: 'var(--accent)',  bg: 'none',        border: 'var(--accent)',  text: '🔄 刷新', fontSize: '11px', padding: '4px 10px'  },
+            detail: { color: 'var(--accent)',   bg: 'none',        border: 'var(--accent)',  text: '查看详情', fontSize: '11px', padding: '4px 10px'  },
+            search: { color: 'white',           bg: 'var(--accent)', border: 'none',         text: '搜索',    fontSize: '13px', padding: '10px 16px' },
+            resolve: { color: '#4a4',          bg: 'none',         border: 'var(--border)',   text: '完成',    fontSize: '11px', padding: '4px 8px'   }
+        };
+        var s = presets[action] || presets.edit;
+        return '<button onclick="' + onclick + '" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:6px;cursor:pointer;">' + s.text + '</button>';
+    },
+
+    // 通用输入字段：field = { id, label, type, default, options, placeholder, required, rows, min, max }
+    _formField: function(field, value) {
+        var id = field.id;
+        var label = field.label || '';
+        var val = (value !== undefined && value !== null) ? value : (field.default !== undefined ? field.default : '');
+        var type = field.type || 'text';
+        var inputHtml = '';
+        if (type === 'checkbox') {
+            inputHtml = '<input id="' + id + '" type="checkbox"' + (val ? ' checked' : '') + ' style="width:auto;">';
+        } else if (type === 'number') {
+            inputHtml = '<input id="' + id + '" type="number" value="' + this._esc(val) + '"' + (field.min !== undefined ? ' min="' + field.min + '"' : '') + (field.max !== undefined ? ' max="' + field.max + '"' : '') + ' style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
+        } else if (type === 'textarea') {
+            var minH = field.minHeight || '80px';
+            inputHtml = '<textarea id="' + id + '" rows="' + (field.rows || 4) + '"' + (field.placeholder ? ' placeholder="' + this._esc(field.placeholder) + '"' : '') + ' style="width:100%;min-height:' + minH + ';padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + this._esc(val) + '</textarea>';
+        } else if (type === 'select') {
+            var opts = (field.options || []).map(function(o) {
+                var v = (typeof o === 'object' && o !== null) ? o.v : o;
+                var t = (typeof o === 'object' && o !== null) ? o.t : o;
+                return '<option value="' + this._esc(v) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + this._esc(t) + '</option>';
+            }, this).join('');
+            inputHtml = '<select id="' + id + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">' + opts + '</select>';
+        } else {
+            inputHtml = '<input id="' + id + '" value="' + this._esc(val) + '"' + (field.placeholder ? ' placeholder="' + this._esc(field.placeholder) + '"' : '') + ' style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
+        }
+        var labelHtml = label ? '<label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">' + label + (field.required ? ' *' : '') + '</label>' : '';
+        return '<div>' + labelHtml + inputHtml + '</div>';
+    },
+
+    // 表单底部：取消 + 保存按钮对
+    // saveArgs: undefined | string | array<string|number> 多个参数用 array
+    _formFooter: function(cancelTab, saveFn, saveArgs) {
+        var saveBtn;
+        if (saveArgs === undefined || saveArgs === null) {
+            saveBtn = this._btn('save', saveFn, undefined);
+        } else if (Array.isArray(saveArgs)) {
+            var parts = saveArgs.map(function(a) {
+                return typeof a === 'string' ? "'" + this._escAttr(a) + "'" : a;
+            }, this);
+            // 复用 _btn 的 save 样式
+            var s = { color: 'white', bg: 'var(--accent)', border: 'none', text: '保存', fontSize: '13px', padding: '10px 20px' };
+            saveBtn = '<button onclick="MemoryManagerUI.' + saveFn + '(' + parts.join(',') + ')" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:6px;cursor:pointer;">' + s.text + '</button>';
+        } else {
+            saveBtn = this._btn('save', saveFn, saveArgs);
+        }
+        return '<div style="display:flex;gap:8px;justify-content:flex-end;">'
+            + this._btn('cancel', 'switchTab', cancelTab)
+            + saveBtn
+            + '</div>';
+    },
+
     initNavigation: function() {
         var self = this;
         var backBtn = document.getElementById('memoryBackBtn');
@@ -2592,7 +2658,7 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? (gm._setupLayers.compressed ? '精简版（规则在永久事实）' : '完整注入（每轮）') : '未初始化') + '</div></div>'
             + '</div></div>'
-            + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span><button onclick="MemoryManagerUI.switchTab(\'injection\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">查看详情</button></div>'
+            + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span>' + this._btn('detail', 'switchTab', 'injection') + '</div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
             + (gm._lastInjectionStats ? '总字符: ' + gm._lastInjectionStats.totalChars + ' / 预算: ' + gm._lastInjectionStats.budget : '尚未生成注入内容')
             + '</div></div></div>';
@@ -2641,7 +2707,7 @@ var MemoryManagerUI = {
                 html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
                 html += '<div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>';
-                html += '<button onclick="MemoryManagerUI.editSceneState(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑场景</button>';
+                html += self._btn('edit', 'editSceneState', loc.name);
                 html += '</div>';
                 if (hasScene) {
                     html += '<div style="font-size:13px;color:var(--text-secondary);padding:6px 8px;background:rgba(255,149,0,0.1);border-radius:4px;">' + self._esc(loc.sceneState) + '</div>';
@@ -2660,10 +2726,15 @@ var MemoryManagerUI = {
 
     editSceneState: function(name) {
         var gm = window.GameMemory; var loc = gm.tables.locations[name]; if (!loc) return;
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">场景状态（描述当前场景细节，AI会记住）</label><textarea id="editSceneState" style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;" placeholder="如：壁炉燃烧中，桌上摆着两杯热茶...">' + this._esc(loc.sceneState || '') + '</textarea></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">锁定场景 <span style="font-size:11px;">（锁定后状态不会自动清除）</span></label><input id="editSceneLocked" type="checkbox"' + (loc.locked ? ' checked' : '') + ' style="width:auto;"></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'sceneState\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveSceneState(\'' + this._escAttr(name) + '\')" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
+        var fields = [
+            { id: 'editSceneState', label: '场景状态（描述当前场景细节，AI会记住）', type: 'textarea', placeholder: '如：壁炉燃烧中，桌上摆着两杯热茶...', minHeight: '80px' },
+            { id: 'editSceneLocked', label: '锁定场景 <span style="font-size:11px;">（锁定后状态不会自动清除）</span>', type: 'checkbox' }
+        ];
+        var values = [loc.sceneState || '', loc.locked];
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        html += this._formFooter('sceneState', 'saveSceneState', name);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveSceneState: function(name) {
@@ -2677,7 +2748,7 @@ var MemoryManagerUI = {
         var self = this;
         var typeLabels = { pcIdentity: '🎭 主角身份', settings: '🌍 世界设定', worldRules: '📜 设定规则', npcProfiles: '👤 关键角色', promises: '🤝 玩家承诺' };
         var typeOrder = ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'];
-        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到</div><button onclick="MemoryManagerUI.addPermanentFact()" style="font-size:12px;color:white;background:var(--accent);border:none;padding:6px 14px;border-radius:6px;cursor:pointer;">+ 手动添加</button></div>';
+        var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到</div>' + this._btn('add', 'addPermanentFact', undefined) + '</div>';
         var total = 0; Object.keys(gm.permanentFacts).forEach(function(k) { total += gm.permanentFacts[k].length; });
         if (total === 0) html += '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">还没有永久事实</div>';
         typeOrder.forEach(function(t) {
@@ -2685,7 +2756,11 @@ var MemoryManagerUI = {
             html += '<div class="memory-card"><div class="memory-card-title">' + (typeLabels[t] || t) + ' <span style="font-weight:normal;font-size:11px;color:var(--text-tertiary);">' + list.length + ' 条</span></div>';
             list.forEach(function(a, i) {
                 var sourceTag = a.source === 'manual' ? '<span style="font-size:10px;background:#4a4;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">手动</span>' : a.source === 'auto' ? '<span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">自动</span>' : '';
-                html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div><div style="display:flex;gap:6px;flex-shrink:0;"><button onclick="MemoryManagerUI.editPermanentFact(\'' + t + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deletePermanentFact(\'' + t + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+                var escType = self._escAttr(t);
+                var editBtn = '<button onclick="MemoryManagerUI.editPermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
+                var delBtn  = '<button onclick="MemoryManagerUI.deletePermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
+                var btns = '<div style="display:flex;gap:6px;flex-shrink:0;">' + editBtn + delBtn + '</div>';
+                html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div>' + btns + '</div>';
             });
             html += '</div>';
         });
@@ -2693,7 +2768,20 @@ var MemoryManagerUI = {
     },
 
     addPermanentFact: function() {
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">添加永久事实</div><div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-secondary);">类型</label><select id="newFactType" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;"><option value="pcIdentity">🎭 主角身份</option><option value="settings">🌍 世界设定</option><option value="worldRules">📜 设定规则</option><option value="npcProfiles">👤 关键角色</option><option value="promises" selected>🤝 玩家承诺</option></select></div><div style="margin-bottom:10px;"><label style="font-size:12px;color:var(--text-secondary);">内容</label><textarea id="newFactContent" rows="4" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;" placeholder="输入永久事实内容..."></textarea></div><div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'permanentFacts\')" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">取消</button><button onclick="MemoryManagerUI.saveNewPermanentFact()" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;">添加</button></div></div>';
+        var fields = [
+            { id: 'newFactType', label: '类型', type: 'select', options: [
+                { v: 'pcIdentity', t: '🎭 主角身份' },
+                { v: 'settings',   t: '🌍 世界设定' },
+                { v: 'worldRules', t: '📜 设定规则' },
+                { v: 'npcProfiles',t: '👤 关键角色' },
+                { v: 'promises',   t: '🤝 玩家承诺' }
+            ], default: 'promises' },
+            { id: 'newFactContent', label: '内容', type: 'textarea', placeholder: '输入永久事实内容...', rows: 4, minHeight: '60px' }
+        ];
+        var html = '<div class="memory-card"><div class="memory-card-title">添加永久事实</div><div style="margin-bottom:10px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        html += this._formFooter('permanentFacts', 'saveNewPermanentFact', undefined);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveNewPermanentFact: function() {
@@ -2709,7 +2797,11 @@ var MemoryManagerUI = {
 
     editPermanentFact: function(type, idx) {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type] || !gm.permanentFacts[type][idx]) return;
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑永久事实</div><div style="margin-bottom:10px;"><textarea id="editFactContent" rows="4" style="width:100%;padding:8px;margin-top:4px;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;resize:vertical;box-sizing:border-box;">' + this._esc(gm.permanentFacts[type][idx].content) + '</textarea></div><div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'permanentFacts\')" style="padding:8px 16px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text);cursor:pointer;">取消</button><button onclick="MemoryManagerUI.savePermanentFact(\'' + type + '\',' + idx + ')" style="padding:8px 16px;border:none;border-radius:6px;background:var(--accent);color:white;cursor:pointer;">保存</button></div></div>';
+        var fields = [{ id: 'editFactContent', label: '', type: 'textarea', rows: 4, minHeight: '60px' }];
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑永久事实</div><div style="margin-bottom:10px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], gm.permanentFacts[type][idx].content);
+        html += this._formFooter('permanentFacts', 'savePermanentFact', [type, idx]);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     savePermanentFact: function(type, idx) {
@@ -2728,25 +2820,31 @@ var MemoryManagerUI = {
 
     renderCharacters: function(gm) {
         var self = this; var chars = Object.values(gm.tables.characters);
-        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>角色档案</span><button onclick="MemoryManagerUI.addCharacter()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">+ 添加角色</button></div>';
+        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>角色档案</span>' + this._btn('addOutline', 'addCharacter', undefined) + '</div>';
         if (chars.length === 0) html += '<div class="memory-empty-state"><div>暂无角色数据</div></div>';
         else chars.forEach(function(char) {
-            html += '<div class="memory-character-card"><div class="memory-character-avatar">👤</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' 🔒' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + self._esc(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div><div style="display:flex;flex-direction:column;gap:4px;"><button onclick="MemoryManagerUI.editCharacter(\'' + self._escAttr(char.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteCharacter(\'' + self._escAttr(char.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+            var btns = '<div style="display:flex;flex-direction:column;gap:4px;">' + self._btn('edit', 'editCharacter', char.name) + self._btn('delete', 'deleteCharacter', char.name) + '</div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar">👤</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' 🔒' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + self._esc(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
 
     editCharacter: function(name) {
         var gm = window.GameMemory; var char = gm.tables.characters[name]; if (!char) return;
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑角色: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">名称</label><input id="editCharName" value="' + this._esc(name) + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">身份/称号</label><input id="editCharTitle" value="' + this._esc(char.title || '') + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">关系</label><input id="editCharRelation" value="' + this._esc(char.relation || '') + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">好感度</label><input id="editCharFav" type="number" value="' + this._esc(char.favorability || 0) + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">心情</label><input id="editCharMood" value="' + this._esc(char.mood || '') + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">位置</label><input id="editCharLocation" value="' + this._esc(char.location || '') + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">锁定场景</label><input id="editCharLocked" type="checkbox"' + (char.locked ? ' checked' : '') + ' style="width:auto;"></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'characters\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveCharacter(\'' + this._escAttr(name) + '\')" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
+        var fields = [
+            { id: 'editCharName', label: '名称', type: 'text', required: true },
+            { id: 'editCharTitle', label: '身份/称号', type: 'text' },
+            { id: 'editCharRelation', label: '关系', type: 'text' },
+            { id: 'editCharFav', label: '好感度', type: 'number' },
+            { id: 'editCharMood', label: '心情', type: 'text' },
+            { id: 'editCharLocation', label: '位置', type: 'text' },
+            { id: 'editCharLocked', label: '锁定场景', type: 'checkbox' }
+        ];
+        var values = [name, char.title, char.relation, char.favorability, char.mood, char.location, char.locked];
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑角色: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        html += this._formFooter('characters', 'saveCharacter', name);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveCharacter: function(oldName) {
@@ -2770,12 +2868,16 @@ var MemoryManagerUI = {
     deleteCharacter: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.characters[name]) return; delete gm.tables.characters[name]; gm.saveToStorage(); if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) { delete gameState.allCharacters[name]; } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters'); this.switchTab('characters'); UI.toast('角色已删除'); },
 
     addCharacter: function() {
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">名称 *</label><input id="addCharName" placeholder="角色名称" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">身份/称号</label><input id="addCharTitle" placeholder="如：剑术导师" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">关系</label><input id="addCharRelation" placeholder="如：朋友、敌人" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">好感度</label><input id="addCharFav" type="number" value="50" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'characters\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveNewCharacter()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button></div></div></div>';
+        var fields = [
+            { id: 'addCharName', label: '名称', type: 'text', placeholder: '角色名称', required: true },
+            { id: 'addCharTitle', label: '身份/称号', type: 'text', placeholder: '如：剑术导师' },
+            { id: 'addCharRelation', label: '关系', type: 'text', placeholder: '如：朋友、敌人' },
+            { id: 'addCharFav', label: '好感度', type: 'number', default: 50 }
+        ];
+        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        html += this._formFooter('characters', 'saveNewCharacter', undefined);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveNewCharacter: function() {
@@ -2793,24 +2895,30 @@ var MemoryManagerUI = {
 
     renderItems: function(gm) {
         var self = this; var items = Object.values(gm.tables.items);
-        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>物品追踪</span><button onclick="MemoryManagerUI.addItem()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">+ 添加物品</button></div>';
+        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>物品追踪</span>' + this._btn('addOutline', 'addItem', undefined) + '</div>';
         if (items.length === 0) html += '<div class="memory-empty-state"><div>暂无物品数据</div></div>';
         else items.forEach(function(item) {
             var rarityColor = { '普通': '#999', '精良': '#34c759', '珍稀': '#007aff', '传说': '#ff9500' }[item.rarity] || '#999';
-            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div><div style="display:flex;flex-direction:column;gap:4px;"><button onclick="MemoryManagerUI.editItem(\'' + self._escAttr(item.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteItem(\'' + self._escAttr(item.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+            var btns = '<div style="display:flex;flex-direction:column;gap:4px;">' + self._btn('edit', 'editItem', item.name) + self._btn('delete', 'deleteItem', item.name) + '</div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
 
     editItem: function(name) {
         var gm = window.GameMemory; var item = gm.tables.items[name]; if (!item) return;
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑物品: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">名称</label><input id="editItemName" value="' + this._esc(name) + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">数量</label><input id="editItemQty" type="number" value="' + this._esc(item.qty || 1) + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">单位</label><input id="editItemUnit" value="' + this._esc(item.unit || '个') + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">品质</label><select id="editItemRarity" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"><option value="普通"' + (item.rarity === '普通' ? ' selected' : '') + '>普通</option><option value="精良"' + (item.rarity === '精良' ? ' selected' : '') + '>精良</option><option value="珍稀"' + (item.rarity === '珍稀' ? ' selected' : '') + '>珍稀</option><option value="传说"' + (item.rarity === '传说' ? ' selected' : '') + '>传说</option></select></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">描述</label><textarea id="editItemDesc" style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + this._esc(item.desc || '') + '</textarea></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'items\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveItem(\'' + this._escAttr(name) + '\')" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
+        var fields = [
+            { id: 'editItemName', label: '名称', type: 'text', required: true },
+            { id: 'editItemQty', label: '数量', type: 'number' },
+            { id: 'editItemUnit', label: '单位', type: 'text' },
+            { id: 'editItemRarity', label: '品质', type: 'select', options: ['普通', '精良', '珍稀', '传说'] },
+            { id: 'editItemDesc', label: '描述', type: 'textarea', minHeight: '80px' }
+        ];
+        var values = [name, item.qty || 1, item.unit || '个', item.rarity || '普通', item.desc || ''];
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑物品: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        html += this._formFooter('items', 'saveItem', name);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveItem: function(oldName) {
@@ -2839,13 +2947,17 @@ var MemoryManagerUI = {
     deleteItem: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.items[name]) return; delete gm.tables.items[name]; gm.saveToStorage(); if (typeof gameState !== 'undefined' && gameState.currentBag) { gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== name; }); } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag'); this.switchTab('items'); UI.toast('物品已删除'); },
 
     addItem: function() {
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">名称 *</label><input id="addItemName" placeholder="物品名称" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">数量</label><input id="addItemQty" type="number" value="1" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">单位</label><input id="addItemUnit" value="个" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">品质</label><select id="addItemRarity" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"><option value="普通">普通</option><option value="精良">精良</option><option value="珍稀">珍稀</option><option value="传说">传说</option></select></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">描述</label><textarea id="addItemDesc" placeholder="物品描述..." style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;"></textarea></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'items\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveNewItem()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button></div></div></div>';
+        var fields = [
+            { id: 'addItemName', label: '名称', type: 'text', placeholder: '物品名称', required: true },
+            { id: 'addItemQty', label: '数量', type: 'number', default: 1 },
+            { id: 'addItemUnit', label: '单位', type: 'text', default: '个' },
+            { id: 'addItemRarity', label: '品质', type: 'select', options: ['普通', '精良', '珍稀', '传说'] },
+            { id: 'addItemDesc', label: '描述', type: 'textarea', placeholder: '物品描述...', minHeight: '80px' }
+        ];
+        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        html += this._formFooter('items', 'saveNewItem', undefined);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveNewItem: function() {
@@ -2864,22 +2976,28 @@ var MemoryManagerUI = {
 
     renderLocations: function(gm) {
         var self = this; var locs = Object.values(gm.tables.locations);
-        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>地点记录</span><button onclick="MemoryManagerUI.addLocation()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">+ 添加地点</button></div>';
+        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>地点记录</span>' + this._btn('addOutline', 'addLocation', undefined) + '</div>';
         if (locs.length === 0) html += '<div class="memory-empty-state"><div>暂无地点数据</div></div>';
         else locs.forEach(function(loc) {
-            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + self._esc(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div><div style="display:flex;gap:4px;"><button onclick="MemoryManagerUI.editLocation(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">编辑</button><button onclick="MemoryManagerUI.deleteLocation(\'' + self._escAttr(loc.name) + '\')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div></div>';
+            var btns = '<div style="display:flex;gap:4px;">' + self._btn('edit', 'editLocation', loc.name) + self._btn('delete', 'deleteLocation', loc.name) + '</div>';
+            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + self._esc(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
 
     editLocation: function(name) {
         var gm = window.GameMemory; var loc = gm.tables.locations[name]; if (!loc) return;
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑地点</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">名称</label><input id="editLocName" value="' + this._esc(name) + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">描述</label><textarea id="editLocDesc" style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + this._esc(loc.desc || '') + '</textarea></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">特征</label><input id="editLocFeatures" value="' + this._esc(loc.features || '') + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">锁定场景</label><input id="editLocLocked" type="checkbox"' + (loc.locked ? ' checked' : '') + ' style="width:auto;"></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'locations\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveLocation(\'' + this._escAttr(name) + '\')" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
+        var fields = [
+            { id: 'editLocName', label: '名称', type: 'text', required: true },
+            { id: 'editLocDesc', label: '描述', type: 'textarea', minHeight: '80px' },
+            { id: 'editLocFeatures', label: '特征', type: 'text' },
+            { id: 'editLocLocked', label: '锁定场景', type: 'checkbox' }
+        ];
+        var values = [name, loc.desc || '', loc.features || '', loc.locked];
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        html += this._formFooter('locations', 'saveLocation', name);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveLocation: function(oldName) {
@@ -2892,10 +3010,14 @@ var MemoryManagerUI = {
     deleteLocation: function(name) { var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return; delete gm.tables.locations[name]; gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('worldSnapshot'); this.switchTab('locations'); UI.toast('地点已删除'); },
 
     addLocation: function() {
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">名称 *</label><input id="addLocName" placeholder="地点名称" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">描述</label><textarea id="addLocDesc" placeholder="地点描述..." style="width:100%;min-height:80px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;"></textarea></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'locations\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveNewLocation()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button></div></div></div>';
+        var fields = [
+            { id: 'addLocName', label: '名称', type: 'text', placeholder: '地点名称', required: true },
+            { id: 'addLocDesc', label: '描述', type: 'textarea', placeholder: '地点描述...', minHeight: '80px' }
+        ];
+        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        html += this._formFooter('locations', 'saveNewLocation', undefined);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveNewLocation: function() {
@@ -2914,7 +3036,7 @@ var MemoryManagerUI = {
 
     renderPlot: function(gm) {
         var self = this;
-        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>剧情大纲</span><button onclick="MemoryManagerUI.editPlot()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button></div>';
+        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>剧情大纲</span>' + this._btn('editOutline', 'editPlot', undefined) + '</div>';
         if (gm.plot.worldSetting) html += '<div style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">世界观</div><div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.6;">' + self._esc(gm.plot.worldSetting) + '</div></div>';
         if (gm.plot.chapters.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">章节</div>'; gm.plot.chapters.forEach(function(ch) { html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;"><div style="font-weight:600;">' + self._esc(ch.title) + ' <span style="font-size:11px;color:var(--text-tertiary);">回合 ' + ch.startTurn + '-' + ch.endTurn + '</span></div><div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;">' + self._esc(ch.summary) + '</div></div>'; }); }
         if (gm.plot.currentChapter) html += '<div style="margin-top:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">当前进展</div><div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.6;max-height:200px;overflow-y:auto;">' + self._esc(gm.plot.currentChapter) + '</div></div>';
@@ -2924,31 +3046,40 @@ var MemoryManagerUI = {
 
     editPlot: function() {
         var gm = window.GameMemory;
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">编辑剧情大纲</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">世界观</label><textarea id="editPlotWorld" style="width:100%;min-height:100px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + this._esc(gm.plot.worldSetting || '') + '</textarea></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">当前进展</label><textarea id="editPlotCurrent" style="width:100%;min-height:150px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + this._esc(gm.plot.currentChapter || '') + '</textarea></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'plot\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.savePlot()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">保存</button></div></div></div>';
+        var fields = [
+            { id: 'editPlotWorld', label: '世界观', type: 'textarea', minHeight: '100px' },
+            { id: 'editPlotCurrent', label: '当前进展', type: 'textarea', minHeight: '150px' }
+        ];
+        var values = [gm.plot.worldSetting || '', gm.plot.currentChapter || ''];
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑剧情大纲</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        html += this._formFooter('plot', 'savePlot', undefined);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     savePlot: function() { var gm = window.GameMemory; gm.plot.worldSetting = document.getElementById('editPlotWorld').value.trim(); gm.plot.currentChapter = document.getElementById('editPlotCurrent').value.trim(); gm.saveToStorage(); if (typeof gameState !== 'undefined') { gameState.rollingSummary = (gm.plot.worldSetting || '') + '\n' + (gm.plot.currentChapter || ''); } if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('rollingSummary'); this.switchTab('plot'); },
 
     renderEvents: function(gm) {
         var self = this; var events = gm.events.slice(-20).reverse();
-        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>重要事件</span><button onclick="MemoryManagerUI.addEvent()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">+ 添加事件</button></div>';
+        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>重要事件</span>' + this._btn('addOutline', 'addEvent', undefined) + '</div>';
         if (events.length === 0) html += '<div class="memory-empty-state"><div>暂无重要事件</div></div>';
         else events.forEach(function(event, idx) {
             var realIdx = gm.events.length - 1 - idx; var imp = event.importance || 5;
             var icon = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
-            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + (event.gameTime ? ' (' + self._esc(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + self._esc(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div><button onclick="MemoryManagerUI.deleteEvent(' + realIdx + ')" style="font-size:11px;color:#f44;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">删除</button></div>';
+            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + (event.gameTime ? ' (' + self._esc(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + self._esc(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div>' + self._btn('delete', 'deleteEvent', realIdx) + '</div>';
         });
         html += '</div>'; return html;
     },
 
     addEvent: function() {
-        document.getElementById('memoryManagerContent').innerHTML = '<div class="memory-card"><div class="memory-card-title">➕ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">事件内容 *</label><textarea id="addEventContent" placeholder="描述发生了什么..." style="width:100%;min-height:100px;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;"></textarea></div>'
-            + '<div><label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">重要度 (1-10)</label><input id="addEventImportance" type="number" min="1" max="10" value="5" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"></div>'
-            + '<div style="display:flex;gap:8px;justify-content:flex-end;"><button onclick="MemoryManagerUI.switchTab(\'events\')" style="padding:10px 20px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;font-size:13px;">取消</button><button onclick="MemoryManagerUI.saveNewEvent()" style="padding:10px 20px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">添加</button></div></div></div>';
+        var fields = [
+            { id: 'addEventContent', label: '事件内容', type: 'textarea', placeholder: '描述发生了什么...', minHeight: '100px' },
+            { id: 'addEventImportance', label: '重要度 (1-10)', type: 'number', min: 1, max: 10, default: 5 }
+        ];
+        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        html += this._formFooter('events', 'saveNewEvent', undefined);
+        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
     saveNewEvent: function() {
@@ -2977,7 +3108,7 @@ var MemoryManagerUI = {
             pending.forEach(function(q, i) {
                 var icon = typeIcons[q.type] || '📜'; var age = gm.currentTurn - (q.createdTurn || 0);
                 var staleWarn = q.stale || age > 30 ? '<span style="color:#f44;font-size:11px;margin-left:6px;">[长期未兑现]</span>' : '';
-                html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + self._esc(q.content) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + self._esc(q.createdTurn || 0) + '回合</div></div><button onclick="MemoryManagerUI.resolveQuestByIndex(' + quests.indexOf(q) + ')" style="font-size:11px;color:#4a4;background:none;border:1px solid var(--border);padding:4px 8px;border-radius:6px;cursor:pointer;">完成</button></div>';
+                html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + self._esc(q.content) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + self._esc(q.createdTurn || 0) + '回合</div></div>' + self._btn('resolve', 'resolveQuestByIndex', quests.indexOf(q)) + '</div>';
             });
             html += '</div>';
         }
@@ -3021,7 +3152,7 @@ var MemoryManagerUI = {
         var self = this;
         var injection = gm.buildInjection();
         var stats = gm._lastInjectionStats || {};
-        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>注入预览</span><button onclick="MemoryManagerUI.refreshInjection()" style="font-size:11px;color:var(--accent);background:none;border:1px solid var(--accent);padding:4px 10px;border-radius:6px;cursor:pointer;">🔄 刷新</button></div>'
+        var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>注入预览</span>' + this._btn('refresh', 'refreshInjection', undefined) + '</div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text-secondary);">总字符: ' + (stats.totalChars || 0) + ' / 预算: ' + (stats.budget || 0) + '</div>'
             + (stats.skippedModules && stats.skippedModules.length > 0 ? '<div style="font-size:11px;color:#ff9500;margin-top:4px;">变化驱动跳过: ' + stats.skippedModules.join(', ') + ' (无变化，零Token)</div>' : '')
             + '</div>'
@@ -3033,7 +3164,7 @@ var MemoryManagerUI = {
 
     renderSearch: function(gm) {
         var self = this;
-        return '<div class="memory-card"><div class="memory-card-title">搜索记忆</div><div style="display:flex;gap:8px;margin-bottom:12px;"><input id="memorySearchInput" placeholder="输入关键词搜索..." style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;"><button onclick="MemoryManagerUI.doSearch()" style="padding:10px 16px;border:none;border-radius:8px;background:var(--accent);color:white;cursor:pointer;font-size:13px;">搜索</button></div><div id="memorySearchResults"></div></div>';
+        return '<div class="memory-card"><div class="memory-card-title">搜索记忆</div><div style="display:flex;gap:8px;margin-bottom:12px;"><input id="memorySearchInput" placeholder="输入关键词搜索..." style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">' + this._btn('search', 'doSearch', undefined) + '</div><div id="memorySearchResults"></div></div>';
     },
 
     doSearch: function() {
