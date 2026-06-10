@@ -1240,12 +1240,9 @@
                                 <div style="padding:8px 12px;border-bottom:1px solid var(--border);">
                                     <div style="font-size:11px;color:var(--text-tertiary);margin-bottom:6px;">一键切换参数组合</div>
                                     <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定">保守</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="均衡自然">均衡</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="高温创意">创意</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格">月读</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格">果实</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格">蛾摩拉</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定">低温稳定</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="均衡自然">均衡自然</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="高温创意">高温创意</button>
                                         <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
                                     </div>
                                 </div>
@@ -2265,12 +2262,9 @@
                                         一键切换参数组合，自动应用
                                     </div>
                                     <div class="setting-row" style="flex-wrap:wrap;gap:6px;margin-bottom:12px;">
-                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">保守</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">创意</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('moonread')" title="月读风格：低温稳定">月读</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('fruit')" title="果实风格：均衡自然">果实</button>
-                                        <button class="tag-btn" onclick="applyParamPreset('gomorrah')" title="蛾摩拉风格：超高温长篇">蛾摩拉</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('conservative')" title="低温稳定，输出可控">低温稳定</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('balanced')" title="中高温，自然丰富">均衡自然</button>
+                                        <button class="tag-btn" onclick="applyParamPreset('creative')" title="超高温，极具创意">高温创意</button>
                                         <button class="tag-btn" onclick="applyParamPreset('default')" title="默认参数">默认</button>
                                     </div>
                                     <div id="paramPresetInfo" style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;display:none;"></div>
@@ -2534,7 +2528,7 @@
                                 </div>
                                 <div class="setting-item">
                                     <span class="setting-label">摘要阈值</span>
-                                    <select id="summaryThreshold" class="setting-select" title="超过此轮数的旧对话只发送摘要，节省token（来自月读预设的智慧）">
+                                    <select id="summaryThreshold" class="setting-select" title="超过此轮数的旧对话只发送摘要，节省 token">
                                         <option value="4">4轮</option>
                                         <option value="6" selected>6轮（推荐）</option>
                                         <option value="10">10轮</option>

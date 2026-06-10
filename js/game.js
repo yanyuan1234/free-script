@@ -751,46 +751,46 @@ function applyLengthPreset(preset) {
 function applyParamPreset(preset) {
     var presets = {
         conservative: {
-            name: '保守模式（月读风格·低温稳定）',
+            name: '低温稳定',
             temperature: 0.88, top_p: 0.88, top_k: 0,
             frequency_penalty: 0.2, presence_penalty: 0.2,
             max_tokens: 4096, description: '低温+低惩罚，输出稳定可控，适合需要一致性的叙事'
         },
         balanced: {
-            name: '均衡模式（果实风格·自然丰富）',
+            name: '均衡自然',
             temperature: 1.3, top_p: 0.91, top_k: 64,
             frequency_penalty: 0, presence_penalty: 0,
             max_tokens: 8192, description: '中高温+TopK，输出自然丰富，适合大多数场景'
         },
         creative: {
-            name: '创意模式（蛾摩拉风格·高温奔放）',
+            name: '高温创意',
             temperature: 1.71, top_p: 0.9, top_k: 0,
             frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事（推荐Gemini）'
+            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事（推荐 Gemini）'
         },
         moonread: {
-            name: '月读风格',
+            name: '低温稳定',
             temperature: 0.88, top_p: 0.88, top_k: 0,
             frequency_penalty: 0.2, presence_penalty: 0.2,
             max_tokens: 4096, description: '低温稳定，抓人设、不超雄、无过度描写'
         },
         fruit: {
-            name: '果实风格',
+            name: '均衡自然',
             temperature: 1.3, top_p: 0.91, top_k: 64,
             frequency_penalty: 0, presence_penalty: 0,
             max_tokens: 3000, description: '均衡自然，外表自然内里丰富'
         },
         gomorrah: {
-            name: '蛾摩拉风格',
+            name: '高温创意',
             temperature: 1.71, top_p: 0.9, top_k: 0,
             frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 30000, description: '超高温长篇，适合Gemini（DeepSeek命中缓存低）'
+            max_tokens: 30000, description: '超高温长篇，适合 Gemini（DeepSeek 命中缓存低）'
         },
         default: {
             name: '默认参数',
             temperature: 0.8, top_p: 0.9, top_k: 0,
             frequency_penalty: 0, presence_penalty: 0,
-            max_tokens: 4096, description: 'Free-Script默认参数'
+            max_tokens: 4096, description: 'Free-Script 默认参数'
         }
     };
     var p = presets[preset];
