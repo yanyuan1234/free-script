@@ -4828,8 +4828,13 @@ function renderAPISettings() {
         var apiName = cfg.name || 'API ' + (i + 1);
         var isConnected = connectionStatus[i] === true;
         var isFailed = connectionStatus[i] === false;
+        // 下架/失败模型只是 UI 提醒，玩家依然能正常用
+        var modelIsDeprecated = cfg.model && LocalGameAPI.isModelDeprecated(cfg.model);
+        var modelIsFailed = cfg.model && LocalGameAPI.isModelFailed(cfg.model);
+        var modelWarnTag = (modelIsDeprecated || modelIsFailed) ?
+            ' <span style="color:#e6a23c;font-size:11px;margin-left:4px;" title="下架/失败提醒（依然可用）">⚠️提醒</span>' : '';
 
-        // 红色感叹号图标
+        // 红色感叹号图标（连接测试失败）
         var errorIcon = isFailed ?
             '<span style="color:#ff3b30;margin-left:6px;font-size:14px;">❗</span>' : '';
 
@@ -4840,7 +4845,7 @@ function renderAPISettings() {
             '<div><div style="font-size:14px;font-weight:500;display:flex;align-items:center;">' +
             apiName + errorIcon + '</div>' +
             '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' +
-            urlDisplay + ' · ' + modelDisplay + '</div></div>' +
+            urlDisplay + ' · ' + modelDisplay + modelWarnTag + '</div></div>' +
             (isCurrent ? '<span class="badge badge-primary">使用中</span>' : '') +
             '</div></div>';
     }).join('');
@@ -5238,30 +5243,41 @@ function showApiDetail(slot) {
             try {
                 var models = await LocalGameAPI.fetchModels(url, key);
                 var select = document.getElementById('detailApiModelSelect');
+                // 分类：✅ 正常  vs  ⚠️ 提醒（已下架/失败）—— 分两组显示
+                // 注意：下架/失败模型依然可选、依然能用，仅作提醒
                 select.innerHTML = '<option value="">选择模型</option>';
-                var failedCount = 0;
+                var normalGroup = document.createElement('optgroup');
+                normalGroup.label = '✅ 正常模型';
+                var warnGroup = document.createElement('optgroup');
+                warnGroup.label = '⚠️ 提醒（已下架/近期失败，仍可使用）';
+                var warnCount = 0;
                 models.forEach(function(m) {
-                    if (LocalGameAPI.isModelFailed(m)) {
-                        failedCount++;
-                        return;
-                    }
+                    var isFailed = LocalGameAPI.isModelFailed(m);
+                    var isDeprecated = LocalGameAPI.isModelDeprecated(m);
                     var opt = document.createElement('option');
                     opt.value = m;
-                    opt.textContent = m;
-                    select.appendChild(opt);
+                    if (isFailed || isDeprecated) {
+                        opt.textContent = m + (isFailed && isDeprecated ? '（下架+失败）' :
+                            isDeprecated ? '（已下架）' : '（近期失败）');
+                        warnGroup.appendChild(opt);
+                        warnCount++;
+                    } else {
+                        opt.textContent = m;
+                        normalGroup.appendChild(opt);
+                    }
                 });
-                if (cfg.model && !LocalGameAPI.isModelFailed(cfg.model)) select.value = cfg
-                    .model;
-                var availableCount = models.length - failedCount;
-                var msg = '获取到 ' + availableCount + ' 个可用模型';
-                if (failedCount > 0) msg += '，' + failedCount + ' 个失败模型已隐藏';
+                select.appendChild(normalGroup);
+                select.appendChild(warnGroup);
+                if (cfg.model) select.value = cfg.model;
+                var msg = '获取到 ' + models.length + ' 个模型';
+                if (warnCount > 0) msg += '，' + warnCount + ' 个有提醒（依然可选）';
                 UI.toast(msg);
                 // 保存可用模型数量到配置
-                LocalGameAPI._configs[slot].availableModels = availableCount;
+                LocalGameAPI._configs[slot].availableModels = models.length;
                 LocalGameAPI.save();
                 // 更新显示
                 var modelEl = document.getElementById('apiDetailModels');
-                if (modelEl) modelEl.textContent = availableCount;
+                if (modelEl) modelEl.textContent = models.length;
             } catch (e) {
                 UI.toast(translateError(e.message));
             }
@@ -5432,14 +5448,34 @@ function showCreateApiModal() {
         try {
             var models = await LocalGameAPI.fetchModels(url, key);
             var select = document.getElementById('createApiModelSelect');
+            // 分类：✅ 正常  vs  ⚠️ 提醒（已下架/失败）—— 分两组显示
+            // 下架/失败模型依然可选、依然能用，仅作提醒
             select.innerHTML = '<option value="">选择模型</option>';
+            var normalGroup = document.createElement('optgroup');
+            normalGroup.label = '✅ 正常模型';
+            var warnGroup = document.createElement('optgroup');
+            warnGroup.label = '⚠️ 提醒（已下架/近期失败，仍可使用）';
+            var warnCount = 0;
             models.forEach(function(m) {
+                var isFailed = LocalGameAPI.isModelFailed(m);
+                var isDeprecated = LocalGameAPI.isModelDeprecated(m);
                 var opt = document.createElement('option');
                 opt.value = m;
-                opt.textContent = m;
-                select.appendChild(opt);
+                if (isFailed || isDeprecated) {
+                    opt.textContent = m + (isFailed && isDeprecated ? '（下架+失败）' :
+                        isDeprecated ? '（已下架）' : '（近期失败）');
+                    warnGroup.appendChild(opt);
+                    warnCount++;
+                } else {
+                    opt.textContent = m;
+                    normalGroup.appendChild(opt);
+                }
             });
-            UI.toast('获取到 ' + models.length + ' 个模型');
+            select.appendChild(normalGroup);
+            select.appendChild(warnGroup);
+            var msg = '获取到 ' + models.length + ' 个模型';
+            if (warnCount > 0) msg += '，' + warnCount + ' 个有提醒（依然可选）';
+            UI.toast(msg);
         } catch (e) {
             UI.toast(translateError(e.message));
         }

@@ -362,12 +362,9 @@ var LocalGameAPI = {
             console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 不完整，跳过');
             continue;
         }
-    // 跳过最近失败的模型（24小时内）
-    if (cfg.model && this.isModelFailed(cfg.model)) {
-        console.log('[API轮换] 模型 ' + cfg.model + ' 最近失败，跳过');
-        continue;
-    }
-    attemptedCount++;
+        // 注意：不再自动跳过"近期失败"的模型——失败只是 UI 提醒，玩家想用就能用
+        // 如果某个模型一直挂，玩家会在 UI 上看到 ⚠️ 提醒，自然会换或调整
+        attemptedCount++;
     try {
         const result = await retryRequest(slotIdx, 0);
         this._logRequest(slotIdx, true);
@@ -460,6 +457,18 @@ var LocalGameAPI = {
     return result.sort(function(a, b) {
         return b.failedAt - a.failedAt;
         });
+    },
+    // 已下架/历史不推荐模型名单——只是 UI 提醒，玩家依然可以正常使用
+    _deprecatedModels: [
+        'deepseek-v4-flash',
+        'gemini-2.5-flash',
+        // 2026-06 排查：iamhc.cn 中转站下架的模型（依然可用，只是官方不再提供）
+        'moonshotai/kimi-k2.6',
+        'meta/llama-3.3-70b-instruct',
+        'qwen/qwen3-coder-480b-a35b-instruct'
+    ],
+    isModelDeprecated(modelName) {
+        return modelName && this._deprecatedModels.indexOf(modelName) !== -1;
     },
     getRequestStats(slot) {
         var logs = this._requestLog.filter(function(l) {
