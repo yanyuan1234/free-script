@@ -2508,9 +2508,11 @@ var MemoryManagerUI = {
     _esc: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); },
     _escAttr: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n').replace(/\r/g, '\\r'); },
 
-    // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline
+    // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline/editOutline/refresh/detail/search/resolve
     // arg 支持 string / number（数字不加引号，字符串加引号并转义）
-    _btn: function(action, fnName, arg) {
+    // borderRadius: 可选，默认 6px（与原版小按钮一致；大表单按钮传 8px）
+    _btn: function(action, fnName, arg, borderRadius) {
+        var s = MemoryManagerUI._btnPresets._getPreset(action);
         var argStr;
         if (arg === undefined || arg === null) {
             argStr = '';
@@ -2520,22 +2522,29 @@ var MemoryManagerUI = {
             argStr = '\'' + this._escAttr(arg) + '\'';
         }
         var onclick = 'MemoryManagerUI.' + fnName + (argStr ? '(' + argStr + ')' : '()');
-        var presets = {
-            edit:   { color: 'var(--accent)',  bg: 'none',         border: 'var(--border)',   text: '编辑',    fontSize: '12px', padding: '4px 8px'   },
-            delete: { color: '#f44',           bg: 'none',         border: 'var(--border)',   text: '删除',    fontSize: '12px', padding: '4px 8px'   },
-            cancel: { color: 'var(--text)',    bg: 'transparent',  border: 'var(--border)',   text: '取消',    fontSize: '13px', padding: '10px 20px' },
-            save:   { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '保存',    fontSize: '13px', padding: '10px 20px' },
-            add:    { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '+ 添加',  fontSize: '12px', padding: '6px 14px'  },
-            addOutline: { color: 'var(--accent)', bg: 'none',       border: 'var(--accent)',  text: '+ 添加',  fontSize: '11px', padding: '4px 10px'  },
-            editOutline: { color: 'var(--accent)', bg: 'none',      border: 'var(--accent)',  text: '编辑',    fontSize: '11px', padding: '4px 10px'  },
-            refresh: { color: 'var(--accent)',  bg: 'none',        border: 'var(--accent)',  text: '🔄 刷新', fontSize: '11px', padding: '4px 10px'  },
-            detail: { color: 'var(--accent)',   bg: 'none',        border: 'var(--accent)',  text: '查看详情', fontSize: '11px', padding: '4px 10px'  },
-            search: { color: 'white',           bg: 'var(--accent)', border: 'none',         text: '搜索',    fontSize: '13px', padding: '10px 16px' },
-            resolve: { color: '#4a4',          bg: 'none',         border: 'var(--border)',   text: '完成',    fontSize: '11px', padding: '4px 8px'   }
-        };
-        var s = presets[action] || presets.edit;
-        return '<button onclick="' + onclick + '" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:6px;cursor:pointer;">' + s.text + '</button>';
+        var radius = borderRadius || '6px';
+        return '<button onclick="' + onclick + '" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:' + radius + ';cursor:pointer;">' + s.text + '</button>';
     },
+
+    // 获取按钮预设样式（供 _formFooter 等复用）
+    _btnPresets: { _presets: null, _getPreset: function(action) {
+        if (!this._presets) {
+            this._presets = {
+                edit:   { color: 'var(--accent)',  bg: 'none',         border: 'var(--border)',   text: '编辑',    fontSize: '12px', padding: '4px 8px'   },
+                delete: { color: '#f44',           bg: 'none',         border: 'var(--border)',   text: '删除',    fontSize: '12px', padding: '4px 8px'   },
+                cancel: { color: 'var(--text)',    bg: 'transparent',  border: 'var(--border)',   text: '取消',    fontSize: '13px', padding: '10px 20px' },
+                save:   { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '保存',    fontSize: '13px', padding: '10px 20px' },
+                add:    { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '添加',    fontSize: '13px', padding: '10px 20px' },
+                addOutline: { color: 'var(--accent)', bg: 'none',       border: 'var(--accent)',  text: '+ 添加',  fontSize: '11px', padding: '4px 10px'  },
+                editOutline: { color: 'var(--accent)', bg: 'none',      border: 'var(--accent)',  text: '编辑',    fontSize: '11px', padding: '4px 10px'  },
+                refresh: { color: 'var(--accent)',  bg: 'none',        border: 'var(--accent)',  text: '🔄 刷新', fontSize: '11px', padding: '4px 10px'  },
+                detail: { color: 'var(--accent)',   bg: 'none',        border: 'var(--accent)',  text: '查看详情', fontSize: '11px', padding: '4px 10px'  },
+                search: { color: 'white',           bg: 'var(--accent)', border: 'none',         text: '搜索',    fontSize: '13px', padding: '10px 16px' },
+                resolve: { color: '#4a4',          bg: 'none',         border: 'var(--border)',   text: '完成',    fontSize: '11px', padding: '4px 8px'   }
+            };
+        }
+        return this._presets[action] || this._presets.edit;
+    } },
 
     // 通用输入字段：field = { id, label, type, default, options, placeholder, required, rows, min, max }
     _formField: function(field, value) {
@@ -2567,22 +2576,25 @@ var MemoryManagerUI = {
 
     // 表单底部：取消 + 保存按钮对
     // saveArgs: undefined | string | array<string|number> 多个参数用 array
-    _formFooter: function(cancelTab, saveFn, saveArgs) {
+    // saveAction: 'save'（默认）| 'add'（add 模式按钮显示"添加"）
+    // 大表单按钮 borderRadius=8px（与原版一致）
+    _formFooter: function(cancelTab, saveFn, saveArgs, saveAction) {
+        var action = saveAction || 'save';
         var saveBtn;
         if (saveArgs === undefined || saveArgs === null) {
-            saveBtn = this._btn('save', saveFn, undefined);
+            saveBtn = this._btn(action, saveFn, undefined, '8px');
         } else if (Array.isArray(saveArgs)) {
             var parts = saveArgs.map(function(a) {
                 return typeof a === 'string' ? "'" + this._escAttr(a) + "'" : a;
             }, this);
-            // 复用 _btn 的 save 样式
-            var s = { color: 'white', bg: 'var(--accent)', border: 'none', text: '保存', fontSize: '13px', padding: '10px 20px' };
-            saveBtn = '<button onclick="MemoryManagerUI.' + saveFn + '(' + parts.join(',') + ')" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:6px;cursor:pointer;">' + s.text + '</button>';
+            var s = MemoryManagerUI._btnPresets._getPreset(action);
+            saveBtn = '<button onclick="MemoryManagerUI.' + saveFn + '(' + parts.join(',') + ')" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:8px;cursor:pointer;">' + s.text + '</button>';
         } else {
-            saveBtn = this._btn('save', saveFn, saveArgs);
+            saveBtn = this._btn(action, saveFn, saveArgs, '8px');
         }
+        // cancel 按钮固定 8px
         return '<div style="display:flex;gap:8px;justify-content:flex-end;">'
-            + this._btn('cancel', 'switchTab', cancelTab)
+            + this._btn('cancel', 'switchTab', cancelTab, '8px')
             + saveBtn
             + '</div>';
     },
@@ -2780,7 +2792,7 @@ var MemoryManagerUI = {
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">添加永久事实</div><div style="margin-bottom:10px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
-        html += this._formFooter('permanentFacts', 'saveNewPermanentFact', undefined);
+        html += this._formFooter('permanentFacts', 'saveNewPermanentFact', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
@@ -2956,7 +2968,7 @@ var MemoryManagerUI = {
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
-        html += this._formFooter('items', 'saveNewItem', undefined);
+        html += this._formFooter('items', 'saveNewItem', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
@@ -3078,7 +3090,7 @@ var MemoryManagerUI = {
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
-        html += this._formFooter('events', 'saveNewEvent', undefined);
+        html += this._formFooter('events', 'saveNewEvent', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
@@ -3164,7 +3176,7 @@ var MemoryManagerUI = {
 
     renderSearch: function(gm) {
         var self = this;
-        return '<div class="memory-card"><div class="memory-card-title">搜索记忆</div><div style="display:flex;gap:8px;margin-bottom:12px;"><input id="memorySearchInput" placeholder="输入关键词搜索..." style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">' + this._btn('search', 'doSearch', undefined) + '</div><div id="memorySearchResults"></div></div>';
+        return '<div class="memory-card"><div class="memory-card-title">搜索记忆</div><div style="display:flex;gap:8px;margin-bottom:12px;"><input id="memorySearchInput" placeholder="输入关键词搜索..." style="flex:1;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">' + this._btn('search', 'doSearch', undefined, '8px') + '</div><div id="memorySearchResults"></div></div>';
     },
 
     doSearch: function() {

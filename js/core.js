@@ -495,8 +495,15 @@ var UI = {
             var a = document.createElement('a');
             a.href = url;
             a.download = filename;
-            a.click();
-            setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+            // Safari / 旧浏览器需要 a 在 DOM 里才能触发下载；Chrome 不需要但也无害
+            if (document.body && document.body.appendChild) {
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            } else {
+                a.click();
+            }
+            setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
             return true;
         } catch (e) {
             console.error('[downloadJSON] 失败:', e);
