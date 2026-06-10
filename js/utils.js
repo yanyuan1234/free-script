@@ -424,3 +424,74 @@ var DOMBatch = {
         }
     }
 };
+
+// ========================================
+// 【日志封装】统一日志入口，支持级别开关
+// ========================================
+// 用法：Logger.info('xxx') / Logger.warn('xxx') / Logger.error('xxx')
+// 后续可平滑替换零散的 console.* 调用；不会影响线上默认行为。
+// 通过 localStorage('free_script_log_level') 可临时调节：'debug' | 'info' | 'warn' | 'error'
+var Logger = (function() {
+    var LEVELS = { debug: 0, info: 1, warn: 2, error: 3, silent: 4 };
+    function currentLevel() {
+        try {
+            var v = (typeof localStorage !== 'undefined') ? localStorage.getItem('free_script_log_level') : null;
+            if (v && LEVELS[v] !== undefined) return LEVELS[v];
+        } catch (e) {}
+        // 默认：线上静默 info，只保留 warn / error；用户手动改为 debug 即可看全部
+        return LEVELS.warn;
+    }
+    function fmt() {
+        var parts = [];
+        for (var i = 0; i < arguments.length; i++) {
+            var a = arguments[i];
+            if (a instanceof Error) parts.push(a.message);
+            else if (typeof a === 'object') {
+                try { parts.push(JSON.stringify(a)); } catch (e) { parts.push(String(a)); }
+            } else parts.push(String(a));
+        }
+        return parts.join(' ');
+    }
+    return {
+        LEVELS: LEVELS,
+        getLevel: currentLevel,
+        setLevel: function(name) {
+            if (LEVELS[name] === undefined) return;
+            try { localStorage.setItem('free_script_log_level', name); } catch (e) {}
+        },
+        debug: function() { if (currentLevel() <= LEVELS.debug) { try { console.debug.apply(console, ['[DBG]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        info:  function() { if (currentLevel() <= LEVELS.info)  { try { console.info.apply(console,  ['[INF]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        warn:  function() { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        error: function() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} },
+        // 直接调用 Logger.log('msg', 'info') 走级别路由
+        log: function(msg, level) {
+            level = level || 'info';
+            if (this[level]) this[level](msg);
+            else this.info(msg);
+        }
+    };
+})();
+
+// ========================================
+// 【性能优化】渲染缓存：避免相同输入触发重复重绘
+// ========================================
+// 用法（render 函数内）：
+//   var key = JSON.stringify({ a: gameState.a, b: gameState.b });
+//   if (RenderCache.same('renderFoo', key)) return;
+//   // ... 实际渲染逻辑
+//   RenderCache.mark('renderFoo', key);
+var RenderCache = {
+    _keys: {},
+    same: function(name, key) {
+        if (this._keys[name] === key) return true;
+        return false;
+    },
+    mark: function(name, key) {
+        this._keys[name] = key;
+    },
+    // 某些数据变化后（如存档切换、删除消息），需手动失效
+    invalidate: function(name) {
+        if (name) delete this._keys[name];
+        else this._keys = {};
+    }
+};

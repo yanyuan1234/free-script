@@ -90,6 +90,12 @@
             <symbol id="icon-play" viewBox="0 0 24 24">
                 <polygon points="5 3 19 12 5 21 5 3" fill="none" stroke="currentColor" stroke-width="2" />
             </symbol>
+            <symbol id="icon-skip" viewBox="0 0 24 24">
+                <polygon points="5 4 13 12 5 20 5 4" fill="none" stroke="currentColor" stroke-width="2"
+                    stroke-linejoin="round" />
+                <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" />
+            </symbol>
             <symbol id="icon-plus" viewBox="0 0 24 24">
                 <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                 <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -489,9 +495,11 @@
                                 <button class="circle-btn" id="btnContinueGen" title="继续剧情"><svg class="icon icon-sm">
                                         <use href="#icon-play" />
                                     </svg></button>
-                                <button class="circle-btn" id="btnSaveHeader" title="存档/读档"><svg class="icon icon-sm">
+                                <button class="circle-btn" id="btnSaveHeader" title="存档/读档" style="position:relative;"><svg class="icon icon-sm">
                                         <use href="#icon-save" />
-                                    </svg></button>
+                                    </svg>
+                                    <span id="autoSaveDot" style="display:none;position:absolute;top:2px;right:2px;width:8px;height:8px;background:#4caf50;border-radius:50%;border:1.5px solid var(--bg, #fff);box-shadow:0 0 4px rgba(76,175,80,0.6);"></span>
+                                </button>
                                 <button class="circle-btn" id="btnNotifCenter" title="通知中心" style="position:relative;"><svg class="icon icon-sm">
                                         <use href="#icon-bell" />
                                     </svg>
@@ -1881,6 +1889,9 @@
                                                     </svg>
                                                 </button>
                                             </div>
+                                            <div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;line-height:1.5;">
+                                                密钥仅保存到本地浏览器（已轻量混淆，非真加密）；请勿在公共设备使用
+                                            </div>
                                         </div>
                                         <div>
                                             <label class="field-label"
@@ -2651,6 +2662,19 @@
                             <button class="crystal-btn" id="promptOk">确定</button>
                             <button class="crystal-btn" style="opacity:.7;" id="promptCancel">取消</button>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 【日志页面】AI 生成功能提醒弹窗 -->
+            <div class="modal-overlay" id="generatingModal" style="display:none;">
+                <div class="modal-content" style="max-width:340px;text-align:center;">
+                    <div class="modal-body" style="padding:28px 22px 22px;">
+                        <div id="generatingSpinner" class="generating-spinner"></div>
+                        <h3 class="modal-title" id="generatingTitle" style="margin:14px 0 6px;font-size:16px;">AI 正在生成</h3>
+                        <p class="text-soft" id="generatingMessage" style="margin:0 0 6px;font-size:13px;line-height:1.6;">请稍候，可能需要十几秒到几十秒</p>
+                        <p class="text-soft" id="generatingFeature" style="margin:0 0 16px;font-size:12px;opacity:.7;"></p>
+                        <button class="crystal-btn" id="generatingCancelBtn" style="min-width:120px;">取消</button>
                     </div>
                 </div>
             </div>

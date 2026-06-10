@@ -892,12 +892,6 @@ async function sendAIRequest(userMessage, isInit = false) {
     
     // 保存撤销状态（在AI回复前）
     saveUndoState();
-    var storyScroll = document.getElementById('storyScroll');
-    if (storyScroll) {
-        storyScroll.onclick = function() {
-            if (TypewriterBuffer.isTyping) TypewriterBuffer.flush();
-        };
-    }
     // 应用正则脚本到用户输入
     if (userMessage) {
         userMessage = RegexManager.applyToInput(userMessage);
@@ -1689,7 +1683,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         TypewriterBuffer.onComplete = function() {
             var st = document.getElementById('storyText');
             if (st) st.innerHTML = formatStory(finalStory);
-            if (storyScroll) storyScroll.onclick = null;
+            _hideSkipButton();
         };
         // 流式模式下 onStreamChunk 已经在逐步推送了，
         // 这里只需要确保最终完整文本被推送（处理流式解析可能遗漏的尾部内容）。
@@ -1702,7 +1696,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (TypewriterBuffer.isFinished()) {
             var st2 = document.getElementById('storyText');
             if (st2) st2.innerHTML = formatStory(finalStory);
-            if (storyScroll) storyScroll.onclick = null;
+            _hideSkipButton();
         }
         // 记录
         // storyHistory 已合并到 conversationHistory，不再单独存储
@@ -1803,6 +1797,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     } finally {
         window._currentAbort = null;
         setWaiting(false);
+        // 【日志页面】AI 请求结束（成功/失败/取消），自动关闭生成弹窗
+        try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
     }
 }
 function updateTokenCount(currentResponseLength) {

@@ -341,6 +341,10 @@ var UI = {
             pages[pi].classList.remove('active');
         }
         if (el) el.classList.add('active');
+        // 【打字机优化】离开剧情页时强制隐藏「跳过」按钮，避免在其他页面残留
+        if (id !== 'storyPage' && typeof _hideSkipButton === 'function') {
+            try { _hideSkipButton(); } catch (e) {}
+        }
     },
     _modalStack: [],
     showModal: function(id) {
@@ -448,11 +452,118 @@ var UI = {
         }
     };
     });
+    },
+    // 【日志页面】AI 生成功能弹窗（替代原来转瞬即逝的 toast）
+    // 用法：UI.showGenerating('本章剧情总结', { onCancel: function(){...} })
+    //      UI.hideGenerating()
+    _generatingCancelHandler: null,
+    showGenerating: function(featureLabel, opts) {
+        var modal = document.getElementById('generatingModal');
+        var titleEl = document.getElementById('generatingTitle');
+        var msgEl = document.getElementById('generatingMessage');
+        var featEl = document.getElementById('generatingFeature');
+        var cancelBtn = document.getElementById('generatingCancelBtn');
+        if (!modal) {
+            // 兜底：弹窗未渲染时降级为 toast
+            if (typeof UI.toast === 'function') UI.toast('正在生成「' + (featureLabel || '') + '」...');
+            return;
+        }
+        if (titleEl) titleEl.textContent = '正在生成「' + (featureLabel || '内容') + '」';
+        if (msgEl) msgEl.textContent = 'AI 思考中，请稍候';
+        if (featEl) featEl.textContent = opts && opts.hint ? opts.hint : '（视网络与上下文长度，可能需要十几秒到几十秒）';
+        opts = opts || {};
+        // 绑定取消
+        if (cancelBtn) {
+            var self = this;
+            if (cancelBtn._generatingHandler) {
+                cancelBtn.removeEventListener('click', cancelBtn._generatingHandler);
+            }
+            if (cancelBtn._generatingKeyHandler) {
+                document.removeEventListener('keydown', cancelBtn._generatingKeyHandler);
+            }
+            cancelBtn.style.display = (opts.hideCancel ? 'none' : '');
+            cancelBtn._generatingHandler = function() {
+                try { UI.hideGenerating(); } catch (e) {}
+                try {
+                    if (opts.onCancel) opts.onCancel();
+                } catch (e) { console.warn('[Generating] onCancel 失败:', e); }
+            };
+            cancelBtn.addEventListener('click', cancelBtn._generatingHandler);
+            // Esc 也可取消
+            cancelBtn._generatingKeyHandler = function(e) {
+                if (e.key === 'Escape' || e.keyCode === 27) {
+                    if (modal.classList.contains('active')) {
+                        cancelBtn._generatingHandler();
+                    }
+                }
+            };
+            document.addEventListener('keydown', cancelBtn._generatingKeyHandler);
+        }
+        this.showModal('generatingModal');
+    },
+    hideGenerating: function() {
+        var modal = document.getElementById('generatingModal');
+        if (modal) this.hideModal('generatingModal');
     }
 };
 // ==================== API配置管理 ====================
 // 来源：game_integrated.html 第 3438-3531 行
 // 功能：多API端点管理、分组、自动轮询、连接测试、模型列表获取
+
+// ========================================
+// 【安全】API Key 轻量混淆（仅避免明文存 localStorage）
+// ========================================
+// 注意：这不是真正的加密——任何能跑 JS 的人都能还原。目的只是防止 key 出现在
+// 浏览器控制台、localStorage dump、屏幕录制等「无意识泄露」场景。
+// 真实的密钥安全请用后端代理或 KMS。
+var _API_KEY_OBFUSCATE_PASS = 'free_script_obf_v1'; // 简单 XOR + base64
+function _obfuscateKey(plain) {
+    if (typeof plain !== 'string' || !plain) return '';
+    try {
+        var pass = _API_KEY_OBFUSCATE_PASS;
+        var xored = '';
+        for (var i = 0; i < plain.length; i++) {
+            xored += String.fromCharCode(plain.charCodeAt(i) ^ pass.charCodeAt(i % pass.length));
+        }
+        // 用 btoa 处理 Unicode
+        return btoa(unescape(encodeURIComponent(xored)));
+    } catch (e) { return plain; }
+}
+function _deobfuscateKey(encoded) {
+    if (typeof encoded !== 'string' || !encoded) return encoded || '';
+    // 启发式：base64 字符串只包含 [A-Za-z0-9+/=]，且长度 >= 8
+    if (encoded.length < 8 || !/^[A-Za-z0-9+/=]+$/.test(encoded)) {
+        return encoded; // 看起来不像混淆后的值，原样返回（兼容旧数据）
+    }
+    try {
+        var xored = decodeURIComponent(escape(atob(encoded)));
+        var pass = _API_KEY_OBFUSCATE_PASS;
+        var plain = '';
+        for (var i = 0; i < xored.length; i++) {
+            plain += String.fromCharCode(xored.charCodeAt(i) ^ pass.charCodeAt(i % pass.length));
+        }
+        return plain;
+    } catch (e) { return encoded; }
+}
+// 批量处理 configs 数组
+function _obfuscateConfigs(configs) {
+    if (!Array.isArray(configs)) return configs;
+    return configs.map(function(c) {
+        if (!c || typeof c !== 'object') return c;
+        var copy = Object.assign({}, c);
+        if (copy.apiKey) copy.apiKey = _obfuscateKey(copy.apiKey);
+        return copy;
+    });
+}
+function _deobfuscateConfigs(configs) {
+    if (!Array.isArray(configs)) return configs;
+    return configs.map(function(c) {
+        if (!c || typeof c !== 'object') return c;
+        var copy = Object.assign({}, c);
+        if (copy.apiKey) copy.apiKey = _deobfuscateKey(copy.apiKey);
+        return copy;
+    });
+}
 
 var LocalGameAPI = {
     // 修复：移除写死的中转站 URL 和模型名。
@@ -476,7 +587,8 @@ var LocalGameAPI = {
                 const data = JSON.parse(saved);
                 // 正常加载保存的配置——不修改、不动玩家的 model
                 if (data.configs && data.configs.length > 0) {
-                    this._configs = data.configs;
+                    // 【安全】还原时自动反混淆 API Key
+                    this._configs = _deobfuscateConfigs(data.configs);
                 }
                 this._currentSlot = data.currentSlot || 0;
                 this._autoRotate = data.autoRotate !== undefined ? data.autoRotate : this._autoRotate;
@@ -491,8 +603,9 @@ var LocalGameAPI = {
     },
     save() {
         try {
+            // 【安全】写入时混淆 API Key，避免明文存到 localStorage
             safeSetItem('free_script_api_config', JSON.stringify({
-                configs: this._configs,
+                configs: _obfuscateConfigs(this._configs),
                 currentSlot: this._currentSlot,
                 autoRotate: this._autoRotate,
                 groups: this._groups || [],
@@ -1388,8 +1501,10 @@ var TypewriterBuffer = {
             this._completedParagraphs = [];
             this._currentParaChars = '';
         }
-    this._forceFullRender = true;
-    const self = this;
+        this._forceFullRender = true;
+        // 【用户需求】打字机开始时显示「跳过」按钮（无长按快进、无点击屏幕快进）
+        try { _showSkipButton(); } catch (e) {}
+        const self = this;
     TimerManager.setInterval('typewriter', function() {
         if (self.queue.length === 0) {
             self.pause();
@@ -1398,6 +1513,10 @@ var TypewriterBuffer = {
                 self._currentParaChars = '';
             }
         self._renderCached();
+        // 【安全网】自然完成时若没有 onComplete 也要隐藏跳过按钮
+        if (!self.onComplete) {
+            try { _hideSkipButton(); } catch (e) {}
+        }
         if (self.onComplete) {
             self.onComplete();
             self.onComplete = null;
@@ -1485,6 +1604,12 @@ var TypewriterBuffer = {
             this.onComplete = null;
         }
     },
+    // 【用户需求】明确的「跳过」方法（与 flush 行为一致，但语义清晰）
+    skip() {
+        if (!this.isTyping && this.queue.length === 0) return false;
+        this.flush();
+        return true;
+    },
     isFinished() {
         // 确保 queue 已初始化
         if (typeof this.queue !== 'string') this.queue = '';
@@ -1526,6 +1651,44 @@ var TypewriterBuffer = {
     }
 };
 const MAX_HISTORY = 50;
+
+// ========================================
+// 打字机「跳过」按钮管理（用户需求：长按快进、点击屏幕一律不要，只保留按钮）
+// ========================================
+let _skipBtnEl = null;
+function _showSkipButton() {
+    if (typeof document === 'undefined') return;
+    if (!_skipBtnEl) {
+        _skipBtnEl = document.getElementById('typewriterSkipBtn');
+        if (!_skipBtnEl) {
+            _skipBtnEl = document.createElement('button');
+            _skipBtnEl.id = 'typewriterSkipBtn';
+            _skipBtnEl.className = 'typewriter-skip-btn';
+            _skipBtnEl.type = 'button';
+            _skipBtnEl.setAttribute('aria-label', '跳过打字机');
+            _skipBtnEl.innerHTML = '<svg class="icon icon-sm" style="stroke:white;vertical-align:-2px;"><use href="#icon-skip"></use></svg><span>跳过</span>';
+            _skipBtnEl.addEventListener('click', function(ev) {
+                ev.stopPropagation();
+                ev.preventDefault();
+                try {
+                    if (typeof TypewriterBuffer !== 'undefined') {
+                        TypewriterBuffer.skip();
+                    }
+                } catch (e) {
+                    console.warn('[SkipBtn] 跳过失败:', e);
+                }
+            });
+            // 只在 body 直接挂载，不插入到可滚动的故事区域里，避免被键盘/弹层遮挡
+            (document.body || document.documentElement).appendChild(_skipBtnEl);
+        }
+    }
+    _skipBtnEl.classList.add('visible');
+}
+function _hideSkipButton() {
+    if (_skipBtnEl) {
+        _skipBtnEl.classList.remove('visible');
+    }
+}
 
 // ========================================
 // Token 计数 + 自动压缩
@@ -2794,6 +2957,7 @@ function translateError(msg) {
         'No API key': '未配置API Key，请先在设置中添加',
         'No API configuration': '未配置API，请先在设置中添加',
         'fetch failed': '获取数据失败，请检查网络和API地址',
+        'no api configuration': '未配置API，请先在设置中添加',
         'api key': 'API密钥',
         'api_key': 'API密钥',
         'API key': 'API密钥',
@@ -2802,6 +2966,20 @@ function translateError(msg) {
         'parse error': '解析数据出错',
         'invalid response': '无效的响应',
         'empty response': '服务器返回了空数据',
+        // ===== 智能提示补充：API Key / 模型下架 / 余额 =====
+        'Incorrect API key provided': 'API Key 不正确，请到「设置→API 配置」检查并重新粘贴',
+        'You exceeded your current quota': '账户额度已用完，请充值或切换到其他 API Key',
+        'You must provide a model': '未指定模型，请到 API 配置填写模型名（如 gpt-4o-mini、deepseek-chat）',
+        'The model `': '模型不存在或已下架，请检查 API 配置中的模型名是否正确',
+        'has been deprecated': '该模型已下架，请更换为其他可用模型',
+        'deprecat': '该模型已下架，请更换为其他可用模型',
+        '余额不足': '账户余额不足，请充值或更换 API Key',
+        '额度不足': '账户额度不足，请充值或更换 API Key',
+        'API key 余额': 'API Key 余额不足，请充值或更换',
+        'key 已过期': 'API Key 已过期，请重新生成',
+        'invalid model': '模型名称无效，请到 API 配置检查',
+        '未配置模型': '未配置模型，请到 API 配置填写模型名',
+        'Billing': '账单问题，请检查 API 账户余额',
     };
 // 预构建按长度降序排列的key数组，避免每次调用都排序
 var _translateErrorSortedKeys = null;
@@ -3042,6 +3220,12 @@ function showError(msg, errObj) {
         var m = stack.match(/(?:at\s+)?(?:.*?)([^\s()]+):(\d+):(\d+)/);
         if (m) fileLine = m[1] + ':' + m[2];
     }
+    // 【智能提示】根据错误关键词给出可点击的快捷操作
+    var action = '';
+    var low = (msg || '').toLowerCase();
+    if (low.indexOf('api key') !== -1 || low.indexOf('认证') !== -1 || low.indexOf('401') !== -1) {
+        action = '<button onclick="UI.hideModal(\'settingsModal\');" data-close="settingsModal" style="margin-top:6px;padding:4px 10px;background:#856404;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">前往设置</button>';
+    }
     // 【修复】不要清空剧情区，避免覆盖流式已渲染的内容
     // 仅在没有内容时覆盖；否则在底部追加错误提示条
     var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
@@ -3049,6 +3233,7 @@ function showError(msg, errObj) {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">⚠️ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:#856404;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
         '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
         (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">📍 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
+        action +
         '<details style="font-size:11px;color:#666;"><summary style="cursor:pointer;color:#666;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:#fdf6e3;border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
         '</div>';
     if (hasContent) {
@@ -3059,6 +3244,7 @@ function showError(msg, errObj) {
             '<div style="font-size:16px;margin-bottom:8px;">⚠️ 生成失败</div>' +
             '<div style="font-size:14px;color:#666;margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
             (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:8px;">📍 错误位置: ' + escapeHtml(fileLine) + '</div>' : '') +
+            (action ? '<div style="margin-bottom:12px;">' + action + '</div>' : '') +
             '<details style="font-size:11px;color:#999;text-align:left;"><summary style="cursor:pointer;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:#f9f9f9;border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
             '<div style="font-size:12px;color:#999;margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
@@ -3099,11 +3285,30 @@ async function autoSave() {
                     UI.toast('存储空间已用 ' + Math.round(cap.percentage) + '%，建议导出旧存档后清理');
                 }
             }
+            // 【顶栏指示】自动存档开始：显示动画中的小绿点
+            var dot = document.getElementById('autoSaveDot');
+            if (dot) {
+                dot.style.display = '';
+                dot.style.animation = 'pulse 0.9s ease-in-out infinite';
+            }
             if (typeof SaveDB !== 'undefined') {
                 await SaveDB.set(0, buildSaveData(''));
             }
+            // 【顶栏指示】自动存档完成：显示一秒钟后淡出
+            if (dot) {
+                TimerManager.setTimeout('autoSaveDotHide', function() {
+                    if (!dot) return;
+                    dot.style.animation = '';
+                    TimerManager.setTimeout('autoSaveDotFade', function() {
+                        if (dot) dot.style.display = 'none';
+                    }, 1200);
+                }, 300);
+            }
     } catch (e) {
     console.error('[自动保存] 保存失败:', e);
+    // 失败时也隐藏指示器
+    var dot2 = document.getElementById('autoSaveDot');
+    if (dot2) dot2.style.display = 'none';
 }
 }, 2000);
 }

@@ -2933,6 +2933,18 @@ function renderPlayerStats(player) {
     renderPlayerPage();
 }
 function renderPlayerPage() {
+    // 【性能优化】避免相同数据触发重绘（页面切回时尤其有用）
+    try {
+        var pd = gameState.playerData || {};
+        var cacheKey = JSON.stringify({
+            n: pd.name, lv: pd.level, exp: pd.exp,
+            favs: (gameState.relationships || []).length,
+            inv: (gameState.currentBag || []).length,
+            r: (gameState.conversationHistory || []).length
+        });
+        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderPlayerPage', cacheKey)) return;
+        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderPlayerPage', cacheKey);
+    } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var data = gameState.playerData;
     var nameEl = document.getElementById('playerPageName');
     var subEl = document.getElementById('playerPageSub');
@@ -3161,6 +3173,14 @@ function renderBag(items) {
     // 不存在时仅更新 gameState.currentBag，下次进入物品页会自动用最新数据渲染。
     var container = document.getElementById('itemsGrid');
     if (!container) return;
+    // 【性能优化】背包内容未变则跳过重绘
+    try {
+        var bagKey = JSON.stringify(gameState.currentBag.map(function(it) {
+            return [it.id || it.name, it.count || it.amount || 1];
+        }));
+        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderBag', bagKey)) return;
+        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderBag', bagKey);
+    } catch (e) { /* 缓存失败不阻塞渲染 */ }
     if (gameState.currentBag.length === 0) {
         container.innerHTML =
             '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
@@ -4479,6 +4499,19 @@ async function generateEnding() {
     UI.hideModal('settingsModal');
     UI.showPage('endingPage');
 
+    // 【日志页面】弹窗提示：AI 正在生成结局，可取消
+    if (typeof UI.showGenerating === 'function') {
+        UI.showGenerating('结局', {
+            hint: '结局会参考全程记忆与角色关系，生成约需 10-30 秒',
+            onCancel: function() {
+                if (window._currentAbort) {
+                    try { window._currentAbort.abort(); } catch (e) {}
+                }
+                UI.toast('已取消生成');
+            }
+        });
+    }
+
     // 延迟生成，让浏览器先渲染页面
     requestAnimationFrame(function() {
         _generateEndingRender(stories);
@@ -4559,6 +4592,9 @@ async function _generateEndingRender(stories) {
     } catch (e) {
         document.getElementById('endingTitle').textContent = '生成失败';
         document.getElementById('endingSummary').innerHTML = '<p style="color:var(--danger);">' + escapeHtml(translateError(e.message)) + '</p>';
+    } finally {
+        // 【日志页面】结局生成结束（成功/失败/取消）都关闭弹窗
+        try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
     }
 }
 // --- 设置弹窗 ---
@@ -4739,6 +4775,20 @@ async function retryStory() {
     gameState.conversationHistory.pop();
     var lastUserMsg = gameState.conversationHistory.pop();
     if (lastUserMsg) {
+        // 【日志页面】弹窗提示：AI 正在重新生成，可取消
+        if (typeof UI.showGenerating === 'function') {
+            UI.showGenerating('重新生成回复', {
+                hint: 'AI 会重新演绎这一段剧情，生成约需 5-20 秒',
+                onCancel: function() {
+                    if (window._currentAbort) {
+                        try { window._currentAbort.abort(); } catch (e) {}
+                    }
+                    UI.toast('已取消生成');
+                }
+            });
+        } else if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('正在重新生成...');
+        }
         // 防 unhandledrejection：捕获异步错误
         try {
             var p = sendAIRequest(lastUserMsg.content);
@@ -4755,6 +4805,20 @@ async function retryStory() {
 }
 async function continueStory() {
     if (isWaiting) return;
+    // 【日志页面】弹窗提示：AI 正在继续剧情，可取消
+    if (typeof UI.showGenerating === 'function') {
+        UI.showGenerating('继续剧情', {
+            hint: 'AI 会接着上一段剧情继续演绎，生成约需 5-20 秒',
+            onCancel: function() {
+                if (window._currentAbort) {
+                    try { window._currentAbort.abort(); } catch (e) {}
+                }
+                UI.toast('已取消生成');
+            }
+        });
+    } else if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('正在继续剧情...');
+    }
     // 【修复】使用预设的 continue_nudge_prompt，而非硬编码文本
     var continuePrompt = '[Continue your last message...]';
     var continuePrefill = '';
@@ -5784,7 +5848,20 @@ function triggerGrandSummary(mode) {
                     '输出检查报告，不要推进剧情。';
     }
     if (!userInput) return;
-    if (typeof UI !== 'undefined' && UI.toast) UI.toast('正在生成「' + modeLabel + '」总结...');
+    // 【日志页面】弹窗提示：AI 正在生成总结，可取消
+    if (typeof UI.showGenerating === 'function') {
+        UI.showGenerating(modeLabel + '总结', {
+            hint: '总结会扫描全剧情记录，生成约需 5-20 秒',
+            onCancel: function() {
+                if (window._currentAbort) {
+                    try { window._currentAbort.abort(); } catch (e) {}
+                }
+                UI.toast('已取消生成');
+            }
+        });
+    } else if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('正在生成「' + modeLabel + '」总结...');
+    }
     // 直接调用 sendAIRequest
     if (typeof sendAIRequest === 'function') {
         sendAIRequest(userInput, false);

@@ -1279,6 +1279,15 @@ input:checked + .slider:before {
     cursor: pointer
 }
 
+/* ==================== 顶栏自动存档指示器 ==================== */
+@keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.4); opacity: 0.6; }
+}
+#autoSaveDot {
+    transition: opacity 0.5s ease;
+}
+
 /* === Opacity === */
 .opacity-70 {
     opacity: 0.7
