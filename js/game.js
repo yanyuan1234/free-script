@@ -1608,6 +1608,12 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (gameState.keyEvents.length > 30) {
                     gameState.keyEvents = gameState.keyEvents.slice(-30);
                 }
+                // 【数据联通】同步推送到权威源 gm.events
+                if (typeof _pushKeyEventsToGM === 'function') {
+                    try { _pushKeyEventsToGM(); } catch (e) {}
+                }
+                // 触发 UI 刷新
+                if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('keyEvents');
             }
             // === 新增：保存世界状态快照 ===
             var snapshot = {};
@@ -1618,11 +1624,12 @@ async function sendAIRequest(userMessage, isInit = false) {
                 snapshot.quests = gameState.currentQuests;
             }
             // 从累积的allCharacters取最新NPC列表
-            // 【防御】gameState.allCharacters 可能为 undefined（旧存档/首次开局）
+            // 【数据联通】gameState.allCharacters 已是 gm.tables.characters 的别名
             if (!gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
-                gameState.allCharacters = {};
+                // 旧存档/首次开局：建立别名（不清空，保留权威源已有数据）
+                if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
             }
-            var charKeys = Object.keys(gameState.allCharacters);
+            var charKeys = Object.keys(gameState.allCharacters || {});
             if (charKeys.length > 0) {
                 snapshot.characters = charKeys.map(function(key) {
                     var c = gameState.allCharacters[key];
@@ -2691,9 +2698,9 @@ function fillChoiceToInput(text) {
 // ========================================
 function mergeCharacters(chars) {
     if (!chars || chars.length === 0) return;
-    // 【防御】gameState.allCharacters 可能为 undefined
+    // 【数据联通】gameState.allCharacters 已是 gm.tables.characters 的别名
     if (!gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
-        gameState.allCharacters = {};
+        if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
     }
     // 获取主角名
     var playerName = '';
@@ -2895,6 +2902,8 @@ async function loadFromSlot(slot) {
         if (!gameState.currentQuests) gameState.currentQuests = [];
         if (!gameState.relationships) gameState.relationships = [];
         if (!gameState.currentBag) gameState.currentBag = [];
+        // 【数据联通】建立权威源 → 视图的别名与同步
+        if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
         if (gameState.playerData === undefined) gameState.playerData = null;
         if (!gameState.favStories) gameState.favStories = [];
         if (!gameState.generatedNovel) gameState.generatedNovel = '';
@@ -3289,7 +3298,9 @@ function mergeQuests(newQuests) {
     // 最多保留3个已完成的
     if (done.length > 3) done = done.slice(-3);
     gameState.currentQuests = active.concat(done);
-    // 联动：广播任务数据变更
+    // 【数据联通】推送到权威源 gm.quests，再触发同步 + UI 刷新
+    _pushCurrentQuestsToGM();
+    if (typeof _syncQuestsToGameState === 'function') _syncQuestsToGameState();
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('currentQuests');
     }
@@ -3323,6 +3334,9 @@ function mergeRelationships(newRels) {
     if (gameState.relationships.length > 10) {
         gameState.relationships = gameState.relationships.slice(-10);
     }
+    // 【数据联通】推送到权威源 gm.tables.relationships，再触发同步 + UI 刷新
+    if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
+    if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
     // 联动：广播关系数据变更
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('relationships');
@@ -4244,10 +4258,12 @@ async function requestNpcReply(playerText) {
             }, delay);
             delay += 300 + Math.random() * 400;
         });
-        // 好感度可能变化，更新到allCharacters
+        // 好感度可能变化，更新到allCharacters（别名 → 自动同步到 gm.tables.characters）
         if (parsed && parsed.favorability !== undefined) {
             if (gameState.allCharacters[name]) {
                 gameState.allCharacters[name].favorability = parsed.favorability;
+                // 【数据联通】触发记忆页/回顾页等所有依赖页面刷新
+                if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
                 renderNpcList();
             }
         }

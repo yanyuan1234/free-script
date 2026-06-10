@@ -2644,6 +2644,12 @@ function buyShopItem(index) {
         }
     }
     if (!found) gameState.currentBag.push(bagItem);
+    // 【数据联通】同步写入权威源 gm.tables.items
+    if (typeof _pushCurrentBagToGM === 'function') {
+        try { _pushCurrentBagToGM(); } catch (e) { console.warn('[buyShopItem] push 失败:', e); }
+    }
+    // 触发 UI 刷新
+    if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
     if (item.count !== undefined && item.count !== null) {
         item.count = Math.max(0, (parseInt(item.count) || 0) - 1);
     }
@@ -3147,6 +3153,10 @@ function renderPlayerPage() {
 // --- 背包渲染 ---
 function renderBag(items) {
     gameState.currentBag = items || [];
+    // 【数据联通】同步写入权威源 gm.tables.items
+    if (typeof _pushCurrentBagToGM === 'function') {
+        try { _pushCurrentBagToGM(); } catch (e) { console.warn('[renderBag] push 失败:', e); }
+    }
     // 【修复】itemsGrid 是在 renderItemsPage() 中通过 innerHTML 动态创建到 logSubContent 里的，
     // 不存在时仅更新 gameState.currentBag，下次进入物品页会自动用最新数据渲染。
     var container = document.getElementById('itemsGrid');
@@ -4786,12 +4796,36 @@ function deleteLastTurn() {
         // 恢复到撤销前的状态
         gameState.conversationHistory = lastUndo.conversationHistory || [];
         // storyHistory 已合并到 conversationHistory
-        gameState.allCharacters = lastUndo.allCharacters || {};
+        // 【数据联通】gameState.allCharacters 是 gm.tables.characters 的别名，
+        // 不能直接重新赋值（会破坏别名）。改为清空后再恢复
+        if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
+            var gm = window.GameMemory;
+            // 清空当前 gm.tables.characters
+            if (gm.tables.characters) {
+                Object.keys(gm.tables.characters).forEach(function(k) { delete gm.tables.characters[k]; });
+                // 从快照恢复
+                var chars = lastUndo.allCharacters || {};
+                Object.keys(chars).forEach(function(k) { gm.tables.characters[k] = chars[k]; });
+            }
+        }
         gameState.worldSnapshot = lastUndo.worldSnapshot || {};
         gameState.keyEvents = lastUndo.keyEvents || [];
         gameState.currentQuests = lastUndo.currentQuests || [];
         gameState.relationships = lastUndo.relationships || [];
         gameState.currentBag = lastUndo.currentBag || [];
+
+        // 【数据联通】反向推送到权威源 + 触发 UI 刷新
+        if (typeof _pushCurrentBagToGM === 'function') _pushCurrentBagToGM();
+        if (typeof _pushCurrentQuestsToGM === 'function') _pushCurrentQuestsToGM();
+        if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
+        if (typeof _pushKeyEventsToGM === 'function') _pushKeyEventsToGM();
+        if (typeof GameLinker !== 'undefined') {
+            GameLinker.refreshByDataChange('allCharacters');
+            GameLinker.refreshByDataChange('currentBag');
+            GameLinker.refreshByDataChange('currentQuests');
+            GameLinker.refreshByDataChange('relationships');
+            GameLinker.refreshByDataChange('keyEvents');
+        }
         
         // 重新渲染
         var lastAI = [...gameState.conversationHistory].reverse().find(m => m.role === 'assistant');

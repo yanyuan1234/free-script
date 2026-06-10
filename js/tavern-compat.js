@@ -1075,6 +1075,23 @@ var GameMemory = {
             return '';
         });
         cleanedText = cleanedText.replace(/\n{3,}/g, '\n\n').trim();
+        // 【数据联通】<mem> 直接写入权威源（gm.tables.* / gm.quests / gm.events），
+        // 同步到 gameState 视图并触发 GameLinker 通知 UI
+        if (edits.length > 0 && typeof _ensureDataLinkage === 'function') {
+            try { _ensureDataLinkage(); } catch (e) {}
+        }
+        if (edits.length > 0 && typeof GameLinker !== 'undefined') {
+            try {
+                var hasCharacter = edits.some(function(e) { return e.type === 'character'; });
+                var hasItem = edits.some(function(e) { return e.type === 'item'; });
+                var hasQuest = edits.some(function(e) { return e.type === 'quest'; });
+                var hasEvent = edits.some(function(e) { return e.type === 'event'; });
+                if (hasCharacter) GameLinker.refreshByDataChange('allCharacters');
+                if (hasItem) GameLinker.refreshByDataChange('currentBag');
+                if (hasQuest) GameLinker.refreshByDataChange('currentQuests');
+                if (hasEvent) GameLinker.refreshByDataChange('keyEvents');
+            } catch (e) {}
+        }
         return { cleanedText: cleanedText, edits: edits };
     },
 

@@ -54,11 +54,11 @@ var GameLinker = {
     refreshByDataChange: function(changeType) {
         var map = {
             playerData: ['playerPage'],
-            allCharacters: ['npcPage', 'playerPage'],
-            relationships: ['playerPage', 'npcPage'],
-            currentQuests: ['storyPage', 'logPage'],
-            currentBag: ['playerPage', 'logPage'],
-            keyEvents: ['recapPage', 'storyPage'],
+            allCharacters: ['npcPage', 'playerPage', 'memoryPage', 'recapPage'],
+            relationships: ['playerPage', 'npcPage', 'memoryPage'],
+            currentQuests: ['storyPage', 'logPage', 'memoryPage'],
+            currentBag: ['playerPage', 'logPage', 'memoryPage'],
+            keyEvents: ['recapPage', 'storyPage', 'memoryPage'],
             rollingSummary: ['storyPage', 'recapPage'],
             worldSnapshot: ['storyPage', 'playerPage', 'npcPage'],
             conversationHistory: ['storyPage', 'recapPage'],
@@ -80,6 +80,243 @@ var GameLinker = {
         }
     }
 };
+
+// ========================================
+// 数据联通（方案 A：单一来源）
+// ========================================
+// 设计：gm.tables.* / gm.quests / gm.events 是权威源
+//       gameState.allCharacters / currentBag / currentQuests / relationships / keyEvents 是视图
+// 任何写入权威源后，调用 _ensureDataLinkage() 自动同步到视图
+// 视图别名：gameState.allCharacters === gm.tables.characters（同一引用，最快）
+// ========================================
+
+// 物品同步：gm.tables.items (keyed) → gameState.currentBag (array)
+function _syncItemsToBag() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!gm.tables || !gm.tables.items) return;
+    var items = gm.tables.items;
+    var bag = [];
+    Object.keys(items).forEach(function(name) {
+        var it = items[name];
+        if (!it) return;
+        bag.push({
+            name: it.name || name,
+            count: it.qty || 1,
+            unit: it.unit || '个',
+            rarity: it.rarity || '普通',
+            desc: it.desc || '',
+            usable: it.usable || false,
+            effect: it.effect || '',
+            equippable: it.equippable || false,
+            equipped: it.equipped || false,
+            slot: it.slot || ''
+        });
+    });
+    gameState.currentBag = bag;
+}
+
+// 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式)
+function _syncQuestsToGameState() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!Array.isArray(gm.quests)) return;
+    gameState.currentQuests = gm.quests.map(function(q) {
+        return {
+            title: q.content || '',
+            type: q.type || 'quest',
+            status: q.status || 'pending',
+            progress: q.progress || '',
+            hint: q.hint || ''
+        };
+    });
+}
+
+// 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array)
+function _syncRelationshipsToGameState() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!gm.tables || !gm.tables.relationships) {
+        gameState.relationships = [];
+        return;
+    }
+    var rels = gm.tables.relationships;
+    var arr = [];
+    Object.keys(rels).forEach(function(key) {
+        var r = rels[key];
+        if (!r) return;
+        if (Array.isArray(r)) {
+            r.forEach(function(item) { arr.push(item); });
+        } else {
+            arr.push(r);
+        }
+    });
+    gameState.relationships = arr;
+}
+
+// 事件同步：gm.events (array) → gameState.keyEvents (array of strings)
+function _syncEventsToKeyEvents() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!Array.isArray(gm.events)) return;
+    // gm.events 是对象数组 {content, importance, ...}，keyEvents 是字符串数组
+    gameState.keyEvents = gm.events.map(function(e) {
+        return typeof e === 'string' ? e : (e.content || (e.event ? e.event : ''));
+    }).filter(function(s) { return s && s.length > 0; });
+}
+
+// 总入口：把所有权威源同步到视图
+function _ensureDataLinkage() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    // 1. 角色：建立引用别名（最快方式）
+    if (gm.tables && gm.tables.characters) {
+        if (gameState.allCharacters !== gm.tables.characters) {
+            // 只有在不同引用时才重新别名（避免循环引用警告）
+            gameState.allCharacters = gm.tables.characters;
+        }
+    }
+    // 2-5. 其他视图同步
+    _syncItemsToBag();
+    _syncQuestsToGameState();
+    _syncRelationshipsToGameState();
+    _syncEventsToKeyEvents();
+}
+
+// 把 gameState.currentBag 反向推送到 gm.tables.items（让权威源更新）
+function _pushCurrentBagToGM() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!gm.tables) gm.tables = {};
+    if (!gm.tables.items) gm.tables.items = {};
+    if (!Array.isArray(gameState.currentBag)) return;
+    gameState.currentBag.forEach(function(b) {
+        if (!b || !b.name) return;
+        var existing = gm.tables.items[b.name];
+        if (existing) {
+            if (b.count !== undefined) existing.qty = b.count;
+            if (b.unit) existing.unit = b.unit;
+            if (b.rarity) existing.rarity = b.rarity;
+            if (b.desc !== undefined) existing.desc = b.desc;
+            if (b.usable !== undefined) existing.usable = b.usable;
+            if (b.effect !== undefined) existing.effect = b.effect;
+            if (b.equippable !== undefined) existing.equippable = b.equippable;
+            if (b.equipped !== undefined) existing.equipped = b.equipped;
+            if (b.slot !== undefined) existing.slot = b.slot;
+            existing.lastChangedTurn = gm.currentTurn;
+        } else {
+            gm.tables.items[b.name] = {
+                name: b.name,
+                qty: b.count || 1,
+                unit: b.unit || '个',
+                rarity: b.rarity || '普通',
+                desc: b.desc || '',
+                usable: b.usable || false,
+                effect: b.effect || '',
+                equippable: b.equippable || false,
+                equipped: b.equipped || false,
+                slot: b.slot || '',
+                obtainedTurn: gm.currentTurn,
+                lastChangedTurn: gm.currentTurn
+            };
+        }
+    });
+}
+
+// 把 gameState.currentQuests 反向推送到 gm.quests
+function _pushCurrentQuestsToGM() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!Array.isArray(gm.quests)) gm.quests = [];
+    if (!Array.isArray(gameState.currentQuests)) return;
+    var titleMap = {};
+    gm.quests.forEach(function(q) { if (q && q.content) titleMap[q.content] = q; });
+    gameState.currentQuests.forEach(function(cq) {
+        if (!cq || !cq.title) return;
+        var gq = titleMap[cq.title];
+        if (!gq) {
+            gq = { content: cq.title, type: cq.type || 'quest', status: 'pending', createdTurn: gm.currentTurn || 0, resolvedTurn: 0 };
+            gm.quests.push(gq);
+            titleMap[cq.title] = gq;
+        }
+        gq.type = cq.type || gq.type;
+        // 状态映射：中文 → gm 内部状态
+        if (cq.status === '已完成' || cq.status === 'resolved') {
+            gq.status = 'resolved';
+            if (!gq.resolvedTurn) gq.resolvedTurn = gm.currentTurn || 0;
+        } else if (cq.status === '失败' || cq.status === 'broken') {
+            gq.status = 'broken';
+            if (!gq.resolvedTurn) gq.resolvedTurn = gm.currentTurn || 0;
+        } else {
+            gq.status = 'pending';
+        }
+    });
+}
+
+// 把 gameState.relationships 反向推送到 gm.tables.relationships
+function _pushRelationshipsToGM() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!gm.tables) gm.tables = {};
+    if (!gm.tables.relationships) gm.tables.relationships = {};
+    if (!Array.isArray(gameState.relationships)) return;
+    // 用 from→to 作为 key
+    gameState.relationships.forEach(function(r) {
+        if (!r || !r.from || !r.to) return;
+        var key = r.from + '→' + r.to;
+        if (gm.tables.relationships[key]) {
+            Object.assign(gm.tables.relationships[key], r);
+        } else {
+            gm.tables.relationships[key] = Object.assign({}, r);
+        }
+    });
+}
+
+// 把 gameState.keyEvents 反向推送到 gm.events
+function _pushKeyEventsToGM() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof window === 'undefined' || !window.GameMemory) return;
+    var gm = window.GameMemory;
+    if (!Array.isArray(gm.events)) gm.events = [];
+    if (!Array.isArray(gameState.keyEvents)) return;
+    gameState.keyEvents.forEach(function(evt) {
+        if (typeof evt !== 'string' || !evt) return;
+        var exists = gm.events.some(function(e) {
+            var content = typeof e === 'string' ? e : (e.content || '');
+            return content === evt;
+        });
+        if (!exists) {
+            gm.events.push({ content: evt, importance: 7, source: 'story_parsed', turn: gm.currentTurn || 0 });
+        }
+    });
+}
+
+// 拦截 gm.saveToStorage：保存后自动同步 + 通知 UI
+(function _wrapGMSaveToStorage() {
+    if (typeof window === 'undefined') return;
+    var checkInterval = setInterval(function() {
+        if (window.GameMemory && window.GameMemory.saveToStorage && !window.GameMemory._saveToStorageWrapped) {
+            var orig = window.GameMemory.saveToStorage;
+            window.GameMemory.saveToStorage = function() {
+                var result = orig.apply(this, arguments);
+                try { _ensureDataLinkage(); } catch (e) { console.warn('[DataLinkage] 同步失败:', e); }
+                return result;
+            };
+            window.GameMemory._saveToStorageWrapped = true;
+            clearInterval(checkInterval);
+        }
+    }, 100);
+    // 30秒后停止检查
+    setTimeout(function() { clearInterval(checkInterval); }, 30000);
+})();
 
 // ========================================
 // UI工具
