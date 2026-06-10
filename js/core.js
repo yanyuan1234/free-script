@@ -453,6 +453,72 @@ var UI = {
     };
     });
     },
+    // ========================================
+    // 【重构】合并 9 处 "返回剧情 + gameNav" 模式为 goHome
+    // ========================================
+    GAME_NAV_TABS: [
+        { page: 'storyPage',  icon: 'icon-book',      label: '剧情' },
+        { page: 'playerPage', icon: 'icon-user',      label: '个人' },
+        { page: 'npcPage',    icon: 'icon-users',     label: '人际' },
+        { page: 'logPage',    icon: 'icon-grid',      label: '日志' },
+        { page: 'memoryPage', icon: 'icon-sparkles',  label: '记忆' },
+        { page: 'recapPage',  icon: 'icon-clock',     label: '回顾' }
+    ],
+    goHome: function() {
+        UI.showPage('storyPage');
+        if (typeof renderNavBar === 'function') {
+            renderNavBar('gameNav', UI.GAME_NAV_TABS, 0);
+        }
+    },
+    // ========================================
+    // 【重构】合并 5 处 new FileReader() 模式
+    // ========================================
+    readJSONFile: function(file) {
+        return new Promise(function(resolve, reject) {
+            if (!file) { reject(new Error('no file')); return; }
+            var r = new FileReader();
+            r.onload = function(e) {
+                try { resolve(JSON.parse(e.target.result)); }
+                catch (err) { reject(err); }
+            };
+            r.onerror = function() { reject(r.error || new Error('read failed')); };
+            r.readAsText(file);
+        });
+    },
+    // ========================================
+    // 【重构】合并 4 处 a.download = xxx.json 模式
+    // ========================================
+    downloadJSON: function(data, filename) {
+        try {
+            var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            setTimeout(function() { URL.revokeObjectURL(url); }, 100);
+            return true;
+        } catch (e) {
+            console.error('[downloadJSON] 失败:', e);
+            UI.toast && UI.toast('下载失败: ' + e.message);
+            return false;
+        }
+    },
+    // ========================================
+    // 【重构】合并 6 处 "gm.saveToStorage + GameLinker + toast" 三连
+    // ========================================
+    afterMemoryChange: function(tab, dataKey, toastMsg) {
+        try { if (window.GameMemory) GameMemory.saveToStorage(); } catch (e) { console.warn('[afterMemoryChange] saveToStorage:', e); }
+        try {
+            if (typeof GameLinker !== 'undefined' && dataKey) {
+                GameLinker.refreshByDataChange(dataKey);
+            }
+        } catch (e) { console.warn('[afterMemoryChange] refresh:', e); }
+        if (toastMsg) UI.toast(toastMsg);
+        if (tab && typeof MemoryManagerUI !== 'undefined' && MemoryManagerUI.switchTab) {
+            MemoryManagerUI.switchTab(tab);
+        }
+    },
     // 【日志页面】AI 生成功能弹窗（替代原来转瞬即逝的 toast）
     // 用法：UI.showGenerating('本章剧情总结', { onCancel: function(){...} })
     //      UI.hideGenerating()

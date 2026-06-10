@@ -2524,7 +2524,7 @@ var MemoryManagerUI = {
     initNavigation: function() {
         var self = this;
         var backBtn = document.getElementById('memoryBackBtn');
-        if (backBtn) backBtn.addEventListener('click', function() { UI.showPage('storyPage'); renderNavBar('gameNav', [{ page: 'storyPage', icon: 'icon-book', label: '剧情' }, { page: 'playerPage', icon: 'icon-user', label: '个人' }, { page: 'npcPage', icon: 'icon-users', label: '人际' }, { page: 'logPage', icon: 'icon-grid', label: '日志' }, { page: 'memoryPage', icon: 'icon-sparkles', label: '记忆' }, { page: 'recapPage', icon: 'icon-clock', label: '回顾' }], 0); });
+        if (backBtn) backBtn.addEventListener('click', function() { UI.goHome(); });
         var saveBtn = document.getElementById('btnMemorySave');
         if (saveBtn) saveBtn.addEventListener('click', function() { self.saveMemoryEdits(); });
         var summaryEdit = document.getElementById('memorySummaryEdit');

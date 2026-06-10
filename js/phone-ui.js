@@ -3993,17 +3993,17 @@ function bindEvents() {
 
     // 玩家页面返回
     bindEvent('playerBackBtn', 'click', function() {
-        UI.showPage('storyPage');
+        UI.goHome();
     });
 
     // NPC页面返回
     bindEvent('npcBackBtn', 'click', function() {
-        UI.showPage('storyPage');
+        UI.goHome();
     });
 
     // 回顾页面返回
     bindEvent('recapBackBtn', 'click', function() {
-        UI.showPage('storyPage');
+        UI.goHome();
     });
 
     // 回顾导出
@@ -4013,7 +4013,7 @@ function bindEvents() {
 
     // 日志页面返回
     bindEvent('logBackBtn', 'click', function() {
-        UI.showPage('storyPage');
+        UI.goHome();
     });
 
     // 日志子页面返回按钮（已在 renderLogPage 中绑定，此处不再重复）
