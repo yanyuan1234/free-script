@@ -3294,8 +3294,8 @@ async function detectContextSize() {
     if (ctxSize === 0 && baseUrl && apiKey) {
         try {
             var probeMessages = [
-                { role: 'system', content: 'You are a helpful assistant. Answer concisely.' },
-                { role: 'user', content: 'What is your maximum context window size in tokens? Reply with ONLY a number, no explanation. Example: 128000' }
+                { role: 'system', content: '你是一个乐于助人的助手。回答要简洁。' },
+                { role: 'user', content: '请告诉我你的最大上下文窗口是多少token？只回复一个数字，不要任何解释。例如：128000' }
             ];
             var probeResult = await callAI(probeMessages, {
                 stream: false,

@@ -207,8 +207,14 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         var _forumWIText = (typeof _forumWI === 'object' && _forumWI !== null) ? (_forumWI.text || '') : (_forumWI || '');
         if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
     }
-    sysMsg += '社区的自然状态是：角色们各说各话，有人回复玩家、有人回复其他人、有人聊别的话题。被@的角色会回复。回复简短自然，纯文字。如果玩家身份引人注目，可能引发新帖讨论，此时加字段 maySpawnNewPost: true。\n' +
-        '回复JSON数组：[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n';
+    // 【提示词重设计】从"社区自然状态"硬性描述改为场景化引导
+    sysMsg += '【一个真实的社区是什么样的】\n' +
+        '想象一个热闹的讨论区：不同性格的网友会基于自己的立场自然发言——有人热心、有人抬杠、有人围观、有人阴阳怪气，这才是真实的网络生态。\n' +
+        '被@到的角色大概率会回复。回复要短平快，像真人发评论。如果某个角色的发言太火，可能引发新帖讨论——觉得会引发就加上 maySpawnNewPost: true。\n\n' +
+        '【程序需要的输出】\n' +
+        '直接输出一个JSON数组：\n' +
+        '[{"name":"昵称","text":"内容","replyTo":"要回复的人名(可选)"}]\n' +
+        '当决定触发新帖时，包装成对象：{"replies": [...], "maySpawnNewPost": true}';
     callAI([{
         role: 'system',
         content: sysMsg
@@ -283,8 +289,12 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         var _spawnWIText = (typeof _spawnWI === 'object' && _spawnWI !== null) ? (_spawnWI.text || '') : (_spawnWI || '');
         if (_spawnWIText) sysMsg += '【世界知识】\n' + _spawnWIText + '\n\n';
     }
-    sysMsg += '生成一个新帖子，JSON格式：{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}\n' +
-        '好帖子的特征：标题吸引眼球(10-20字)，正文引用玩家评论加自己看法(50-100字)，角度和原帖不同。';
+    // 【提示词重设计】用"好帖子的样子"代替硬性"特征"列表
+    sysMsg += '【好帖子的样子】\n' +
+        '想象一个真实的网络帖子：标题能让人一眼想点进来（10-20字，能引发好奇或共鸣），正文有立场和观点，引用玩家原话加上自己的看法（50-100字），角度和原帖不同让人有新鲜感。\n\n' +
+        '【程序需要的输出】\n' +
+        '直接输出一个JSON对象：\n' +
+        '{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}';
     callAI([{
         role: 'system',
         content: sysMsg
@@ -4502,12 +4512,20 @@ async function _generateEndingRender(stories) {
             var _endingWIText = (typeof _endingWI === 'object' && _endingWI !== null) ? (_endingWI.text || '') : (_endingWI || '');
             if (_endingWIText) prompt += '【世界知识】\n' + _endingWIText + '\n\n';
         }
-        prompt += '回复JSON：{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"相关角色名，用顿号分隔"}，直接输出JSON不要代码块。\n\n' +
+        // 【提示词重设计】去掉重复的"直接输出JSON"，加"好结局"特征引导
+        prompt += '【好结局的样子】\n' +
+            '- 标题：3-8字，点出故事的核心情感或转折，让人想点进去看\n' +
+            '- 概述：1-2段，浓缩整段旅程的意义，与主角的内心变化呼应\n' +
+            '- 后记：可以更感性一点，像作者写给读者的悄悄话，留下余韵\n' +
+            '- names：列出关键角色，顿号分隔\n\n' +
+            '【程序需要的输出】\n' +
+            '直接输出一个JSON对象：\n' +
+            '{"title":"结局标题","summary":"结局概述","epilogue":"后记","names":"角色1、角色2、角色3"}\n\n' +
             '【剧情】\n' + allText;
 
         var result = await callAI([{
             role: 'system',
-            content: '你是结局创作专家，中文输出。直接输出JSON，不要代码块。'
+            content: '你是一位讲故事的人，正在为一段旅程画上有余韵的句号。'
         }, {
             role: 'user',
             content: prompt
