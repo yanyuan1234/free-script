@@ -420,9 +420,9 @@ function openDiaryDatePicker() {
     });
     dateList.sort(function(a, b) { return a < b ? 1 : (a > b ? -1 : 0); });
     var html = '<div id="diaryDatePicker" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeDiaryDatePicker()">' +
-        '<div style="background:#fff;border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
+        '<div style="background:var(--bg);border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
-        '<span>选择日期</span><span style="cursor:pointer;color:#999;font-size:20px;" onclick="closeDiaryDatePicker()">×</span></div>' +
+        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="closeDiaryDatePicker()">×</span></div>' +
         dateList.map(function(d) {
             return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="closeDiaryDatePicker();diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
         }).join('') +
@@ -474,7 +474,6 @@ function openMailDetail(index) {
             if (allMails[mi].read) seenMailCount++;
         }
         gameState._notifSeenSnapshot.mail.count = Math.max(gameState._notifSeenSnapshot.mail.count, seenMailCount);
-        if (typeof refreshNotificationBadge === 'function') refreshNotificationBadge();
         safeAutoSave();
     }
     var sender = mail.from || mail.sender || '未知发件人';
@@ -488,7 +487,7 @@ function openMailDetail(index) {
     // 使用sanitizeHtml净化邮件正文，防止XSS
     body = sanitizeHtml(body);
     var detailHtml =
-        '<div style="display:flex;flex-direction:column;flex:1;background:#fff;overflow:hidden;">' +
+        '<div style="display:flex;flex-direction:column;flex:1;background:var(--bg);overflow:hidden;">' +
         '<div class="mail-detail-nav"><div class="mail-detail-back" onclick="backToMailList()">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" onclick="deleteMail(' + index + ')"></div></div></div>' +
         '<div class="mail-detail-scroll">' +
         '<div class="mail-detail-subject">' + escapeHtml(subject) + '</div>' +
@@ -662,6 +661,12 @@ function renderWorldModules(modules) {
             // 新增模块
             gameState._worldModules.push(newMod);
         }
+    });
+    // 限制每种模块类型数量，防止无限增长
+    var typeCounts = {};
+    gameState._worldModules = gameState._worldModules.filter(function(m) {
+        typeCounts[m.type] = (typeCounts[m.type] || 0) + 1;
+        return typeCounts[m.type] <= 20;
     });
     // 【已移除】本地模板生成朋友圈/日记：现在由 AI 主动在 world 中提供 moments/diary 模块
     // 自动将AI返回的world模块解析到世界观设定中（仅首次或worldNotes为空时）
@@ -1274,7 +1279,7 @@ function _renderPresetAppContent(content, tag) {
             return '';
         })
         // 处理 <s> 删除线
-        .replace(/<s>([\s\S]*?)<\/s>/g, '<del style="color:#999;">$1</del>')
+        .replace(/<s>([\s\S]*?)<\/s>/g, '<del style="color:var(--text-secondary);">$1</del>')
         // 处理换行
         .replace(/\n/g, '<br>');
 
@@ -1394,7 +1399,7 @@ function renderChatPage() {
 
     if (chattedNames.length === 0) {
         return '<div class="chat-list-page">' +
-            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:#666;">请在「人际」页面选择角色<br>点击「找TA聊聊」开始对话</p></div>' +
+            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">请在「人际」页面选择角色<br>点击「找TA聊聊」开始对话</p></div>' +
             '</div>';
     }
 
@@ -1428,7 +1433,7 @@ function renderChatPage() {
             }
             var unreadBadge = unreadNpc > 0 ?
                 '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;background:#ff3b30;color:#fff;border-radius:9px;font-size:11px;font-weight:600;margin-left:6px;">' + (unreadNpc > 99 ? '99+' : unreadNpc) + '</span>' : '';
-            var boldStyle = unreadNpc > 0 ? 'font-weight:600;color:#111;' : '';
+            var boldStyle = unreadNpc > 0 ? 'font-weight:600;color:var(--text);' : '';
             // 修复：改用 data-name + 事件委托，避免拼接 onclick 字符串带来的 XSS 风险
             var safeName = String(name || '').replace(/[\r\n\t\v\f\0]/g, ' ').slice(0, 100);
             var firstChar = safeName.charAt(0) || '?';
@@ -1583,7 +1588,7 @@ function renderMomentsPage() {
 
     if (posts.length === 0) {
         html +=
-            '<div class="empty-state" style="padding:60px 20px;">写 暂无朋友圈动态<br><span style="font-size:12px;color:#ccc;">游戏进行中会自动生成</span></div>';
+            '<div class="empty-state" style="padding:60px 20px;">写 暂无朋友圈动态<br><span style="font-size:12px;color:var(--text-tertiary);">游戏进行中会自动生成</span></div>';
     } else {
         posts.forEach(function(post, idx) {
             var authorName = (post.author || '匿名').replace(/\n/g, '').replace(/\r/g, '').trim();
@@ -1764,7 +1769,7 @@ function renderForumPage() {
 
     if (commentMods.length === 0) {
         return '<div class="forum-page">' +
-            '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:#fff;"><div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无论坛帖子</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div></div>' +
+            '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);"><div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无论坛帖子</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div></div>' +
             '<div class="forum-tab-bar"><div class="forum-tab-item active"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div><div class="forum-tab-item"><div class="forum-tab-icon">#</div><span>话题</span></div><div class="forum-tab-item"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div></div>' +
             '</div>';
     }
@@ -1896,14 +1901,14 @@ function renderForumPage() {
                 }
             });
             if (myCommented.length === 0) {
-                return '<div style="padding:60px 20px;text-align:center;color:#999;">还没发表过评论<br><span style="font-size:12px;">去点击话题发表你的观点吧</span></div>';
+                return '<div style="padding:60px 20px;text-align:center;color:var(--text-secondary);">还没发表过评论<br><span style="font-size:12px;">去点击话题发表你的观点吧</span></div>';
             }
             return myCommented.map(function(item) {
-                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:#fff;border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
+                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
                     '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">💬</div>' +
                     '<div style="flex:1;min-width:0;">' +
-                    '<div style="font-size:14px;color:#222;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
-                    '<div style="font-size:12px;color:#999;margin-top:2px;">你发表了 ' + item.count + ' 条评论</div>' +
+                    '<div style="font-size:14px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
+                    '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">你发表了 ' + item.count + ' 条评论</div>' +
                     '</div>' +
                     '<div style="color:#ccc;font-size:16px;">›</div>' +
                     '</div>';
@@ -2309,8 +2314,8 @@ function renderMailPage() {
             var preview = mail.preview || mail.body || '';
             if (preview.length > 80) preview = preview.substring(0, 80) + '...';
             preview = preview.replace(/<[^>]*>/g, '');
-            var subjectStyle = mail.read ? '' : 'font-weight:600;color:#111;';
-            var senderStyle = mail.read ? '' : 'font-weight:600;color:#111;';
+            var subjectStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
+            var senderStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
             return '<div class="mail-list-item' + unread + '" onclick="openMailDetail(' + i +
                 ')" style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
                 '<div class="mail-list-header">' + unreadDot + '<div class="mail-list-sender" style="' + senderStyle + '">' + escapeHtml(sender) +
@@ -2320,7 +2325,7 @@ function renderMailPage() {
         }).join('');
     }
 
-    return '<div style="display:flex;flex-direction:column;flex:1;background:#fff;overflow:hidden;">' +
+    return '<div style="display:flex;flex-direction:column;flex:1;background:var(--bg);overflow:hidden;">' +
         '<div class="mail-big-title">收件箱</div>' +
         '<div class="mail-search-box"><div class="mail-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索</div></div>' +
         '<div class="mail-scroll-list">' + mailListHtml + '</div>' +
@@ -3631,7 +3636,7 @@ function bindEvents() {
         e.preventDefault();
         e.stopPropagation();
         if (await UI.confirm('返回主页', '确定要返回主页吗？当前进度会自动保存。')) {
-            try { await saveGame(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
+            try { await autoSave(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
             safeAbort();
             window._currentAbort = null;
             UI.showPage('menuPage');
@@ -3658,6 +3663,7 @@ function bindEvents() {
             var text = this.value.trim();
             if (!text) return;
             this.value = '';
+            this.focus();
             sendAIRequest(text);
         }
     });
@@ -3666,6 +3672,7 @@ function bindEvents() {
         var text = input.value.trim();
         if (!text) return;
         input.value = '';
+        input.focus();
         sendAIRequest(text);
     });
 
@@ -3915,7 +3922,7 @@ function bindEvents() {
     // 重新开始
     bindEvent('btnSettingsBackToMenu', 'click', async function() {
         if (await UI.confirm('返回主页', '确定要返回主页吗？当前进度会自动保存。')) {
-            try { await saveGame(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
+            try { await autoSave(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
             safeAbort();
             window._currentAbort = null;
             UI.hideModal('settingsModal');

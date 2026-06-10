@@ -1334,10 +1334,11 @@ var GameMemory = {
             self._setupLayers.setupKeywords = parsed.setupKeywords;
         }
 
-        // 主角身份 → 永久事实
+        // 主角身份 → 永久事实（去重：覆盖旧身份，避免重复注入）
         if (parsed.playerIdentity) {
             self.permanentFacts.pcIdentity = self.permanentFacts.pcIdentity || [];
-            self.permanentFacts.pcIdentity.push({ content: parsed.playerIdentity, locked: true });
+            // 只保留一条主角身份，新解析覆盖旧的
+            self.permanentFacts.pcIdentity = [{ content: parsed.playerIdentity, locked: true, source: 'aiParse', createdTurn: self.currentTurn }];
         }
 
         // 核心规则 → 永久事实
@@ -1467,6 +1468,7 @@ var GameMemory = {
             }
 
             var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+            if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
             var setupTokens = Math.ceil(layers.fullSetup.length / 1.7);
             var setupRatio = setupTokens / ctxSize;
 
@@ -2306,6 +2308,7 @@ var GameMemory = {
 
     _adaptBudget: function() {
         var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+        if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
         // 按次计费优化：尽可能多用上下文，只留15%给输出，其余全塞游戏数据
         // 字符/token比约1.7，所以 maxChars ≈ ctxSize * 0.85 * 1.7
         var base = Math.floor(ctxSize * 0.85 * 1.7);
@@ -2485,7 +2488,63 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         });
         return result;
     },
-    set: function() {}, configurable: true
+    set: function(val) {
+        if (!val || typeof val !== 'object') return;
+        var self = this;
+        // 恢复永久事实
+        if (val.worldAnchors && Array.isArray(val.worldAnchors)) {
+            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises' };
+            val.worldAnchors.forEach(function(a) {
+                var key = typeMap[a.type] || 'settings';
+                if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
+                if (!self.permanentFacts[key].some(function(x) { return x.content === a.content; })) {
+                    self.permanentFacts[key].push({ content: a.content, source: a.source || 'auto', locked: a.locked !== false, createdTurn: a.createdTurn || 0 });
+                }
+            });
+        }
+        // 恢复角色表
+        if (val.characterTable) {
+            Object.keys(val.characterTable).forEach(function(name) {
+                var c = val.characterTable[name];
+                self.tables.characters[name] = c;
+            });
+        }
+        // 恢复物品表
+        if (val.itemTable) {
+            Object.keys(val.itemTable).forEach(function(name) {
+                self.tables.items[name] = val.itemTable[name];
+            });
+        }
+        // 恢复地点表
+        if (val.locationTable) {
+            Object.keys(val.locationTable).forEach(function(name) {
+                self.tables.locations[name] = val.locationTable[name];
+            });
+        }
+        // 恢复关系
+        if (val.relationships) {
+            self.tables.relationships = {};
+            val.relationships.forEach(function(rel) {
+                self.tables.relationships[rel.from + '->' + rel.to] = rel;
+            });
+        }
+        // 恢复事件
+        if (val.importantEvents) {
+            self.events = val.importantEvents;
+        }
+        // 恢复时间线
+        if (val.timeline) {
+            self.timeline = val.timeline;
+        }
+        // 恢复世界观
+        if (val.worldSetting) {
+            self.plot.worldSetting = val.worldSetting;
+        }
+        // 恢复任务
+        if (val.activeQuests) {
+            self.quests = val.activeQuests;
+        }
+    }, configurable: true
 });
 
 Object.defineProperty(GameMemory, 'shortTermMemory', {

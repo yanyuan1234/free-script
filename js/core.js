@@ -341,6 +341,9 @@ var UI = {
             pages[pi].classList.remove('active');
         }
         if (el) el.classList.add('active');
+        el.scrollTop = 0;
+        var body = el.querySelector('.page-body');
+        if (body) body.scrollTop = 0;
         // 【打字机优化】离开剧情页时强制隐藏「跳过」按钮，避免在其他页面残留
         if (id !== 'storyPage' && typeof _hideSkipButton === 'function') {
             try { _hideSkipButton(); } catch (e) {}
@@ -355,6 +358,15 @@ var UI = {
             var zIndex = 100 + this._modalStack.length * 10;
             el.style.zIndex = zIndex;
             el.classList.add('active');
+            // 点击遮罩区域关闭模态框
+            if (!el._maskClickBound) {
+                el._maskClickBound = true;
+                el.addEventListener('click', function(e) {
+                    if (e.target === el) {
+                        UI.hideModal(el.id);
+                    }
+                });
+            }
         }
     },
     hideModal: function(id) {
@@ -3302,12 +3314,12 @@ function showError(msg, errObj) {
     // 【修复】不要清空剧情区，避免覆盖流式已渲染的内容
     // 仅在没有内容时覆盖；否则在底部追加错误提示条
     var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
-    var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:#fff3cd;border:1px solid #ffc107;border-radius:6px;padding:12px;margin:12px 0;color:#856404;font-size:13px;transition:opacity 0.5s;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">⚠️ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:#856404;cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
+    var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:var(--accent-soft);border:1px solid var(--border);border-radius:6px;padding:12px;margin:12px 0;color:var(--text);font-size:13px;transition:opacity 0.5s;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">⚠️ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
         '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
         (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">📍 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
         action +
-        '<details style="font-size:11px;color:#666;"><summary style="cursor:pointer;color:#666;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:#fdf6e3;border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
+        '<details style="font-size:11px;color:var(--text-secondary);"><summary style="cursor:pointer;color:var(--text-secondary);">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
         '</div>';
     if (hasContent) {
         el.insertAdjacentHTML('beforeend', errBanner);
@@ -3315,11 +3327,11 @@ function showError(msg, errObj) {
         // 真正空时才覆盖
         el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--danger);">' +
             '<div style="font-size:16px;margin-bottom:8px;">⚠️ 生成失败</div>' +
-            '<div style="font-size:14px;color:#666;margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
+            '<div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
             (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:8px;">📍 错误位置: ' + escapeHtml(fileLine) + '</div>' : '') +
             (action ? '<div style="margin-bottom:12px;">' + action + '</div>' : '') +
-            '<details style="font-size:11px;color:#999;text-align:left;"><summary style="cursor:pointer;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:#f9f9f9;border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
-            '<div style="font-size:12px;color:#999;margin-top:8px;">请检查网络连接和API设置后重试</div>' +
+            '<details style="font-size:11px;color:var(--text-tertiary);text-align:left;"><summary style="cursor:pointer;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
+            '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
     }
     // 15秒后自动淡出并移除错误banner

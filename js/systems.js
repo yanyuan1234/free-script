@@ -517,7 +517,7 @@ var AchievementSystem = {
             if (!achs || achs.length === 0) return;
             var cu = achs.filter(function(a) { return pd.unlocked.some(function(u) { return u.id === a.id; }); }).length;
             totalUc += cu; totalTc += achs.length;
-            tabHtml += '<button class="achieve-cat-tab" data-cat-filter="' + ck + '" style="flex-shrink:0;padding:6px 12px;border:1px solid #ddd;border-radius:14px;background:#fff;font-size:12px;cursor:pointer;color:#555;">' + this.CATEGORY[ck].label + ' <span style="color:#999;font-size:11px;">' + cu + '/' + achs.length + '</span></button>';
+            tabHtml += '<button class="achieve-cat-tab" data-cat-filter="' + ck + '" style="flex-shrink:0;padding:6px 12px;border:1px solid #ddd;border-radius:14px;background:var(--bg);font-size:12px;cursor:pointer;color:#555;">' + this.CATEGORY[ck].label + ' <span style="color:#999;font-size:11px;">' + cu + '/' + achs.length + '</span></button>';
         }.bind(this));
         tabHtml += '</div>';
         html += tabHtml;

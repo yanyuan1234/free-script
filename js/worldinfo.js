@@ -364,7 +364,7 @@ var WorldInfo = {
         '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;align-items:center;">' +
         '<span class="wi-book-enable" data-wi-enable-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:' + (book.enabled ? 'var(--success)' : 'transparent') + ';color:' + (book.enabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (book.enabled ? 'font-weight:500;' : '') + '" title="启用此书">启用</span>' +
         '<span class="wi-book-disable" data-wi-disable-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:' + (!book.enabled ? 'var(--danger)' : 'transparent') + ';color:' + (!book.enabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!book.enabled ? 'font-weight:500;' : '') + '" title="禁用此书">禁用</span>' +
-        '<span class="wi-book-delete" data-wi-delete-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此书">删除</span>' +
+        '<span class="wi-book-delete" data-wi-delete-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此书">删除</span>' +
         '</div>' +
         '</div>' +
         '</div>';
@@ -549,7 +549,7 @@ var WorldInfo = {
             '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;align-items:center;">' +
             '<span class="wi-entry-enable" data-wi-entry-enable="' + uid + '" style="font-size:11px;padding:3px 8px;background:' + (!disabled ? 'var(--success)' : 'transparent') + ';color:' + (!disabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!disabled ? 'font-weight:500;' : '') + '" title="启用此条目">启用</span>' +
             '<span class="wi-entry-disable" data-wi-entry-disable="' + uid + '" style="font-size:11px;padding:3px 8px;background:' + (disabled ? 'var(--danger)' : 'transparent') + ';color:' + (disabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (disabled ? 'font-weight:500;' : '') + '" title="禁用此条目">禁用</span>' +
-            '<span class="wi-entry-delete" data-wi-entry-delete="' + uid + '" style="font-size:11px;padding:3px 8px;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此条目">删除</span>' +
+            '<span class="wi-entry-delete" data-wi-entry-delete="' + uid + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此条目">删除</span>' +
             '</div>' +
             '</div>' +
             '</div>';

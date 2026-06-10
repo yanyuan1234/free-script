@@ -896,7 +896,7 @@ var PresetManager = {
     '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;align-items:center;">' +
     (promptCount > 0 ? '<span class="preset-detail-btn" data-idx="' + idx + '" style="font-size:11px;padding:3px 8px;background:transparent;color:var(--accent);border:1px solid var(--accent);border-radius:6px;cursor:pointer;white-space:nowrap;" title="查看提示词条目">详情</span>' : '') +
     '<span class="preset-load-btn" data-preset-load="' + idx + '" style="font-size:11px;padding:3px 8px;background:' + (isActive ? 'var(--accent)' : 'transparent') + ';color:' + (isActive ? '#fff' : 'var(--accent)') + ';border:1px solid var(--accent);border-radius:6px;cursor:pointer;white-space:nowrap;' + (isActive ? 'font-weight:500;' : '') + '" title="加载此预设">加载</span>' +
-    '<span class="preset-delete-btn" data-idx="' + idx + '" style="font-size:11px;padding:3px 8px;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此预设">删除</span>' +
+    '<span class="preset-delete-btn" data-idx="' + idx + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此预设">删除</span>' +
     '</div>' +
     '</div>' +
     '</div>';
@@ -2924,7 +2924,7 @@ scripts.forEach(function(script, idx) {
     '<div style="display:flex;gap:5px;flex-shrink:0;margin-left:8px;align-items:center;">' +
     '<span class="regex-enable-btn" data-regex-enable="' + idx + '" style="font-size:10px;padding:2px 7px;background:' + (isEnabled ? 'var(--success)' : 'transparent') + ';color:' + (isEnabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (isEnabled ? 'font-weight:500;' : '') + '">启用</span>' +
     '<span class="regex-disable-btn" data-regex-disable="' + idx + '" style="font-size:10px;padding:2px 7px;background:' + (!isEnabled ? 'var(--danger)' : 'transparent') + ';color:' + (!isEnabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!isEnabled ? 'font-weight:500;' : '') + '">禁用</span>' +
-    '<span class="regex-delete-btn" data-regex-delete="' + idx + '" style="font-size:10px;padding:2px 7px;background:#fff;color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;">删除</span>' +
+    '<span class="regex-delete-btn" data-regex-delete="' + idx + '" style="font-size:10px;padding:2px 7px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;">删除</span>' +
     '</div>' +
     '</div>' +
     '</div>';
