@@ -3332,19 +3332,7 @@ function safeLoadOldManual(idx) {
         if (saveData && saveData.state) {
             var state = JSON.parse(saveData.state);
             Object.assign(gameState, state);
-            UI.showPage('storyPage');
-            try {
-                renderNavBar('gameNav', [
-                    { page: 'storyPage', icon: 'icon-book', label: '剧情' },
-                    { page: 'playerPage', icon: 'icon-user', label: '个人' },
-                    { page: 'npcPage', icon: 'icon-users', label: '人际' },
-                    { page: 'logPage', icon: 'icon-grid', label: '日志' },
-                    { page: 'memoryPage', icon: 'icon-sparkles', label: '记忆' },
-                    { page: 'recapPage', icon: 'icon-clock', label: '回顾' }
-                ], 0);
-            } catch (e) {
-                console.warn('旧存档导航栏渲染跳过:', e);
-            }
+            UI.goHome();
             UI.toast('旧存档已加载');
         } else {
             UI.toast('旧存档格式不兼容');

@@ -1261,13 +1261,7 @@ var WorldInfo = {
             name: exportName,
             entries: exportEntries
             };
-        var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = exportName + '.json';
-        a.click();
-        TimerManager.setTimeout('revokeWorldInfoURL', function() { URL.revokeObjectURL(url); }, 1000);
+        UI.downloadJSON(data, exportName + '.json');
     },
 
     // 构建导出格式的单个条目

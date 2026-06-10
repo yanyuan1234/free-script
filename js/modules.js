@@ -925,10 +925,8 @@ var PresetManager = {
     // 导入酒馆预设
     importFromFile: function(file) {
         const self = this;
-        var reader = new FileReader();
-        reader.onload = function(e) {
+        UI.readJSONFile(file).then(function(data) {
             try {
-                var data = JSON.parse(e.target.result);
                 var imported = self.parsePreset(data, file.name);
                 if (imported) {
                     self.presets.push(imported);
@@ -969,8 +967,10 @@ var PresetManager = {
         console.error('[PresetManager] 导入失败，完整错误堆栈:', err);
         UI.toast('导入失败: ' + translateError(err.message));
         }
-    };
-    reader.readAsText(file);
+    }).catch(function(err) {
+        console.error('[PresetManager] 读取文件失败:', err);
+        UI.toast('文件读取失败: ' + translateError(err.message));
+    });
     },
 
     // 解析酒馆预设格式
@@ -3002,10 +3002,8 @@ renderScriptList: function() {
 // 导入酒馆正则脚本
 importFromFile: function(file) {
     const self = this;
-    var reader = new FileReader();
-    reader.onload = function(e) {
+    UI.readJSONFile(file).then(function(data) {
         try {
-            var data = JSON.parse(e.target.result);
             // 检测导入的是否是预设文件（包含预设特有字段）
             if (data.name && (data.description || data.character_book || data.world_info)) {
                 UI.toast('这是预设文件，请前往「预设管理」页面导入');
@@ -3024,8 +3022,9 @@ importFromFile: function(file) {
 } catch(err) {
 UI.toast('导入失败: ' + translateError(err.message));
 }
-};
-reader.readAsText(file);
+}).catch(function(err) {
+UI.toast('文件读取失败: ' + translateError(err.message));
+});
 },
 
 // 解析酒馆正则格式
@@ -3542,13 +3541,7 @@ return {
     maxDepth: s.maxDepth != null ? s.maxDepth : 0
 };
 });
-var blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-var url = URL.createObjectURL(blob);
-var a = document.createElement('a');
-a.href = url;
-a.download = 'regex_scripts.json';
-a.click();
-TimerManager.setTimeout('revokeRegexURL', function() { URL.revokeObjectURL(url); }, 1000);
+UI.downloadJSON(exportData, 'regex_scripts.json');
 }
 };
 

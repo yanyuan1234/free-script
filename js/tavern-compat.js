@@ -2716,7 +2716,8 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
         var content = (document.getElementById('editFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
-        gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual'; gm.saveToStorage(); if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('_memory'); UI.toast && UI.toast('已保存'); this.switchTab('permanentFacts');
+        gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual';
+        UI.afterMemoryChange('permanentFacts', '_memory', '已保存');
     },
 
     deletePermanentFact: function(type, idx) {

@@ -4448,40 +4448,7 @@ function startNewGame() {
     // 保存上次填写
     safeSetItem('freeScript_lastPrompt', prompt);
 
-    UI.showPage('storyPage');
-
-    // 渲染底部导航栏
-    renderNavBar('gameNav', [{
-            page: 'storyPage',
-            icon: 'icon-book',
-            label: '剧情'
-        },
-        {
-            page: 'playerPage',
-            icon: 'icon-user',
-            label: '个人'
-        },
-        {
-            page: 'npcPage',
-            icon: 'icon-users',
-            label: '人际'
-        },
-        {
-            page: 'logPage',
-            icon: 'icon-grid',
-            label: '日志'
-        },
-        {
-            page: 'memoryPage',
-            icon: 'icon-sparkles',
-            label: '记忆'
-        },
-        {
-            page: 'recapPage',
-            icon: 'icon-clock',
-            label: '回顾'
-        }
-    ], 0);
+    UI.goHome();
 
     // 延迟初始化游戏，让浏览器先渲染页面（避免页面切换卡顿）
     requestAnimationFrame(function() {
@@ -5899,17 +5866,7 @@ async function exportSaves() {
             },
             saves: allSaves
         };
-        var blob = new Blob([JSON.stringify(exportData, null, 2)], {
-            type: 'application/json'
-        });
-        var url = URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = '自由剧本存档_' + new Date().toISOString().slice(0, 10) + '.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        TimerManager.setTimeout('revokeExportURL', function() { URL.revokeObjectURL(url); }, 1000);
+        UI.downloadJSON(exportData, '自由剧本存档_' + new Date().toISOString().slice(0, 10) + '.json');
         UI.toast('✅ 已导出 ' + Object.keys(allSaves).length + ' 个存档');
     } catch (e) {
         UI.toast('❌ 导出失败：' + translateError(e.message));
