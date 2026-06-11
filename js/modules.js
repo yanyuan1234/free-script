@@ -1261,7 +1261,7 @@ var PresetManager = {
                 if (!rb) return;
                 if (rb.findRegex || rb.find) {
                     addRegexUnique([{
-                        id: rb.id || ('regex_' + Math.random().toString(36).substr(2, 9)),
+                        id: rb.id || ('regex_' + Math.random().toString(36).slice(2, 11)),
                         scriptName: rb.name || 'Regex Binding',
                         findRegex: rb.findRegex || rb.find,
                         replaceString: rb.replaceString || rb.replace || '',

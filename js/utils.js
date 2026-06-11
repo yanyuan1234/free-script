@@ -70,8 +70,19 @@ var TimerManager = {
 
 var GlobalCleanup = {
     _listeners: [],
-    registerListener: function(target, type, handler, options) { target.addEventListener(type, handler, options); this._listeners.push({target:target,type:type,handler:handler,options:options}); },
-    cleanup: function() { for (var i = 0; i < this._listeners.length; i++) { try { this._listeners[i].target.removeEventListener(this._listeners[i].type, this._listeners[i].handler, this._listeners[i].options); } catch(e) {} } this._listeners = []; TimerManager.clearAll(); DOMCache.clear(); }
+    registerListener: function(target, type, handler, options) { target.addEventListener(type, handler, options); this._listeners.push({target:target,type:type,handler:handler,options:options,removed:false}); },
+    // 移除指定监听器（用于组件主动销毁）
+    unregisterListener: function(target, type, handler) {
+        for (var i = 0; i < this._listeners.length; i++) {
+            var l = this._listeners[i];
+            if (l.target === target && l.type === type && l.handler === handler && !l.removed) {
+                try { l.target.removeEventListener(l.type, l.handler, l.options); } catch(e) {}
+                l.removed = true;
+                return;
+            }
+        }
+    },
+    cleanup: function() { for (var i = 0; i < this._listeners.length; i++) { var l = this._listeners[i]; if (!l.removed) { try { l.target.removeEventListener(l.type, l.handler, l.options); } catch(e) {} } } this._listeners = []; TimerManager.clearAll(); DOMCache.clear(); }
 };
 
 window.addEventListener('beforeunload', function() { GlobalCleanup.cleanup(); });

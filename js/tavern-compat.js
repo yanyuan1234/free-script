@@ -144,7 +144,11 @@ _showToast: function(msg, color) {
     toast.style.cssText = 'background:' + color + ';color:white;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);pointer-events:auto;animation:toastrSlideIn 0.3s ease;max-width:400px;word-break:break-word;';
     toast.textContent = msg;
     container.appendChild(toast);
-    TimerManager.setTimeout('toastrHide_' + Date.now(), function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; TimerManager.setTimeout('toastrRemove_' + Date.now(), function(){toast.remove();},300); }, 3000);
+    // 【修复】使用唯一ID + setTimeout引用，避免定时器被覆盖
+    var toastId = 'toast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    var hideId = 'toastHide_' + toastId;
+    var removeId = 'toastRemove_' + toastId;
+    TimerManager.setTimeout(hideId, function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; TimerManager.setTimeout(removeId, function(){toast.remove();},300); }, 3000);
 },
 
 // 3. 斜杠命令系统

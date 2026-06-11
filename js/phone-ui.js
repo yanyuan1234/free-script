@@ -3221,13 +3221,20 @@ function renderPresetPages() {
         pagination.appendChild(dot);
     }
     if (!wrapper._hasScrollHandler) {
+        // 【性能优化】滚动事件节流，避免频繁更新分页指示器
+        var scrollThrottleTimer = null;
+        var scrollThrottleDelay = 50; // 50ms 节流
         wrapper.addEventListener('scroll', function() {
-            var scrollLeft = wrapper.scrollLeft;
-            var pageWidth = wrapper.clientWidth;
-            var currentPage = Math.round(scrollLeft / pageWidth);
-            pagination.querySelectorAll('.preset-dot').forEach(function(d, i) {
-                d.classList.toggle('active', i === currentPage);
-            });
+            if (scrollThrottleTimer) return;
+            scrollThrottleTimer = TimerManager.setTimeout('presetScrollThrottle', function() {
+                scrollThrottleTimer = null;
+                var scrollLeft = wrapper.scrollLeft;
+                var pageWidth = wrapper.clientWidth;
+                var currentPage = Math.round(scrollLeft / pageWidth);
+                pagination.querySelectorAll('.preset-dot').forEach(function(d, i) {
+                    d.classList.toggle('active', i === currentPage);
+                });
+            }, scrollThrottleDelay);
         });
         wrapper._hasScrollHandler = true;
     }

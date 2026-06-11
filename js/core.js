@@ -24,30 +24,37 @@ var GameLinker = {
         }
     },
     // 触发所有页面的刷新（用于全局数据变更）
+    // 【性能优化】使用单次 rAF 批量刷新所有页面，避免多次 rAF 调用
     refreshAll: function() {
         var self = this;
-        // 使用 rAF 批量调度，避免多次重排
         var pages = Object.keys(this._refreshers);
-        for (var i = 0; i < pages.length; i++) {
-            (function(page) {
-                requestAnimationFrame(function() {
-                    self.refresh(page);
-                });
-            })(pages[i]);
+        var pageIndex = 0;
+        function refreshNext() {
+            if (pageIndex < pages.length) {
+                var page = pages[pageIndex++];
+                try { self._refreshers[page](); } catch (e) { console.warn('[GameLinker] 刷新 ' + page + ' 失败:', e); }
+                requestAnimationFrame(refreshNext);
+            }
+        }
+        if (pages.length > 0) {
+            requestAnimationFrame(refreshNext);
         }
     },
     // 触发除当前页面外的所有页面刷新（避免当前页面重复刷新）
+    // 【性能优化】使用单次 rAF 批量刷新
     refreshOthers: function(exceptPage) {
         var self = this;
-        var pages = Object.keys(this._refreshers);
-        for (var i = 0; i < pages.length; i++) {
-            if (pages[i] !== exceptPage) {
-                (function(page) {
-                    requestAnimationFrame(function() {
-                        self.refresh(page);
-                    });
-                })(pages[i]);
+        var pages = Object.keys(this._refreshers).filter(function(p) { return p !== exceptPage; });
+        var pageIndex = 0;
+        function refreshNext() {
+            if (pageIndex < pages.length) {
+                var page = pages[pageIndex++];
+                try { self._refreshers[page](); } catch (e) { console.warn('[GameLinker] 刷新 ' + page + ' 失败:', e); }
+                requestAnimationFrame(refreshNext);
             }
+        }
+        if (pages.length > 0) {
+            requestAnimationFrame(refreshNext);
         }
     },
     // 智能刷新：根据变更的数据类型，自动推断需要刷新的页面
@@ -1569,10 +1576,16 @@ var TypewriterBuffer = {
         // 确保 queue 和 displayed 已初始化，防止 undefined 错误
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        if (newText.length > this.queue.length + this.displayed.length) {
-            var newPart = newText.substring(this.displayed.length + this.queue.length);
-            this.queue += newPart;
-            } else {
+        // 【修复】使用 Array.from 正确处理 emoji 等多字节字符
+        var newChars = Array.from(newText);
+        var existingChars = Array.from(this.displayed);
+        var queueChars = Array.from(this.queue);
+        // 如果新文本比当前显示+队列更长，说明有新内容需要添加
+        if (newChars.length > existingChars.length + queueChars.length) {
+            var newPortion = newChars.slice(existingChars.length + queueChars.length);
+            this.queue += newPortion.join('');
+        } else {
+            // 新文本长度没增加，可能是内容替换
             this.queue = newText.substring(this.displayed.length);
         }
     if (!this.isTyping) this.start();
@@ -1608,8 +1621,10 @@ var TypewriterBuffer = {
         }
     return;
     }
-    var ch = self.queue[0];
-    self.queue = self.queue.substring(1);
+    // 【修复】使用 Array.from 正确处理 emoji 等多字节字符
+    var queueChars = Array.from(self.queue);
+    var ch = queueChars[0];
+    self.queue = queueChars.slice(1).join('');
     self.displayed += ch;
 
     // 段落分割：遇到换行且当前段落有内容时，完成当前段落
@@ -1671,8 +1686,8 @@ var TypewriterBuffer = {
     destroy() {
         this.stop();
         if (this._visibilityHandler) {
-            // 使用 GlobalCleanup 的记录来移除，确保与注册方式一致
-            document.removeEventListener('visibilitychange', this._visibilityHandler);
+            // 【修复】使用 GlobalCleanup.unregisterListener 正确移除监听器
+            GlobalCleanup.unregisterListener(document, 'visibilitychange', this._visibilityHandler);
             this._visibilityHandler = null;
         }
     },

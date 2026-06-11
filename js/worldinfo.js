@@ -607,7 +607,7 @@ var WorldInfo = {
         var name = await UI.prompt('请输入新书名称：', '新世界书');
         if (!name) return;
         var book = {
-            id: 'book_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+            id: 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
             name: name.trim(),
             enabled: true,
             entries: {}
@@ -767,7 +767,7 @@ var WorldInfo = {
 
     // 创建新书并添加到books数组
     var newBook = {
-        id: 'book_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6),
+        id: 'book_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
         name: bookName,
         enabled: true,
         entries: convertedEntries
