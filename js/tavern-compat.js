@@ -885,6 +885,24 @@ var GameMemory = {
     _saving: false,
     _pendingSave: false,
 
+    // ===== AI叙事驱动系统：三层数据架构 + 编剧提醒 =====
+    // 休眠追踪：记录每个角色/物品/任务/伏笔的休眠状态
+    _dormantTracking: {
+        // 结构: { characters: { '角色名': { status: 'active'|'linked'|'dormant', dormantSince: 回合数, lastMentioned: 回合数, dormantRounds: 0 } } }
+        characters: {},
+        items: {},
+        quests: {},
+        foreshadowings: {}  // 伏笔注册表：{ '伏笔ID': { desc: '描述', createdTurn: 0, dormantRounds: 0, triggered: false, priority: 5 } }
+    },
+    // 编剧提醒配置
+    _storytellingConfig: {
+        dormantWarningThreshold: 20,   // 休眠20回合开始提醒
+        dormantUrgentThreshold: 30,    // 休眠30回合紧急提醒
+        foreshadowWarningThreshold: 15, // 伏笔15回合未触发开始提醒
+        maxForeshadowings: 20,         // 最大伏笔数量
+        aiGuidanceEnabled: true        // 启用AI剧情引导
+    },
+
     PROMISE_KEYWORDS: [
         /我(答应|承诺|发誓|保证|担保|立誓|向你)/g,
         /(答应|承诺|发誓|保证|担保|立誓)你/g,
@@ -905,8 +923,58 @@ var GameMemory = {
         if (!this.workingMemory.nearSummary) this.workingMemory.nearSummary = '';
         if (!this.workingMemory.midSummary) this.workingMemory.midSummary = '';
         if (!this.workingMemory.farSummary) this.workingMemory.farSummary = '';
+        // 初始化AI叙事驱动系统的休眠追踪
+        this._initDormantTracking();
         this.startAutoSave();
         return this;
+    },
+
+    // 初始化/迁移休眠追踪数据
+    _initDormantTracking: function() {
+        var self = this;
+        if (!self._dormantTracking) {
+            self._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };
+        }
+        if (!self._dormantTracking.characters) self._dormantTracking.characters = {};
+        if (!self._dormantTracking.items) self._dormantTracking.items = {};
+        if (!self._dormantTracking.quests) self._dormantTracking.quests = {};
+        if (!self._dormantTracking.foreshadowings) self._dormantTracking.foreshadowings = {};
+        if (!self._storytellingConfig) {
+            self._storytellingConfig = { dormantWarningThreshold: 20, dormantUrgentThreshold: 30, foreshadowWarningThreshold: 15, maxForeshadowings: 20, aiGuidanceEnabled: true };
+        }
+
+        // 为所有现有角色/物品/任务建立休眠追踪（如果还没有）
+        Object.keys(self.tables.characters || {}).forEach(function(name) {
+            if (!self._dormantTracking.characters[name]) {
+                self._dormantTracking.characters[name] = {
+                    status: 'active',
+                    dormantSince: self.currentTurn,
+                    lastMentioned: self.currentTurn,
+                    dormantRounds: 0
+                };
+            }
+        });
+        Object.keys(self.tables.items || {}).forEach(function(name) {
+            if (!self._dormantTracking.items[name]) {
+                self._dormantTracking.items[name] = {
+                    status: 'active',
+                    dormantSince: self.currentTurn,
+                    lastMentioned: self.currentTurn,
+                    dormantRounds: 0
+                };
+            }
+        });
+        (self.quests || []).forEach(function(q, idx) {
+            var key = q.content || ('quest_' + idx);
+            if (!self._dormantTracking.quests[key]) {
+                self._dormantTracking.quests[key] = {
+                    status: q.status === 'pending' ? 'active' : 'dormant',
+                    dormantSince: self.currentTurn,
+                    lastMentioned: self.currentTurn,
+                    dormantRounds: 0
+                };
+            }
+        });
     },
 
     _migrateFromOldFormat: function() {
@@ -997,6 +1065,8 @@ var GameMemory = {
             if (message.role === 'assistant' && message.content) {
                 var parseResult = self.parseAIEditTags(message.content);
                 message.content = parseResult.cleanedText;
+                // 解析AI剧情计划标签（plan/recall/trigger/foreshadow）
+                self._parseAIPlanTags(message.content);
             }
             self._extractAndRegisterPromises(message);
             self._addToWorkingMemory(message, gameData);
@@ -1016,6 +1086,8 @@ var GameMemory = {
             self._updateSummaryLayers();
             // 设定压缩检查
             self.compressSetupIfNeeded();
+            // 【AI叙事驱动】更新所有角色/物品/任务的休眠状态
+            self._updateDormantStatus(message);
         } catch (e) {
             self.stats.lastError = { msg: (e && e.message) || String(e), stack: (e && e.stack) || '', time: Date.now() };
             console.error('[GameMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
@@ -1122,6 +1194,225 @@ var GameMemory = {
         var m;
         while ((m = re.exec(attrsStr)) !== null) { attrs[m[1]] = m[2] !== undefined ? m[2] : m[3]; }
         return attrs;
+    },
+
+    // ===== AI Plan 标签解析：让AI能表达剧情意图 =====
+    // 支持的标签：
+    // <plan>剧情计划描述</plan> - AI的编剧计划
+    // <recall>角色名/物品名</recall> - 唤醒休眠的角色/物品
+    // <trigger>伏笔ID</trigger> - 触发某个伏笔
+    // <foreshadow id="xxx" priority="5">伏笔描述</foreshadow> - 注册新伏笔
+    _parseAIPlanTags: function(text) {
+        var self = this;
+        if (!text || typeof text !== 'string') return;
+        try {
+            // 解析 <foreshadow> 标签
+            var foreshadowRe = /<foreshadow\s+([^>]*?)>([\s\S]*?)<\/foreshadow>/g;
+            var fm;
+            while ((fm = foreshadowRe.exec(text)) !== null) {
+                var fAttrs = self._parseMemAttrs(fm[1]);
+                var fDesc = (fm[2] || '').trim();
+                var fId = fAttrs.id || ('fs_' + self.currentTurn + '_' + Math.random().toString(36).substr(2, 6));
+                var fPriority = parseInt(fAttrs.priority) || 5;
+                if (fDesc && self._dormantTracking && self._dormantTracking.foreshadowings) {
+                    // 如果已存在相同描述的伏笔，不重复注册
+                    var exists = Object.keys(self._dormantTracking.foreshadowings).some(function(k) {
+                        var f = self._dormantTracking.foreshadowings[k];
+                        return f && f.desc === fDesc;
+                    });
+                    if (!exists) {
+                        self._dormantTracking.foreshadowings[fId] = {
+                            desc: fDesc,
+                            createdTurn: self.currentTurn,
+                            dormantRounds: 0,
+                            triggered: false,
+                            priority: fPriority
+                        };
+                        console.log('[AI叙事] 注册新伏笔:', fId, fDesc);
+                    }
+                }
+            }
+
+            // 解析 <recall> 标签 - AI主动唤醒休眠角色/物品
+            var recallRe = /<recall>([\s\S]*?)<\/recall>/g;
+            var rm;
+            while ((rm = recallRe.exec(text)) !== null) {
+                var recallTarget = (rm[1] || '').trim();
+                if (recallTarget) {
+                    // 尝试匹配角色
+                    if (self.tables.characters && self.tables.characters[recallTarget]) {
+                        self._setDormantStatus('characters', recallTarget, 'active');
+                        console.log('[AI叙事] AI唤醒角色:', recallTarget);
+                    }
+                    // 尝试匹配物品
+                    if (self.tables.items && self.tables.items[recallTarget]) {
+                        self._setDormantStatus('items', recallTarget, 'active');
+                        console.log('[AI叙事] AI唤醒物品:', recallTarget);
+                    }
+                }
+            }
+
+            // 解析 <trigger> 标签 - AI触发伏笔
+            var triggerRe = /<trigger>([\s\S]*?)<\/trigger>/g;
+            var tm;
+            while ((tm = triggerRe.exec(text)) !== null) {
+                var triggerId = (tm[1] || '').trim();
+                if (triggerId && self._dormantTracking && self._dormantTracking.foreshadowings) {
+                    var fs = self._dormantTracking.foreshadowings[triggerId];
+                    if (fs) {
+                        fs.triggered = true;
+                        fs.triggeredTurn = self.currentTurn;
+                        console.log('[AI叙事] 伏笔已触发:', triggerId, fs.desc);
+                    } else {
+                        // 尝试按描述匹配
+                        Object.keys(self._dormantTracking.foreshadowings).forEach(function(k) {
+                            var f = self._dormantTracking.foreshadowings[k];
+                            if (f && f.desc.indexOf(triggerId) >= 0) {
+                                f.triggered = true;
+                                f.triggeredTurn = self.currentTurn;
+                                console.log('[AI叙事] 伏笔已触发(描述匹配):', k, f.desc);
+                            }
+                        });
+                    }
+                }
+            }
+
+            // 解析 <plan> 标签 - 记录AI的编剧计划（仅日志，不修改数据）
+            var planRe = /<plan>([\s\S]*?)<\/plan>/g;
+            var pm;
+            while ((pm = planRe.exec(text)) !== null) {
+                var planText = (pm[1] || '').trim();
+                if (planText) {
+                    console.log('[AI叙事] AI编剧计划:', planText.substring(0, 100) + (planText.length > 100 ? '...' : ''));
+                }
+            }
+        } catch (e) {
+            console.warn('[AI叙事] Plan标签解析错误:', e);
+        }
+    },
+
+    // 设置某个实体的休眠状态
+    _setDormantStatus: function(category, key, status) {
+        var self = this;
+        if (!self._dormantTracking || !self._dormantTracking[category]) return;
+        var track = self._dormantTracking[category][key];
+        if (!track) {
+            self._dormantTracking[category][key] = {
+                status: status,
+                dormantSince: self.currentTurn,
+                lastMentioned: self.currentTurn,
+                dormantRounds: 0
+            };
+        } else {
+            track.status = status;
+            if (status === 'active') {
+                track.dormantRounds = 0;
+                track.lastMentioned = self.currentTurn;
+            } else if (status === 'dormant' && track.status !== 'dormant') {
+                track.dormantSince = self.currentTurn;
+            }
+        }
+    },
+
+    // 更新所有实体的休眠状态（每回合调用一次）
+    _updateDormantStatus: function(message) {
+        var self = this;
+        if (!self._dormantTracking) return;
+        var content = (message && message.content) || '';
+        var currentTurn = self.currentTurn;
+        var cfg = self._storytellingConfig || { dormantWarningThreshold: 20, dormantUrgentThreshold: 30 };
+
+        // 辅助：检查内容中是否提到某个名称
+        function isMentioned(name) {
+            return content.indexOf(name) >= 0;
+        }
+
+        // 更新角色休眠状态
+        Object.keys(self.tables.characters || {}).forEach(function(name) {
+            var track = self._dormantTracking.characters[name];
+            if (!track) {
+                track = { status: 'active', dormantSince: currentTurn, lastMentioned: currentTurn, dormantRounds: 0 };
+                self._dormantTracking.characters[name] = track;
+            }
+            if (isMentioned(name)) {
+                // 被提到 → 激活
+                if (track.status !== 'active') {
+                    track.status = 'active';
+                    track.dormantRounds = 0;
+                    console.log('[AI叙事] 角色激活:', name);
+                }
+                track.lastMentioned = currentTurn;
+            } else {
+                // 未被提到 → 增加休眠计数
+                track.dormantRounds = currentTurn - track.lastMentioned;
+                // 自动降级：active → linked → dormant
+                if (track.status === 'active' && track.dormantRounds >= 5) {
+                    track.status = 'linked';
+                } else if (track.status === 'linked' && track.dormantRounds >= cfg.dormantWarningThreshold) {
+                    track.status = 'dormant';
+                }
+            }
+        });
+
+        // 更新物品休眠状态
+        Object.keys(self.tables.items || {}).forEach(function(name) {
+            var track = self._dormantTracking.items[name];
+            if (!track) {
+                track = { status: 'active', dormantSince: currentTurn, lastMentioned: currentTurn, dormantRounds: 0 };
+                self._dormantTracking.items[name] = track;
+            }
+            if (isMentioned(name)) {
+                if (track.status !== 'active') {
+                    track.status = 'active';
+                    track.dormantRounds = 0;
+                    console.log('[AI叙事] 物品激活:', name);
+                }
+                track.lastMentioned = currentTurn;
+            } else {
+                track.dormantRounds = currentTurn - track.lastMentioned;
+                if (track.status === 'active' && track.dormantRounds >= 3) {
+                    track.status = 'linked';
+                } else if (track.status === 'linked' && track.dormantRounds >= cfg.dormantWarningThreshold) {
+                    track.status = 'dormant';
+                }
+            }
+        });
+
+        // 更新任务休眠状态
+        (self.quests || []).forEach(function(q) {
+            var key = q.content || q.id || '';
+            if (!key) return;
+            var track = self._dormantTracking.quests[key];
+            if (!track) {
+                track = { status: q.status === 'pending' ? 'active' : 'dormant', dormantSince: currentTurn, lastMentioned: currentTurn, dormantRounds: 0 };
+                self._dormantTracking.quests[key] = track;
+            }
+            if (q.status !== 'pending') {
+                track.status = 'dormant';
+                return;
+            }
+            if (isMentioned(key.substring(0, 10))) {
+                if (track.status !== 'active') {
+                    track.status = 'active';
+                    track.dormantRounds = 0;
+                }
+                track.lastMentioned = currentTurn;
+            } else {
+                track.dormantRounds = currentTurn - track.lastMentioned;
+                if (track.status === 'active' && track.dormantRounds >= 5) {
+                    track.status = 'linked';
+                } else if (track.status === 'linked' && track.dormantRounds >= cfg.dormantWarningThreshold) {
+                    track.status = 'dormant';
+                }
+            }
+        });
+
+        // 更新伏笔休眠计数
+        Object.keys(self._dormantTracking.foreshadowings || {}).forEach(function(fsId) {
+            var fs = self._dormantTracking.foreshadowings[fsId];
+            if (!fs || fs.triggered) return;
+            fs.dormantRounds = currentTurn - fs.createdTurn;
+        });
     },
 
     // 关键词激活：更新记忆条目的访问计数（含衰减机制）
@@ -1621,6 +1912,10 @@ var GameMemory = {
         // ═══ 第九层：逐层摘要（替代原文工作记忆）═══
         var summaryLines = self._buildSummaryLayersSection();
         if (summaryLines.length > 0) parts.push({ key: 'summaryLayers', priority: 3, lines: summaryLines, changed: true });
+
+        // ═══ 第十层：编剧提醒系统（AI剧情引导）═══
+        var reminderLines = self._buildStorytellingReminders();
+        if (reminderLines.length > 0) parts.push({ key: 'storytellingReminders', priority: 2, lines: reminderLines, changed: true });
         
         // 注入头尾模板——标题不仅标注分类，还告诉AI这层信息的用途
         var headers = {
@@ -1632,11 +1927,12 @@ var GameMemory = {
             events: '【重要事件（影响后续剧情的关键节点）】\n',
             items: '【持有物品（比世界快照中的背包数据更实时）】\n',
             sceneState: '【当前场景（角色所在的环境）】\n',
-            summaryLayers: '【对话摘要（早期对话的浓缩版，细节以原文为准）】\n'
+            summaryLayers: '【对话摘要（早期对话的浓缩版，细节以原文为准）】\n',
+            storytellingReminders: '【编剧提醒（AI剧情引导提示）】\n'
         };
         var footers = {
             permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n',
-            characters: '\n', events: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n'
+            characters: '\n', events: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n', storytellingReminders: '\n'
         };
         
         // 总量控制：超限时智能压缩而非直接丢弃
@@ -1869,8 +2165,55 @@ var GameMemory = {
 
     _buildQuestsSection: function() {
         var lines = [];
-        var currentTurn = this.currentTurn;
-        this.quests.filter(function(q) { return q.status === 'pending'; }).forEach(function(q) { lines.push('• ' + q.content); });
+        var self = this;
+        var currentTurn = self.currentTurn;
+        var activeQuests = [];
+        var linkedQuests = [];
+        var dormantQuests = [];
+
+        self.quests.forEach(function(q) {
+            if (!q || !q.content) return;
+            var track = self._dormantTracking && self._dormantTracking.quests ? self._dormantTracking.quests[q.content] : null;
+            var status = track ? track.status : 'active';
+
+            if (q.status !== 'pending') {
+                // 已完成的任务进入休眠
+                return;
+            }
+
+            if (status === 'active') {
+                activeQuests.push(q);
+            } else if (status === 'linked') {
+                linkedQuests.push(q);
+            } else {
+                dormantQuests.push(q);
+            }
+        });
+
+        // Active层：进行中的约定
+        if (activeQuests.length > 0) {
+            lines.push('【活跃约定（近期提及）】');
+            activeQuests.forEach(function(q) {
+                lines.push('• ' + q.content);
+            });
+        }
+
+        // Linked层：一段时间未提及但仍重要的约定
+        if (linkedQuests.length > 0) {
+            lines.push('【待办约定（一段时间未推进）】');
+            linkedQuests.forEach(function(q) {
+                lines.push('• ' + q.content);
+            });
+        }
+
+        // Dormant层：长期未推进的约定（提醒AI）
+        if (dormantQuests.length > 0) {
+            lines.push('【休眠约定（长期未推进，AI可考虑发展或放弃）】');
+            dormantQuests.forEach(function(q) {
+                lines.push('• ' + q.content);
+            });
+        }
+
         return lines;
     },
 
@@ -1879,9 +2222,16 @@ var GameMemory = {
         var self = this;
         if (!topic) topic = self.detectCurrentTopic();
         var allChars = Object.keys(self.tables.characters).map(function(n) { return self.tables.characters[n]; });
-        // 评分排序（访问计数 + 话题相关 + 近期变化）
+
+        // 评分排序（访问计数 + 话题相关 + 近期变化 + 休眠状态）
         allChars.forEach(function(c) {
             var score = 0;
+            var track = self._dormantTracking && self._dormantTracking.characters ? self._dormantTracking.characters[c.name] : null;
+            var status = track ? track.status : 'active';
+            // 活跃状态加分
+            if (status === 'active') score += 1000;
+            else if (status === 'linked') score += 300;
+            else score += 50; // dormant 也有基础分，防止完全消失
             // 复用评分（Arkhon风格：被提及越多越重要）
             score += (c.accessCount || 0) * 5;
             // 话题相关
@@ -1891,36 +2241,72 @@ var GameMemory = {
             // 好感度极端值
             if (typeof c.favorability === 'number') score += Math.abs(c.favorability - 50);
             c._injectScore = score;
+            c._dormantStatus = status;
         });
         allChars.sort(function(a, b) { return (b && b._injectScore || 0) - (a && a._injectScore || 0); });
 
-        // 关键词激活：只注入相关的角色（有变化/被提及/高访问的）
-        var relevantChars = allChars.filter(function(c) {
-            if (!c || !c.name) return false;
-            // 始终包含：近期有变化的
-            if (c.lastChangedTurn > lastTurn) return true;
-            // 始终包含：高访问计数的（被频繁提及）
-            if ((c.accessCount || 0) >= 3) return true;
-            // 按需包含：当前话题相关的
-            if (self._isRelevantToScene(c.name, c.keywords, topic)) return true;
-            // 始终包含：好感度极端的
-            if (typeof c.favorability === 'number' && (c.favorability >= 80 || c.favorability <= 20)) return true;
-            return false;
+        // 三层架构：Active（完整）/ Linked（压缩）/ Dormant（索引）
+        var activeChars = [];
+        var linkedChars = [];
+        var dormantChars = [];
+
+        allChars.forEach(function(c) {
+            if (!c || !c.name) return;
+            var status = c._dormantStatus || 'active';
+            // 强制激活条件：近期变化、话题相关、好感极端
+            var forceActive = false;
+            if (c.lastChangedTurn > lastTurn) forceActive = true;
+            if (topic.characters && topic.characters.indexOf(c.name) >= 0) forceActive = true;
+            if (typeof c.favorability === 'number' && (c.favorability >= 80 || c.favorability <= 20)) forceActive = true;
+            if ((c.accessCount || 0) >= 5) forceActive = true;
+
+            if (status === 'active' || forceActive) {
+                activeChars.push(c);
+            } else if (status === 'linked') {
+                linkedChars.push(c);
+            } else {
+                dormantChars.push(c);
+            }
         });
 
-        // 按次计费：不硬限制角色数，让预算系统通过智能压缩自然控制
-        relevantChars.forEach(function(c) {
-            var relTime = self._calculateRelativeTime(c.gameTime || '');
-            var timeTag = relTime ? ' [' + relTime + ']' : '';
-            var line = '• ' + c.name + timeTag;
-            if (c.title) line += '（' + c.title + '）';
-            if (c.relation) line += ' | 关系:' + c.relation;
-            if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
-            if (c.mood) line += ' | 心情:' + c.mood;
-            if (c.location) line += ' | 位置:' + c.location;
-            if (c.status) line += ' | ' + c.status;
-            lines.push(line);
-        });
+        // Active层：完整信息
+        if (activeChars.length > 0) {
+            lines.push('【活跃角色（完整数据）】');
+            activeChars.forEach(function(c) {
+                var relTime = self._calculateRelativeTime(c.gameTime || '');
+                var timeTag = relTime ? ' [' + relTime + ']' : '';
+                var line = '• ' + c.name + timeTag;
+                if (c.title) line += '（' + c.title + '）';
+                if (c.relation) line += ' | 关系:' + c.relation;
+                if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
+                if (c.mood) line += ' | 心情:' + c.mood;
+                if (c.location) line += ' | 位置:' + c.location;
+                if (c.status) line += ' | ' + c.status;
+                lines.push(line);
+            });
+        }
+
+        // Linked层：压缩信息（只保留关键字段）
+        if (linkedChars.length > 0) {
+            lines.push('【关联角色（压缩数据）】');
+            linkedChars.forEach(function(c) {
+                var line = '• ' + c.name;
+                if (c.title) line += '（' + c.title + '）';
+                if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
+                // 只保留最关键的状态
+                if (c.status && c.status.indexOf('危') >= 0) line += ' | ' + c.status;
+                lines.push(line);
+            });
+        }
+
+        // Dormant层：仅索引（让AI知道有这些角色存在，但不给详细数据）
+        if (dormantChars.length > 0) {
+            lines.push('【休眠角色（仅索引，AI可主动唤醒）】');
+            var names = dormantChars.map(function(c) { return c.name; }).join('、');
+            lines.push('存在角色：' + names);
+            lines.push('（这些角色已长期未出场，AI可在需要时使用<recall>' + dormantChars[0].name + '</recall>唤醒）');
+        }
+
         return lines;
     },
 
@@ -1944,33 +2330,167 @@ var GameMemory = {
         var self = this;
         if (!topic) topic = self.detectCurrentTopic();
         var allItems = Object.keys(self.tables.items).map(function(n) { return self.tables.items[n]; }).filter(function(it) { return it && it.qty > 0; });
-        
-        // 关键词激活：只注入相关物品
-        var relevantItems = allItems.filter(function(it) {
-            // 始终包含：近期有变化的
-            if (it.lastChangedTurn > lastTurn) return true;
-            // 始终包含：高访问计数的
-            if ((it.accessCount || 0) >= 2) return true;
-            // 按需包含：当前话题相关的
-            if (self._isRelevantToScene(it.name, it.keywords, topic)) return true;
-            // 始终包含：珍稀及以上品质的
-            if (it.rarity === '珍稀' || it.rarity === '传说') return true;
-            return false;
-        });
-        
-        relevantItems.sort(function(a, b) {
-            if (!a || !b) return 0;
-            var aScore = (a.accessCount || 0) * 10 + (a.lastChangedTurn > lastTurn ? 100 : 0);
-            var bScore = (b.accessCount || 0) * 10 + (b.lastChangedTurn > lastTurn ? 100 : 0);
-            return bScore - aScore;
-        }).slice(0, 10).forEach(function(it) {
+
+        // 三层分类
+        var activeItems = [];
+        var linkedItems = [];
+        var dormantItems = [];
+
+        allItems.forEach(function(it) {
             if (!it || !it.name) return;
-            var line = '• ' + it.name;
-            if (it.qty > 1) line += ' x' + it.qty + (it.unit || '');
-            if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']';
-            if (it.desc) line += ' - ' + it.desc;
-            lines.push(line);
+            var track = self._dormantTracking && self._dormantTracking.items ? self._dormantTracking.items[it.name] : null;
+            var status = track ? track.status : 'active';
+
+            // 强制激活条件
+            var forceActive = false;
+            if (it.lastChangedTurn > lastTurn) forceActive = true;
+            if (topic.items && topic.items.indexOf(it.name) >= 0) forceActive = true;
+            if ((it.accessCount || 0) >= 3) forceActive = true;
+            if (it.rarity === '珍稀' || it.rarity === '传说') forceActive = true;
+
+            if (status === 'active' || forceActive) {
+                activeItems.push(it);
+            } else if (status === 'linked') {
+                linkedItems.push(it);
+            } else {
+                dormantItems.push(it);
+            }
         });
+
+        // Active层：完整信息
+        if (activeItems.length > 0) {
+            lines.push('【活跃物品（完整数据）】');
+            activeItems.sort(function(a, b) {
+                var aScore = (a.accessCount || 0) * 10 + (a.lastChangedTurn > lastTurn ? 100 : 0);
+                var bScore = (b.accessCount || 0) * 10 + (b.lastChangedTurn > lastTurn ? 100 : 0);
+                return bScore - aScore;
+            }).forEach(function(it) {
+                var line = '• ' + it.name;
+                if (it.qty > 1) line += ' x' + it.qty + (it.unit || '');
+                if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']';
+                if (it.desc) line += ' - ' + it.desc;
+                lines.push(line);
+            });
+        }
+
+        // Linked层：压缩信息
+        if (linkedItems.length > 0) {
+            lines.push('【关联物品（压缩数据）】');
+            linkedItems.forEach(function(it) {
+                var line = '• ' + it.name;
+                if (it.qty > 1) line += ' x' + it.qty;
+                if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']';
+                lines.push(line);
+            });
+        }
+
+        // Dormant层：仅索引
+        if (dormantItems.length > 0) {
+            lines.push('【休眠物品（仅索引，AI可主动唤醒）】');
+            var names = dormantItems.map(function(it) { return it.name + (it.qty > 1 ? 'x' + it.qty : ''); }).join('、');
+            lines.push('持有物品：' + names);
+        }
+
+        return lines;
+    },
+
+    // 编剧提醒系统：检测休眠过久的角色/物品/任务/伏笔，给AI剧情引导提示
+    _buildStorytellingReminders: function() {
+        var lines = [];
+        var self = this;
+        if (!self._storytellingConfig || !self._storytellingConfig.aiGuidanceEnabled) return lines;
+        var cfg = self._storytellingConfig;
+        var currentTurn = self.currentTurn;
+
+        // 1. 检测休眠过久的角色（需要AI唤醒）
+        var dormantChars = [];
+        Object.keys(self._dormantTracking.characters || {}).forEach(function(name) {
+            var track = self._dormantTracking.characters[name];
+            if (track && track.status === 'dormant' && track.dormantRounds >= cfg.dormantWarningThreshold) {
+                var char = self.tables.characters[name];
+                if (char) {
+                    dormantChars.push({ name: name, rounds: track.dormantRounds, urgent: track.dormantRounds >= cfg.dormantUrgentThreshold });
+                }
+            }
+        });
+
+        // 2. 检测休眠过久的物品（需要AI消耗或使用）
+        var dormantItems = [];
+        Object.keys(self._dormantTracking.items || {}).forEach(function(name) {
+            var track = self._dormantTracking.items[name];
+            if (track && track.status === 'dormant' && track.dormantRounds >= cfg.dormantWarningThreshold) {
+                var item = self.tables.items[name];
+                if (item && item.qty > 0) {
+                    dormantItems.push({ name: name, rounds: track.dormantRounds, qty: item.qty });
+                }
+            }
+        });
+
+        // 3. 检测休眠过久的任务（需要AI推进）
+        var dormantQuests = [];
+        Object.keys(self._dormantTracking.quests || {}).forEach(function(key) {
+            var track = self._dormantTracking.quests[key];
+            if (track && track.status === 'dormant' && track.dormantRounds >= cfg.dormantWarningThreshold) {
+                dormantQuests.push({ content: key, rounds: track.dormantRounds });
+            }
+        });
+
+        // 4. 检测未触发的伏笔（需要AI回收）
+        var pendingForeshadows = [];
+        Object.keys(self._dormantTracking.foreshadowings || {}).forEach(function(fsId) {
+            var fs = self._dormantTracking.foreshadowings[fsId];
+            if (fs && !fs.triggered && fs.dormantRounds >= cfg.foreshadowWarningThreshold) {
+                pendingForeshadows.push({ id: fsId, desc: fs.desc, rounds: fs.dormantRounds, priority: fs.priority });
+            }
+        });
+
+        // 生成提醒文本
+        if (dormantChars.length > 0) {
+            lines.push('【角色唤醒建议】');
+            lines.push('以下角色已长期未出场，建议AI在合适时机通过<recall>角色名</recall>唤醒：');
+            dormantChars.forEach(function(c) {
+                var marker = c.urgent ? '【紧急】' : '';
+                lines.push('• ' + marker + c.name + '（已休眠' + c.rounds + '回合）');
+            });
+        }
+
+        if (dormantItems.length > 0) {
+            lines.push('【物品使用建议】');
+            lines.push('以下物品已长期未被使用/提及，建议AI设计剧情让它们发挥作用：');
+            dormantItems.forEach(function(it) {
+                lines.push('• ' + it.name + ' x' + it.qty + '（已休眠' + it.rounds + '回合）');
+            });
+        }
+
+        if (dormantQuests.length > 0) {
+            lines.push('【任务推进建议】');
+            lines.push('以下约定/任务已长期未推进，建议AI设计剧情推动进展或给出放弃理由：');
+            dormantQuests.forEach(function(q) {
+                lines.push('• ' + q.content + '（已休眠' + q.rounds + '回合）');
+            });
+        }
+
+        if (pendingForeshadows.length > 0) {
+            lines.push('【伏笔回收建议】');
+            lines.push('以下伏笔已铺设较长时间，建议AI在合适时机触发（使用<trigger>伏笔ID</trigger>）：');
+            pendingForeshadows.sort(function(a, b) { return b.priority - a.priority; }).forEach(function(fs) {
+                lines.push('• [' + fs.id + '] ' + fs.desc + '（已' + fs.rounds + '回合，优先级' + fs.priority + '）');
+            });
+        }
+
+        // 5. 综合编剧指导（如果有很多休眠内容）
+        var totalDormant = dormantChars.length + dormantItems.length + dormantQuests.length + pendingForeshadows.length;
+        if (totalDormant >= 3) {
+            lines.push('');
+            lines.push('【编剧指导】');
+            lines.push('当前有大量休眠剧情元素。作为编剧搭档，建议你：');
+            lines.push('1. 选择一个休眠角色重新引入剧情（<recall>角色名</recall>）');
+            lines.push('2. 让一个休眠物品发挥作用，或设计消耗/升级剧情');
+            lines.push('3. 推进一个长期未动的任务，或给出合理的搁置理由');
+            lines.push('4. 回收一个已铺设的伏笔，给玩家惊喜（<trigger>伏笔ID</trigger>）');
+            lines.push('5. 如要注册新伏笔，使用<foreshadow id="唯一ID" priority="1-10">描述</foreshadow>');
+        }
+
         return lines;
     },
 
@@ -2419,7 +2939,7 @@ var GameMemory = {
         try {
             // 保存前清理 _changeLog，只保留最近20条
             if (self._changeLog && self._changeLog.length > 20) self._changeLog = self._changeLog.slice(-20);
-            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, savedAt: Date.now() };
+            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, savedAt: Date.now() };
             var result = safeSetItem('freeScript_memory', JSON.stringify(data));
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
@@ -2432,7 +2952,7 @@ var GameMemory = {
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
-            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, stats: this.stats, savedAt: Date.now() };
+            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, stats: this.stats, savedAt: Date.now() };
             var r2 = safeSetItem('freeScript_memory', JSON.stringify(reduced));
             if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
             else console.error('[GameMemory] 降级保存仍然失败：', r2);
@@ -2444,7 +2964,7 @@ var GameMemory = {
         try { data = JSON.parse(localStorage.getItem('freeScript_memory') || 'null'); } catch(e) { data = null; }
         if (!data || data.version !== 3) return false;
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
-        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers'];
+        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig'];
         for (var i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
         // 嵌套对象默认值补全
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
@@ -2458,6 +2978,8 @@ var GameMemory = {
         if (!self.workingMemory.nearSummary) self.workingMemory.nearSummary = '';
         if (!self.workingMemory.midSummary) self.workingMemory.midSummary = '';
         if (!self.workingMemory.farSummary) self.workingMemory.farSummary = '';
+        // 加载后初始化休眠追踪（兼容旧存档）
+        self._initDormantTracking();
         return true;
     },
 
@@ -2476,6 +2998,8 @@ var GameMemory = {
         this._injectionSnapshots = {};
         this._summaryLayers = { near: [], mid: [], far: [] };
         this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
+        this._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };
+        this._storytellingConfig = { dormantWarningThreshold: 20, dormantUrgentThreshold: 30, foreshadowWarningThreshold: 15, maxForeshadowings: 20, aiGuidanceEnabled: true };
         localStorage.removeItem('freeScript_memory'); localStorage.removeItem('freeScript_enhancedMemory');
     },
 
