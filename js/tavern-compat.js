@@ -1322,8 +1322,16 @@ var GameMemory = {
         var currentTurn = self.currentTurn;
         var cfg = self._storytellingConfig || { dormantWarningThreshold: 20, dormantUrgentThreshold: 30 };
 
-        // 辅助：检查内容中是否提到某个名称
+        // 辅助：检查内容中是否精确提到某个名称（避免子串误匹配）
+        // 例如 "小明" 不会匹配 "小明王"，但会匹配 "小明说"、"叫小明"
         function isMentioned(name) {
+            if (!name || name.length < 1) return false;
+            // 简单名称（1-2字）用边界检查，复杂名称直接包含检查
+            if (name.length <= 2) {
+                // 短名称需要更严格的匹配：前后不能是中文/字母/数字
+                var re = new RegExp('(^|[^\\u4e00-\\u9fa5a-zA-Z0-9])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\u4e00-\\u9fa5a-zA-Z0-9]|$)');
+                return re.test(content);
+            }
             return content.indexOf(name) >= 0;
         }
 
@@ -1854,7 +1862,9 @@ var GameMemory = {
     buildInjection: function() {
         var self = this;
         // 同轮次缓存：同一轮内多次调用直接返回缓存结果
-        if (self._cachedInjectionTurn === self.currentTurn && self._cachedInjection) {
+        // 【优化】加入数据版本号：如果本轮数据有变化（如AI编辑了记忆），缓存失效
+        var cacheVersion = self._getCacheVersion();
+        if (self._cachedInjectionTurn === self.currentTurn && self._cachedInjection && self._cachedInjectionVersion === cacheVersion) {
             return self._cachedInjection;
         }
         self._adaptBudget();
@@ -2006,12 +2016,27 @@ var GameMemory = {
         self.lastInjectionTurn = currentTurn;
         self._cachedInjection = injection;
         self._cachedInjectionTurn = currentTurn;
+        self._cachedInjectionVersion = self._getCacheVersion();
         return injection;
+    },
+
+    // 生成缓存版本号：基于数据变化状态，确保AI编辑记忆后缓存失效
+    _getCacheVersion: function() {
+        var self = this;
+        var versionParts = [];
+        versionParts.push(self.currentTurn);
+        versionParts.push(self._changeLog ? self._changeLog.length : 0);
+        versionParts.push(Object.keys(self.tables.characters).length);
+        versionParts.push(Object.keys(self.tables.items).length);
+        versionParts.push(self.quests ? self.quests.length : 0);
+        versionParts.push(self.events ? self.events.length : 0);
+        return versionParts.join('_');
     },
 
     buildSmartInjection: function() { return this.buildInjection(); },
 
     // 智能精简模块文本：不截断，用选择+结构化精简代替
+    // 【优化】与三层架构配合：已经分层的模块（characters/items/quests）精简策略更激进
     // 核心原则：剧情游戏靠文字发展，截断会导致剧情断层
     // 策略：1.保留完整语义 2.去掉冗余修饰 3.内容太多时选择最重要的
     _smartCompressModule: function(text, moduleKey) {
@@ -2023,11 +2048,34 @@ var GameMemory = {
         // 不同模块采用不同的精简策略（绝不截断）
         switch (moduleKey) {
             case 'characters':
-                // 角色：保留完整信息，只去掉与当前场景无关的次要标签
-                // 绝不截断角色描述——角色是剧情的核心
+                // 【优化】三层架构已分层，精简时只保留活跃角色的关键字段
+                // 去掉 outfit（穿着细节），保留关系/好感/心情/位置/状态
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    // 去掉 outfit（穿着细节），保留关系/好感/心情/位置/状态
+                    // 如果是休眠角色索引行，大幅压缩
+                    if (line.indexOf('存在角色：') === 0 || line.indexOf('（这些角色') === 0) {
+                        return line.length > 60 ? line.substring(0, 60) + '…等' : line;
+                    }
                     return line.replace(/\s*\|\s*outfit:[^\n]*/g, '');
+                }).join('\n');
+
+            case 'items':
+                // 【优化】三层架构已分层，休眠物品只保留名字列表
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.indexOf('持有物品：') === 0 && line.length > 80) {
+                        return line.substring(0, 80) + '…等';
+                    }
+                    return line;
+                }).join('\n');
+
+            case 'quests':
+                // 【优化】休眠约定可以精简描述
+                return headerLine + '\n' + bodyLines.map(function(line) {
+                    if (line.indexOf('【休眠约定') === 0) return line;
+                    // 约定内容如果太长，保留前40字
+                    if (line.indexOf('• ') === 0 && line.length > 60) {
+                        return line.substring(0, 60) + '…';
+                    }
+                    return line;
                 }).join('\n');
 
             case 'events':
@@ -2040,14 +2088,8 @@ var GameMemory = {
                 });
                 return headerLine + '\n' + sortedEvents.join('\n');
 
-            case 'items':
-                // 物品：保留完整信息（名字+数量+稀有度+描述）
-                // 物品可能是关键剧情道具，截断描述可能丢失线索
-                return text;
-
             case 'summaryLayers':
                 // 摘要：已经是AI总结的内容，不应该再截断
-                // 如果摘要太长，说明需要AI重新总结，而不是截断
                 return text;
 
             case 'sceneState':
@@ -2060,8 +2102,14 @@ var GameMemory = {
 
             case 'permanentFacts':
                 // 永久事实：最高优先级，绝对不截断
-                // 这些是AI已经精简过的核心信息，截断等于丢规则
                 return text;
+
+            case 'storytellingReminders':
+                // 编剧提醒：如果太长，优先保留角色和伏笔提醒
+                return headerLine + '\n' + bodyLines.filter(function(line) {
+                    return line.indexOf('【角色') >= 0 || line.indexOf('【伏笔') >= 0 ||
+                           line.indexOf('• ') === 0 || line.indexOf('【编剧指导】') >= 0;
+                }).join('\n');
 
             default:
                 // 通用：默认不截断，保留完整语义
@@ -2104,42 +2152,52 @@ var GameMemory = {
         return lines;
     },
 
+    // 通用变化行构建器：减少角色/物品变化的重复代码
+    _buildEntityChangeLines: function(table, lastTurn, formatter) {
+        var lines = [];
+        var self = this;
+        Object.keys(table).forEach(function(name) {
+            var entity = table[name];
+            if (entity && entity.lastChangedTurn > lastTurn) {
+                lines.push(formatter(name, entity, self));
+            }
+        });
+        return lines;
+    },
+
     _buildChangeUpdateSection: function(lastTurn) {
         var lines = [];
         var self = this;
         var gameTime = self.getGameTimeStr();
-        // 角色变化（带时间锚点）
-        Object.keys(self.tables.characters).forEach(function(name) {
-            var c = self.tables.characters[name];
-            if (c.lastChangedTurn > lastTurn) {
-                var relTime = self._calculateRelativeTime(c.gameTime || '');
-                var timeTag = relTime ? '(' + relTime + ')' : '';
-                var line = '• ' + name + timeTag;
-                var changes = [];
-                if (c.history && c.history.length > 0) {
-                    var lastH = c.history[c.history.length - 1];
-                    if (lastH.changes) changes.push(lastH.changes);
-                }
-                if (c.mood) changes.push('心情：' + c.mood);
-                if (c.location) changes.push('位置：' + c.location);
-                if (changes.length > 0) line += '：' + changes.join(' | ');
-                lines.push(line);
+
+        // 角色变化（使用通用构建器）
+        lines = lines.concat(self._buildEntityChangeLines(self.tables.characters, lastTurn, function(name, c, ctx) {
+            var relTime = ctx._calculateRelativeTime(c.gameTime || '');
+            var timeTag = relTime ? '(' + relTime + ')' : '';
+            var line = '• ' + name + timeTag;
+            var changes = [];
+            if (c.history && c.history.length > 0) {
+                var lastH = c.history[c.history.length - 1];
+                if (lastH.changes) changes.push(lastH.changes);
             }
-        });
-        // 物品变化（带时间锚点）
-        Object.keys(self.tables.items).forEach(function(name) {
-            var it = self.tables.items[name];
-            if (it.lastChangedTurn > lastTurn) {
-                var relTime2 = self._calculateRelativeTime(it.gameTime || '');
-                var timeTag2 = relTime2 ? '(' + relTime2 + ')' : '';
-                var line = '• 物品·' + name + timeTag2;
-                if (it.history && it.history.length > 0) {
-                    var lastH2 = it.history[it.history.length - 1];
-                    line += '：数量 ' + lastH2.from + '→' + lastH2.to;
-                }
-                lines.push(line);
+            if (c.mood) changes.push('心情：' + c.mood);
+            if (c.location) changes.push('位置：' + c.location);
+            if (changes.length > 0) line += '：' + changes.join(' | ');
+            return line;
+        }));
+
+        // 物品变化（使用通用构建器）
+        lines = lines.concat(self._buildEntityChangeLines(self.tables.items, lastTurn, function(name, it, ctx) {
+            var relTime = ctx._calculateRelativeTime(it.gameTime || '');
+            var timeTag = relTime ? '(' + relTime + ')' : '';
+            var line = '• 物品·' + name + timeTag;
+            if (it.history && it.history.length > 0) {
+                var lastH = it.history[it.history.length - 1];
+                line += '：数量 ' + lastH.from + '→' + lastH.to;
             }
-        });
+            return line;
+        }));
+
         // 新事件
         self.events.forEach(function(e) {
             if (e && e.turn > lastTurn && e.content) {
@@ -2148,6 +2206,7 @@ var GameMemory = {
                 lines.push('• 新事件' + timeTag3 + '：' + e.content);
             }
         });
+
         // 时间变化
         if (self.gameClock.lastUpdateTurn > lastTurn) lines.push('• 时间：' + gameTime);
         return lines;
@@ -2395,12 +2454,16 @@ var GameMemory = {
     },
 
     // 编剧提醒系统：检测休眠过久的角色/物品/任务/伏笔，给AI剧情引导提示
+    // 【优化】加入上次出场状态上下文 + 场景关联提醒
     _buildStorytellingReminders: function() {
         var lines = [];
         var self = this;
         if (!self._storytellingConfig || !self._storytellingConfig.aiGuidanceEnabled) return lines;
         var cfg = self._storytellingConfig;
         var currentTurn = self.currentTurn;
+
+        // 获取当前场景信息（用于场景关联提醒）
+        var currentScene = self._getCurrentSceneInfo();
 
         // 1. 检测休眠过久的角色（需要AI唤醒）
         var dormantChars = [];
@@ -2409,7 +2472,15 @@ var GameMemory = {
             if (track && track.status === 'dormant' && track.dormantRounds >= cfg.dormantWarningThreshold) {
                 var char = self.tables.characters[name];
                 if (char) {
-                    dormantChars.push({ name: name, rounds: track.dormantRounds, urgent: track.dormantRounds >= cfg.dormantUrgentThreshold });
+                    // 【优化】计算场景关联度
+                    var sceneRelevance = self._calcSceneRelevance(char, currentScene);
+                    dormantChars.push({
+                        name: name,
+                        rounds: track.dormantRounds,
+                        urgent: track.dormantRounds >= cfg.dormantUrgentThreshold,
+                        lastState: self._getEntityLastState('character', char),
+                        sceneRelevance: sceneRelevance
+                    });
                 }
             }
         });
@@ -2421,7 +2492,12 @@ var GameMemory = {
             if (track && track.status === 'dormant' && track.dormantRounds >= cfg.dormantWarningThreshold) {
                 var item = self.tables.items[name];
                 if (item && item.qty > 0) {
-                    dormantItems.push({ name: name, rounds: track.dormantRounds, qty: item.qty });
+                    dormantItems.push({
+                        name: name,
+                        rounds: track.dormantRounds,
+                        qty: item.qty,
+                        lastState: item.desc || ''
+                    });
                 }
             }
         });
@@ -2444,13 +2520,18 @@ var GameMemory = {
             }
         });
 
+        // 按场景关联度排序角色（关联度高的优先提醒）
+        dormantChars.sort(function(a, b) { return b.sceneRelevance.score - a.sceneRelevance.score; });
+
         // 生成提醒文本
         if (dormantChars.length > 0) {
             lines.push('【角色唤醒建议】');
             lines.push('以下角色已长期未出场，建议AI在合适时机通过<recall>角色名</recall>唤醒：');
             dormantChars.forEach(function(c) {
                 var marker = c.urgent ? '【紧急】' : '';
-                lines.push('• ' + marker + c.name + '（已休眠' + c.rounds + '回合）');
+                var sceneHint = c.sceneRelevance.score > 0 ? ' [场景关联：' + c.sceneRelevance.reason + ']' : '';
+                var stateHint = c.lastState ? ' | 上次状态：' + c.lastState : '';
+                lines.push('• ' + marker + c.name + '（已休眠' + c.rounds + '回合）' + sceneHint + stateHint);
             });
         }
 
@@ -2458,7 +2539,8 @@ var GameMemory = {
             lines.push('【物品使用建议】');
             lines.push('以下物品已长期未被使用/提及，建议AI设计剧情让它们发挥作用：');
             dormantItems.forEach(function(it) {
-                lines.push('• ' + it.name + ' x' + it.qty + '（已休眠' + it.rounds + '回合）');
+                var descHint = it.lastState ? ' | ' + it.lastState : '';
+                lines.push('• ' + it.name + ' x' + it.qty + '（已休眠' + it.rounds + '回合）' + descHint);
             });
         }
 
@@ -2478,7 +2560,18 @@ var GameMemory = {
             });
         }
 
-        // 5. 综合编剧指导（如果有很多休眠内容）
+        // 5. 场景关联快速唤醒提示（高关联度角色直接提示）
+        var nearbyChars = dormantChars.filter(function(c) { return c.sceneRelevance.score >= 2; });
+        if (nearbyChars.length > 0) {
+            lines.push('');
+            lines.push('【场景关联快速提示】');
+            lines.push('以下休眠角色与当前场景高度关联，非常适合立即唤醒：');
+            nearbyChars.slice(0, 3).forEach(function(c) {
+                lines.push('• ' + c.name + '（' + c.sceneRelevance.reason + '）← 推荐立即唤醒');
+            });
+        }
+
+        // 6. 综合编剧指导（如果有很多休眠内容）
         var totalDormant = dormantChars.length + dormantItems.length + dormantQuests.length + pendingForeshadows.length;
         if (totalDormant >= 3) {
             lines.push('');
@@ -2492,6 +2585,80 @@ var GameMemory = {
         }
 
         return lines;
+    },
+
+    // 获取当前场景信息（用于场景关联提醒）
+    _getCurrentSceneInfo: function() {
+        var self = this;
+        var scene = { location: '', charactersPresent: [], keywords: [] };
+        // 从最近对话中提取地点
+        try {
+            if (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) {
+                var recentText = gameState.conversationHistory.slice(-2).map(function(m) { return (m && m.content) || ''; }).join(' ');
+                // 提取地点关键词
+                var locPatterns = [/在([^，。！？\s]{2,8})(?:里|内|中|上|下|旁|边)/, /来到([^，。！？\s]{2,8})/, /前往([^，。！？\s]{2,8})/];
+                locPatterns.forEach(function(p) {
+                    var m = recentText.match(p);
+                    if (m && m[1]) scene.keywords.push(m[1]);
+                });
+            }
+        } catch(e) {}
+        // 从角色表中找当前在场的角色
+        Object.keys(self.tables.characters || {}).forEach(function(name) {
+            var c = self.tables.characters[name];
+            if (c && c.location) {
+                scene.charactersPresent.push({ name: name, location: c.location });
+            }
+        });
+        return scene;
+    },
+
+    // 计算角色与当前场景的关联度（0-3分）
+    _calcSceneRelevance: function(char, scene) {
+        var score = 0;
+        var reasons = [];
+        if (!char || !scene) return { score: 0, reason: '' };
+
+        // 角色位置与当前场景关键词匹配
+        if (char.location && scene.keywords.length > 0) {
+            scene.keywords.forEach(function(kw) {
+                if (char.location.indexOf(kw) >= 0 || kw.indexOf(char.location) >= 0) {
+                    score += 2;
+                    reasons.push('就在' + char.location);
+                }
+            });
+        }
+
+        // 角色位置与其他在场角色相同（暗示他们可能在同一地点）
+        if (char.location && scene.charactersPresent.length > 0) {
+            scene.charactersPresent.forEach(function(cp) {
+                if (cp.name !== char.name && cp.location === char.location) {
+                    score += 1;
+                    reasons.push('与' + cp.name + '同在' + char.location);
+                }
+            });
+        }
+
+        // 角色好感度极端（剧情张力）
+        if (typeof char.favorability === 'number' && (char.favorability >= 90 || char.favorability <= 10)) {
+            score += 1;
+            reasons.push(char.favorability >= 90 ? '好感极高' : '敌意极深');
+        }
+
+        return { score: score, reason: reasons.slice(0, 2).join('，') };
+    },
+
+    // 获取实体上次出场时的状态摘要
+    _getEntityLastState: function(type, entity) {
+        if (!entity) return '';
+        var states = [];
+        if (type === 'character') {
+            if (entity.mood) states.push('心情' + entity.mood);
+            if (entity.location) states.push('在' + entity.location);
+            if (typeof entity.favorability === 'number') states.push('好感' + entity.favorability);
+            if (entity.status) states.push('状态' + entity.status);
+        }
+        return states.join('，');
     },
 
     // 逐层摘要注入（Qvink风格：近详细→远压缩）
