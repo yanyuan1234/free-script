@@ -3556,9 +3556,14 @@ function bindEvents() {
         });
     });
 
-    // 设置按钮 → API配置
+    // API按钮 → API配置
     bindEvent('btnMenuApiSettings', 'click', function() {
         renderAPISettings();
+    });
+
+    // 设置按钮 → 游戏设置
+    bindEvent('btnMenuGameSettings', 'click', function() {
+        if (typeof openSettingsModal === 'function') openSettingsModal();
     });
 
     // 主页面世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
