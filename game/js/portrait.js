@@ -1,32 +1,23 @@
-/* ====== 深宫帝王录 - Q版像素小人立绘系统 ====== */
-/* 参照用户提供的参考图风格：大头小身、豆豆眼、腮红、多种发型 */
+/* ====== 深宫帝王录 - Q版像素小人立绘系统 v2 ====== */
+/* 参照参考图风格：黑色描边、大头小身、横线眼、层次头发、极小身体 */
 
 // ====== 配色表 ======
 const HAIR_COLORS = [
     '#1a1a1a', '#2d1b0e', '#4a2e1a', '#6b4423', '#8b5a2b',
     '#a06b35', '#c49a6c', '#d4b896', '#e8d4b8', '#f5e6d3',
-    '#5c3a21', '#7a5230', '#9e7b4f', '#b8956a', '#d4b896',
-    '#8b4513', '#a0522d', '#cd853f', '#deb887', '#f4a460',
     '#696969', '#808080', '#a9a9a9', '#c0c0c0', '#d3d3d3',
-    '#2f4f4f', '#556b2f', '#6b8e23', '#808000', '#bdb76b',
     '#8b0000', '#a52a2a', '#b22222', '#cd5c5c', '#dc143c',
     '#4b0082', '#6a0dad', '#8a2be2', '#9370db', '#ba55d3',
     '#191970', '#000080', '#4169e1', '#6495ed', '#87ceeb',
-    '#006400', '#228b22', '#32cd32', '#90ee90', '#98fb98'
-];
-
-const EYE_COLORS = [
-    '#1a1a1a', '#2d1b0e', '#4a2e1a', '#6b4423', '#8b5a2b',
-    '#3d5c5c', '#4a6741', '#5a7a4a', '#6b8e5a', '#7aa06a',
-    '#4a5a8a', '#5a6a9a', '#6a7aaa', '#7a8aba', '#8a9aca',
-    '#6a4a7a', '#7a5a8a', '#8a6a9a', '#9a7aaa', '#aa8aba',
-    '#8a6a4a', '#9a7a5a', '#aa8a6a', '#ba9a7a', '#caaa8a',
-    '#5a3a3a', '#6a4a4a', '#7a5a5a', '#8a6a6a', '#9a7a7a'
+    '#006400', '#228b22', '#32cd32', '#90ee90', '#98fb98',
+    '#ff69b4', '#ff1493', '#db7093', '#ffb6c1', '#ffc0cb',
+    '#ff8c00', '#ffa500', '#ffd700', '#ffff00', '#f0e68c',
+    '#8fbc8f', '#66cdaa', '#20b2aa', '#008b8b', '#5f9ea0'
 ];
 
 const SKIN_COLORS = [
-    '#fdf5e6', '#faf0e6', '#f5e6d3', '#f0e0c8', '#ebd8bc',
-    '#e8d4b8', '#e0c8a8', '#d8bc9a', '#d4b896', '#c8a882',
+    '#fff5ee', '#fdf5e6', '#faf0e6', '#f5e6d3', '#f0e0c8',
+    '#ebd8bc', '#e8d4b8', '#e0c8a8', '#d8bc9a', '#d4b896',
     '#faebd7', '#ffe4c4', '#ffdab9', '#ffdead', '#f5deb3'
 ];
 
@@ -46,27 +37,23 @@ const COSTUME_COLORS = {
     romance:    { primary: '#6A3A5A', secondary: '#C9A84C', trim: '#8A5A7A', name: '闺秀服' }
 };
 
-// ====== 伪随机数生成器（保证相同seed生成相同角色） ======
+// ====== 伪随机数生成器 ======
 class SeededRandom {
     constructor(seed) {
         this.seed = seed;
     }
-
     next() {
         this.seed = (this.seed * 16807 + 0) % 2147483647;
         return (this.seed - 1) / 2147483646;
     }
-
     pick(arr) {
         return arr[Math.floor(this.next() * arr.length)];
     }
-
     range(min, max) {
         return Math.floor(this.next() * (max - min + 1)) + min;
     }
 }
 
-// ====== 像素绘制工具 ======
 function hashString(str) {
     let h = 0;
     for (let i = 0; i < str.length; i++) {
@@ -76,18 +63,124 @@ function hashString(str) {
     return Math.abs(h);
 }
 
+// ====== 像素画布 ======
+class PixelCanvas {
+    constructor(w, h) {
+        this.w = w;
+        this.h = h;
+        this.pixels = [];
+        for (let y = 0; y < h; y++) {
+            this.pixels[y] = [];
+            for (let x = 0; x < w; x++) {
+                this.pixels[y][x] = null;
+            }
+        }
+    }
+
+    set(x, y, color) {
+        if (x >= 0 && x < this.w && y >= 0 && y < this.h) {
+            this.pixels[y][x] = color;
+        }
+    }
+
+    get(x, y) {
+        if (x >= 0 && x < this.w && y >= 0 && y < this.h) {
+            return this.pixels[y][x];
+        }
+        return null;
+    }
+
+    // 填充圆形
+    fillCircle(cx, cy, r, color) {
+        for (let y = Math.floor(cy - r); y <= Math.ceil(cy + r); y++) {
+            for (let x = Math.floor(cx - r); x <= Math.ceil(cx + r); x++) {
+                const dx = x - cx;
+                const dy = y - cy;
+                if (dx * dx + dy * dy <= r * r + 0.5) {
+                    this.set(x, y, color);
+                }
+            }
+        }
+    }
+
+    // 填充椭圆
+    fillEllipse(cx, cy, rx, ry, color) {
+        for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) {
+            for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) {
+                const dx = (x - cx) / rx;
+                const dy = (y - cy) / ry;
+                if (dx * dx + dy * dy <= 1.1) {
+                    this.set(x, y, color);
+                }
+            }
+        }
+    }
+
+    // 填充矩形
+    fillRect(x, y, w, h, color) {
+        for (let yy = y; yy < y + h; yy++) {
+            for (let xx = x; xx < x + w; xx++) {
+                this.set(xx, yy, color);
+            }
+        }
+    }
+
+    // 绘制描边（只在没有颜色的位置绘制）
+    outline(color) {
+        const newPixels = [];
+        for (let y = 0; y < this.h; y++) {
+            newPixels[y] = [];
+            for (let x = 0; x < this.w; x++) {
+                newPixels[y][x] = this.pixels[y][x];
+            }
+        }
+
+        for (let y = 0; y < this.h; y++) {
+            for (let x = 0; x < this.w; x++) {
+                if (this.pixels[y][x] !== null) continue;
+                // 检查四周是否有像素
+                const neighbors = [
+                    [x-1,y], [x+1,y], [x,y-1], [x,y+1],
+                    [x-1,y-1], [x+1,y-1], [x-1,y+1], [x+1,y+1]
+                ];
+                for (const [nx, ny] of neighbors) {
+                    if (nx >= 0 && nx < this.w && ny >= 0 && ny < this.h) {
+                        if (this.pixels[ny][nx] !== null) {
+                            newPixels[y][x] = color;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        this.pixels = newPixels;
+    }
+
+    // 绘制到Canvas
+    render(ctx, scale) {
+        for (let y = 0; y < this.h; y++) {
+            for (let x = 0; x < this.w; x++) {
+                const c = this.pixels[y][x];
+                if (c !== null) {
+                    ctx.fillStyle = c;
+                    ctx.fillRect(x * scale, y * scale, scale, scale);
+                }
+            }
+        }
+    }
+}
+
 // ====== 立绘组装器 ======
 class PortraitGenerator {
     constructor() {
         this.canvas = null;
         this.ctx = null;
-        this.baseW = 32;   // 基础像素宽度
-        this.baseH = 40;   // 基础像素高度
-        this.scale = 4;    // 放大倍数
+        this.baseW = 30;
+        this.baseH = 36;
+        this.scale = 4;
     }
 
     createCanvas(container, width, height) {
-        // width/height 是显示尺寸，我们根据显示尺寸计算合适的scale
         const targetW = width || 120;
         const targetH = height || 160;
         this.scale = Math.max(2, Math.floor(Math.min(targetW / this.baseW, targetH / this.baseH)));
@@ -106,11 +199,9 @@ class PortraitGenerator {
         return canvas;
     }
 
-    // 随机生成一套部件
     randomParts(gender, rank) {
         const seedStr = Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
         const seedNum = hashString(seedStr);
-
         return {
             seed: seedNum,
             seedStr: seedStr,
@@ -119,7 +210,6 @@ class PortraitGenerator {
         };
     }
 
-    // 渲染到容器
     render(container, parts, width, height) {
         this.createCanvas(container, width, height);
         this.draw(parts);
@@ -130,459 +220,391 @@ class PortraitGenerator {
         this.draw(parts);
     }
 
-    // ====== 主绘制 ======
     draw(parts) {
-        const ctx = this.ctx;
-        const s = this.scale;
-        const bw = this.baseW;
-        const bh = this.baseH;
-
-        // 清空
-        ctx.clearRect(0, 0, bw * s, bh * s);
-
-        // 生成随机器
         const rng = new SeededRandom(parts.seed);
+        const pc = new PixelCanvas(this.baseW, this.baseH);
+        const cx = Math.floor(this.baseW / 2);
 
-        // 随机属性
         const hairColor = rng.pick(HAIR_COLORS);
-        const eyeColor = rng.pick(EYE_COLORS);
+        const hairLight = this._lighten(hairColor, 30);
         const skinColor = rng.pick(SKIN_COLORS);
         const costume = COSTUME_COLORS[parts.rank] || COSTUME_COLORS.noble;
-
-        // 发型类型 (0-9)
-        const hairStyle = rng.range(0, 9);
-        // 表情类型 (0-3)
+        const hairStyle = rng.range(0, 12);
         const expression = rng.range(0, 3);
-        // 是否有发饰
-        const hasHairAccessory = rng.next() > 0.6;
-        const accessoryColor = rng.pick(['#C9A84C', '#E8D48B', '#DC143C', '#4169E1', '#9370DB', '#FF69B4']);
+        const hasAccessory = rng.next() > 0.5;
+        const accessoryColor = rng.pick(['#C9A84C', '#DC143C', '#4169E1', '#9370DB', '#FF69B4', '#32CD32']);
 
-        // 绘制顺序：身体 → 服装 → 头 → 头发(后) → 脸 → 头发(前/刘海) → 五官 → 腮红 → 发饰
-
-        // 1. 身体（小身体）
-        this._drawBody(ctx, s, bw, bh, skinColor, costume, parts.gender);
-
-        // 2. 头部（大头）
-        this._drawHead(ctx, s, bw, bh, skinColor);
-
-        // 3. 后发（头发后部）
-        this._drawBackHair(ctx, s, bw, bh, hairColor, hairStyle, parts.gender);
-
-        // 4. 五官
-        this._drawFace(ctx, s, bw, bh, eyeColor, expression);
-
-        // 5. 前发/刘海
-        this._drawFrontHair(ctx, s, bw, bh, hairColor, hairStyle, parts.gender);
-
-        // 6. 发饰
-        if (hasHairAccessory) {
-            this._drawHairAccessory(ctx, s, bw, bh, hairStyle, accessoryColor);
+        // 绘制顺序（从后到前）
+        this._drawBody(pc, cx, costume, parts.gender);
+        this._drawHead(pc, cx, skinColor);
+        this._drawBackHair(pc, cx, hairColor, hairLight, hairStyle, parts.gender);
+        this._drawFace(pc, cx, skinColor, expression);
+        this._drawFrontHair(pc, cx, hairColor, hairLight, hairStyle, parts.gender);
+        if (hasAccessory) {
+            this._drawAccessory(pc, cx, hairStyle, accessoryColor);
         }
+
+        // 黑色描边
+        pc.outline('#1a1a1a');
+
+        // 渲染
+        this.ctx.clearRect(0, 0, this.baseW * this.scale, this.baseH * this.scale);
+        pc.render(this.ctx, this.scale);
     }
 
-    // ====== 绘制像素块工具 ======
-    _pixel(ctx, s, x, y, color) {
-        ctx.fillStyle = color;
-        ctx.fillRect(x * s, y * s, s, s);
+    // 颜色提亮
+    _lighten(hex, percent) {
+        const num = parseInt(hex.replace('#', ''), 16);
+        const r = Math.min(255, (num >> 16) + percent);
+        const g = Math.min(255, ((num >> 8) & 0x00FF) + percent);
+        const b = Math.min(255, (num & 0x0000FF) + percent);
+        return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
     }
 
-    _rect(ctx, s, x, y, w, h, color) {
-        ctx.fillStyle = color;
-        ctx.fillRect(x * s, y * s, w * s, h * s);
-    }
-
-    // ====== 身体 ======
-    _drawBody(ctx, s, bw, bh, skinColor, costume, gender) {
-        const cx = Math.floor(bw / 2);
-        const bodyY = 24;
-
-        // 脖子
-        this._rect(ctx, s, cx - 1, bodyY - 1, 2, 2, skinColor);
-
-        // 身体主体（小）
+    // ====== 身体（极小） ======
+    _drawBody(pc, cx, costume, gender) {
+        const by = 26;
+        // 极小身体，只露出领口和一点点衣服
         if (gender === 'male') {
-            // 男装：直身，宽肩
-            this._rect(ctx, s, cx - 4, bodyY + 1, 8, 6, costume.primary);
-            // 衣领
-            this._rect(ctx, s, cx - 1, bodyY + 1, 2, 2, costume.secondary);
-            // 腰带
-            this._rect(ctx, s, cx - 4, bodyY + 5, 8, 1, costume.trim);
-            // 下摆
-            this._rect(ctx, s, cx - 5, bodyY + 7, 10, 3, costume.primary);
-            this._rect(ctx, s, cx - 4, bodyY + 10, 8, 2, costume.primary);
-            // 袖子
-            this._rect(ctx, s, cx - 6, bodyY + 2, 2, 4, costume.primary);
-            this._rect(ctx, s, cx + 4, bodyY + 2, 2, 4, costume.primary);
+            pc.fillRect(cx - 3, by, 6, 2, costume.primary);
+            pc.fillRect(cx - 4, by + 2, 8, 3, costume.primary);
+            pc.fillRect(cx - 1, by, 2, 2, costume.secondary);
+            pc.fillRect(cx - 3, by + 5, 6, 2, costume.primary);
+            pc.fillRect(cx - 2, by + 7, 4, 2, costume.primary);
         } else {
-            // 女装：略收腰，裙摆
-            this._rect(ctx, s, cx - 3, bodyY + 1, 6, 3, costume.primary);
-            this._rect(ctx, s, cx - 4, bodyY + 4, 8, 3, costume.primary);
-            this._rect(ctx, s, cx - 5, bodyY + 7, 10, 3, costume.primary);
-            this._rect(ctx, s, cx - 4, bodyY + 10, 8, 2, costume.primary);
-            // 衣领
-            this._rect(ctx, s, cx - 1, bodyY + 1, 2, 2, costume.secondary);
-            // 腰带
-            this._rect(ctx, s, cx - 3, bodyY + 4, 6, 1, costume.trim);
-            // 袖子
-            this._rect(ctx, s, cx - 5, bodyY + 2, 2, 3, costume.primary);
-            this._rect(ctx, s, cx + 3, bodyY + 2, 2, 3, costume.primary);
+            pc.fillRect(cx - 3, by, 6, 2, costume.primary);
+            pc.fillRect(cx - 4, by + 2, 8, 3, costume.primary);
+            pc.fillRect(cx - 1, by, 2, 2, costume.secondary);
+            pc.fillRect(cx - 4, by + 5, 8, 2, costume.primary);
+            pc.fillRect(cx - 3, by + 7, 6, 2, costume.primary);
         }
-
-        // 手（小豆豆手）
-        this._pixel(ctx, s, cx - 6, bodyY + 6, skinColor);
-        this._pixel(ctx, s, cx + 5, bodyY + 6, skinColor);
+        // 小手
+        pc.set(cx - 5, by + 3, '#f5e6d3');
+        pc.set(cx + 4, by + 3, '#f5e6d3');
     }
 
     // ====== 头部 ======
-    _drawHead(ctx, s, bw, bh, skinColor) {
-        const cx = Math.floor(bw / 2);
-        const headY = 8;
-
-        // 圆脸主体 14×12
-        for (let y = 0; y < 12; y++) {
-            for (let x = 0; x < 14; x++) {
-                // 圆形裁剪
-                const dx = x - 6.5;
-                const dy = y - 5.5;
-                if (dx * dx + dy * dy < 38) {
-                    this._pixel(ctx, s, cx - 6 + x, headY + y, skinColor);
-                }
-            }
-        }
+    _drawHead(pc, cx, skinColor) {
+        // 大圆头 16×14
+        pc.fillEllipse(cx, 14, 8, 7, skinColor);
     }
 
     // ====== 后发 ======
-    _drawBackHair(ctx, s, bw, bh, hairColor, hairStyle, gender) {
-        const cx = Math.floor(bw / 2);
-        const headY = 8;
-
-        switch (hairStyle) {
-            case 0: // 短发
-                // 头顶和后脑勺
-                for (let y = 0; y < 6; y++) {
-                    for (let x = 0; x < 14; x++) {
-                        const dx = x - 6.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 32) {
-                            this._pixel(ctx, s, cx - 6 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 两侧短发
-                this._rect(ctx, s, cx - 7, headY + 2, 2, 5, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 2, 2, 5, hairColor);
+    _drawBackHair(pc, cx, color, light, style, gender) {
+        const hy = 10;
+        switch (style) {
+            case 0: // 齐耳短发
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 9, hy + 6, 3, 6, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 6, color);
                 break;
-
             case 1: // 中长发
-                for (let y = 0; y < 8; y++) {
-                    for (let x = 0; x < 16; x++) {
-                        const dx = x - 7.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 38) {
-                            this._pixel(ctx, s, cx - 7 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 垂发
-                this._rect(ctx, s, cx - 8, headY + 4, 3, 8, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 4, 3, 8, hairColor);
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 9, hy + 6, 3, 10, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 10, color);
+                // 高光
+                pc.set(cx - 6, hy + 3, light);
+                pc.set(cx - 5, hy + 2, light);
                 break;
-
-            case 2: // 长发
-                for (let y = 0; y < 10; y++) {
-                    for (let x = 0; x < 16; x++) {
-                        const dx = x - 7.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 42) {
-                            this._pixel(ctx, s, cx - 7 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 长垂发
-                this._rect(ctx, s, cx - 8, headY + 4, 3, 14, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 4, 3, 14, hairColor);
-                // 发尾略宽
-                this._rect(ctx, s, cx - 9, headY + 14, 4, 2, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 14, 4, 2, hairColor);
+            case 2: // 长直发
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 9, hy + 6, 3, 16, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 16, color);
+                pc.fillRect(cx - 10, hy + 18, 4, 3, color);
+                pc.fillRect(cx + 6, hy + 18, 4, 3, color);
+                pc.set(cx - 7, hy + 3, light);
+                pc.set(cx - 6, hy + 2, light);
                 break;
-
             case 3: // 双马尾
-                for (let y = 0; y < 7; y++) {
-                    for (let x = 0; x < 14; x++) {
-                        const dx = x - 6.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 34) {
-                            this._pixel(ctx, s, cx - 6 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 双马尾
-                this._rect(ctx, s, cx - 10, headY + 2, 3, 10, hairColor);
-                this._rect(ctx, s, cx - 11, headY + 10, 3, 3, hairColor);
-                this._rect(ctx, s, cx + 7, headY + 2, 3, 10, hairColor);
-                this._rect(ctx, s, cx + 8, headY + 10, 3, 3, hairColor);
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 10, hy + 4, 3, 10, color);
+                pc.fillRect(cx - 11, hy + 12, 3, 4, color);
+                pc.fillRect(cx + 7, hy + 4, 3, 10, color);
+                pc.fillRect(cx + 8, hy + 12, 3, 4, color);
+                pc.set(cx - 8, hy + 3, light);
+                pc.set(cx + 8, hy + 3, light);
                 break;
-
             case 4: // 丸子头
-                for (let y = 0; y < 6; y++) {
-                    for (let x = 0; x < 14; x++) {
-                        const dx = x - 6.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 32) {
-                            this._pixel(ctx, s, cx - 6 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 两侧丸子
-                for (let y = 0; y < 5; y++) {
-                    for (let x = 0; x < 5; x++) {
-                        const dx = x - 2;
-                        const dy = y - 2;
-                        if (dx * dx + dy * dy < 6) {
-                            this._pixel(ctx, s, cx - 9 + x, headY + y - 3, hairColor);
-                            this._pixel(ctx, s, cx + 4 + x, headY + y - 3, hairColor);
-                        }
-                    }
-                }
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillCircle(cx - 7, hy, 3, color);
+                pc.fillCircle(cx + 7, hy, 3, color);
+                pc.set(cx - 8, hy - 1, light);
+                pc.set(cx + 6, hy - 1, light);
                 break;
-
-            case 5: // 单马尾/高马尾
-                for (let y = 0; y < 7; y++) {
-                    for (let x = 0; x < 14; x++) {
-                        const dx = x - 6.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 34) {
-                            this._pixel(ctx, s, cx - 6 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 马尾
-                this._rect(ctx, s, cx - 2, headY - 4, 4, 4, hairColor);
-                this._rect(ctx, s, cx - 1, headY - 8, 2, 6, hairColor);
-                this._rect(ctx, s, cx - 2, headY - 10, 3, 3, hairColor);
+            case 5: // 高马尾
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 2, hy - 6, 4, 5, color);
+                pc.fillRect(cx - 1, hy - 10, 2, 6, color);
+                pc.fillRect(cx - 2, hy - 12, 3, 3, color);
+                pc.set(cx - 1, hy - 11, light);
                 break;
-
-            case 6: // 呆毛
-                for (let y = 0; y < 6; y++) {
-                    for (let x = 0; x < 14; x++) {
-                        const dx = x - 6.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 32) {
-                            this._pixel(ctx, s, cx - 6 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 呆毛
-                this._pixel(ctx, s, cx, headY - 4, hairColor);
-                this._pixel(ctx, s, cx + 1, headY - 5, hairColor);
-                this._pixel(ctx, s, cx + 2, headY - 6, hairColor);
+            case 6: // 侧分长发
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 10, hy + 5, 4, 14, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 6, color);
+                pc.fillRect(cx - 11, hy + 16, 4, 3, color);
+                pc.set(cx - 8, hy + 3, light);
                 break;
-
-            case 7: // 侧分长发
-                for (let y = 0; y < 9; y++) {
-                    for (let x = 0; x < 16; x++) {
-                        const dx = x - 7.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 40) {
-                            this._pixel(ctx, s, cx - 7 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 一侧长发
-                this._rect(ctx, s, cx - 9, headY + 3, 3, 12, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 3, 2, 6, hairColor);
+            case 7: // 蓬松卷发
+                pc.fillEllipse(cx, hy + 4, 10, 9, color);
+                pc.set(cx - 9, hy + 2, color);
+                pc.set(cx + 8, hy + 2, color);
+                pc.set(cx - 9, hy + 6, color);
+                pc.set(cx + 8, hy + 6, color);
+                pc.fillRect(cx - 9, hy + 8, 2, 6, color);
+                pc.fillRect(cx + 7, hy + 8, 2, 6, color);
+                pc.set(cx - 7, hy + 2, light);
+                pc.set(cx + 6, hy + 2, light);
                 break;
-
-            case 8: // 蓬松卷发
-                for (let y = 0; y < 8; y++) {
-                    for (let x = 0; x < 16; x++) {
-                        const dx = x - 7.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 40) {
-                            this._pixel(ctx, s, cx - 7 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 蓬松感
-                this._pixel(ctx, s, cx - 9, headY + 1, hairColor);
-                this._pixel(ctx, s, cx - 9, headY + 3, hairColor);
-                this._pixel(ctx, s, cx + 8, headY + 1, hairColor);
-                this._pixel(ctx, s, cx + 8, headY + 3, hairColor);
-                this._rect(ctx, s, cx - 8, headY + 5, 2, 6, hairColor);
-                this._rect(ctx, s, cx + 6, headY + 5, 2, 6, hairColor);
+            case 8: // 蘑菇头
+                pc.fillEllipse(cx, hy + 4, 10, 8, color);
+                pc.fillRect(cx - 10, hy + 6, 3, 6, color);
+                pc.fillRect(cx + 7, hy + 6, 3, 6, color);
+                pc.set(cx - 7, hy + 3, light);
+                pc.set(cx - 6, hy + 2, light);
                 break;
-
-            case 9: // 齐刘海短发
-                for (let y = 0; y < 6; y++) {
-                    for (let x = 0; x < 14; x++) {
-                        const dx = x - 6.5;
-                        const dy = y - 4;
-                        if (dx * dx + dy * dy < 32) {
-                            this._pixel(ctx, s, cx - 6 + x, headY + y - 2, hairColor);
-                        }
-                    }
-                }
-                // 蘑菇头感
-                this._rect(ctx, s, cx - 7, headY + 2, 2, 6, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 2, 2, 6, hairColor);
-                this._rect(ctx, s, cx - 8, headY + 4, 1, 3, hairColor);
-                this._rect(ctx, s, cx + 7, headY + 4, 1, 3, hairColor);
+            case 9: // 单马尾（侧）
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx + 5, hy + 4, 3, 12, color);
+                pc.fillRect(cx + 6, hy + 14, 3, 4, color);
+                pc.set(cx + 6, hy + 3, light);
+                break;
+            case 10: // 猫耳短发
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 9, hy + 6, 3, 6, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 6, color);
+                // 猫耳
+                pc.set(cx - 6, hy - 2, color);
+                pc.set(cx - 7, hy - 3, color);
+                pc.set(cx - 5, hy - 3, color);
+                pc.set(cx + 5, hy - 2, color);
+                pc.set(cx + 6, hy - 3, color);
+                pc.set(cx + 4, hy - 3, color);
+                break;
+            case 11: // 帽子/兜帽
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 9, hy + 6, 3, 6, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 6, color);
+                // 帽子顶部
+                pc.fillRect(cx - 4, hy - 3, 8, 3, color);
+                pc.fillRect(cx - 3, hy - 5, 6, 3, color);
+                pc.set(cx - 2, hy - 6, color);
+                pc.set(cx + 1, hy - 6, color);
+                break;
+            case 12: // 发带长发
+                pc.fillEllipse(cx, hy + 4, 9, 8, color);
+                pc.fillRect(cx - 9, hy + 6, 3, 12, color);
+                pc.fillRect(cx + 6, hy + 6, 3, 12, color);
+                pc.fillRect(cx - 10, hy + 15, 4, 3, color);
+                pc.fillRect(cx + 6, hy + 15, 4, 3, color);
+                // 发带
+                pc.fillRect(cx - 8, hy + 2, 16, 1, '#DC143C');
+                pc.set(cx - 9, hy + 3, '#DC143C');
+                pc.set(cx + 8, hy + 3, '#DC143C');
                 break;
         }
     }
 
     // ====== 五官 ======
-    _drawFace(ctx, s, bw, bh, eyeColor, expression) {
-        const cx = Math.floor(bw / 2);
-        const headY = 8;
-
-        // 豆豆眼（2×2像素）
-        const eyeY = headY + 6;
-        const eyeOffset = 3;
-
-        // 左眼
-        this._rect(ctx, s, cx - eyeOffset - 1, eyeY, 2, 2, '#1a1a1a');
-        // 右眼
-        this._rect(ctx, s, cx + eyeOffset, eyeY, 2, 2, '#1a1a1a');
-
-        // 眼睛高光（1像素）
-        this._pixel(ctx, s, cx - eyeOffset, eyeY, '#ffffff');
-        this._pixel(ctx, s, cx + eyeOffset + 1, eyeY, '#ffffff');
+    _drawFace(pc, cx, skinColor, expression) {
+        const ey = 14;
+        // 横线眼（参考图风格）
+        pc.set(cx - 4, ey, '#1a1a1a');
+        pc.set(cx - 3, ey, '#1a1a1a');
+        pc.set(cx + 2, ey, '#1a1a1a');
+        pc.set(cx + 3, ey, '#1a1a1a');
 
         // 嘴巴
-        const mouthY = headY + 10;
+        const my = 18;
         switch (expression) {
-            case 0: // 微笑（小弧线）
-                this._pixel(ctx, s, cx - 1, mouthY, '#c04040');
-                this._pixel(ctx, s, cx, mouthY, '#c04040');
-                this._pixel(ctx, s, cx + 1, mouthY, '#c04040');
-                this._pixel(ctx, s, cx - 1, mouthY + 1, '#c04040');
-                this._pixel(ctx, s, cx + 1, mouthY + 1, '#c04040');
+            case 0: // 微笑小弧线
+                pc.set(cx - 1, my, '#c04040');
+                pc.set(cx, my, '#c04040');
+                pc.set(cx + 1, my, '#c04040');
+                pc.set(cx - 1, my + 1, '#c04040');
+                pc.set(cx + 1, my + 1, '#c04040');
                 break;
-            case 1: // 小嘴
-                this._rect(ctx, s, cx - 1, mouthY, 2, 1, '#c04040');
+            case 1: // 小嘴横线
+                pc.set(cx - 1, my, '#c04040');
+                pc.set(cx, my, '#c04040');
+                pc.set(cx + 1, my, '#c04040');
                 break;
-            case 2: // 惊讶O嘴
-                this._rect(ctx, s, cx - 1, mouthY, 2, 2, '#c04040');
-                break;
-            case 3: // 开心大笑
-                this._rect(ctx, s, cx - 2, mouthY, 4, 2, '#c04040');
-                this._pixel(ctx, s, cx - 1, mouthY + 1, '#ffffff');
-                this._pixel(ctx, s, cx, mouthY + 1, '#ffffff');
+            case 2: // 开心大笑
+                pc.set(cx - 2, my, '#c04040');
+                pc.set(cx - 1, my, '#c04040');
+                pc.set(cx, my, '#c04040');
+                pc.set(cx + 1, my, '#c04040');
+                pc.set(cx + 2, my, '#c04040');
+                pc.set(cx - 1, my + 1, '#ffffff');
+                pc.set(cx, my + 1, '#ffffff');
+                pc.set(cx + 1, my + 1, '#ffffff');
                 break;
         }
 
-        // 腮红（粉色2×2）
-        const blushColor = '#ffb6c1';
-        this._rect(ctx, s, cx - 5, headY + 8, 2, 2, blushColor);
-        this._rect(ctx, s, cx + 3, headY + 8, 2, 2, blushColor);
+        // 小腮红
+        pc.set(cx - 6, ey + 2, '#ffb6c1');
+        pc.set(cx - 5, ey + 2, '#ffb6c1');
+        pc.set(cx + 4, ey + 2, '#ffb6c1');
+        pc.set(cx + 5, ey + 2, '#ffb6c1');
     }
 
     // ====== 前发/刘海 ======
-    _drawFrontHair(ctx, s, bw, bh, hairColor, hairStyle, gender) {
-        const cx = Math.floor(bw / 2);
-        const headY = 8;
-
-        switch (hairStyle) {
-            case 0: // 短发刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._pixel(ctx, s, cx - 6, headY + 2, hairColor);
-                this._pixel(ctx, s, cx + 5, headY + 2, hairColor);
+    _drawFrontHair(pc, cx, color, light, style, gender) {
+        const hy = 10;
+        switch (style) {
+            case 0: // 齐刘海
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.set(cx - 7, hy + 4, color);
+                pc.set(cx + 6, hy + 4, color);
+                pc.set(cx - 5, hy + 2, light);
+                pc.set(cx - 4, hy + 2, light);
                 break;
-            case 1: // 中分刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 4, 2, hairColor);
-                this._rect(ctx, s, cx + 1, headY + 1, 4, 2, hairColor);
-                this._pixel(ctx, s, cx, headY + 2, hairColor);
+            case 1: // 中分
+                pc.fillRect(cx - 6, hy + 3, 5, 2, color);
+                pc.fillRect(cx + 1, hy + 3, 5, 2, color);
+                pc.set(cx, hy + 4, color);
+                pc.set(cx - 5, hy + 2, light);
+                pc.set(cx + 3, hy + 2, light);
                 break;
             case 2: // 长刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._rect(ctx, s, cx - 6, headY + 2, 2, 4, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 2, 4, hairColor);
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 4, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 4, color);
+                pc.set(cx - 5, hy + 2, light);
                 break;
             case 3: // 双马尾刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._rect(ctx, s, cx - 6, headY + 2, 2, 3, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 2, 3, hairColor);
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 3, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 3, color);
+                pc.set(cx - 5, hy + 2, light);
                 break;
             case 4: // 丸子头刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._rect(ctx, s, cx - 6, headY + 2, 2, 2, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 2, 2, hairColor);
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 2, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 2, color);
+                pc.set(cx - 4, hy + 2, light);
                 break;
             case 5: // 高马尾刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._rect(ctx, s, cx - 6, headY + 2, 2, 3, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 2, 3, hairColor);
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 3, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 3, color);
+                pc.set(cx - 5, hy + 2, light);
                 break;
-            case 6: // 呆毛刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._rect(ctx, s, cx - 6, headY + 2, 2, 2, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 2, 2, hairColor);
+            case 6: // 侧分刘海
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 5, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 2, color);
+                pc.set(cx - 5, hy + 2, light);
                 break;
-            case 7: // 侧分刘海
-                this._rect(ctx, s, cx - 5, headY + 1, 10, 2, hairColor);
-                this._rect(ctx, s, cx - 6, headY + 2, 2, 5, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 2, 2, hairColor);
+            case 7: // 蓬松刘海
+                pc.fillRect(cx - 7, hy + 3, 14, 2, color);
+                pc.fillRect(cx - 8, hy + 4, 3, 3, color);
+                pc.fillRect(cx + 5, hy + 4, 3, 3, color);
+                pc.set(cx - 6, hy + 2, light);
+                pc.set(cx + 4, hy + 2, light);
                 break;
-            case 8: // 蓬松刘海
-                this._rect(ctx, s, cx - 6, headY + 1, 12, 2, hairColor);
-                this._rect(ctx, s, cx - 7, headY + 2, 3, 3, hairColor);
-                this._rect(ctx, s, cx + 4, headY + 2, 3, 3, hairColor);
+            case 8: // 蘑菇头刘海
+                pc.fillRect(cx - 7, hy + 3, 14, 2, color);
+                pc.fillRect(cx - 8, hy + 4, 2, 3, color);
+                pc.fillRect(cx + 6, hy + 4, 2, 3, color);
+                pc.set(cx - 5, hy + 2, light);
+                pc.set(cx - 4, hy + 2, light);
                 break;
-            case 9: // 齐刘海
-                this._rect(ctx, s, cx - 6, headY + 1, 12, 2, hairColor);
-                this._rect(ctx, s, cx - 7, headY + 2, 2, 3, hairColor);
-                this._rect(ctx, s, cx + 5, headY + 2, 2, 3, hairColor);
+            case 9: // 单马尾刘海
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 3, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 3, color);
+                pc.set(cx - 4, hy + 2, light);
+                break;
+            case 10: // 猫耳刘海
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 3, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 3, color);
+                pc.set(cx - 4, hy + 2, light);
+                break;
+            case 11: // 帽子刘海
+                pc.fillRect(cx - 5, hy + 3, 10, 2, color);
+                pc.set(cx - 6, hy + 4, color);
+                pc.set(cx + 5, hy + 4, color);
+                break;
+            case 12: // 发带刘海
+                pc.fillRect(cx - 6, hy + 3, 12, 2, color);
+                pc.fillRect(cx - 7, hy + 4, 2, 3, color);
+                pc.fillRect(cx + 5, hy + 4, 2, 3, color);
+                pc.set(cx - 4, hy + 2, light);
                 break;
         }
     }
 
     // ====== 发饰 ======
-    _drawHairAccessory(ctx, s, bw, bh, hairStyle, color) {
-        const cx = Math.floor(bw / 2);
-        const headY = 8;
-
-        switch (hairStyle) {
-            case 0: // 短发 - 小发夹
-                this._pixel(ctx, s, cx - 4, headY, color);
-                this._pixel(ctx, s, cx - 3, headY + 1, color);
+    _drawAccessory(pc, cx, style, color) {
+        const hy = 10;
+        switch (style) {
+            case 0: // 小发夹
+                pc.set(cx - 5, hy + 1, color);
+                pc.set(cx - 4, hy + 2, color);
                 break;
-            case 1: // 中长发 - 侧边花
-                this._rect(ctx, s, cx + 4, headY + 1, 2, 2, color);
-                this._pixel(ctx, s, cx + 5, headY, color);
+            case 1: // 侧边花
+                pc.set(cx + 5, hy + 2, color);
+                pc.set(cx + 6, hy + 1, color);
+                pc.set(cx + 6, hy + 3, color);
                 break;
-            case 2: // 长发 - 发带
-                this._rect(ctx, s, cx - 5, headY - 1, 10, 1, color);
-                this._pixel(ctx, s, cx - 6, headY, color);
-                this._pixel(ctx, s, cx + 5, headY, color);
+            case 2: // 发带蝴蝶结
+                pc.set(cx - 7, hy + 1, color);
+                pc.set(cx - 8, hy + 2, color);
+                pc.set(cx - 6, hy + 2, color);
+                pc.set(cx + 6, hy + 1, color);
+                pc.set(cx + 7, hy + 2, color);
+                pc.set(cx + 5, hy + 2, color);
                 break;
-            case 3: // 双马尾 - 蝴蝶结
-                this._pixel(ctx, s, cx - 8, headY + 1, color);
-                this._rect(ctx, s, cx - 9, headY + 2, 3, 1, color);
-                this._pixel(ctx, s, cx + 7, headY + 1, color);
-                this._rect(ctx, s, cx + 6, headY + 2, 3, 1, color);
+            case 3: // 蝴蝶结
+                pc.set(cx - 8, hy + 2, color);
+                pc.set(cx - 9, hy + 3, color);
+                pc.set(cx - 7, hy + 3, color);
+                pc.set(cx + 7, hy + 2, color);
+                pc.set(cx + 8, hy + 3, color);
+                pc.set(cx + 6, hy + 3, color);
                 break;
-            case 4: // 丸子头 - 珠子
-                this._pixel(ctx, s, cx - 7, headY - 2, color);
-                this._pixel(ctx, s, cx + 6, headY - 2, color);
+            case 4: // 珠子
+                pc.set(cx - 8, hy - 1, color);
+                pc.set(cx + 7, hy - 1, color);
                 break;
-            case 5: // 高马尾 - 发圈
-                this._rect(ctx, s, cx - 2, headY - 3, 4, 1, color);
+            case 5: // 发圈
+                pc.fillRect(cx - 2, hy - 4, 4, 1, color);
                 break;
-            case 6: // 呆毛 - 小星星
-                this._pixel(ctx, s, cx + 3, headY - 4, color);
+            case 6: // 发簪
+                pc.set(cx + 4, hy - 1, color);
+                pc.set(cx + 4, hy - 2, color);
+                pc.set(cx + 4, hy - 3, color);
                 break;
-            case 7: // 侧分 - 发簪
-                this._rect(ctx, s, cx + 3, headY - 2, 1, 4, color);
-                this._pixel(ctx, s, cx + 3, headY - 3, color);
+            case 7: // 小皇冠
+                pc.set(cx - 3, hy - 1, color);
+                pc.set(cx - 1, hy - 2, color);
+                pc.set(cx + 1, hy - 2, color);
+                pc.set(cx + 3, hy - 1, color);
                 break;
-            case 8: // 蓬松 - 小皇冠
-                this._rect(ctx, s, cx - 2, headY - 2, 4, 1, color);
-                this._pixel(ctx, s, cx - 3, headY - 1, color);
-                this._pixel(ctx, s, cx + 2, headY - 1, color);
+            case 8: // 发卡
+                pc.set(cx - 3, hy + 1, color);
+                pc.set(cx - 2, hy + 1, color);
+                pc.set(cx - 1, hy + 1, color);
                 break;
-            case 9: // 齐刘海 - 发卡
-                this._rect(ctx, s, cx - 2, headY - 1, 4, 1, color);
+            case 9: // 花
+                pc.set(cx + 5, hy + 2, color);
+                pc.set(cx + 6, hy + 1, color);
+                pc.set(cx + 6, hy + 3, color);
+                pc.set(cx + 7, hy + 2, color);
+                break;
+            case 10: // 铃铛
+                pc.set(cx - 5, hy + 1, color);
+                break;
+            case 11: // 帽子装饰
+                pc.set(cx, hy - 4, color);
+                break;
+            case 12: // 流苏
+                pc.set(cx - 8, hy + 4, color);
+                pc.set(cx - 8, hy + 5, color);
+                pc.set(cx + 7, hy + 4, color);
+                pc.set(cx + 7, hy + 5, color);
                 break;
         }
     }
