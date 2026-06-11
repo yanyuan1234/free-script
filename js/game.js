@@ -1299,7 +1299,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 【多角色叙事指导】当场景中有多个NPC时自动注入（来自蛾摩拉预设的智慧）
             // 只在当前场景确实有多个活跃角色时注入，避免对所有世界都触发
             var _activeCharCount = 0;
-            if (gameState.worldSnapshot && gameState.worldSnapshot.characters) {
+            if (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters) {
                 // 统计当前场景中活跃的角色（有最近互动记录的）
                 gameState.worldSnapshot.characters.forEach(function(c) {
                     // 有好感度或关系描述的角色视为活跃
@@ -4622,6 +4622,7 @@ function renderNpcPage() {
 }
 // --- NPC详情弹窗 ---
 function openNpcDetail(name) {
+    if (!gameState || !gameState.allCharacters) return;
     var c = gameState.allCharacters[name];
     if (!c) return;
 
