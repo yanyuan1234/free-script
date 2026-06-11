@@ -47,6 +47,14 @@ async function initApp() {
         // 绑定事件
         bindEvents();
 
+        // 设置菜单顶部日期为当天
+        try {
+            var now = new Date();
+            var dateStr = (now.getMonth() + 1) + '/' + now.getDate();
+            var dateEl = document.getElementById('menuTopDate');
+            if (dateEl) dateEl.textContent = dateStr;
+        } catch(e) {}
+
         // 触发事件：APP_READY（应用启动完成）
         if (typeof TavernHelperCompat !== 'undefined') {
             TavernHelperCompat.emit('APP_READY', {
