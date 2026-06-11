@@ -127,7 +127,7 @@ function getCompactSetupForSubFunction() {
             return '【设定（AI摘要）】\n' + layers.worldSummary;
         }
     }
-    var rawSetup = gameState.userPrompt || '';
+    var rawSetup = (gameState && gameState.userPrompt) || '';
     return rawSetup;
 }
 
@@ -385,8 +385,8 @@ function buildSystemPrompt(includeFormatRules) {
     }
 
     // 【修复A P1-4】对用户可控输入进行清理，防止prompt injection
-    var _safeUserPrompt = _sanitizePromptInput(gameState.userPrompt);
-    var _safeCustomStyle = _sanitizePromptInput(gameState.customStyle);
+    var _safeUserPrompt = _sanitizePromptInput(gameState && gameState.userPrompt);
+    var _safeCustomStyle = _sanitizePromptInput(gameState && gameState.customStyle);
 
     // 设定分层注入（Lorebook风格：核心常驻+按需加载）
     var _setupText = _safeUserPrompt;
@@ -408,8 +408,8 @@ function buildSystemPrompt(includeFormatRules) {
     // 【注意】格式锚点是游戏运行的硬性要求（不是"默认设置"），必须始终存在
     // 即使酒馆预设不知道JSON格式，AI也必须输出JSON，否则前端无法解析
     var _formatAnchor = '';
-    var _maxTokensForAnchor = gameState.maxTokens || 4096;
-    var _hasChoicesForAnchor = gameState.generateChoices;
+    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || 4096;
+    var _hasChoicesForAnchor = gameState && gameState.generateChoices;
     // 检测当前是否有预设——内置预设的main prompt已包含格式说明，不需要重复注入
     var _hasNativePreset = false;
     if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
@@ -432,7 +432,7 @@ function buildSystemPrompt(includeFormatRules) {
 ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
     }
 
-    var _maxTokens = gameState.maxTokens || 4096;
+    var _maxTokens = (gameState && gameState.maxTokens) || 4096;
     var _terms = getCurrentWorldTerms();
     var _termsPrompt = buildWorldTermsPrompt(_terms);
     // 安全取术语，null 时用通用词
@@ -602,7 +602,7 @@ if (_origStartBtn) {
     }, true);
 }
 function buildProtagonistPrompt() {
-    var mc = gameState.protagonistSetup;
+    var mc = gameState ? gameState.protagonistSetup : null;
     if (!mc || Object.keys(mc).length === 0) return '';
     var lines = ['【主角设定】'];
     if (mc.mcName) lines.push('姓名: ' + mc.mcName);
@@ -617,7 +617,7 @@ function buildProtagonistPrompt() {
     lines.push('主角是玩家操控的角色——player字段对应主角信息，characters字段对应NPC。');
     // 主角身份可能从三处出现：① 表单字段（这里）② 世界描述（player/identity 字段）③ 记忆系统（pcIdentity）
     // 告诉 AI 这三处应该是同一份信息，冲突时按权威度判断
-    var hasUserPrompt = gameState.userPrompt && gameState.userPrompt.length > 200;
+    var hasUserPrompt = gameState && gameState.userPrompt && gameState.userPrompt.length > 200;
     var hasMemoryIdentity = typeof EnhancedMemory !== 'undefined'
         && EnhancedMemory.permanentFacts
         && EnhancedMemory.permanentFacts.pcIdentity
@@ -794,7 +794,7 @@ function injectPresetGlobalVars() {
     }
     
     // === 文风选择（来自果实预设的梦境风味系统） ===
-    var writingStyle = config.writingStyle || gameState.writingStyle || '';
+    var writingStyle = config.writingStyle || (gameState && gameState.writingStyle) || '';
     if (writingStyle) {
         var styleMap = {
             'baimiao': '此乃【白描之梦】\n- 禁止使用多个形容词叠加描述，但也要避免说明书化和平铺直叙，应当体现文学的美感\n- 由动词、名称主宰\n- 克制用词，不走极端，禁止使用"极其/极度/极为"等表达\n- 温和、克制、谨慎地塑造',
@@ -808,7 +808,7 @@ function injectPresetGlobalVars() {
     }
 
     // === 思维链模式（来自蛾摩拉预设的COT控制） ===
-    var cotMode = gameState.cotMode || '';
+    var cotMode = (gameState && gameState.cotMode) || '';
     if (cotMode === 'enabled') {
         MacroEngine.setGlobalVar('起始标签', '<thinking>');
     } else {
@@ -816,16 +816,16 @@ function injectPresetGlobalVars() {
     }
 
     // 注入其他常用的酒馆宏变量
-    if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', gameState.playerName || '玩家');
+    if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', (gameState && gameState.playerName) || '玩家');
     if (!MacroEngine.getGlobalVar('char')) MacroEngine.setGlobalVar('char', (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色');
-    MacroEngine.setGlobalVar('original', gameState._lastOriginalContent || '');
+    MacroEngine.setGlobalVar('original', (gameState && gameState._lastOriginalContent) || '');
     
     // === 象牙塔预设需要的额外变量 ===
     // user_input: 用户最新输入内容
     var lastUserInput = '';
-    var history = gameState.conversationHistory || [];
+    var history = (gameState && gameState.conversationHistory) || [];
     for (var i = history.length - 1; i >= 0; i--) {
-        if (history[i].role === 'user') {
+        if (history[i] && history[i].role === 'user') {
             lastUserInput = history[i].content || '';
             break;
         }
@@ -933,8 +933,10 @@ function applyParamPreset(preset) {
     if (elMaxTokens) elMaxTokens.value = p.max_tokens;
 
     // 同步到gameState
-    gameState.temperature = p.temperature;
-    gameState.maxTokens = p.max_tokens;
+    if (gameState) {
+        gameState.temperature = p.temperature;
+        gameState.maxTokens = p.max_tokens;
+    }
 
     // 同步到PresetManager（参数统一由预设管理器控制）
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
@@ -995,14 +997,18 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 但不需要完整的聊天历史和世界书注入
         if (isInit) {
             // 【修复】isInit 也应用预设提示词
-            gameState._depthPrompts = {};
-            gameState._positionPrompts = {};
-            gameState._afterChatPrompts = [];
+            if (gameState) {
+                gameState._depthPrompts = {};
+                gameState._positionPrompts = {};
+                gameState._afterChatPrompts = [];
+            }
             // 【修复】isInit 也执行世界书扫描，让开局场景能使用世界书设定
             // 【P1性能优化】走统一入口，自动写入缓存供后续主路径复用
             try {
                 var _initWI = getWorldInfoInjection();
-                gameState._wiPositionTexts = (typeof _initWI === 'object' && _initWI !== null && _initWI.positionTexts) ? _initWI.positionTexts : null;
+                if (gameState) {
+                    gameState._wiPositionTexts = (typeof _initWI === 'object' && _initWI !== null && _initWI.positionTexts) ? _initWI.positionTexts : null;
+                }
             } catch(e) {
                 console.warn('[isInit] 世界书扫描失败:', e);
             }
@@ -1011,7 +1017,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (initPreset) {
                     PresetManager._applyPromptsToSystemPrompt(initPreset);
                     // 同步更新 conversationHistory 中的系统提示词
-                    if (gameState.conversationHistory.length > 0 && gameState.conversationHistory[0].role === 'system') {
+                    if (gameState.conversationHistory && gameState.conversationHistory.length > 0 && gameState.conversationHistory[0].role === 'system') {
                         gameState.conversationHistory[0].content = gameState.systemPrompt;
                     }
                 }
@@ -1021,20 +1027,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 构建isInit消息列表（含世界书position注入和世界快照）
             messages = [];
             // 主系统提示词
-            if (gameState._useSysprompt !== false) {
+            if (gameState && gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState.systemPrompt && gameState.systemPrompt.trim()) {
+            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
                 messages.push({ role: 'user', content: gameState.systemPrompt });
             }
             // 世界书position注入（与主路径一致的depth 0-5）
-            var _initWIPos = gameState._wiPositionTexts || null;
-            var _initPosPrompts = gameState._positionPrompts || {};
+            var _initWIPos = (gameState && gameState._wiPositionTexts) || null;
+            var _initPosPrompts = (gameState && gameState._positionPrompts) || {};
             if (_initWIPos && _initWIPos.beforeChar) messages.push({ role: 'system', content: '【世界知识库】\n' + _initWIPos.beforeChar.join('\n') });
             if (_initPosPrompts['0']) messages.push({ role: 'system', content: _initPosPrompts['0'].join('\n\n') });
             if (_initWIPos && _initWIPos.afterChar) messages.push({ role: 'system', content: '【世界知识库】\n' + _initWIPos.afterChar.join('\n') });
             if (_initPosPrompts['1']) messages.push({ role: 'system', content: _initPosPrompts['1'].join('\n\n') });
             // 世界快照（开局时通常为空，但读档重开时可能有数据）
-            if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
+            if (gameState && gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
                 var _initSnapText = '【世界快照】\n';
                 var _initSnap = gameState.worldSnapshot;
                 if (_initSnap.player) {
@@ -1045,7 +1051,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (_initSnapText.length > 10) messages.push({ role: 'system', content: _initSnapText });
             }
             // 聊天历史（跳过旧的system消息，避免重复）
-            var _initHistory = gameState.conversationHistory.slice(1);
+            var _initHistory = (gameState.conversationHistory || []).slice(1);
             messages = messages.concat(_initHistory);
             // 当前用户消息
             messages.push({ role: 'user', content: userMessage });
@@ -1056,37 +1062,41 @@ async function sendAIRequest(userMessage, isInit = false) {
             try {
                 var rebuiltPrompt;
                 // 清空之前的世界书depth prompts（避免累积）
-                gameState._depthPrompts = {};
-                gameState._positionPrompts = {};
-                gameState._afterChatPrompts = [];
+                if (gameState) {
+                    gameState._depthPrompts = {};
+                    gameState._positionPrompts = {};
+                    gameState._afterChatPrompts = [];
+                }
 
                 // 【优化】先执行一次世界书扫描，缓存结果避免重复扫描
                 // 【P1性能优化】走统一入口，按 totalTurns 失效
                 var _cachedWI = getWorldInfoInjection();
-                gameState._wiPositionTexts = (_cachedWI && _cachedWI.positionTexts) ? _cachedWI.positionTexts : null;
+                if (gameState) {
+                    gameState._wiPositionTexts = (_cachedWI && _cachedWI.positionTexts) ? _cachedWI.positionTexts : null;
+                }
 
                 if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
                     var currentPreset = PresetManager.presets[PresetManager.currentPresetIndex];
                     if (currentPreset) {
                         PresetManager._applyPromptsToSystemPrompt(currentPreset);
-                        rebuiltPrompt = gameState.systemPrompt;
+                        if (gameState) rebuiltPrompt = gameState.systemPrompt;
                     }
                 } else {
                     rebuiltPrompt = buildSystemPrompt();
                 }
-                gameState.systemPrompt = rebuiltPrompt;
-                if (gameState.conversationHistory.length > 0 && gameState.conversationHistory[0].role === 'system') {
+                if (gameState) gameState.systemPrompt = rebuiltPrompt;
+                if (gameState && gameState.conversationHistory && gameState.conversationHistory.length > 0 && gameState.conversationHistory[0].role === 'system') {
                     gameState.conversationHistory[0].content = rebuiltPrompt;
                 }
             } catch(e) {
                 console.warn('[修复] 重建系统提示词失败:', e);
             }
 
-            var recent = gameState.conversationHistory.slice(1).slice(-MAX_HISTORY);
+            var recent = (gameState.conversationHistory || []).slice(1).slice(-MAX_HISTORY);
 
             // 【月读智慧】摘要阈值：超过此轮数的旧对话只发送摘要，节省token
             // 来自月读预设的"6楼外只发摘要"策略
-            var summaryThreshold = gameState.summaryThreshold || 0;
+            var summaryThreshold = (gameState && gameState.summaryThreshold) || 0;
             if (summaryThreshold > 0 && recent.length > summaryThreshold * 2) {
                 // 保留最近N轮的完整对话，旧对话用摘要替代
                 var keepCount = summaryThreshold * 2; // 每轮=1 user + 1 assistant
@@ -1099,8 +1109,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             // 2. 获取世界书分组数据
-            var wiPositionTexts = gameState._wiPositionTexts || null;
-            var positionPrompts = gameState._positionPrompts || {};
+            var wiPositionTexts = (gameState && gameState._wiPositionTexts) || null;
+            var positionPrompts = (gameState && gameState._positionPrompts) || {};
 
             // 3. 按酒馆标准顺序构建消息列表
             messages = [];
@@ -1111,7 +1121,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
             // 【防429模式】在系统提示词前注入随机噪声（来自果实预设的智慧）
             // 部分API会对系统提示词进行内容审查，随机噪声可以降低触发概率
-            if (gameState.anti429Mode) {
+            if (gameState && gameState.anti429Mode) {
                 var noisePool = ['⚙️⚙️⚙️','λ-calc','##$$%%','v_tensor','!#FF00','<<∅>>','//ignore','μ-808','HALT','EXECUTE','##!!~~','(e^πi)','CRC32','β_decay','ψ-state','||END||','量子纠缠','&&&**','@SYS_null'];
                 var noise1 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
                 var noise2 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
@@ -1119,9 +1129,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 messages.push({ role: 'system', content: '[Cortex_Init]⚡\n#latent_seed_λx9b42🌀→//ENTROPY_BURST\n' + noise1 + '::' + noise2 + '::' + noise3 + '\n##START##\n⚡INIT_END⚡' });
             }
 
-            if (gameState._useSysprompt !== false) {
+            if (gameState && gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState.systemPrompt && gameState.systemPrompt.trim()) {
+            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
                 // use_sysprompt=false：内容不丢弃，改为 user 角色发送
                 messages.push({ role: 'user', content: gameState.systemPrompt });
             }
@@ -1130,7 +1140,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 【可配置顺序】默认世界书在前（酒馆常规行为），部分预设期望预设在前
             // 通过 gameState._wiFirst 控制：true(默认)=世界书在前；false=预设在世界书前面
             function mergePositionContent(wiTexts, presetTexts) {
-                var wiFirst = gameState._wiFirst !== false; // 默认为 true
+                var wiFirst = gameState && gameState._wiFirst !== false; // 默认为 true
                 var wiBlock = (wiTexts && wiTexts.length > 0) ? ('【世界知识库】\n' + wiTexts.join('\n')) : null;
                 var presetBlock = null;
                 if (presetTexts && presetTexts.length > 0) {
@@ -1191,7 +1201,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 游戏状态快照（按次计费：注入完整数据，让AI掌握更多剧情信息）
             // 【去重优化】增强记忆已注入角色状态/物品/事件/任务时，世界快照跳过这些重复部分
-            if (gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
+            if (gameState && gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
                 var _hasMemInjection = (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection);
                 var snapshotText = '【世界快照】\n';
                 var snap = gameState.worldSnapshot;
@@ -1278,7 +1288,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             // 重要事件记录：增强记忆的"重要事件"层已覆盖，跳过以节省token
-            if (!(typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) && gameState.keyEvents && gameState.keyEvents.length > 0) {
+            if (!(typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) && gameState && gameState.keyEvents && gameState.keyEvents.length > 0) {
                 var eventsText = '【过往事件】\n';
                 gameState.keyEvents.forEach(function(evt, idx) {
                     eventsText += (idx + 1) + '. ' + evt + '\n';
@@ -1302,7 +1312,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
 
             // 远期摘要
-            if (gameState.rollingSummary) {
+            if (gameState && gameState.rollingSummary) {
                 messages.push({
                     role: 'system',
                     content: '【前情摘要】\n' + gameState.rollingSummary
@@ -1317,8 +1327,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 在聊天历史尾部、用户消息之前注入可自定义的提示词
             // 作用：让玩家可以在每轮对话中微调AI的行为，而不需要修改整个系统提示词
             // 例如："请侧重描写殷允的心理活动" 或 "这章要出现一个新角色"
-            var authorsNote = gameState.authorsNote || '';
-            var authorsNoteDepth = gameState.authorsNoteDepth || 0; // 默认0=紧贴用户消息前
+            var authorsNote = (gameState && gameState.authorsNote) || '';
+            var authorsNoteDepth = (gameState && gameState.authorsNoteDepth) || 0; // 默认0=紧贴用户消息前
             if (authorsNote) {
                 var anMessage = { role: 'system', content: '【作者备注】\n' + authorsNote };
                 if (authorsNoteDepth > 0 && authorsNoteDepth < messages.length) {
@@ -1336,11 +1346,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             messages.push({ role: 'user', content: userMessage });
 
             // 深度注入提示词 (depth >= 6) - 从聊天历史末尾计算位置（与酒馆一致）
-            if (gameState._depthPrompts && Object.keys(gameState._depthPrompts).length > 0) {
+            if (gameState && gameState._depthPrompts && Object.keys(gameState._depthPrompts).length > 0) {
                 var macroEnvForDepth = {
-                    user: gameState.playerName || '玩家',
-                    char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
-                    original: gameState._lastOriginalContent || ''
+                    user: (gameState && gameState.playerName) || '玩家',
+                    char: (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
+                    original: (gameState && gameState._lastOriginalContent) || ''
                 };
 
                 // 按depth从大到小排序，先插入大depth（靠近末尾），避免位置偏移
@@ -1381,7 +1391,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // squash_system_messages 支持（在深度注入之后执行，确保所有system消息都被合并）
         // 果实预设要求将所有相邻的 system 消息合并为一条
-        if (gameState._squashSystemMessages === true) {
+        if (gameState && gameState._squashSystemMessages === true) {
             var squashed = [];
             for (var si = 0; si < messages.length; si++) {
                 if (messages[si].role === 'system' && squashed.length > 0 && squashed[squashed.length - 1].role === 'system') {
@@ -1395,7 +1405,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 注入 impersonation_prompt（用户人设）
         // 酒馆中 impersonation_prompt 被插入到最后一条 assistant 消息之后
-        if (gameState._impersonationPrompt && gameState._impersonationPrompt.trim()) {
+        if (gameState && gameState._impersonationPrompt && gameState._impersonationPrompt.trim()) {
             // 找到最后一条 assistant 消息的位置，在其后插入
             var lastAssistantIdx = -1;
             for (var _impIdx = messages.length - 1; _impIdx >= 0; _impIdx--) {
@@ -1461,11 +1471,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         });
         // names_behavior: 根据预设设置在消息前添加角色名
-        var namesBehavior = gameState._namesBehavior || 0;
+        var namesBehavior = (gameState && gameState._namesBehavior) || 0;
         if (namesBehavior === 1 || namesBehavior === 2) {
             var charName = (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) 
                 ? gameState.worldSnapshot.characters[0].name : 'AI';
-            var userName = gameState.playerName || '玩家';
+            var userName = (gameState && gameState.playerName) || '玩家';
             messages.forEach(function(msg) {
                 if (msg.role === 'assistant' && typeof msg.content === 'string' && !msg.content.startsWith(charName)) {
                     msg.content = charName + ': ' + msg.content;
@@ -1484,15 +1494,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // 注入越狱提示词（放在聊天历史之后、用户最新消息之前）
-        if (gameState._jailbreakPrompt && gameState._jailbreakPrompt.trim()) {
+        if (gameState && gameState._jailbreakPrompt && gameState._jailbreakPrompt.trim()) {
             messages.splice(messages.length - 1, 0, {
-                role: gameState._jailbreakRole || 'system',
+                role: (gameState && gameState._jailbreakRole) || 'system',
                 content: gameState._jailbreakPrompt
             });
         }
         // 注入 afterChat 提示词（放在聊天历史之后、越狱之后）
         // 用于每轮都提醒AI的关键信息（如格式要求、角色状态等）
-        if (Array.isArray(gameState._afterChatPrompts) && gameState._afterChatPrompts.length > 0) {
+        if (gameState && Array.isArray(gameState._afterChatPrompts) && gameState._afterChatPrompts.length > 0) {
             gameState._afterChatPrompts.forEach(function(acp) {
                 if (acp && acp.content && acp.content.trim()) {
                     messages.splice(messages.length - 1, 0, {
@@ -1503,7 +1513,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             });
         }
         // 注入 assistant 角色的 prompt（以 assistant 角色注入）
-        if (gameState._assistantPrompt && gameState._assistantPrompt.trim()) {
+        if (gameState && gameState._assistantPrompt && gameState._assistantPrompt.trim()) {
             messages.splice(messages.length - 1, 0, {
                 role: 'assistant',
                 content: gameState._assistantPrompt
@@ -1512,20 +1522,20 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 【酒馆兼容】assistant_prefill：在消息末尾追加一个assistant消息
         // 某些模型（如Gemini）需要prefill来引导输出格式
-        if (gameState._assistantPrefill && gameState._assistantPrefill.trim()) {
+        if (gameState && gameState._assistantPrefill && gameState._assistantPrefill.trim()) {
             messages.push({ role: 'assistant', content: gameState._assistantPrefill });
         }
 
         // 【酒馆兼容】continue_prefill：继续生成时追加assistant消息引导输出
         // 与 assistant_prefill 不同：assistant_prefill 每次请求都生效，continue_prefill 只在"继续生成"时生效
-        if (gameState._continuePrefill && gameState._continuePrefill.trim()) {
+        if (gameState && gameState._continuePrefill && gameState._continuePrefill.trim()) {
             messages.push({ role: 'assistant', content: gameState._continuePrefill });
         }
 
         // 【酒馆特性】智能上下文管理
         // 自动计算当前消息的token数，如果接近上下文窗口上限，从最旧的聊天消息开始移除
         // 保留系统消息和固定消息，只移除普通的user/assistant历史消息
-        var contextSize = gameState.contextSize || 8000;
+        var contextSize = (gameState && gameState.contextSize) || 8000;
         var reservedForOutput = Math.floor(contextSize * 0.15); // 留15%给输出
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessages(messages);
@@ -1556,8 +1566,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
         var options = {
-            stream: gameState.useStream,
-            temperature: gameState.temperature != null ? gameState.temperature : 0.8,
+            stream: gameState && gameState.useStream,
+            temperature: (gameState && gameState.temperature != null) ? gameState.temperature : 0.8,
             onChunk: function(delta, fullText) {
                 onStreamChunk(delta, fullText);
             }
@@ -1576,9 +1586,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 记录输入token数（按次计费玩家需要知道每次请求用了多少上下文）
         // 复用上方裁剪后的 currentTokens，不再重复计算
         var inputTokens = currentTokens;
-        gameState._lastInputTokens = inputTokens;
-        gameState._lastContextUsage = Math.round(inputTokens / contextSize * 100);
-        console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + gameState._lastContextUsage + '%)');
+        if (gameState) {
+            gameState._lastInputTokens = inputTokens;
+            gameState._lastContextUsage = Math.round(inputTokens / contextSize * 100);
+        }
+        console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + (gameState && gameState._lastContextUsage) + '%)');
 
         try {
             response = await callAI(messages, options);
@@ -1619,9 +1631,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (cotMatches.length > 0) {
             cleanStoryText = storyText.replace(cotRegex, '').trim();
             // 保存原始内容（含COT）供 {{original}} 宏使用
-            gameState._lastOriginalContent = storyText;
+            if (gameState) gameState._lastOriginalContent = storyText;
             // 保存COT内容供调试查看
-            gameState._lastCotContent = cotMatches.join('\n---\n');
+            if (gameState) gameState._lastCotContent = cotMatches.join('\n---\n');
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
         }
         // 用清理后的文本替换storyText
@@ -1646,10 +1658,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.title || data.scene) {
                 updateSceneTitle(data.title || data.scene);
                 // 保存到gameState，确保读档后能恢复
-                gameState._lastSceneTitle = data.title || data.scene;
+                if (gameState) gameState._lastSceneTitle = data.title || data.scene;
             }
             // 保存HUD数据到gameState，确保读档后能恢复
-            if (data.hud) {
+            if (data.hud && gameState) {
                 gameState._lastHUD = data.hud;
             }
             // 兜底：就算AI没返回characters，也尝试从原文提取
@@ -1691,22 +1703,28 @@ async function sendAIRequest(userMessage, isInit = false) {
             try { AchievementSystem.checkAchievements(); } catch (e) {}
         }
             // === 货币系统 ===
-            if (data.currency !== undefined) gameState.currency = data.currency;
-            if (data.currencyName) gameState.currencyName = data.currencyName;
+            if (gameState) {
+                if (data.currency !== undefined) gameState.currency = data.currency;
+                if (data.currencyName) gameState.currencyName = data.currencyName;
+            }
             // === 新增：提取并累积重要事件 ===
             if (data.keyEvents && Array.isArray(data.keyEvents)) {
-                if (!gameState.keyEvents) gameState.keyEvents = [];
-                data.keyEvents.forEach(function(evt) {
-                    if (evt && typeof evt === 'string' && evt.trim().length > 0) {
-                        // 去重：trim后匹配，避免空格差异导致重复
-                        if (!gameState.keyEvents.includes(evt.trim())) {
-                            gameState.keyEvents.push(evt.trim());
+                if (!gameState || !gameState.keyEvents) {
+                    if (gameState) gameState.keyEvents = [];
+                }
+                if (gameState) {
+                    data.keyEvents.forEach(function(evt) {
+                        if (evt && typeof evt === 'string' && evt.trim().length > 0) {
+                            // 去重：trim后匹配，避免空格差异导致重复
+                            if (!gameState.keyEvents.includes(evt.trim())) {
+                                gameState.keyEvents.push(evt.trim());
+                            }
                         }
+                    });
+                    // 上限30条，防止占太多token
+                    if (gameState.keyEvents.length > 30) {
+                        gameState.keyEvents = gameState.keyEvents.slice(-30);
                     }
-                });
-                // 上限30条，防止占太多token
-                if (gameState.keyEvents.length > 30) {
-                    gameState.keyEvents = gameState.keyEvents.slice(-30);
                 }
                 // 【数据联通】同步推送到权威源 gm.events
                 if (typeof _pushKeyEventsToGM === 'function') {
@@ -1720,17 +1738,17 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.player) snapshot.player = data.player;
             if (data.hud) snapshot.hud = data.hud;
             if (data.bag) snapshot.bag = data.bag;
-            if (gameState.currentQuests && gameState.currentQuests.length > 0) {
+            if (gameState && gameState.currentQuests && gameState.currentQuests.length > 0) {
                 snapshot.quests = gameState.currentQuests;
             }
             // 从累积的allCharacters取最新NPC列表
             // 【数据联通】gameState.allCharacters 已是 gm.tables.characters 的别名
-            if (!gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
+            if (!gameState || !gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
                 // 旧存档/首次开局：建立别名（不清空，保留权威源已有数据）
                 if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
             }
-            var charKeys = Object.keys(gameState.allCharacters || {});
-            if (charKeys.length > 0) {
+            var charKeys = Object.keys((gameState && gameState.allCharacters) || {});
+            if (charKeys.length > 0 && gameState) {
                 snapshot.characters = charKeys.map(function(key) {
                     var c = gameState.allCharacters[key];
                     return {
@@ -1741,31 +1759,33 @@ async function sendAIRequest(userMessage, isInit = false) {
                     };
                 });
             }
-            if (Object.keys(snapshot).length > 0) {
+            if (Object.keys(snapshot).length > 0 && gameState) {
                 gameState.worldSnapshot = snapshot;
             }
         }
         // 处理NPC主动消息
         if (data && data.npcMessages && Array.isArray(data.npcMessages) && data.npcMessages.length > 0) {
-            if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
-            data.npcMessages.forEach(function(msg) {
-                if (msg.from && msg.text) {
-                    if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-                    gameState._chattedNpcs[msg.from] = true;
-                    if (!gameState._chatLogs[msg.from]) gameState._chatLogs[msg.from] = [];
-                    gameState._chatLogs[msg.from].push({
-                        role: 'npc',
-                        text: msg.text,
-                        time: new Date().toLocaleTimeString()
-                    });
-                    // 【性能优化】限制每个NPC聊天记录最多 50 条，防止长会话内存泄漏
-                    if (gameState._chatLogs[msg.from].length > 50) {
-                        gameState._chatLogs[msg.from] = gameState._chatLogs[msg.from].slice(-50);
+            if (gameState) {
+                if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
+                data.npcMessages.forEach(function(msg) {
+                    if (msg.from && msg.text) {
+                        if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
+                        gameState._chattedNpcs[msg.from] = true;
+                        if (!gameState._chatLogs[msg.from]) gameState._chatLogs[msg.from] = [];
+                        gameState._chatLogs[msg.from].push({
+                            role: 'npc',
+                            text: msg.text,
+                            time: new Date().toLocaleTimeString()
+                        });
+                        // 【性能优化】限制每个NPC聊天记录最多 50 条，防止长会话内存泄漏
+                        if (gameState._chatLogs[msg.from].length > 50) {
+                            gameState._chatLogs[msg.from] = gameState._chatLogs[msg.from].slice(-50);
+                        }
+                        showNpcMessageNotification(msg.from, msg.text);
                     }
-                    showNpcMessageNotification(msg.from, msg.text);
-                }
-            });
-            safeAutoSave();
+                });
+                safeAutoSave();
+            }
         }
         // 刷新通知中心红点
         // 剧情推入打字机
@@ -1805,6 +1825,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // storyHistory 已合并到 conversationHistory，不再单独存储
         
         // 更新统计数据
+        if (!gameState) return;
         if (!gameState._stats) gameState._stats = {};
         gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
         var currentTokens = response ? Math.round(response.length * 1.5) : 0;
@@ -1840,7 +1861,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 兜底选项
         if (!data || !data.choices) {
-            if (gameState.generateChoices !== false) {
+            if (gameState && gameState.generateChoices !== false) {
                 var rescuedChoices = extractObjArr(response, 'choices') || extractArr(response,
                     'choices');
                 if (rescuedChoices && rescuedChoices.length > 0) {
@@ -1863,15 +1884,17 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 存历史（存储清理后的story文本，减少token浪费）
         var historyAssistantContent = storyText || response;
-        gameState.conversationHistory.push({
-            role: 'user',
-            content: userMessage
-        }, {
-            role: 'assistant',
-            content: historyAssistantContent
-        });
+        if (gameState && gameState.conversationHistory) {
+            gameState.conversationHistory.push({
+                role: 'user',
+                content: userMessage
+            }, {
+                role: 'assistant',
+                content: historyAssistantContent
+            });
+        }
         // 对话历史上限200条，防止内存和token膨胀
-        if (gameState.conversationHistory.length > 200) {
+        if (gameState && gameState.conversationHistory && gameState.conversationHistory.length > 200) {
             // 保留第一条system消息 + 最近198条
             var systemMsg = gameState.conversationHistory[0] && gameState.conversationHistory[0].role === 'system'
                 ? [gameState.conversationHistory[0]] : [];
@@ -1947,8 +1970,8 @@ function updateTokenCount(currentResponseLength) {
     }
 
     // 智能压缩检查
-    if (gameState.autoCompress !== false && !isCompressing && !isWaiting && typeof EnhancedMemory !== 'undefined') {
-        var triggerResult = EnhancedMemory.shouldTriggerCompression(estimated, gameState.maxTokens);
+        if (gameState && gameState.autoCompress !== false && !isCompressing && !isWaiting && typeof EnhancedMemory !== 'undefined') {
+        var triggerResult = EnhancedMemory.shouldTriggerCompression(estimated, (gameState && gameState.maxTokens) || 4096);
         if (triggerResult.shouldCompress) {
             var cooldownMs = (EnhancedMemory.compressionConfig.cooldownMinutes || 5) * 60 * 1000;
             if (Date.now() - (window.lastCompressTime || 0) > cooldownMs) {
@@ -2229,8 +2252,8 @@ async function autoCompressContext() {
     var _origCurrentAbort = window._currentAbort;
     window._currentAbort = _compressAbort;
     try {
-        var sys = gameState.conversationHistory[0];
-        var rest = gameState.conversationHistory.slice(1);
+        var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
+        var rest = gameState.conversationHistory ? gameState.conversationHistory.slice(1) : [];
         // 过滤掉之前注入的L2/L3/L4 system消息，只保留真正的对话
         var dialogOnly = rest.filter(function(m) {
             if (m.role === 'system') {
@@ -2287,17 +2310,17 @@ async function manualCompress(btn) {
     var _origCurrentAbort = window._currentAbort;
     window._currentAbort = _compressAbort;
     try {
-        var msgCount = gameState.conversationHistory.filter(function(m) {
+        var msgCount = (gameState && gameState.conversationHistory) ? gameState.conversationHistory.filter(function(m) {
             return m.role !== 'system';
-        }).length;
+        }).length : 0;
         if (msgCount <= 30) {
             UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于30条才有意义）');
             return;
         }
         var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近30条原文，确定吗？');
         if (!ok) return;
-        var sys = gameState.conversationHistory[0];
-        var rest = gameState.conversationHistory.slice(1);
+        var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
+        var rest = gameState.conversationHistory ? gameState.conversationHistory.slice(1) : [];
         var keep = rest.slice(-30);
         var removed = rest.slice(0, -30);
         // 【酒馆特性】消息Pinning：固定消息不被压缩
@@ -2805,7 +2828,7 @@ function mergeCharacters(chars) {
     }
     // 获取主角名
     var playerName = '';
-    if (gameState.playerData && gameState.playerData.name) {
+    if (gameState && gameState.playerData && gameState.playerData.name) {
         playerName = gameState.playerData.name;
     }
     chars.forEach(function(c) {
@@ -2818,17 +2841,17 @@ function mergeCharacters(chars) {
         // 严格匹配：只清理括号备注
         var cleanName = c.name.replace(/[（(].*?[）)]/g, '').trim();
         var existingKey = null;
-        Object.keys(gameState.allCharacters).forEach(function(key) {
+        Object.keys((gameState && gameState.allCharacters) || {}).forEach(function(key) {
             var cleanKey = key.replace(/[（(].*?[）)]/g, '').trim();
             if (cleanKey === cleanName) {
                 existingKey = key;
             }
         });
         if (existingKey && existingKey !== c.name) {
-            delete gameState.allCharacters[existingKey];
+            if (gameState && gameState.allCharacters) delete gameState.allCharacters[existingKey];
         }
         // ★ 合并而非覆盖：AI返回了什么就更新什么，没返回的保留
-        var existing = gameState.allCharacters[c.name];
+        var existing = gameState && gameState.allCharacters ? gameState.allCharacters[c.name] : undefined;
         if (existing) {
             if (c.title) existing.title = c.title;
             if (c.relation) existing.relation = c.relation;
@@ -2836,7 +2859,7 @@ function mergeCharacters(chars) {
             if (c.desc) existing.desc = c.desc;
             if (c.details) existing.details = c.details;
         } else {
-            gameState.allCharacters[c.name] = c;
+            if (gameState && gameState.allCharacters) gameState.allCharacters[c.name] = c;
         }
     });
     renderNpcList();
@@ -2892,12 +2915,12 @@ function buildSaveData(customName) {
             totalPlayTime: 0
         };
     }
-    if (gameState._stats.startTime) {
+    if (gameState && gameState._stats && gameState._stats.startTime) {
         gameState._stats.totalPlayTime += Date.now() - gameState._stats.startTime;
         gameState._stats.startTime = Date.now();
     }
     // 确保版本号正确
-    gameState._version = GAME_VERSION;
+    if (gameState) gameState._version = GAME_VERSION;
 
     // 打包记忆数据到存档中，确保存档包含完整游戏数据
     var memoryData = null;
@@ -2918,11 +2941,11 @@ function buildSaveData(customName) {
     }
 
     return {
-        name: customName || (gameState.userPrompt || '').substring(0, 20) || '未命名存档',
-        prompt: gameState.userPrompt || '',
+        name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
+        prompt: (gameState && gameState.userPrompt) || '',
         time: new Date().toLocaleString(),
         version: GAME_VERSION,
-        state: JSON.stringify(gameState),
+        state: gameState ? JSON.stringify(gameState) : '{}',
         memoryData: memoryData ? JSON.stringify(memoryData) : null
     };
 }
@@ -2978,13 +3001,16 @@ async function loadFromSlot(slot) {
         }
         
         // Fix Issue 43: Merge instead of replace to preserve runtime references
+        if (!gameState) { gameState = {}; }
         Object.keys(parsed).forEach(function(k) { gameState[k] = parsed[k]; });
         
         // 读档后重置临时字段，防止旧数据残留
-        gameState._depthPrompts = {};
-        gameState._positionPrompts = {};
-        gameState._afterChatPrompts = [];
-        gameState._wiCachedResult = null;
+        if (gameState) {
+            gameState._depthPrompts = {};
+            gameState._positionPrompts = {};
+            gameState._afterChatPrompts = [];
+            gameState._wiCachedResult = null;
+        }
         // 重置世界书轮次追踪器，防止cooldown/delay状态异常
         if (typeof WorldInfo !== 'undefined') {
             WorldInfo._turnTracker = {};
@@ -2992,84 +3018,78 @@ async function loadFromSlot(slot) {
         }
         
         // 确保版本号更新
-        gameState._version = GAME_VERSION;
+        if (gameState) gameState._version = GAME_VERSION;
         
         // 兼容旧存档缺少的字段
-        if (!gameState.pinnedModules) gameState.pinnedModules = {};
-        if (!gameState.rollingSummary) gameState.rollingSummary = '';
-        if (!gameState.allCharacters) gameState.allCharacters = {};
-        if (!gameState.keyEvents) gameState.keyEvents = [];
-        if (!gameState.worldSnapshot) gameState.worldSnapshot = {};
-        if (!gameState.currentQuests) gameState.currentQuests = [];
-        if (!gameState.relationships) gameState.relationships = [];
-        if (!gameState.currentBag) gameState.currentBag = [];
-        // 【数据联通】建立权威源 → 视图的别名与同步
-        if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
-        if (gameState.playerData === undefined) gameState.playerData = null;
-        if (!gameState.favStories) gameState.favStories = [];
-        if (!gameState.generatedNovel) gameState.generatedNovel = '';
-        if (!gameState.conversationHistory) gameState.conversationHistory = [];
-        if (typeof gameState.autoCompress === 'undefined') gameState.autoCompress = true;
-        if (typeof gameState.useStream === 'undefined') gameState.useStream = true;
-        if (typeof gameState.temperature === 'undefined') gameState.temperature = 0.8;
-        if (typeof gameState.fontSize === 'undefined') gameState.fontSize = 16;
-        if (typeof gameState.generateChoices === 'undefined') gameState.generateChoices = true;
-        if (!gameState.protagonistSetup) gameState.protagonistSetup = {};
-        
-        // 兼容新字段
-        if (!gameState._presetApps) gameState._presetApps = {};
-        if (!gameState._stats) {
-            gameState._stats = {
-                startTime: Date.now(),
-                totalTurns: (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length,
-                totalTokens: 0,
-                maxTokensInTurn: 0,
-                totalCharacters: Object.keys(gameState.allCharacters || {}).length,
-                completedQuests: 0,
-                totalPlayTime: 0
-            };
-        } else {
-            // 重置开始时间
-            gameState._stats.startTime = Date.now();
-            // 补全可能缺失的子字段
-            if (typeof gameState._stats.totalTurns === 'undefined') gameState._stats.totalTurns = 0;
-            if (typeof gameState._stats.totalTokens === 'undefined') gameState._stats.totalTokens = 0;
-            if (typeof gameState._stats.maxTokensInTurn === 'undefined') gameState._stats.maxTokensInTurn = 0;
-            if (typeof gameState._stats.totalCharacters === 'undefined') gameState._stats.totalCharacters = 0;
-            if (typeof gameState._stats.completedQuests === 'undefined') gameState._stats.completedQuests = 0;
-            if (typeof gameState._stats.totalPlayTime === 'undefined') gameState._stats.totalPlayTime = 0;
+        if (gameState) {
+            if (!gameState.pinnedModules) gameState.pinnedModules = {};
+            if (!gameState.rollingSummary) gameState.rollingSummary = '';
+            if (!gameState.allCharacters) gameState.allCharacters = {};
+            if (!gameState.keyEvents) gameState.keyEvents = [];
+            if (!gameState.worldSnapshot) gameState.worldSnapshot = {};
+            if (!gameState.currentQuests) gameState.currentQuests = [];
+            if (!gameState.relationships) gameState.relationships = [];
+            if (!gameState.currentBag) gameState.currentBag = [];
+            if (gameState.playerData === undefined) gameState.playerData = null;
+            if (!gameState.favStories) gameState.favStories = [];
+            if (!gameState.generatedNovel) gameState.generatedNovel = '';
+            if (!gameState.conversationHistory) gameState.conversationHistory = [];
+            if (typeof gameState.autoCompress === 'undefined') gameState.autoCompress = true;
+            if (typeof gameState.useStream === 'undefined') gameState.useStream = true;
+            if (typeof gameState.temperature === 'undefined') gameState.temperature = 0.8;
+            if (typeof gameState.fontSize === 'undefined') gameState.fontSize = 16;
+            if (typeof gameState.generateChoices === 'undefined') gameState.generateChoices = true;
+            if (!gameState.protagonistSetup) gameState.protagonistSetup = {};
+            if (!gameState._presetApps) gameState._presetApps = {};
+            if (!gameState._stats) {
+                gameState._stats = {
+                    startTime: Date.now(),
+                    totalTurns: (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length,
+                    totalTokens: 0,
+                    maxTokensInTurn: 0,
+                    totalCharacters: Object.keys(gameState.allCharacters || {}).length,
+                    completedQuests: 0,
+                    totalPlayTime: 0
+                };
+            } else {
+                gameState._stats.startTime = Date.now();
+                if (typeof gameState._stats.totalTurns === 'undefined') gameState._stats.totalTurns = 0;
+                if (typeof gameState._stats.totalTokens === 'undefined') gameState._stats.totalTokens = 0;
+                if (typeof gameState._stats.maxTokensInTurn === 'undefined') gameState._stats.maxTokensInTurn = 0;
+                if (typeof gameState._stats.totalCharacters === 'undefined') gameState._stats.totalCharacters = 0;
+                if (typeof gameState._stats.completedQuests === 'undefined') gameState._stats.completedQuests = 0;
+                if (typeof gameState._stats.totalPlayTime === 'undefined') gameState._stats.totalPlayTime = 0;
+            }
+            if (!gameState._undoHistory) gameState._undoHistory = [];
+            if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+            if (!Array.isArray(gameState._moments)) gameState._moments = [];
+            if (!gameState._npcDiaries) gameState._npcDiaries = {};
+            if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
+            if (!gameState._chatLogs) gameState._chatLogs = {};
+            if (!gameState._mail) gameState._mail = [];
+            if (!gameState._diary) gameState._diary = [];
+            if (typeof gameState.userPrompt === 'undefined') gameState.userPrompt = '';
+            if (typeof gameState.customStyle === 'undefined') gameState.customStyle = '';
+            if (typeof gameState.systemPrompt === 'undefined') gameState.systemPrompt = '';
+            if (typeof gameState.tokenCount === 'undefined') gameState.tokenCount = 0;
+            if (typeof gameState.maxTokens === 'undefined') gameState.maxTokens = 80000;
         }
-        if (!gameState._undoHistory) gameState._undoHistory = [];
-
-        // 兼容日志相关字段（确保日志数据不会丢失）
-        if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-        if (!Array.isArray(gameState._moments)) gameState._moments = [];
-        if (!gameState._npcDiaries) gameState._npcDiaries = {};
-        if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-        if (!gameState._chatLogs) gameState._chatLogs = {};
-        if (!gameState._mail) gameState._mail = [];
-        if (!gameState._diary) gameState._diary = [];
-
-        // 兼容其他遗漏字段
-        if (typeof gameState.userPrompt === 'undefined') gameState.userPrompt = '';
-        if (typeof gameState.customStyle === 'undefined') gameState.customStyle = '';
-        if (typeof gameState.systemPrompt === 'undefined') gameState.systemPrompt = '';
-        if (typeof gameState.tokenCount === 'undefined') gameState.tokenCount = 0;
-        if (typeof gameState.maxTokens === 'undefined') gameState.maxTokens = 80000;
-        if (typeof gameState.streamFailCount === 'undefined') gameState.streamFailCount = 0;
-        if (!gameState.gameTime) gameState.gameTime = {date: '', time: '', period: '', weather: '', era: ''};
-        if (typeof gameState._jailbreakPrompt === 'undefined') gameState._jailbreakPrompt = '';
-        if (typeof gameState._assistantPrompt === 'undefined') gameState._assistantPrompt = '';
-        if (typeof gameState._MAX_UNDO_HISTORY === 'undefined') gameState._MAX_UNDO_HISTORY = 50;
-        if (!gameState.wordCountConfig) {
-            gameState.wordCountConfig = {
-                enabled: true, min: 1500, max: 3000,
-                paragraphMin: 15, paragraphMax: 17,
-                paragraphStyle: 'medium', lengthPreset: 'medium'
-            };
+        if (gameState) {
+            if (typeof gameState.streamFailCount === 'undefined') gameState.streamFailCount = 0;
+            if (!gameState.gameTime) gameState.gameTime = {date: '', time: '', period: '', weather: '', era: ''};
+            if (typeof gameState._jailbreakPrompt === 'undefined') gameState._jailbreakPrompt = '';
+            if (typeof gameState._assistantPrompt === 'undefined') gameState._assistantPrompt = '';
+            if (typeof gameState._MAX_UNDO_HISTORY === 'undefined') gameState._MAX_UNDO_HISTORY = 50;
+            if (!gameState.wordCountConfig) {
+                gameState.wordCountConfig = {
+                    enabled: true, min: 1500, max: 3000,
+                    paragraphMin: 15, paragraphMax: 17,
+                    paragraphStyle: 'medium', lengthPreset: 'medium'
+                };
+            }
+            if (!gameState._theaterContent) gameState._theaterContent = {};
+            if (gameState._lastAIReply === undefined) gameState._lastAIReply = null;
         }
-        if (!gameState._theaterContent) gameState._theaterContent = {};
-        if (gameState._lastAIReply === undefined) gameState._lastAIReply = null;
 
         // 恢复记忆数据（从存档中还原EnhancedMemory）
         if (data.memoryData) {
@@ -3099,7 +3119,7 @@ async function loadFromSlot(slot) {
         // 触发事件：CHAT_CHANGED（切换聊天）
         if (typeof TavernHelperCompat !== 'undefined') {
             TavernHelperCompat.emit('CHAT_CHANGED', {
-                chatId: gameState.saveKey || slot || 'default',
+                chatId: (gameState && gameState.saveKey) || slot || 'default',
                 timestamp: Date.now()
             });
         }
@@ -3248,8 +3268,8 @@ function safeLoadSlot(slot) {
 
 // 显示游戏统计面板
 function showGameStats() {
-    var stats = gameState._stats || {};
-    
+    var stats = (gameState && gameState._stats) || {};
+
     // 格式化时间
     function formatTime(ms) {
         if (!ms || ms < 1000) return '0秒';
@@ -3262,7 +3282,7 @@ function showGameStats() {
         if (minutes > 0) return minutes + '分' + (seconds % 60) + '秒';
         return seconds + '秒';
     }
-    
+
     // 格式化数字
     function formatNum(n) {
         if (!n) return '0';
@@ -3270,46 +3290,46 @@ function showGameStats() {
         if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
         return n.toString();
     }
-    
+
     // 计算当前游戏时长
     var currentPlayTime = stats.totalPlayTime || 0;
     if (stats.startTime) {
         currentPlayTime += Date.now() - stats.startTime;
     }
-    
+
     // 更新显示
     var playTimeEl = document.getElementById('statPlayTime');
     if (playTimeEl) playTimeEl.textContent = formatTime(currentPlayTime);
-    
+
     var totalTurnsEl = document.getElementById('statTotalTurns');
-    if (totalTurnsEl) totalTurnsEl.textContent = formatNum(stats.totalTurns || (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length || 0);
-    
+    if (totalTurnsEl) totalTurnsEl.textContent = formatNum(stats.totalTurns || ((gameState && gameState.conversationHistory) || []).filter(m => m.role === 'assistant').length || 0);
+
     var totalTokensEl = document.getElementById('statTotalTokens');
-    if (totalTokensEl) totalTokensEl.textContent = formatNum(stats.totalTokens || gameState.tokenCount || 0);
-    
+    if (totalTokensEl) totalTokensEl.textContent = formatNum(stats.totalTokens || (gameState && gameState.tokenCount) || 0);
+
     var maxTokensEl = document.getElementById('statMaxTokens');
     if (maxTokensEl) maxTokensEl.textContent = formatNum(stats.maxTokensInTurn || 0);
-    
+
     var totalCharsEl = document.getElementById('statTotalCharacters');
     if (totalCharsEl) totalCharsEl.textContent = formatNum(stats.totalCharacters || 0);
-    
+
     var currentCharsEl = document.getElementById('statCurrentCharacters');
-    if (currentCharsEl) currentCharsEl.textContent = formatNum(Object.keys(gameState.allCharacters || {}).length);
-    
+    if (currentCharsEl) currentCharsEl.textContent = formatNum(Object.keys((gameState && gameState.allCharacters) || {}).length);
+
     var completedQuestsEl = document.getElementById('statCompletedQuests');
     if (completedQuestsEl) completedQuestsEl.textContent = formatNum(stats.completedQuests || 0);
-    
+
     var currentQuestsEl = document.getElementById('statCurrentQuests');
-    if (currentQuestsEl) currentQuestsEl.textContent = formatNum((gameState.currentQuests || []).length);
-    
+    if (currentQuestsEl) currentQuestsEl.textContent = formatNum(((gameState && gameState.currentQuests) || []).length);
+
     var keyEventsEl = document.getElementById('statKeyEvents');
-    if (keyEventsEl) keyEventsEl.textContent = formatNum((gameState.keyEvents || []).length);
-    
+    if (keyEventsEl) keyEventsEl.textContent = formatNum(((gameState && gameState.keyEvents) || []).length);
+
     var versionEl = document.getElementById('statGameVersion');
     if (versionEl) versionEl.textContent = GAME_VERSION;
-    
+
     var saveEl = document.getElementById('statCurrentSave');
-    if (saveEl) saveEl.textContent = (gameState.userPrompt || '').substring(0, 15) || '-';
+    if (saveEl) saveEl.textContent = ((gameState && gameState.userPrompt) || '').substring(0, 15) || '-';
     
     UI.showModal('statsModal');
 }
@@ -3645,16 +3665,18 @@ function openNpcChat(name) {
         UI.hideModal('npcDetailModal');
     } catch (e) {}
     npcChatState.npcName = name;
-    if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
-    npcChatState.chatHistory = gameState._chatLogs[name] ? gameState._chatLogs[name].slice() : [];
+    if (gameState && (!gameState._chatLogs || Array.isArray(gameState._chatLogs))) gameState._chatLogs = {};
+    npcChatState.chatHistory = (gameState && gameState._chatLogs && gameState._chatLogs[name]) ? gameState._chatLogs[name].slice() : [];
     npcChatState.isSending = false;
         npcChatState.abortController = null; // 重置NPC聊天的AbortController
-    if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-    gameState._chattedNpcs[name] = true;
+    if (gameState) {
+        if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
+        gameState._chattedNpcs[name] = true;
+    }
     // 【优化】打开聊天时标记该 NPC 的消息为已读
-    if (gameState._notifSeenSnapshot) {
+    if (gameState && gameState._notifSeenSnapshot) {
         if (!gameState._notifSeenSnapshot.chat) gameState._notifSeenSnapshot.chat = {};
-        var npcSent = (gameState._chatLogs[name] || []).filter(function(m) {
+        var npcSent = ((gameState._chatLogs && gameState._chatLogs[name]) || []).filter(function(m) {
             if (!m) return false;
             if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
             return (m.text || '').trim();
@@ -3670,7 +3692,7 @@ function openNpcChat(name) {
         console.warn('npcChatModal not found');
         return;
     }
-    var remark = (gameState._chatRemarks && gameState._chatRemarks[name]) || name;
+    var remark = (gameState && gameState._chatRemarks && gameState._chatRemarks[name]) || name;
     titleEl.textContent = '与「' + remark + '」对话';
     msgsEl.innerHTML = '';
     choicesEl.innerHTML = '';
@@ -3761,7 +3783,7 @@ function toggleChatMenu() {
 }
 function editChatRemark() {
     var name = npcChatState.npcName;
-    var currentRemark = (gameState._chatRemarks && gameState._chatRemarks[name]) || '';
+    var currentRemark = (gameState && gameState._chatRemarks && gameState._chatRemarks[name]) || '';
     var menu = document.getElementById('chatMenuPanel');
     if (menu) menu.remove();
     var header = document.querySelector('.chat-detail-header');
@@ -3788,11 +3810,13 @@ function editChatRemark() {
     };
     document.getElementById('remarkSave').onclick = function() {
         var val = inp.value.trim();
-        if (!gameState._chatRemarks) gameState._chatRemarks = {};
-        if (val) {
-            gameState._chatRemarks[name] = val;
-        } else {
-            delete gameState._chatRemarks[name];
+        if (gameState) {
+            if (!gameState._chatRemarks) gameState._chatRemarks = {};
+            if (val) {
+                gameState._chatRemarks[name] = val;
+            } else {
+                delete gameState._chatRemarks[name];
+            }
         }
         autoSave();
         var titleEl = document.getElementById('npcChatTitle');
@@ -3844,8 +3868,10 @@ function changeNpcAvatar() {
                 ctx.drawImage(img, 0, 0, w, h);
                 var compressedData = canvas.toDataURL('image/jpeg', 0.8);
                 
-                if (!gameState._npcAvatars) gameState._npcAvatars = {};
-                gameState._npcAvatars[name] = compressedData;
+                if (gameState) {
+                    if (!gameState._npcAvatars) gameState._npcAvatars = {};
+                    gameState._npcAvatars[name] = compressedData;
+                }
                 autoSave();
                 var avatars = document.querySelectorAll(
                 '.chat-message:not(.self) .chat-message-avatar');
@@ -3864,12 +3890,14 @@ function changeNpcAvatar() {
 }
 function blockNpc() {
     var name = npcChatState.npcName;
-    if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
-    if (gameState._blockedNpcs[name]) {
-        gameState._blockedNpcs[name] = false;
-        autoSave();
-        UI.toast('已取消拉黑「' + name + '」');
-        return;
+    if (gameState) {
+        if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
+        if (gameState._blockedNpcs[name]) {
+            gameState._blockedNpcs[name] = false;
+            autoSave();
+            UI.toast('已取消拉黑「' + name + '」');
+            return;
+        }
     }
     var menu = document.getElementById('chatMenuPanel');
     if (menu) menu.remove();
@@ -3889,7 +3917,10 @@ function blockNpc() {
         panel.remove();
     };
     document.getElementById('blockConfirm').onclick = function() {
-        gameState._blockedNpcs[name] = true;
+        if (gameState) {
+            if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
+            gameState._blockedNpcs[name] = true;
+        }
         autoSave();
         panel.remove();
         closeNpcChat();
@@ -3915,8 +3946,10 @@ function deleteNpcChat() {
         panel.remove();
     };
     document.getElementById('delConfirm').onclick = function() {
-        if (gameState._chatLogs) delete gameState._chatLogs[name];
-        if (gameState._chattedNpcs) delete gameState._chattedNpcs[name];
+        if (gameState) {
+            if (gameState._chatLogs) delete gameState._chatLogs[name];
+            if (gameState._chattedNpcs) delete gameState._chattedNpcs[name];
+        }
         autoSave();
         panel.remove();
         closeNpcChat();
@@ -3936,17 +3969,17 @@ function renderEmojiPanel() {
     var panel = document.getElementById('emojiPanel');
     if (!panel) return;
     panel.innerHTML = '';
-    if (!gameState._customEmojis) gameState._customEmojis = ['[笑脸]', '[大哭]', '[怒]', '[晕]', '[偷笑]', '[吃瓜]',
+    if (gameState && !gameState._customEmojis) gameState._customEmojis = ['[笑脸]', '[大哭]', '[怒]', '[晕]', '[偷笑]', '[吃瓜]',
         '[暗中观察]', '[狗头]', '[抱抱]', '[白眼]'
     ];
-    if (gameState._customEmojis.length === 0) {
+    if (gameState && gameState._customEmojis && gameState._customEmojis.length === 0) {
         var hint = document.createElement('div');
         hint.className = 'empty-state';
         hint.style.cssText = 'width:100%;padding:16px 0';
         hint.textContent = '还没有表情，点击 + 添加';
         panel.appendChild(hint);
     } else {
-        gameState._customEmojis.forEach(function(e, i) {
+        (gameState._customEmojis || []).forEach(function(e, i) {
             var item = document.createElement('span');
             item.className = 'emoji-item';
             item.style.position = 'relative';
@@ -3998,7 +4031,7 @@ function renderEmojiPanel() {
             var val = inp.value.trim();
             if (!val) return;
             var emoji = '[' + val + ']';
-            if (gameState._customEmojis.indexOf(emoji) === -1) {
+            if (gameState && gameState._customEmojis && gameState._customEmojis.indexOf(emoji) === -1) {
                 gameState._customEmojis.push(emoji);
                 autoSave();
             }
@@ -4164,8 +4197,10 @@ function addNpcChatBubble(role, text, skipPush) {
         if (npcChatState.chatHistory.length > 100) {
             npcChatState.chatHistory = npcChatState.chatHistory.slice(-50);
         }
-        if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
-        gameState._chatLogs[npcChatState.npcName] = npcChatState.chatHistory.slice();
+        if (gameState) {
+            if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
+            gameState._chatLogs[npcChatState.npcName] = npcChatState.chatHistory.slice();
+        }
         // 自动保存聊天记录
         safeAutoSave();
     }
@@ -4238,7 +4273,7 @@ async function requestNpcReply(playerText) {
             }
         }
         // 加上剧情背景
-        if (gameState.rollingSummary) {
+        if (gameState && gameState.rollingSummary) {
             systemMsg += '\n【剧情背景】\n' + gameState.rollingSummary + '\n';
         }
         // 【提示词重设计】从「9条硬性规则」改为「角色感+引导」
@@ -4346,7 +4381,7 @@ async function requestNpcReply(playerText) {
         });
         // 好感度可能变化，更新到allCharacters（别名 → 自动同步到 gm.tables.characters）
         if (parsed && parsed.favorability !== undefined) {
-            if (gameState.allCharacters[name]) {
+            if (gameState && gameState.allCharacters && gameState.allCharacters[name]) {
                 gameState.allCharacters[name].favorability = parsed.favorability;
                 // 【数据联通】触发记忆页/回顾页等所有依赖页面刷新
                 if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
@@ -4450,16 +4485,18 @@ function saveNpcEdit() {
         });
     }
     if (npcEditingName && npcEditingName !== name) {
-        delete gameState.allCharacters[npcEditingName];
+        if (gameState && gameState.allCharacters) delete gameState.allCharacters[npcEditingName];
     }
-    gameState.allCharacters[name] = {
-        name: name,
-        title: title,
-        relation: relation,
-        favorability: favor,
-        desc: desc,
-        details: details
-    };
+    if (gameState && gameState.allCharacters) {
+        gameState.allCharacters[name] = {
+            name: name,
+            title: title,
+            relation: relation,
+            favorability: favor,
+            desc: desc,
+            details: details
+        };
+    }
     // 注入到对话历史让AI记住
     var injectText = '【系统提示：玩家更新了角色「' + name + '」的设定】\n' + '姓名: ' + name + '\n' + (title ? '身份: ' + title +
         '\n' : '') + (relation ? '关系: ' + relation + '\n' : '') + '好感度: ' + favor + '\n' + (desc ?
@@ -4470,7 +4507,7 @@ function saveNpcEdit() {
         }).join('\n') + '\n';
     }
     injectText += '请在后续剧情中按照以上设定来描写该角色。';
-    if (gameState.conversationHistory && gameState.conversationHistory.length > 0) {
+    if (gameState && gameState.conversationHistory && gameState.conversationHistory.length > 0) {
         gameState.conversationHistory.push({
             role: 'user',
             content: injectText
@@ -4499,8 +4536,8 @@ function renderNpcList() {
 }
 function renderNpcPage() {
     // 确保 allCharacters 已初始化
-    if (!gameState.allCharacters) gameState.allCharacters = {};
-    var chars = Object.values(gameState.allCharacters || {});
+    if (gameState && !gameState.allCharacters) gameState.allCharacters = {};
+    var chars = Object.values((gameState && gameState.allCharacters) || {});
     var container = document.getElementById('characterList');
     if (!container) return;
     if (chars.length === 0) {

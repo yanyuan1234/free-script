@@ -40,7 +40,7 @@ var TavernHelperCompat = {
 
     // 获取角色信息
     var character = {};
-    if (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) {
+    if (typeof gameState !== 'undefined' && gameState && gameState.worldSnapshot && Array.isArray(gameState.worldSnapshot.characters) && gameState.worldSnapshot.characters.length > 0) {
         var char = gameState.worldSnapshot.characters[0];
         character = {
             name: char.name || '角色',
@@ -63,21 +63,21 @@ var TavernHelperCompat = {
         // 核心聊天数据
         chat: chat,
         // 角色列表
-        characters: (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters) ? gameState.worldSnapshot.characters : [],
+        characters: (typeof gameState !== 'undefined' && gameState && gameState.worldSnapshot && Array.isArray(gameState.worldSnapshot.characters)) ? gameState.worldSnapshot.characters : [],
         // 当前角色ID
         characterId: 0,
         // 聊天ID
-        chatId: gameState && gameState.saveKey ? gameState.saveKey : 'default',
+        chatId: (typeof gameState !== 'undefined' && gameState && gameState.saveKey) ? gameState.saveKey : 'default',
         // 群组ID（如果支持群组）
         groupId: null,
         // 角色名（AI）
         name1: character.name || '角色',
         // 玩家名
-        name2: (gameState && gameState.playerName) || '玩家',
+        name2: (typeof gameState !== 'undefined' && gameState && gameState.playerName) || '玩家',
         // 角色卡完整数据
         characterCard: character,
         // 聊天元数据
-        chatMetadata: gameState && gameState.chatMetadata ? gameState.chatMetadata : {},
+        chatMetadata: (typeof gameState !== 'undefined' && gameState && gameState.chatMetadata) ? gameState.chatMetadata : {},
         // 扩展设置
         extensionSettings: this._getExtensionSettings(),
         // 全局设置
@@ -107,14 +107,15 @@ _getExtensionSettings: function() {
 
 // 获取全局设置
 _getSettings: function() {
+    var gs = (typeof gameState !== 'undefined') ? gameState : null;
     return {
-        apiType: gameState && gameState.apiType ? gameState.apiType : 'openai',
-        model: gameState && gameState.model ? gameState.model : '',
-        temperature: gameState && gameState.temperature ? gameState.temperature : 0.7,
-        maxTokens: gameState && gameState.maxTokens ? gameState.maxTokens : 2000,
-        contextSize: gameState && gameState.contextSize ? gameState.contextSize : 8000,
-        systemPrompt: gameState && gameState.systemPrompt ? gameState.systemPrompt : '',
-        jailbreakPrompt: gameState && gameState._jailbreakPrompt ? gameState._jailbreakPrompt : ''
+        apiType: gs && gs.apiType ? gs.apiType : 'openai',
+        model: gs && gs.model ? gs.model : '',
+        temperature: gs && typeof gs.temperature === 'number' ? gs.temperature : 0.7,
+        maxTokens: gs && gs.maxTokens ? gs.maxTokens : 2000,
+        contextSize: gs && gs.contextSize ? gs.contextSize : 8000,
+        systemPrompt: gs && gs.systemPrompt ? gs.systemPrompt : '',
+        jailbreakPrompt: gs && gs._jailbreakPrompt ? gs._jailbreakPrompt : ''
     };
 },
 
@@ -144,7 +145,11 @@ _showToast: function(msg, color) {
     toast.style.cssText = 'background:' + color + ';color:white;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);pointer-events:auto;animation:toastrSlideIn 0.3s ease;max-width:400px;word-break:break-word;';
     toast.textContent = msg;
     container.appendChild(toast);
-    TimerManager.setTimeout('toastrHide_' + Date.now(), function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; TimerManager.setTimeout('toastrRemove_' + Date.now(), function(){toast.remove();},300); }, 3000);
+    if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
+        TimerManager.setTimeout('toastrHide_' + Date.now(), function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) TimerManager.setTimeout('toastrRemove_' + Date.now(), function(){toast.remove();},300); }, 3000);
+    } else {
+        setTimeout(function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(function(){toast.remove();},300); }, 3000);
+    }
 },
 
 // 3. 斜杠命令系统
@@ -191,8 +196,8 @@ _executeSingleCommand: function(cmdStr) {
             if (sevMatch) { var s=sevMatch[1]; var t=sevMatch[2]; if(window.toastr&&toastr[s])toastr[s](t); else console.log('[echo '+s+'] '+t); result=t; }
             else { if(window.toastr)toastr.info(argsStr); result=argsStr; } break;
         case 'input':
-            var prompt = argsStr.replace(/okButton="[^"]*"/g,'').replace(/cancelButton="[^"]*"/g,'').trim();
-            result = prompt(prompt||'请输入:', function(v){return v||'';}); break;
+            var promptText = argsStr.replace(/okButton="[^"]*"/g,'').replace(/cancelButton="[^"]*"/g,'').trim();
+            result = window.prompt(promptText || '请输入:') || ''; break;
         // 变量命令 - 支持更多格式
         case 'setvar':
             var m=argsStr.match(/key=(\S+)\s+(.*)/);
@@ -386,7 +391,7 @@ _executeSingleCommand: function(cmdStr) {
             }
             break;
         case 'chat':
-            if(gameState && gameState.conversationHistory) {
+            if(gameState && Array.isArray(gameState.conversationHistory)) {
                 result = JSON.stringify(gameState.conversationHistory.slice(-5));
             } else {
                 result = '[]';
@@ -481,7 +486,7 @@ on: function(event, cb) {
         this._eventListeners[event].push(cb);
     }
 },
-emit: function(event, data) { var l=this._eventListeners[event]; if(l)l.forEach(function(cb){try{cb(data);}catch(e){console.error('[TavernHelper] listener error:',e);}}); },
+emit: function(event, data) { var l=this._eventListeners[event]; if(l && Array.isArray(l))l.forEach(function(cb){try{cb(data);}catch(e){console.error('[TavernHelper] listener error:',e);}}); },
 
 // 5. Quick Reply 按钮（增强版 - 支持酒馆完整字段）
 parseQuickReplies: function(data) {
@@ -571,19 +576,27 @@ _renderQuickReplyButtons: function() {
                 // 【增强】快捷回复与游戏融合
                 // 如果按钮有prompt，作为用户输入发送
                 if (btn.prompt && btn.prompt.trim()) {
-                    var promptText = MacroEngine.process(btn.prompt, {
-                        user: gameState.playerName || '玩家',
-                        char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
-                        input: (document.getElementById('userInput') || {}).value || ''
-                    });
+                    var promptText = '';
+                    try {
+                        promptText = MacroEngine.process(btn.prompt, {
+                            user: (typeof gameState !== 'undefined' && gameState.playerName) || '玩家',
+                            char: (typeof gameState !== 'undefined' && gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
+                            input: (document.getElementById('userInput') || {}).value || ''
+                        });
+                    } catch (e) {
+                        console.warn('[快捷回复] 宏处理失败:', e);
+                        promptText = btn.prompt;
+                    }
                     if (promptText && promptText.trim()) {
                         // 记录到日志
-                        if (!gameState._quickReplyLog) gameState._quickReplyLog = [];
-                        gameState._quickReplyLog.push({
-                            name: btn.name || '快捷回复',
-                            prompt: promptText,
-                            time: new Date().toLocaleTimeString()
-                        });
+                        if (typeof gameState !== 'undefined') {
+                            if (!gameState._quickReplyLog) gameState._quickReplyLog = [];
+                            gameState._quickReplyLog.push({
+                                name: btn.name || '快捷回复',
+                                prompt: promptText,
+                                time: new Date().toLocaleTimeString()
+                            });
+                        }
                         // 发送消息
                         var inputEl = document.getElementById('userInput') || document.getElementById('customAction');
                         if (inputEl) {
@@ -708,10 +721,17 @@ loadFromPreset: function(presetData) {
         this.parseQuickReplies({ button: { buttons: presetData.spresetButtons } });
     }
     // 【修复】触发 APP_READY 事件（酒馆助手脚本可能依赖此事件）
-    TimerManager.setTimeout('appReady', function() {
-        TavernHelperCompat.emit('APP_READY', {});
-        console.log('[TavernHelper] APP_READY 事件已触发');
-    }, 500);
+    if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
+        TimerManager.setTimeout('appReady', function() {
+            TavernHelperCompat.emit('APP_READY', {});
+            console.log('[TavernHelper] APP_READY 事件已触发');
+        }, 500);
+    } else {
+        setTimeout(function() {
+            TavernHelperCompat.emit('APP_READY', {});
+            console.log('[TavernHelper] APP_READY 事件已触发');
+        }, 500);
+    }
     console.log('[TavernHelper] ✅ 酒馆助手兼容层加载完成');
 },
 
@@ -1059,16 +1079,16 @@ var GameMemory = {
                 var qty = parseInt(attrs.qty) || 1;
                 var item = self.tables.items[itemName];
                 if (action === 'add') {
-                    if (item) { var oldQty = item.qty; item.qty += qty; item.lastChangedTurn = self.currentTurn; item.history.push({ turn: self.currentTurn, from: oldQty, to: item.qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty, newValue: item.qty }); }
+                    if (item) { var oldQty = item.qty; item.qty += qty; item.lastChangedTurn = self.currentTurn; if (!item.history) item.history = []; item.history.push({ turn: self.currentTurn, from: oldQty, to: item.qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty, newValue: item.qty }); }
                     else { self.tables.items[itemName] = { name: itemName, qty: qty, unit: attrs.unit || '个', rarity: attrs.rarity || '普通', desc: attrs.desc || '', obtainedTurn: self.currentTurn, lastChangedTurn: self.currentTurn, history: [{ turn: self.currentTurn, from: 0, to: qty }] }; self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: 0, newValue: qty }); }
-                } else if (action === 'remove' && item) { var oldQty2 = item.qty; item.qty = Math.max(0, item.qty - qty); item.lastChangedTurn = self.currentTurn; item.history.push({ turn: self.currentTurn, from: oldQty2, to: item.qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty2, newValue: item.qty }); }
-                else if (action === 'change' && item) { var oldQty3 = item.qty; item.qty = qty; item.lastChangedTurn = self.currentTurn; item.history.push({ turn: self.currentTurn, from: oldQty3, to: qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty3, newValue: qty }); }
+                } else if (action === 'remove' && item) { var oldQty2 = item.qty; item.qty = Math.max(0, item.qty - qty); item.lastChangedTurn = self.currentTurn; if (!item.history) item.history = []; item.history.push({ turn: self.currentTurn, from: oldQty2, to: item.qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty2, newValue: item.qty }); }
+                else if (action === 'change' && item) { var oldQty3 = item.qty; item.qty = qty; item.lastChangedTurn = self.currentTurn; if (!item.history) item.history = []; item.history.push({ turn: self.currentTurn, from: oldQty3, to: qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty3, newValue: qty }); }
             } else if (type === 'location' && attrs.name) {
                 var locName = attrs.name;
                 var loc = self.tables.locations[locName];
                 if (attrs.field && attrs.value !== undefined) {
                     if (loc) { if (loc.locked) { edit.skipped = true; edit.reason = 'locked'; } else { var oldVal = loc[attrs.field]; loc[attrs.field] = attrs.value; loc.lastChangedTurn = self.currentTurn; self._changeLog.push({ turn: self.currentTurn, type: 'location', key: locName, field: attrs.field, oldValue: oldVal, newValue: attrs.value }); } }
-                    else { self.tables.locations[locName] = { name: locName, desc: '', features: '', charactersPresent: '', lastChangedTurn: self.currentTurn, locked: false }; self.tables.locations[locName][attrs.field] = attrs.value; self._changeLog.push({ turn: self.currentTurn, type: 'location', key: locName, field: attrs.field, oldValue: '', newValue: attrs.value }); }
+                    else { self.tables.locations[locName] = { name: locName, desc: '', features: '', charactersPresent: '', lastChangedTurn: self.currentTurn, locked: false }; if (self.tables.locations[locName]) self.tables.locations[locName][attrs.field] = attrs.value; self._changeLog.push({ turn: self.currentTurn, type: 'location', key: locName, field: attrs.field, oldValue: '', newValue: attrs.value }); }
                 }
             }
             edits.push(edit);
@@ -1161,8 +1181,8 @@ var GameMemory = {
         var nearTurns = turns.slice(-3);
         self._summaryLayers.near = nearTurns.map(function(t) {
             var parts = [];
-            if (t.user) parts.push('玩家: ' + t.user);
-            if (t.assistant) parts.push('AI: ' + t.assistant);
+            if (t && t.user) parts.push('玩家: ' + t.user);
+            if (t && t.assistant) parts.push('AI: ' + t.assistant);
             return parts.join(' | ');
         });
 
@@ -1171,8 +1191,8 @@ var GameMemory = {
             var midTurns = turns.slice(Math.max(0, totalTurns - 10), totalTurns - 3);
             self._summaryLayers.mid = midTurns.map(function(t) {
                 var parts = [];
-                if (t.user) parts.push('玩家: ' + t.user);
-                if (t.assistant) parts.push('AI: ' + t.assistant);
+                if (t && t.user) parts.push('玩家: ' + t.user);
+                if (t && t.assistant) parts.push('AI: ' + t.assistant);
                 return parts.join(' | ');
             });
         }
@@ -1181,7 +1201,7 @@ var GameMemory = {
         if (totalTurns > 10) {
             var farTurns = turns.slice(0, totalTurns - 10);
             self._summaryLayers.far = farTurns.map(function(t) {
-                var text = (t.user || '') + (t.assistant || '');
+                var text = ((t && t.user) || '') + ((t && t.assistant) || '');
                 // 提取关键句（含关键词的句子，保留完整语义）
                 var sentences = text.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 5; });
                 var keySentences = sentences.filter(function(s) {
@@ -1189,7 +1209,7 @@ var GameMemory = {
                 });
                 if (keySentences.length === 0 && sentences.length > 0) keySentences = [sentences[sentences.length - 1]];
                 return keySentences.map(function(s) { return s.trim(); }).join('；');
-            }).filter(function(s) { return s.length > 0; });
+            }).filter(function(s) { return s && s.length > 0; });
         }
 
         // 生成合并摘要文本
@@ -1219,7 +1239,7 @@ var GameMemory = {
         var setupKw = this._setupLayers.setupKeywords || [];
         if (setupKw.length > 0) {
             var recentText2 = '';
-            try { if (typeof gameState !== 'undefined' && gameState.conversationHistory) recentText2 = gameState.conversationHistory.slice(-3).map(function(m) { return m.content || ''; }).join(' '); } catch(e) {}
+            try { if (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) recentText2 = gameState.conversationHistory.slice(-3).map(function(m) { return (m && m.content) || ''; }).join(' '); } catch(e) {}
             for (var ki = 0; ki < setupKw.length; ki++) {
                 if (recentText2.indexOf(setupKw[ki]) >= 0) return true;
             }
@@ -1232,8 +1252,8 @@ var GameMemory = {
         if (keywords && keywords.length > 0) {
             var recentText = '';
             try {
-                if (typeof gameState !== 'undefined' && gameState.conversationHistory) {
-                    recentText = gameState.conversationHistory.slice(-3).map(function(m) { return m.content || ''; }).join(' ');
+                if (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) {
+                    recentText = gameState.conversationHistory.slice(-3).map(function(m) { return (m && m.content) || ''; }).join(' ');
                 }
             } catch(e) {}
             for (var i = 0; i < keywords.length; i++) {
@@ -1295,8 +1315,18 @@ var GameMemory = {
             callAI(messages, { max_tokens: parseMaxTokens }).then(function(response) {
                 try {
                     var content = response;
-                    if (response && response.choices && response.choices[0] && response.choices[0].message) {
-                        content = response.choices[0].message.content;
+                    if (response && typeof response === 'object') {
+                        if (response.choices && Array.isArray(response.choices) && response.choices[0] && response.choices[0].message && typeof response.choices[0].message.content === 'string') {
+                            content = response.choices[0].message.content;
+                        } else if (typeof response.content === 'string') {
+                            content = response.content;
+                        } else if (typeof response.text === 'string') {
+                            content = response.text;
+                        }
+                    }
+                    if (!content || typeof content !== 'string') {
+                        console.warn('[设定解析] AI返回内容为空或格式异常');
+                        return;
                     }
                     // 提取JSON
                     var jsonStr = content;
@@ -1304,6 +1334,10 @@ var GameMemory = {
                     if (jsonMatch) jsonStr = jsonMatch[0];
 
                     var parsed = JSON.parse(jsonStr);
+                    if (!parsed || typeof parsed !== 'object') {
+                        console.warn('[设定解析] AI返回JSON解析结果非对象');
+                        return;
+                    }
                     self._applyAIParsedSetup(parsed);
                 } catch(e) {
                     console.warn('[设定解析] AI解析失败，使用默认分层:', e);
@@ -1345,7 +1379,7 @@ var GameMemory = {
         if (parsed.coreRules && parsed.coreRules.length > 0) {
             self.permanentFacts.worldRules = self.permanentFacts.worldRules || [];
             parsed.coreRules.slice(0, 10).forEach(function(rule) {
-                if (!self.permanentFacts.worldRules.some(function(a) { return a.content === rule; })) {
+                if (!self.permanentFacts.worldRules.some(function(a) { return a && a.content === rule; })) {
                     self.permanentFacts.worldRules.push({ content: rule, locked: true });
                 }
             });
@@ -1355,7 +1389,7 @@ var GameMemory = {
         if (parsed.promises && parsed.promises.length > 0) {
             self.permanentFacts.promises = self.permanentFacts.promises || [];
             parsed.promises.forEach(function(p) {
-                if (!self.permanentFacts.promises.some(function(a) { return a.content === p; })) {
+                if (!self.permanentFacts.promises.some(function(a) { return a && a.content === p; })) {
                     self.permanentFacts.promises.push({ content: p, locked: true });
                 }
             });
@@ -1370,7 +1404,7 @@ var GameMemory = {
                 if (char.keywords && char.keywords.length > 0) {
                     profile = char.name + '【' + char.keywords.join(',') + '】：' + (char.summary || char.identity || '');
                 }
-                if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content.split('【')[0] === char.name; })) {
+                if (!self.permanentFacts.npcProfiles.some(function(a) { return a && a.content && a.content.split('【')[0] === char.name; })) {
                     self.permanentFacts.npcProfiles.push({ content: profile, locked: true, keywords: char.keywords || [] });
                 }
                 // 角色表
@@ -1406,7 +1440,7 @@ var GameMemory = {
             parsed.characterArchetypes.forEach(function(arch) {
                 var desc = arch.type + '：动机-' + (arch.motivation || '未知') + '，关系模式-' + (arch.relationPattern || '未知');
                 if (arch.example) desc += '（例：' + arch.example + '）';
-                if (!self.permanentFacts.npcProfiles.some(function(a) { return a.content.indexOf(arch.type) === 0; })) {
+                if (!self.permanentFacts.npcProfiles.some(function(a) { return a && a.content && a.content.indexOf(arch.type) === 0; })) {
                     self.permanentFacts.npcProfiles.push({ content: desc, locked: true, keywords: [arch.type, arch.motivation || ''] });
                 }
             });
@@ -1755,8 +1789,8 @@ var GameMemory = {
                     // 角色档案：按关键词匹配排序，相关角色优先注入
                     var sorted = list.slice().sort(function(a, b) {
                         var scoreA = 0, scoreB = 0;
-                        var kA = a.keywords || [], kB = b.keywords || [];
-                        var nameA = a.content.split('【')[0], nameB = b.content.split('【')[0];
+                        var kA = (a && a.keywords) || [], kB = (b && b.keywords) || [];
+                        var nameA = (a && a.content) ? a.content.split('【')[0] : '', nameB = (b && b.content) ? b.content.split('【')[0] : '';
                         // 当前话题中的角色最优先
                         if (topicChars.indexOf(nameA) >= 0) scoreA += 100;
                         if (topicChars.indexOf(nameB) >= 0) scoreB += 100;
@@ -1765,9 +1799,9 @@ var GameMemory = {
                         kB.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreB += 10; });
                         return scoreB - scoreA;
                     });
-                    sorted.forEach(function(a) { lines.push('• ' + a.content); });
+                    sorted.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
                 } else {
-                    list.forEach(function(a) { lines.push('• ' + a.content); });
+                    list.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
                 }
             }
         });
@@ -1812,7 +1846,7 @@ var GameMemory = {
         });
         // 新事件
         self.events.forEach(function(e) {
-            if (e.turn > lastTurn) {
+            if (e && e.turn > lastTurn && e.content) {
                 var relTime3 = self._calculateRelativeTime(e.gameTime || '');
                 var timeTag3 = relTime3 ? ' [' + relTime3 + ']' : '';
                 lines.push('• 新事件' + timeTag3 + '：' + e.content);
@@ -1858,10 +1892,11 @@ var GameMemory = {
             if (typeof c.favorability === 'number') score += Math.abs(c.favorability - 50);
             c._injectScore = score;
         });
-        allChars.sort(function(a, b) { return b._injectScore - a._injectScore; });
-        
+        allChars.sort(function(a, b) { return (b && b._injectScore || 0) - (a && a._injectScore || 0); });
+
         // 关键词激活：只注入相关的角色（有变化/被提及/高访问的）
         var relevantChars = allChars.filter(function(c) {
+            if (!c || !c.name) return false;
             // 始终包含：近期有变化的
             if (c.lastChangedTurn > lastTurn) return true;
             // 始终包含：高访问计数的（被频繁提及）
@@ -1872,7 +1907,7 @@ var GameMemory = {
             if (typeof c.favorability === 'number' && (c.favorability >= 80 || c.favorability <= 20)) return true;
             return false;
         });
-        
+
         // 按次计费：不硬限制角色数，让预算系统通过智能压缩自然控制
         relevantChars.forEach(function(c) {
             var relTime = self._calculateRelativeTime(c.gameTime || '');
@@ -1894,7 +1929,8 @@ var GameMemory = {
         var self = this;
         self._recalcEventDecayScores(self.currentTurn);
         // 按次计费：不硬限制事件数，让预算系统通过智能压缩自然控制
-        self.events.slice().sort(function(a, b) { return (b.decayScore || 0) - (a.decayScore || 0); }).forEach(function(e) {
+        self.events.slice().sort(function(a, b) { return (b && b.decayScore || 0) - (a && a.decayScore || 0); }).forEach(function(e) {
+            if (!e || !e.content) return;
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
@@ -1923,10 +1959,12 @@ var GameMemory = {
         });
         
         relevantItems.sort(function(a, b) {
+            if (!a || !b) return 0;
             var aScore = (a.accessCount || 0) * 10 + (a.lastChangedTurn > lastTurn ? 100 : 0);
             var bScore = (b.accessCount || 0) * 10 + (b.lastChangedTurn > lastTurn ? 100 : 0);
             return bScore - aScore;
         }).slice(0, 10).forEach(function(it) {
+            if (!it || !it.name) return;
             var line = '• ' + it.name;
             if (it.qty > 1) line += ' x' + it.qty + (it.unit || '');
             if (it.rarity && it.rarity !== '普通') line += ' [' + it.rarity + ']';
@@ -1944,17 +1982,17 @@ var GameMemory = {
         // 远层：关键句
         if (self._summaryLayers.far && self._summaryLayers.far.length > 0) {
             lines.push('〔更早〕');
-            self._summaryLayers.far.slice(-10).forEach(function(s) { lines.push('• ' + s); });
+            self._summaryLayers.far.slice(-10).forEach(function(s) { if (s) lines.push('• ' + s); });
         }
         // 中层：压缩摘要
         if (self._summaryLayers.mid && self._summaryLayers.mid.length > 0) {
             lines.push('〔近期摘要〕');
-            self._summaryLayers.mid.slice(-8).forEach(function(s) { lines.push('• ' + s); });
+            self._summaryLayers.mid.slice(-8).forEach(function(s) { if (s) lines.push('• ' + s); });
         }
         // 近层：详细
         if (self._summaryLayers.near && self._summaryLayers.near.length > 0) {
             lines.push('〔最近对话〕');
-            self._summaryLayers.near.forEach(function(s) { lines.push('• ' + s); });
+            self._summaryLayers.near.forEach(function(s) { if (s) lines.push('• ' + s); });
         }
         return lines;
     },
@@ -1967,6 +2005,7 @@ var GameMemory = {
         // 当前所在地点的场景状态
         Object.keys(self.tables.locations).forEach(function(name) {
             var loc = self.tables.locations[name];
+            if (!loc) return;
             // 只注入当前相关的地点
             if (!self._isRelevantToScene(name, loc.keywords, topic) && loc.lastChangedTurn < self.lastInjectionTurn) return;
             if (loc.sceneState) {
@@ -1984,11 +2023,11 @@ var GameMemory = {
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         var currentTurn = self.workingMemory.turns[self.workingMemory.turns.length - 1];
         if (!currentTurn || currentTurn.assistant !== null) { currentTurn = { user: null, assistant: null, turn: self.currentTurn + 1, timestamp: Date.now() }; self.workingMemory.turns.push(currentTurn); }
-        if (message.role === 'user') currentTurn.user = message.content;
-        else if (message.role === 'assistant') currentTurn.assistant = message.content;
+        if (message && message.role === 'user') currentTurn.user = message.content;
+        else if (message && message.role === 'assistant') currentTurn.assistant = message.content;
         while (self.workingMemory.turns.length > MAX_TURNS) self.workingMemory.turns.shift();
         self.workingMemory.messages = [];
-        for (var i = 0; i < self.workingMemory.turns.length; i++) { var t = self.workingMemory.turns[i]; if (t.user !== null && t.user !== undefined) self.workingMemory.messages.push({ role: 'user', content: t.user, timestamp: t.timestamp, turn: t.turn }); if (t.assistant !== null && t.assistant !== undefined) self.workingMemory.messages.push({ role: 'assistant', content: t.assistant, timestamp: t.timestamp, turn: t.turn }); }
+        for (var i = 0; i < self.workingMemory.turns.length; i++) { var t = self.workingMemory.turns[i]; if (t && t.user !== null && t.user !== undefined) self.workingMemory.messages.push({ role: 'user', content: t.user, timestamp: t.timestamp, turn: t.turn }); if (t && t.assistant !== null && t.assistant !== undefined) self.workingMemory.messages.push({ role: 'assistant', content: t.assistant, timestamp: t.timestamp, turn: t.turn }); }
         self.workingMemory.timestamp = Date.now();
     },
 
@@ -1996,8 +2035,8 @@ var GameMemory = {
         var self = this;
         var info = { characters: [], items: [], locations: [], events: [], relationships: [], importance: 0 };
         if (!gameData) return info;
-        if (gameData.characters) gameData.characters.forEach(function(char) { info.characters.push({ name: char.name, title: char.title, relation: char.relation, favorability: char.favorability, desc: char.desc }); });
-        if (gameData.bag) gameData.bag.forEach(function(item) { info.items.push({ name: item.name, count: item.count, desc: item.desc, rarity: item.rarity }); });
+        if (Array.isArray(gameData.characters)) gameData.characters.forEach(function(char) { if (char) info.characters.push({ name: char.name, title: char.title, relation: char.relation, favorability: char.favorability, desc: char.desc }); });
+        if (Array.isArray(gameData.bag)) gameData.bag.forEach(function(item) { if (item) info.items.push({ name: item.name, count: item.count, desc: item.desc, rarity: item.rarity }); });
         if (gameData.keyEvents && gameData.keyEvents.length > 0) { gameData.keyEvents.forEach(function(ev) { info.events.push({ content: ev, importance: self.scoreEventImportance(ev) }); }); var maxImp = 0; info.events.forEach(function(e) { if (e.importance > maxImp) maxImp = e.importance; }); info.importance = Math.max(info.importance, maxImp); }
         if (gameData.relationships) { info.relationships = gameData.relationships; info.importance += 1; }
         if (gameData.story) { if (gameData.story.length > 500) info.importance += 1; if (gameData.story.length > 1000) info.importance += 2; }
@@ -2009,24 +2048,26 @@ var GameMemory = {
         var turn = self.currentTurn;
         if (!gameData) return;
         if (!extractedInfo) extractedInfo = { characters: [], items: [], events: [], relationships: [] };
-        if (extractedInfo.characters.length > 0) {
+        if (extractedInfo.characters && extractedInfo.characters.length > 0) {
             extractedInfo.characters.forEach(function(char) {
+                if (!char || !char.name) return;
                 var key = char.name;
                 var existing = self.tables.characters[key];
-                self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
+                self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
             });
         }
-        if (extractedInfo.items.length > 0) {
+        if (extractedInfo.items && extractedInfo.items.length > 0) {
             extractedInfo.items.forEach(function(item) {
+                if (!item || !item.name) return;
                 var key = item.name;
                 var existing = self.tables.items[key];
                 var oldQty = existing ? existing.qty : 0;
                 var newQty = item.count || 1;
-                self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
+                self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
             });
         }
         if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; }); }
-        if (gameData.relationships) gameData.relationships.forEach(function(rel) { self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; });
+        if (gameData.relationships && Array.isArray(gameData.relationships)) gameData.relationships.forEach(function(rel) { if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; });
     },
 
     _extractLocations: function(story) {
@@ -2040,7 +2081,7 @@ var GameMemory = {
         return locations;
     },
 
-    _shouldUpdateLongTerm: function(extractedInfo) { if (this.currentTurn % 5 === 0) return true; if (extractedInfo.importance >= 5) return true; if (extractedInfo.events.length >= 2) return true; return false; },
+    _shouldUpdateLongTerm: function(extractedInfo) { if (!extractedInfo) return false; if (this.currentTurn % 5 === 0) return true; if (extractedInfo.importance >= 5) return true; if (extractedInfo.events && extractedInfo.events.length >= 2) return true; return false; },
 
     _updateLongTermMemory: function(message, gameData, extractedInfo) {
         var self = this;
@@ -2065,11 +2106,11 @@ var GameMemory = {
                 lastPlot.endTurn = currentTurn;
             }
         }
-        if (extractedInfo.events.length > 0) {
+        if (extractedInfo.events && extractedInfo.events.length > 0) {
             extractedInfo.events.forEach(function(event) {
-                var content = (typeof event === 'string') ? event : event.content;
-                var imp = (typeof event === 'object' && event.importance) ? event.importance : 5;
-                if (!self.events.some(function(e) { return e.content === content; })) self.events.push({ content: content, turn: currentTurn, gameTime: self.getGameTimeStr(), importance: imp, decayScore: imp });
+                var content = (typeof event === 'string') ? event : (event && event.content);
+                var imp = (typeof event === 'object' && event && event.importance) ? event.importance : 5;
+                if (content && !self.events.some(function(e) { return e && e.content === content; })) self.events.push({ content: content, turn: currentTurn, gameTime: self.getGameTimeStr(), importance: imp, decayScore: imp });
             });
             self._recalcEventDecayScores(currentTurn);
             self._pruneImportantEvents(50);
@@ -2077,7 +2118,7 @@ var GameMemory = {
     },
 
     _generateSummary: function(message, gameData, extractedInfo) {
-        var summary = { turn: this.currentTurn + 1, timestamp: Date.now(), title: gameData ? gameData.title : '', storySummary: '', keyEvents: extractedInfo.events, characters: extractedInfo.characters.map(function(c) { return c.name; }), importance: extractedInfo.importance, changes: [] };
+        var summary = { turn: this.currentTurn + 1, timestamp: Date.now(), title: gameData ? gameData.title : '', storySummary: '', keyEvents: (extractedInfo && extractedInfo.events) || [], characters: (extractedInfo && extractedInfo.characters && Array.isArray(extractedInfo.characters)) ? extractedInfo.characters.map(function(c) { return c && c.name; }).filter(Boolean) : [], importance: (extractedInfo && extractedInfo.importance) || 0, changes: [] };
         if (gameData && gameData.contextSummary) summary.storySummary = gameData.contextSummary;
         else if (gameData && gameData.story) summary.storySummary = gameData.story.substring(0, 100) + '...';
         return summary;
@@ -2109,14 +2150,15 @@ var GameMemory = {
         var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises' };
         var key = typeMap[type] || type;
         if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
-        if (self.permanentFacts[key].some(function(a) { return a.content === content; })) return null;
+        if (self.permanentFacts[key].some(function(a) { return a && a.content === content; })) return null;
         if (type === 'npc_profile' && content) {
             var nameMatch = content.match(/^([一-鿿A-Za-z·]{1,6})/);
             if (nameMatch) {
                 var name = nameMatch[1];
                 for (var i = 0; i < self.permanentFacts[key].length; i++) {
-                    if (self.permanentFacts[key][i].content.indexOf(name) === 0) {
-                        if (self.permanentFacts[key][i].source === 'manual') return null;
+                    var entry = self.permanentFacts[key][i];
+                    if (entry && entry.content && entry.content.indexOf(name) === 0) {
+                        if (entry.source === 'manual') return null;
                         self.permanentFacts[key][i] = { content: content, source: source || 'auto', locked: true, createdTurn: createdTurn || self.currentTurn };
                         return self.permanentFacts[key][i];
                     }
@@ -2158,7 +2200,8 @@ var GameMemory = {
     },
 
     addQuest: function(quest) {
-        if (this.quests.some(function(q) { return q.content === quest.content && q.status === 'pending'; })) return null;
+        if (!quest || !quest.content) return null;
+        if (this.quests.some(function(q) { return q && q.content === quest.content && q.status === 'pending'; })) return null;
         if (!quest.createdTurn) quest.createdTurn = this.currentTurn;
         if (!quest.status) quest.status = 'pending';
         if (!quest.type) quest.type = 'promise';
@@ -2289,8 +2332,8 @@ var GameMemory = {
     detectCurrentTopic: function() {
         var topic = { characters: [], items: [], locations: [], keywords: [] };
         try {
-            if (typeof gameState === 'undefined' || !gameState.conversationHistory) return topic;
-            var allText = gameState.conversationHistory.slice(-3).map(function(m) { return m.content || ''; }).join(' ');
+            if (typeof gameState === 'undefined' || !Array.isArray(gameState.conversationHistory)) return topic;
+            var allText = gameState.conversationHistory.slice(-3).map(function(m) { return (m && m.content) || ''; }).join(' ');
             var self = this;
             Object.keys(self.tables.characters).forEach(function(name) { if (allText.indexOf(name) >= 0) topic.characters.push(name); });
             Object.keys(self.tables.items).forEach(function(name) { if (allText.indexOf(name) >= 0) topic.items.push(name); });
@@ -2351,17 +2394,17 @@ var GameMemory = {
         if (currentTokenCount > maxTokens * config.triggerThreshold) return { shouldCompress: true, reason: 'Token超限 (' + currentTokenCount + '/' + maxTokens + ')' };
         // 按次计费：放宽消息数量阈值，保留更多原文
         if (messageCount > 100) return { shouldCompress: true, reason: '消息数量过多 (' + messageCount + '条)' };
-        if (lastCompressTime > config.cooldownMinutes * 60 * 1000 && messageCount >= 60) { var recentMessages = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = m.content || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
+        if (lastCompressTime > config.cooldownMinutes * 60 * 1000 && messageCount >= 60) { var recentMessages = (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = (m && m.content) || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
         return { shouldCompress: false, reason: '暂不需要压缩' };
     },
 
     search: function(keyword, options) {
         var results = { events: [], characters: [], items: [], summaries: [] };
         var self = this;
-        this.events.forEach(function(e) { if (e.content && e.content.indexOf(keyword) !== -1) results.events.push(e); });
-        Object.keys(self.tables.characters).forEach(function(name) { if (name.indexOf(keyword) !== -1) results.characters.push(self.tables.characters[name]); });
-        Object.keys(self.tables.items).forEach(function(name) { if (name.indexOf(keyword) !== -1) results.items.push(self.tables.items[name]); });
-        if (self.workingMemory.recentMessages) self.workingMemory.recentMessages.forEach(function(s) { if (s && s.indexOf(keyword) !== -1) results.summaries.push(s); });
+        this.events.forEach(function(e) { if (e && e.content && e.content.indexOf(keyword) !== -1) results.events.push(e); });
+        Object.keys(self.tables.characters).forEach(function(name) { if (name.indexOf(keyword) !== -1) { var c = self.tables.characters[name]; if (c) results.characters.push(c); } });
+        Object.keys(self.tables.items).forEach(function(name) { if (name.indexOf(keyword) !== -1) { var it = self.tables.items[name]; if (it) results.items.push(it); } });
+        if (self.workingMemory.recentMessages && Array.isArray(self.workingMemory.recentMessages)) self.workingMemory.recentMessages.forEach(function(s) { if (s && s.indexOf(keyword) !== -1) results.summaries.push(s); });
         return results;
     },
 
@@ -2380,7 +2423,7 @@ var GameMemory = {
             var result = safeSetItem('freeScript_memory', JSON.stringify(data));
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
-        finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } }
+        finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) { TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } else { setTimeout(function() { self.saveToStorage(); }, 50); } } }
     },
 
     _handleSaveFailure: function(result, originalData) {
@@ -2418,8 +2461,8 @@ var GameMemory = {
         return true;
     },
 
-    startAutoSave: function() { var self = this; if (this._autoSaveTimer) TimerManager.clearInterval('gameMemoryAutoSave'); TimerManager.setInterval('gameMemoryAutoSave', function() { self.saveToStorage(); }, 30000); },
-    stopAutoSave: function() { TimerManager.clearInterval('gameMemoryAutoSave'); },
+    startAutoSave: function() { var self = this; if (typeof TimerManager !== 'undefined' && TimerManager.clearInterval) TimerManager.clearInterval('gameMemoryAutoSave'); if (typeof TimerManager !== 'undefined' && TimerManager.setInterval) TimerManager.setInterval('gameMemoryAutoSave', function() { self.saveToStorage(); }, 30000); },
+    stopAutoSave: function() { if (typeof TimerManager !== 'undefined' && TimerManager.clearInterval) TimerManager.clearInterval('gameMemoryAutoSave'); },
 
     clear: function() {
         this.currentTurn = 0; this.lastInjectionTurn = -1; this.gameClock = { day: 1, period: '早晨', lastUpdateTurn: 0 };
@@ -2441,7 +2484,7 @@ var GameMemory = {
     getCharacterInfo: function(name) { return this.tables.characters[name] || null; },
     getItemHistory: function(name) { var it = this.tables.items[name]; return it ? it.history : null; },
     getTimeline: function(startTurn, endTurn) { return this.timeline.filter(function(t) { return t.turn >= (startTurn || 0) && t.turn <= (endTurn || Infinity); }); },
-    getRelationshipNetwork: function(charName) { var network = []; var self = this; Object.keys(self.tables.relationships).forEach(function(key) { var rel = self.tables.relationships[key]; if (rel.from === charName || rel.to === charName) network.push(rel); }); return network; }
+    getRelationshipNetwork: function(charName) { var network = []; var self = this; Object.keys(self.tables.relationships).forEach(function(key) { var rel = self.tables.relationships[key]; if (rel && (rel.from === charName || rel.to === charName)) network.push(rel); }); return network; }
 };
 
 // 全局暴露
@@ -2457,7 +2500,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         // worldAnchors: 从 permanentFacts 映射（只读快照）
         var worldAnchors = [];
         var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise' };
-        Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; self.permanentFacts[key].forEach(function(a) { worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
+        Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; var list = self.permanentFacts[key]; if (Array.isArray(list)) list.forEach(function(a) { if (a) worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
         // itemTable: 直接引用 tables.items（允许旧代码写入，格式兼容）
         var itemTable = self.tables.items;
         // worldNotes: 持久化数组
@@ -2495,53 +2538,56 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         if (val.worldAnchors && Array.isArray(val.worldAnchors)) {
             var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises' };
             val.worldAnchors.forEach(function(a) {
+                if (!a) return;
                 var key = typeMap[a.type] || 'settings';
                 if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
-                if (!self.permanentFacts[key].some(function(x) { return x.content === a.content; })) {
+                if (!self.permanentFacts[key].some(function(x) { return x && x.content === a.content; })) {
                     self.permanentFacts[key].push({ content: a.content, source: a.source || 'auto', locked: a.locked !== false, createdTurn: a.createdTurn || 0 });
                 }
             });
         }
         // 恢复角色表
-        if (val.characterTable) {
+        if (val.characterTable && typeof val.characterTable === 'object') {
             Object.keys(val.characterTable).forEach(function(name) {
                 var c = val.characterTable[name];
-                self.tables.characters[name] = c;
+                if (c) self.tables.characters[name] = c;
             });
         }
         // 恢复物品表
-        if (val.itemTable) {
+        if (val.itemTable && typeof val.itemTable === 'object') {
             Object.keys(val.itemTable).forEach(function(name) {
-                self.tables.items[name] = val.itemTable[name];
+                var it = val.itemTable[name];
+                if (it) self.tables.items[name] = it;
             });
         }
         // 恢复地点表
-        if (val.locationTable) {
+        if (val.locationTable && typeof val.locationTable === 'object') {
             Object.keys(val.locationTable).forEach(function(name) {
-                self.tables.locations[name] = val.locationTable[name];
+                var loc = val.locationTable[name];
+                if (loc) self.tables.locations[name] = loc;
             });
         }
         // 恢复关系
-        if (val.relationships) {
+        if (val.relationships && Array.isArray(val.relationships)) {
             self.tables.relationships = {};
             val.relationships.forEach(function(rel) {
-                self.tables.relationships[rel.from + '->' + rel.to] = rel;
+                if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = rel;
             });
         }
         // 恢复事件
-        if (val.importantEvents) {
+        if (val.importantEvents && Array.isArray(val.importantEvents)) {
             self.events = val.importantEvents;
         }
         // 恢复时间线
-        if (val.timeline) {
+        if (val.timeline && Array.isArray(val.timeline)) {
             self.timeline = val.timeline;
         }
         // 恢复世界观
-        if (val.worldSetting) {
+        if (val.worldSetting && typeof val.worldSetting === 'string') {
             self.plot.worldSetting = val.worldSetting;
         }
         // 恢复任务
-        if (val.activeQuests) {
+        if (val.activeQuests && Array.isArray(val.activeQuests)) {
             self.quests = val.activeQuests;
         }
     }, configurable: true
@@ -2559,7 +2605,7 @@ Object.defineProperty(GameMemory, 'shortTermMemory', {
     },
     set: function(val) {
         // 允许外部代码替换 shortTermMemory
-        if (val && val.summaries) this.workingMemory.recentMessages = val.summaries;
+        if (val && val.summaries && Array.isArray(val.summaries)) this.workingMemory.recentMessages = val.summaries;
     },
     configurable: true
 });
