@@ -3619,10 +3619,10 @@ function bindEvents() {
         });
     }
 
-    // 加载最新存档按钮
+    // 加载存档按钮
     bindEvent('btnMenuLoadLatest', 'click', function() {
         loadFromSlot(0).catch(function(e) {
-            console.error('加载最新存档失败:', e);
+            console.error('加载存档失败:', e);
             UI.toast('加载失败');
         });
     });
