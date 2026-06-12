@@ -811,18 +811,12 @@ var LocalGameAPI = {
     }
     const totalSlots = this._configs.length;
     let attemptedCount = 0;
-    // 【优化 #9】轮换顺序：当前 slot 起循环，但"近期失败"的 slot 排到末尾
-    // 注意：仍然会尝试失败 slot（玩家想用就能用），只是优先尝试健康的
+    // 轮换顺序：当前 slot 起循环，失败标记仅作 UI 提醒，不影响轮换顺序
     var orderedSlots = [];
     for (let i = 0; i < totalSlots; i++) {
         orderedSlots.push((this._currentSlot + i) % totalSlots);
     }
     var self = this;
-    orderedSlots.sort(function(a, b) {
-        var aFailed = self.isModelFailedForSlot(a) ? 1 : 0;
-        var bFailed = self.isModelFailedForSlot(b) ? 1 : 0;
-        return aFailed - bFailed; // 非失败(0)排在失败(1)前面
-    });
     for (let attempt = 0; attempt < totalSlots; attempt++) {
         const slotIdx = orderedSlots[attempt];
         const cfg = this._configs[slotIdx];
@@ -845,14 +839,11 @@ var LocalGameAPI = {
         } catch (e) {
         var errMsg = translateError((e && e.message) ? e.message : String(e));
         this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
-        // 【修复】只有"临时性"错误（网络/限流）才标记模型失败 24h
-        // model_not_found / invalid_api_key / context_length_exceeded
-        // 这类错误不会因时间流逝而自愈，不能标记失败（否则会被永久跳过浪费配置）
-        var isPermanent = /model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg);
-        if (!isPermanent) this._markModelFailed(slotIdx);
+        // 失败标记仅作 UI 提醒分组，不影响轮换和调用逻辑
+        this._markModelFailed(slotIdx);
         console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
         // model_not_found 等"配置错误"静默跳过，不弹误导性 toast
-        if (attemptedCount < totalSlots && !isPermanent) {
+        if (attemptedCount < totalSlots && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
             UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
         }
     }
