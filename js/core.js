@@ -3012,101 +3012,144 @@ function translateError(msg) {
     if (!msg) return '未知错误，请稍后重试';
     var m = msg;
     // 常见英文错误 -> 中文翻译映射表
+    // 【分类】按错误类型分组，翻译包含：原因 + 建议操作
     var map = {
-        // 网络相关错误
-        'Failed to fetch': '网络请求失败，请检查网络连接或API地址是否正确',
-        'NetworkError when attempting to fetch resource': '网络错误，请检查网络连接',
-        'Network request failed': '网络请求失败，请检查网络',
-        'net::ERR_CONNECTION_REFUSED': '连接被拒绝，API地址可能不正确或服务未启动',
-        'net::ERR_CONNECTION_TIMED_OUT': '连接超时，API服务器响应太慢',
-        'net::ERR_NAME_NOT_RESOLVED': '域名解析失败，请检查API地址',
-        'net::ERR_SSL_PROTOCOL_ERROR': 'SSL证书错误，请检查API地址是否使用HTTPS',
-        'net::ERR_CERT_DATE_INVALID': 'SSL证书已过期',
-        'net::ERR_INTERNET_DISCONNECTED': '网络已断开，请检查网络连接',
-        'ECONNREFUSED': '连接被拒绝，API服务可能未启动',
-        'ECONNRESET': '连接被重置，API服务器可能重启了',
-        'ETIMEDOUT': '连接超时，API服务器响应太慢',
-        'ENOTFOUND': '域名不存在，请检查API地址',
-        // 请求取消
+        // ═══ 网络连接错误 ═══
+        'Failed to fetch': '网络请求失败（可能原因：网络断开、API地址错误、服务未启动）→ 请检查网络连接和API地址',
+        'NetworkError when attempting to fetch resource': '网络错误 → 请检查网络连接是否正常',
+        'Network request failed': '网络请求失败 → 请检查网络连接',
+        'net::ERR_CONNECTION_REFUSED': '连接被拒绝 → API地址可能不正确，或API服务未启动',
+        'net::ERR_CONNECTION_TIMED_OUT': '连接超时 → API服务器响应太慢或地址不正确',
+        'net::ERR_NAME_NOT_RESOLVED': '域名解析失败 → 请检查API地址是否拼写正确',
+        'net::ERR_SSL_PROTOCOL_ERROR': 'SSL协议错误 → 请检查API地址是否使用了正确的HTTPS配置',
+        'net::ERR_CERT_DATE_INVALID': 'SSL证书已过期 → API服务器的证书需要更新',
+        'net::ERR_INTERNET_DISCONNECTED': '网络已断开 → 请检查网络连接',
+        'net::ERR_CONNECTION_CLOSED': '连接被关闭 → API服务器中断了连接，请重试',
+        'net::ERR_EMPTY_RESPONSE': '服务器返回空响应 → API服务可能异常，请稍后重试',
+        'net::ERR_SOCKET_NOT_CONNECTED': '套接字未连接 → 网络连接异常，请重试',
+        'ECONNREFUSED': '连接被拒绝 → API服务可能未启动或端口不正确',
+        'ECONNRESET': '连接被重置 → API服务器可能重启了，请重试',
+        'ETIMEDOUT': '连接超时 → API服务器响应太慢，请检查网络或更换API',
+        'ENOTFOUND': '域名不存在 → 请检查API地址是否正确',
+        'EAI_AGAIN': 'DNS解析临时失败 → 请检查网络连接后重试',
+        'EPROTO': '协议错误 → 请检查API地址是否使用了正确的协议（HTTP/HTTPS）',
+        'UND_ERR_CONNECT_TIMEOUT': '连接超时 → API服务器未响应，请检查地址和网络',
+
+        // ═══ 请求取消 ═══
         'AbortError': '请求已取消',
         'The user aborted a request': '请求已被取消',
-        // JSON解析错误
-        'Unexpected end of JSON input': '服务器返回了不完整的数据，请重试',
-        'Unexpected token': '服务器返回了无法解析的数据',
-        'JSON parse error': '服务器返回了无法解析的数据，请检查API配置',
-        'SyntaxError': '数据格式错误，请检查API设置',
-        // HTTP状态码（直接匹配）
-        '401 Unauthorized': '认证失败，API Key错误或已过期',
-        '403 Forbidden': '没有权限，请检查API Key的访问权限',
-        '404 Not Found': '请求的地址不存在，请检查API地址',
-        '429 Too Many Requests': '请求过于频繁，请稍后再试',
-        '500 Internal Server Error': 'API服务器内部错误，请稍后再试',
-        '502 Bad Gateway': 'API网关错误，服务器可能正在维护',
-        '503 Service Unavailable': 'API服务暂不可用，请稍后再试',
-        '504 Gateway Timeout': 'API网关超时，服务器响应太慢',
-        '401': '认证失败(API Key错误或已过期)',
-        '403': '没有权限访问该资源',
-        '404': '请求的地址不存在，请检查API地址',
-        '429': '请求过于频繁，请稍后再试(已触发速率限制)',
-        '500': 'API服务器内部错误，请稍后再试',
-        '502': 'API网关错误，服务器可能正在维护',
-        '503': 'API服务暂不可用，请稍后再试',
-        '504': 'API网关超时，服务器响应太慢',
-        // API特定错误
-        'insufficient_quota': 'API额度不足，请充值或更换Key',
-        'rate_limit_exceeded': '请求频率超限，请降低发送速度',
-        'context_length_exceeded': '对话内容超出模型上下文长度限制，请压缩对话或更换模型',
-        'invalid_api_key': 'API Key无效，请检查是否正确复制',
-        'model_not_found': '模型不存在，请检查模型名称是否正确',
-        'Maximum context length': '超出最大上下文长度限制',
-        'This model maximum context length': '超出模型最大上下文长度',
-        'openai_error': 'OpenAI接口错误，请检查API地址和密钥是否正确',
-        'invalid_request_error': '请求格式错误，请检查模型名称或参数',
-        'authentication_error': '认证失败，API Key无效或已过期',
-        'permission_denied': '没有权限，请检查API Key的访问权限',
-        'not_found': '请求的资源不存在',
-        'rate_limit_error': '请求频率超限，请稍后再试',
-        'server_error': 'API服务器内部错误，请稍后再试',
-        'service_unavailable': 'API服务暂不可用，请稍后再试',
-        // JavaScript运行时错误
-        'Cannot read properties of null': '数据加载失败，请刷新页面后重试',
-        'Cannot read property': '数据读取失败，请稍后重试',
-        'null is not an object': '数据未加载完成，请稍后重试',
-        'undefined is not an object': '数据未定义，请刷新页面重试',
-        'TypeError': '类型错误，请稍后重试',
-        'ReferenceError': '引用错误，请刷新页面',
-        // 其他常见错误
-        'timeout': '请求超时，请检查网络或重试',
-        'Timeout': '请求超时，请稍后重试',
-        'CORS': '跨域请求被阻止，请检查API地址',
-        'cors': '跨域请求被阻止，请检查API设置',
-        'Invalid URL': 'API地址无效，请检查设置',
-        'No API key': '未配置API Key，请先在设置中添加',
-        'No API configuration': '未配置API，请先在设置中添加',
-        'fetch failed': '获取数据失败，请检查网络和API地址',
-        'no api configuration': '未配置API，请先在设置中添加',
-        'api key': 'API密钥',
-        'api_key': 'API密钥',
-        'API key': 'API密钥',
-        'API Key': 'API密钥',
-        'error processing': '处理数据时出错',
-        'parse error': '解析数据出错',
-        'invalid response': '无效的响应',
-        'empty response': '服务器返回了空数据',
-        // ===== 智能提示补充：API Key / 模型下架 / 余额 =====
-        'Incorrect API key provided': 'API Key 不正确，请到「设置→API 配置」检查并重新粘贴',
-        'You exceeded your current quota': '账户额度已用完，请充值或切换到其他 API Key',
-        'You must provide a model': '未指定模型，请到 API 配置填写模型名（如 gpt-4o-mini、deepseek-chat）',
-        'The model `': '模型不存在或已下架，请检查 API 配置中的模型名是否正确',
-        'has been deprecated': '该模型已下架，请更换为其他可用模型',
-        'deprecat': '该模型已下架，请更换为其他可用模型',
-        '余额不足': '账户余额不足，请充值或更换 API Key',
-        '额度不足': '账户额度不足，请充值或更换 API Key',
-        'API key 余额': 'API Key 余额不足，请充值或更换',
-        'key 已过期': 'API Key 已过期，请重新生成',
-        'invalid model': '模型名称无效，请到 API 配置检查',
-        '未配置模型': '未配置模型，请到 API 配置填写模型名',
-        'Billing': '账单问题，请检查 API 账户余额',
+        '请求已取消': '请求已取消',
+
+        // ═══ JSON/数据解析错误 ═══
+        'Unexpected end of JSON input': '服务器返回了不完整的数据 → 可能是网络不稳定或API异常，请重试',
+        'Unexpected token': '服务器返回了无法解析的数据 → API可能返回了非JSON格式，请检查API配置',
+        'JSON parse error': 'JSON解析失败 → API返回了非法格式，请检查API地址是否正确',
+        'SyntaxError': '数据格式错误 → API返回了无法识别的内容，请检查API配置',
+
+        // ═══ HTTP 状态码（完整匹配）═══
+        '400 Bad Request': '请求格式错误(400) → 请检查模型名称和参数是否正确',
+        '401 Unauthorized': '认证失败(401) → API Key错误或已过期，请到「设置→API配置」检查',
+        '403 Forbidden': '没有权限(403) → 该API Key无权访问此模型，请检查Key的权限范围',
+        '404 Not Found': '地址不存在(404) → 请检查API地址是否正确（注意路径是否需要加/v1）',
+        '408 Request Timeout': '请求超时(408) → API服务器处理太慢，请重试',
+        '429 Too Many Requests': '请求太频繁(429) → 已触发速率限制，请等待几秒后重试',
+        '500 Internal Server Error': '服务器内部错误(500) → API服务商的问题，请稍后重试',
+        '502 Bad Gateway': '网关错误(502) → API中转服务异常，可能正在维护',
+        '503 Service Unavailable': '服务不可用(503) → API服务暂时过载或维护中，请稍后重试',
+        '504 Gateway Timeout': '网关超时(504) → API中转服务等待上游响应超时',
+        '529 Site Overloaded': '站点过载(529) → API服务器负载过高，请稍后重试',
+
+        // ═══ HTTP 状态码（短格式）═══
+        '401': '认证失败 → API Key错误或已过期，请到「设置→API配置」检查',
+        '403': '没有权限 → 该API Key无权访问此资源，请检查Key的权限',
+        '404': '地址不存在 → 请检查API地址是否正确',
+        '429': '请求太频繁 → 已触发速率限制，请等待几秒后重试',
+        '500': '服务器内部错误 → API服务商的问题，请稍后重试',
+        '502': '网关错误 → API中转服务异常，可能正在维护',
+        '503': '服务不可用 → API服务暂时过载或维护中，请稍后重试',
+        '504': '网关超时 → API中转服务等待上游响应超时',
+
+        // ═══ OpenAI/兼容API 特定错误 ═══
+        'insufficient_quota': 'API额度不足 → 请到API服务商官网充值，或切换到其他API Key',
+        'rate_limit_exceeded': '请求频率超限 → 请降低发送速度，或升级API套餐',
+        'context_length_exceeded': '上下文超出模型限制 → 对话太长了，请尝试：1)减少设定长度 2)开启摘要压缩 3)换用更大上下文的模型',
+        'invalid_api_key': 'API Key无效 → 请到「设置→API配置」检查Key是否正确复制（注意前后空格）',
+        'model_not_found': '模型不存在 → 请到API配置检查模型名称是否正确（注意大小写和拼写）',
+        'Maximum context length': '超出最大上下文长度 → 对话内容太长，请压缩对话或更换更大上下文的模型',
+        'This model maximum context length': '超出模型最大上下文长度 → 请减少对话轮数或换用更大上下文的模型',
+        'openai_error': 'OpenAI接口错误 → 请检查API地址和密钥是否正确',
+        'invalid_request_error': '请求格式错误 → 可能是模型名称、参数格式有误，请检查API配置',
+        'authentication_error': '认证失败 → API Key无效或已过期，请到「设置→API配置」重新填写',
+        'permission_denied': '权限不足 → 该API Key无权访问此模型，请检查Key的权限范围',
+        'not_found': '请求的资源不存在 → 请检查API地址和模型名称',
+        'rate_limit_error': '请求频率超限 → 请稍后再试，或升级API套餐',
+        'server_error': 'API服务器内部错误 → 服务商的问题，请稍后重试',
+        'service_unavailable': 'API服务暂不可用 → 服务商可能正在维护，请稍后重试',
+        'server_busy': '服务器繁忙 → 请稍后重试',
+        'overloaded': '服务器过载 → 请稍后重试',
+        'capacity': '容量不足 → API服务当前负载过高，请稍后重试',
+
+        // ═══ API Key / 账户相关 ═══
+        'Incorrect API key provided': 'API Key 不正确 → 请到「设置→API配置」检查并重新粘贴（注意前后空格和换行）',
+        'You exceeded your current quota': '账户额度已用完 → 请到API服务商官网充值，或切换到其他API Key',
+        'You must provide a model': '未指定模型 → 请到「设置→API配置」填写模型名（如 gpt-4o-mini、deepseek-chat）',
+        'The model `': '模型不存在或已下架 → 请到API配置检查模型名是否正确',
+        'has been deprecated': '该模型已下架 → 请更换为其他可用模型',
+        'deprecat': '该模型已下架 → 请更换为其他可用模型',
+        'Billing': '账单问题 → 请到API服务商官网检查账户余额和账单',
+        'billing_not_active': '账单未激活 → 请到API服务商官网绑定支付方式',
+        'card_declined': '支付卡被拒绝 → 请到API服务商官网更新支付方式',
+        'trial_expired': '试用已过期 → 请到API服务商官网升级为付费账户',
+
+        // ═══ 中文错误二次翻译（中转站返回的中文错误）═══
+        '余额不足': '账户余额不足 → 请到API服务商官网充值，或更换API Key',
+        '额度不足': '账户额度不足 → 请到API服务商官网充值，或更换API Key',
+        'API key 余额': 'API Key余额不足 → 请充值或更换Key',
+        'key 已过期': 'API Key已过期 → 请到API服务商官网重新生成Key',
+        '未配置模型': '未配置模型 → 请到「设置→API配置」填写模型名',
+        '无效的': '参数无效 → 请检查API配置中的参数设置',
+
+        // ═══ 模型相关 ═══
+        'invalid model': '模型名称无效 → 请到API配置检查模型名（注意大小写，如 deepseek-chat 不是 DeepSeek-Chat）',
+        'model_overloaded': '模型过载 → 当前使用人数太多，请稍后重试或切换模型',
+        'model_rate_limit': '模型速率限制 → 该模型请求太频繁，请稍后重试',
+
+        // ═══ 内容安全/过滤 ═══
+        'content_filter': '内容被安全过滤 → AI认为生成内容可能违规，请调整输入或设定',
+        'safety': '安全过滤触发 → AI拒绝了本次生成，请调整输入内容',
+        'flagged': '内容被标记 → AI安全系统拦截了本次请求，请调整输入',
+
+        // ═══ 流式/SSE相关 ═══
+        'stream_error': '流式传输错误 → 连接中断，请重试',
+        'connection lost': '连接丢失 → 网络不稳定导致流式传输中断，请重试',
+
+        // ═══ JavaScript运行时错误 ═══
+        'Cannot read properties of null': '数据加载失败 → 可能是存档数据异常，请刷新页面后重试',
+        'Cannot read property': '数据读取失败 → 请刷新页面后重试',
+        'null is not an object': '数据未加载完成 → 请稍后重试',
+        'undefined is not an object': '数据未定义 → 请刷新页面重试',
+        'TypeError': '类型错误 → 请刷新页面后重试',
+        'ReferenceError': '引用错误 → 请刷新页面',
+
+        // ═══ 其他常见错误 ═══
+        'timeout': '请求超时 → AI思考时间过长，可能是模型太忙或上下文太长',
+        'Timeout': '请求超时 → AI思考时间过长，请重试或减少上下文长度',
+        'CORS': '跨域请求被阻止 → API地址可能不支持浏览器直接访问，请使用支持CORS的中转站',
+        'cors': '跨域请求被阻止 → 请更换支持浏览器访问的API地址',
+        'Invalid URL': 'API地址无效 → 请检查设置中的URL格式（需以http://或https://开头）',
+        'No API key': '未配置API Key → 请先到「设置→API配置」添加Key',
+        'No API configuration': '未配置API → 请先到「设置→API配置」添加API信息',
+        'fetch failed': '获取数据失败 → 请检查网络连接和API地址是否正确',
+        'no api configuration': '未配置API → 请先到「设置→API配置」添加API信息',
+        'api key': 'API密钥相关错误',
+        'api_key': 'API密钥相关错误',
+        'API key': 'API密钥相关错误',
+        'API Key': 'API密钥相关错误',
+        'error processing': '处理数据时出错 → 请重试',
+        'parse error': '解析数据出错 → API返回了无法识别的内容',
+        'invalid response': '无效的响应 → API返回了异常数据，请检查API配置',
+        'empty response': '服务器返回空数据 → AI未生成任何内容，可能是max_tokens太小或模型异常',
+        '请求超时（5分钟）': 'AI请求超时（5分钟）→ 模型思考时间过长，可能是上下文太大或模型过载，请重试',
     };
 // 预构建按长度降序排列的key数组，避免每次调用都排序
 var _translateErrorSortedKeys = null;
@@ -3137,17 +3180,36 @@ var httpMatch = m.match(/HTTP\s*(\d{3})/);
 if (httpMatch) {
     var code = httpMatch[1];
     var httpMap = {
-        '400': '请求格式错误(400)',
-        '401': '认证失败，API Key错误(401)',
-        '403': '没有权限(403)',
-        '404': '地址不存在(404)',
-        '429': '请求太频繁，请稍后再试(429)',
-        '500': '服务器内部错误(500)',
-        '502': '网关错误(502)',
-        '503': '服务暂不可用(503)',
-        '504': '网关超时(504)',
+        '400': '请求格式错误(400) → 请检查模型名称和参数',
+        '401': '认证失败(401) → API Key错误或已过期',
+        '403': '没有权限(403) → 该Key无权访问此资源',
+        '404': '地址不存在(404) → 请检查API地址',
+        '408': '请求超时(408) → 服务器处理太慢',
+        '429': '请求太频繁(429) → 请稍后再试',
+        '500': '服务器内部错误(500) → 服务商问题，请稍后重试',
+        '502': '网关错误(502) → 中转服务异常',
+        '503': '服务不可用(503) → 服务过载或维护中',
+        '504': '网关超时(504) → 中转服务等待上游超时',
+        '529': '站点过载(529) → 服务器负载过高',
     };
 if (httpMap[code]) return httpMap[code];
+}
+// API错误码格式："Error: NNN - message" 或 "API错误: NNN"
+var apiCodeMatch = m.match(/(?:Error|错误)[:\s]*(\d{3})/);
+if (apiCodeMatch) {
+    var apiCode = apiCodeMatch[1];
+    var apiCodeMap = {
+        '400': '请求格式错误 → 请检查模型名称和参数是否正确',
+        '401': '认证失败 → API Key错误或已过期，请到「设置→API配置」检查',
+        '403': '权限不足 → 该API Key无权访问此模型',
+        '404': '地址不存在 → 请检查API地址是否正确',
+        '429': '请求太频繁 → 已触发速率限制，请等待几秒后重试',
+        '500': '服务器内部错误 → API服务商的问题，请稍后重试',
+        '502': '网关错误 → API中转服务异常，可能正在维护',
+        '503': '服务不可用 → API服务暂时过载或维护中',
+        '504': '网关超时 → API中转服务等待上游响应超时',
+    };
+    if (apiCodeMap[apiCode]) return apiCodeMap[apiCode];
 }
 // 都没匹配到，返回友好提示（截断过长消息）
 if (m.length > 100) {
