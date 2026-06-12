@@ -1458,37 +1458,67 @@ async function sendAIRequest(userMessage, isInit = false) {
             messages.push({ role: 'assistant', content: gameState._continuePrefill });
         }
 
-        // 【酒馆特性】智能上下文管理
-        // 自动计算当前消息的token数，如果接近上下文窗口上限，从最旧的聊天消息开始移除
-        // 保留系统消息和固定消息，只移除普通的user/assistant历史消息
+        // 【酒馆式智能上下文管理】
+        // 酒馆核心策略：Prompt Size = Context Size - Max Response Length
+        // 系统提示词/世界书/记忆 → 永远保留（permanent tokens）
+        // 聊天历史 → 从最旧开始淘汰，直到不超预算
+        // 参考：https://sillytavern.wiki/usage/common-settings/
         var contextSize = (gameState && gameState.contextSize) || 8000;
-        var reservedForOutput = Math.floor(contextSize * 0.30); // 留30%给输出，防止AI无生成空间
+        var maxTokens = (gameState && gameState.maxTokens) || 4096;
+        // 酒馆公式：输入预算 = 上下文大小 - 输出预留
+        // 但AI实际输出通常只有2000-3000 tokens（不是4096上限）
+        // 所以预留实际输出空间+安全余量，而非maxTokens全量
+        var reservedForOutput = Math.min(maxTokens, Math.max(1500, Math.floor(contextSize * 0.25)));
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessages(messages);
         if (currentTokens > maxInputTokens) {
-            console.log('[智能上下文] 当前 ' + currentTokens + ' tokens，上限 ' + maxInputTokens + '，开始裁剪');
-            // 从聊天历史区域（跳过系统消息）的最旧消息开始移除
-            // 但不移除固定消息和最后一条user消息
+            console.log('[智能上下文] 当前 ' + currentTokens + ' tokens，预算 ' + maxInputTokens + '（上下文' + contextSize + '-输出预留' + reservedForOutput + '），开始裁剪');
+            
+            // 第一阶段：先瘦身旧AI回复（比直接删除更省，保留story内容）
+            var lastAssistantIdx = -1;
+            for (var _laIdx = messages.length - 1; _laIdx >= 0; _laIdx--) {
+                if (messages[_laIdx].role === 'assistant') { lastAssistantIdx = _laIdx; break; }
+            }
+            var slimmedCount = 0;
+            for (var _slIdx = chatHistoryStart; _slIdx < messages.length && currentTokens > maxInputTokens; _slIdx++) {
+                if (_slIdx === lastAssistantIdx) continue; // 不瘦身最新AI回复
+                var _slMsg = messages[_slIdx];
+                if (_slMsg.role === 'assistant' && _slMsg.content && !_slMsg._slimmed) {
+                    var beforeLen = _slMsg.content.length;
+                    var slimResult = _slimAssistantMessage(_slMsg.content);
+                    if (slimResult !== _slMsg.content) {
+                        var savedTokens = estimateTokensUtil(beforeLen - slimResult.length > 0 ? 'x'.repeat(beforeLen - slimResult.length) : '');
+                        currentTokens -= savedTokens;
+                        _slMsg.content = slimResult;
+                        _slMsg._slimmed = true;
+                        slimmedCount++;
+                    }
+                }
+            }
+            if (slimmedCount > 0) {
+                console.log('[智能上下文] 瘦身了 ' + slimmedCount + ' 条旧AI回复，当前 ' + currentTokens + ' tokens');
+            }
+            
+            // 第二阶段：瘦身还不够，从最旧的聊天历史开始淘汰
             var removedCount = 0;
             var lastUserIdx = -1;
             for (var _rIdx = messages.length - 1; _rIdx >= 0; _rIdx--) {
                 if (messages[_rIdx].role === 'user') { lastUserIdx = _rIdx; break; }
             }
-            // 从chatHistoryStart开始，移除最旧的非固定消息
             for (var _rIdx2 = chatHistoryStart; _rIdx2 < messages.length && currentTokens > maxInputTokens; _rIdx2++) {
-                if (_rIdx2 === lastUserIdx) continue; // 不移除当前用户消息
+                if (_rIdx2 === lastUserIdx) continue;
                 var msg = messages[_rIdx2];
-                if (msg._pinned) continue; // 不移除固定消息
+                if (msg._pinned) continue;
                 if (msg.role === 'user' || msg.role === 'assistant') {
-                    currentTokens -= estimateTokensUtil(msg.content || '') + 4; // +4为role标签开销
+                    currentTokens -= estimateTokensUtil(msg.content || '') + 4;
                     messages.splice(_rIdx2, 1);
-                    _rIdx2--; // 调整索引
+                    _rIdx2--;
                     removedCount++;
-                    if (lastUserIdx > _rIdx2) lastUserIdx--; // 调整lastUserIdx
+                    if (lastUserIdx > _rIdx2) lastUserIdx--;
                 }
             }
             if (removedCount > 0) {
-                console.log('[智能上下文] 移除了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
+                console.log('[智能上下文] 淘汰了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
             }
         }
         var options = {
