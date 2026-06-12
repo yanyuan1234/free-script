@@ -1119,14 +1119,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 支持 use_sysprompt 配置（月读预设设为 false）
             // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            // 【防429模式】在系统提示词前注入随机噪声（来自果实预设的智慧）
-            // 部分API会对系统提示词进行内容审查，随机噪声可以降低触发概率
+            // 【防429模式】精简噪声注入（原版无此功能，过多噪声浪费token）
             if (gameState && gameState.anti429Mode) {
-                var noisePool = ['⚙️⚙️⚙️','λ-calc','##$$%%','v_tensor','!#FF00','<<∅>>','//ignore','μ-808','HALT','EXECUTE','##!!~~','(e^πi)','CRC32','β_decay','ψ-state','||END||','量子纠缠','&&&**','@SYS_null'];
-                var noise1 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
-                var noise2 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
-                var noise3 = noisePool[Math.floor(Math.random()*noisePool.length)] + '::' + noisePool[Math.floor(Math.random()*noisePool.length)];
-                messages.push({ role: 'system', content: '[Cortex_Init]⚡\n#latent_seed_λx9b42🌀→//ENTROPY_BURST\n' + noise1 + '::' + noise2 + '::' + noise3 + '\n##START##\n⚡INIT_END⚡' });
+                messages.push({ role: 'system', content: '[INIT]⚡entropy_burst##START##⚡' });
             }
 
             if (gameState && gameState._useSysprompt !== false) {
@@ -1199,116 +1194,43 @@ async function sendAIRequest(userMessage, isInit = false) {
             );
             if (d5) messages.push({ role: 'system', content: d5 });
 
-            // 游戏状态快照（按次计费：注入完整数据，让AI掌握更多剧情信息）
-            // 【去重优化】增强记忆已注入角色状态/物品/事件/任务时，世界快照跳过这些重复部分
+            // 游戏状态快照（精简版：与原版backup一致，只发关键信息，节省token）
             if (gameState && gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
-                var _hasMemInjection = (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection);
-                var snapshotText = '【世界快照】\n';
                 var snap = gameState.worldSnapshot;
+                var snapshotText = '【世界快照】\n';
                 if (snap.player) {
-                    snapshotText += '主角: ' + (snap.player.name || '未知');
-                    if (snap.player.identity) snapshotText += ', 身份: ' + snap.player.identity;
-                    if (snap.player.age) snapshotText += ', 年龄: ' + snap.player.age;
-                    if (snap.player.title) snapshotText += ', 称号: ' + snap.player.title;
-                    if (snap.player.personality) snapshotText += ', 性格: ' + snap.player.personality;
-                    snapshotText += '\n';
+                    snapshotText += '主角: ' + (snap.player.name || '未知') + ', ' + (snap.player.identity || '') + '\n';
                     if (snap.player.stats && snap.player.stats.length > 0) {
-                        snap.player.stats.forEach(function(s) {
-                            snapshotText += '  ' + s.label + ': ' + s.value + (s.icon ? ' ' + s.icon : '') + '\n';
-                        });
+                        snapshotText += '属性: ' + snap.player.stats.map(function(s) { return s.label + ':' + s.value; }).join(', ') + '\n';
                     }
                 }
-                // 角色状态：增强记忆的"角色状态"层已覆盖，跳过以节省token
-                if (!_hasMemInjection && snap.characters && snap.characters.length > 0) {
-                    snapshotText += 'NPC状态:\n';
-                    snap.characters.forEach(function(c) {
-                        var line = '  ' + c.name;
-                        if (c.title) line += '(' + c.title + ')';
-                        if (c.relation) line += ' 关系:' + c.relation;
-                        if (typeof c.favorability === 'number') line += ' 好感:' + c.favorability;
-                        if (c.desc) line += ' - ' + c.desc;
-                        snapshotText += line + '\n';
-                        if (c.details && c.details.length > 0) {
-                            c.details.forEach(function(d) {
-                                if (d.key && d.value) snapshotText += '    ' + d.key + ': ' + d.value + '\n';
-                            });
-                        }
-                    });
+                if (snap.characters && snap.characters.length > 0) {
+                    snapshotText += '当前NPC: ' + snap.characters.map(function(c) {
+                        return c.name + '(' + (c.relation || '未知') + ',好感' + (c.favorability || '?') + ')';
+                    }).join('; ') + '\n';
                 }
-                // 背包：增强记忆的"持有物品"层已覆盖，跳过以节省token
-                if (!_hasMemInjection && snap.bag && snap.bag.length > 0) {
-                    snapshotText += '背包:\n';
-                    snap.bag.forEach(function(b) {
-                        var line = '  ' + b.name + ' x' + (b.count || 1);
-                        if (b.rarity) line += ' [' + b.rarity + ']';
-                        if (b.desc) line += ' - ' + b.desc;
-                        if (b.equipped) line += ' [已装备]';
-                        snapshotText += line + '\n';
-                    });
+                if (snap.bag && snap.bag.length > 0) {
+                    snapshotText += '背包: ' + snap.bag.map(function(b) { return b.name + 'x' + (b.count || 1); }).join(', ') + '\n';
                 }
-                // 任务状态：增强记忆的"进行中约定"层已覆盖，跳过以节省token
-                if (!_hasMemInjection && snap.quests && snap.quests.length > 0) {
-                    snapshotText += '任务:\n';
-                    snap.quests.forEach(function(q) {
-                        var line = '  ' + q.title;
-                        if (q.type) line += ' [' + q.type + ']';
-                        if (q.status) line += ' - ' + q.status;
-                        if (q.progress) line += ' (' + q.progress + ')';
-                        if (q.hint) line += ' 提示:' + q.hint;
-                        snapshotText += line + '\n';
-                    });
-                }
-                // 关系网：增强记忆未覆盖，始终注入
-                if (snap.relationships && snap.relationships.length > 0) {
-                    snapshotText += '关系网:\n';
-                    snap.relationships.forEach(function(r) {
-                        snapshotText += '  ' + r.from + ' → ' + r.to + ': ' + r.type + (r.desc ? ' (' + r.desc + ')' : '') + '\n';
-                    });
-                }
-                // 世界模块：增强记忆未覆盖，始终注入
-                if (snap.world && snap.world.length > 0) {
-                    snapshotText += '世界信息:\n';
-                    snap.world.forEach(function(w) {
-                        var line = '  [' + (w.type || 'text') + '] ' + (w.title || '');
-                        if (w.type === 'list' && w.items) line += ': ' + w.items.join(', ');
-                        else if (w.type === 'key_value' && w.items) line += ': ' + w.items.map(function(i) { return i.key + '=' + i.value; }).join(', ');
-                        else if (w.content) line += ': ' + w.content;
-                        snapshotText += line + '\n';
-                    });
-                }
-                // 游戏时间：增强记忆未覆盖，始终注入
-                if (snap.gameTime) {
-                    var gt = snap.gameTime;
-                    snapshotText += '游戏时间: ' + (gt.date || '') + ' ' + (gt.time || '') + ' ' + (gt.period || '');
-                    if (gt.weather) snapshotText += ' 天气:' + gt.weather;
-                    if (gt.era) snapshotText += ' 时代:' + gt.era;
-                    snapshotText += '\n';
-                }
-                messages.push({ role: 'system', content: snapshotText });
+                if (snapshotText.length > 10) messages.push({ role: 'system', content: snapshotText });
             }
 
-            // 重要事件记录：增强记忆的"重要事件"层已覆盖，跳过以节省token
+            // 重要事件记录（精简：只保留最近5条，节省token）
             if (!(typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) && gameState && gameState.keyEvents && gameState.keyEvents.length > 0) {
-                var eventsText = '【过往事件】\n';
-                gameState.keyEvents.forEach(function(evt, idx) {
-                    eventsText += (idx + 1) + '. ' + evt + '\n';
-                });
+                var recentEvents = gameState.keyEvents.slice(-5);
+                var eventsText = '【过往事件】\n' + recentEvents.join('\n');
                 messages.push({ role: 'system', content: eventsText });
             }
 
-            // 【多角色叙事指导】当场景中有多个NPC时自动注入（来自蛾摩拉预设的智慧）
-            // 只在当前场景确实有多个活跃角色时注入，避免对所有世界都触发
+            // 【多角色叙事指导】精简为1行提示，节省token
             var _activeCharCount = 0;
             if (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters) {
-                // 统计当前场景中活跃的角色（有最近互动记录的）
                 gameState.worldSnapshot.characters.forEach(function(c) {
-                    // 有好感度或关系描述的角色视为活跃
-                    if (c.relation || typeof c.favorability === 'number' || c.desc) _activeCharCount++;
+                    if (c.relation || typeof c.favorability === 'number') _activeCharCount++;
                 });
             }
             if (_activeCharCount > 1) {
-                var multiCharText = '【多角色叙事原则】\n当前场景有多个角色在场，请遵守：\n- 每个角色有独立的行动线和说话节奏，不围绕主角统一行动\n- 对话轮流进行，避免一个角色连续说多段话\n- 不同角色对同一事件应有不同反应，体现性格差异\n- 非焦点角色也应有所动作（哪怕只是背景反应），让场景有层次感\n- 角色之间的互动不只通过主角中转，他们之间也可以直接对话';
-                messages.push({ role: 'system', content: multiCharText });
+                messages.push({ role: 'system', content: '【多角色】多角色在场时，各角色独立行动、轮流对话、性格各异。' });
             }
 
             // 远期摘要

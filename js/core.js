@@ -1793,7 +1793,7 @@ var TypewriterBuffer = {
         this.render();
     }
 };
-const MAX_HISTORY = 50;
+const MAX_HISTORY = 20;
 
 // ========================================
 // 打字机「跳过」按钮管理（用户需求：长按快进、点击屏幕一律不要，只保留按钮）
@@ -3674,9 +3674,9 @@ function buildAIRequestBody(messages, options, config) {
     if (options.stream) filtered.stream = true;
     // 【安全护栏】max_tokens 异常大值修正：历史 bug 误写为 80000，导致模型生成 8 万 token 才会停
     // 模型只要设了 max_tokens=N，**会一直写到 N 为止**——所以 max_tokens 几乎 = "生成时长上限"
-    if (filtered.max_tokens && filtered.max_tokens > 16000) {
-        console.warn('[API] max_tokens 异常大值已修正:', filtered.max_tokens, '→ 8192');
-        filtered.max_tokens = 8192;
+    if (filtered.max_tokens && filtered.max_tokens > 4096) {
+        console.warn('[API] max_tokens 异常大值已修正:', filtered.max_tokens, '→ 4096');
+        filtered.max_tokens = 4096;
     }
     return filtered;
 }
