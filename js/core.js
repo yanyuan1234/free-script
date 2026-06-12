@@ -3671,7 +3671,9 @@ function buildAIRequestBody(messages, options, config) {
 
 // 【优化 #6 + #7】解析一条 SSE 事件文本，把内容累加到 ctx
 // 统一前缀处理：兼容 "data:" 和 "data: " 两种格式
-// 【修复API】兼容推理模型：content / reasoning_content / reasoning 三种字段都尝试
+// 【修复 #19】推理模型（DeepSeek-R1 / o1 / o3 等）的思考链走 reasoning_content 字段，
+//              剧情正文走 content 字段。两者必须分离——只把 content 给用户看，
+//              否则推理阶段 reason chain 会被当成剧情渲染出来。
 function parseSSEEventText(eventText, ctx) {
     if (!eventText) return;
     var lines = eventText.split('\n');
@@ -3690,7 +3692,12 @@ function parseSSEEventText(eventText, ctx) {
         }
         if (!json.choices || !json.choices[0]) continue;
         var delta = json.choices[0].delta || {};
-        var content = delta.content || delta.reasoning_content || delta.reasoning || '';
+        // 【修复 #19】只取剧情正文 content；reasoning_content/reasoning 是思考链，
+        //              统计到 ctx.reasoningText 但绝不进入 fullText
+        var content = (typeof delta.content === 'string') ? delta.content : '';
+        var reasoningChunk = (typeof delta.reasoning_content === 'string') ? delta.reasoning_content
+                          : (typeof delta.reasoning === 'string') ? delta.reasoning : '';
+        if (reasoningChunk) ctx.reasoningText += reasoningChunk;
         ctx.fullText += content;
         // 总是回调（与原版一致），不门控
         if (ctx.onChunk) {
@@ -3704,6 +3711,7 @@ function parseSSEEventText(eventText, ctx) {
 // 1) 尝试整体 JSON 解析（部分 API 不走 SSE，直接返回 JSON）
 // 2) 如果整体不是 JSON，从 rawBody 中找首条 data 行提取
 // 3) 都失败返回空串（绝不再返回原始 SSE 文本给 UI）
+// 【修复 #19】只取 content 字段；reasoning_content/reasoning 是思考链，禁止回退
 function parseAIResponseFallback(rawBody) {
     if (!rawBody) return '';
     // 1) 整体 JSON
@@ -3714,7 +3722,7 @@ function parseAIResponseFallback(rawBody) {
         }
         var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
         if (_msg) {
-            return _msg.content || _msg.reasoning_content || _msg.reasoning || '';
+            return (typeof _msg.content === 'string') ? _msg.content : '';
         }
         if (jsonData.usage) return '';
     } catch (e) {
@@ -3727,7 +3735,7 @@ function parseAIResponseFallback(rawBody) {
         try {
             var parsed = JSON.parse(dataLine.replace(/^data:\s*/, '').trim());
             var d = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-            if (d) return d.content || d.reasoning_content || d.reasoning || '';
+            if (d) return (typeof d.content === 'string') ? d.content : '';
         } catch (_) { /* 忽略 */ }
     }
     return '';
@@ -3755,7 +3763,8 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
-    var ctx = { fullText: '', streamError: null, onChunk: onChunk };
+    // 【修复 #19】reasoningText 用于统计思考链长度，便于排查"只回了思考链没回正文"的情况
+    var ctx = { fullText: '', reasoningText: '', streamError: null, onChunk: onChunk };
     var sseBuffer = '';
     // 【优化 #1】rawBody 加 64KB 上限，避免长内容把内存吃光
     var rawBody = '';
@@ -3800,6 +3809,11 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         }
     }
 
+    // 【修复 #19】流结束但剧情正文为空 + 有思考链时打警告，提示排查
+    if (!ctx.fullText && ctx.reasoningText) {
+        console.warn('[callAI] 推理模型仅返回思考链（' + ctx.reasoningText.length + ' 字符）未返回剧情正文，可能是 max_tokens 过小被思考链吃光');
+    }
+
     // 兜底：SSE 解析为空时再尝试从 rawBody 提取
     if (!ctx.fullText && rawBody) {
         return parseAIResponseFallback(rawBody);
@@ -3824,9 +3838,19 @@ async function executeAINormal(url, body, apiKey, signal) {
         throw new Error(errMsg);
     }
     var data = await res.json();
-    // 【兼容推理模型】content / reasoning_content / reasoning 都尝试
+    // 【修复 #19】只取 content；reasoning_content/reasoning 是思考链，content 为空时
+    //              打警告并返回空串（绝不回退到思考链），让上游能感知到异常
     var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
-    return (_nmsg && (_nmsg.content || _nmsg.reasoning_content || _nmsg.reasoning)) || '';
+    if (_nmsg) {
+        var _reasoningLen = ((typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content.length : 0)
+                          + ((typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning.length : 0);
+        var _content = (typeof _nmsg.content === 'string') ? _nmsg.content : '';
+        if (!_content && _reasoningLen > 0) {
+            console.warn('[callAI] 推理模型仅返回思考链（' + _reasoningLen + ' 字符）未返回剧情正文，可能是 max_tokens 过小被思考链吃光');
+        }
+        return _content;
+    }
+    return '';
 }
 
 // AI 调用主入口
