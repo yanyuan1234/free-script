@@ -1586,7 +1586,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                     .replace(/💭[\s\S]*?💭/g, '')
                     .replace(/"story"\s*:\s*""/g, '')
                     .trim();
-                if (cleanedRaw && cleanedRaw.length > 10) {
+                // 【修复】排除原始 SSE 流数据（包含 data: 行和 object 字段）
+                var isRawSSE = cleanedRaw.indexOf('data:') !== -1 && cleanedRaw.indexOf('"object"') !== -1;
+                if (cleanedRaw && cleanedRaw.length > 10 && !isRawSSE) {
                     storyText = '【AI返回异常，原始响应如下】\n' + cleanedRaw.substring(0, 500);
                     console.log('[AI生成] 已提取原始响应作为兜底');
                 }

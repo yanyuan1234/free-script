@@ -2247,9 +2247,14 @@ if (!storyText) {
 if (!storyText) {
     storyText = reply.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
 }
-// 如果还是空，直接用原始回复
+// 如果还是空，检查是否是原始 SSE 数据（包含 data: 行），避免把 JSON 渲染给用户
 if (!storyText) {
-    storyText = reply;
+    if (reply && reply.indexOf('data:') !== -1 && reply.indexOf('"object"') !== -1) {
+        // 原始 SSE 流数据，不应直接显示
+        storyText = '';
+    } else {
+        storyText = reply;
+    }
 }
 }
 // 【修复】兜底：如果storyText仍然为空，但reply有内容，
@@ -3876,9 +3881,15 @@ function parseAIResponseFallback(rawBody) {
         var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
         if (_msg) {
             var _content = (typeof _msg.content === 'string') ? _msg.content : '';
-            // 优先用 content；但当 content 为空且没有 usage（说明不是"成功但无输出"），
-            // 回退到 rawBody 原文（与原版一致）——保证用户至少能看到东西
+            var _reasoningLen = ((typeof _msg.reasoning_content === 'string') ? _msg.reasoning_content.length : 0)
+                              + ((typeof _msg.reasoning === 'string') ? _msg.reasoning.length : 0);
+            // 优先用 content
             if (_content) return _content;
+            // content 为空但有 reasoning_content → 思考链吃光了 token，返回空串让上游提示
+            if (_reasoningLen > 0) {
+                console.warn('[parseAIResponseFallback] 推理模型仅返回思考链（' + _reasoningLen + ' 字符），未返回正文');
+                return '';
+            }
             if (jsonData.usage) return '';
             return rawBody;
         }
