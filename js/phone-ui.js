@@ -3619,6 +3619,22 @@ function bindEvents() {
         });
     }
 
+    // 状态栏里的「跳过」按钮（紧挨取消）—— 直接复用 TypewriterBuffer.skip()
+    // 显示/隐藏由 core.js 的 _showSkipButton / _hideSkipButton 统一控制
+    var genSkipBtn = document.getElementById('genSkipBtn');
+    if (genSkipBtn) {
+        genSkipBtn.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            try {
+                if (typeof TypewriterBuffer !== 'undefined') {
+                    TypewriterBuffer.skip();
+                }
+            } catch (e) {
+                console.warn('[GenSkipBtn] 跳过失败:', e);
+            }
+        });
+    }
+
     // 加载存档按钮
     bindEvent('btnMenuLoadLatest', 'click', function() {
         loadFromSlot(0).catch(function(e) {

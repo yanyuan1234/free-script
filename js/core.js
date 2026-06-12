@@ -1826,11 +1826,18 @@ function _showSkipButton() {
         }
     }
     _skipBtnEl.classList.add('visible');
+    // 【全游戏弹窗策略延伸】同时显示 #genControl 状态栏里的「跳过」按钮（紧挨取消）
+    // 仅控制显示，不重新绑定事件——事件在 phone-ui.js 启动时统一绑定一次
+    var _barSkipBtn = document.getElementById('genSkipBtn');
+    if (_barSkipBtn) _barSkipBtn.style.display = '';
 }
 function _hideSkipButton() {
     if (_skipBtnEl) {
         _skipBtnEl.classList.remove('visible');
     }
+    // 同步隐藏 #genControl 里的「跳过」按钮
+    var _barSkipBtn = document.getElementById('genSkipBtn');
+    if (_barSkipBtn) _barSkipBtn.style.display = 'none';
 }
 
 // ========================================

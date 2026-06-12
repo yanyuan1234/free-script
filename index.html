@@ -482,6 +482,8 @@
                     <div class="gen-spinner"></div>
                     <span id="genText">正在生成...</span>
                     <span class="flex-1"></span>
+                    <!-- 跳过按钮：打字机阶段才显示，AI 请求阶段由取消按钮负责 -->
+                    <button class="gen-btn" id="genSkipBtn" style="display:none;">跳过</button>
                     <button class="gen-btn" id="genCancelBtn">取消</button>
                 </div>
                 <div class="game-content" id="gameContent">
