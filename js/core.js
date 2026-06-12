@@ -724,7 +724,9 @@ var LocalGameAPI = {
     this.save();
     },
     getCurrentConfig() {
-        return this._configs[this._currentSlot] || this._configs[0];
+        // 【优化 #10】返回浅拷贝，外部修改不会污染内部状态
+        var cfg = this._configs[this._currentSlot] || this._configs[0];
+        return cfg ? Object.assign({}, cfg) : null;
     },
     setConfig(slot, config) {
         this._configs[slot] = {
@@ -745,26 +747,21 @@ var LocalGameAPI = {
         // 网络错误重试配置
         const MAX_RETRIES = 3; // 每个配置最多重试3次
         const RETRY_DELAY_BASE = 1000; // 基础延迟1秒
+        // 【优化 #16】本轮调用的起始时间，用于埋点每个 slot 的耗时
+        var startTs = Date.now();
 
         async function retryRequest(slotIdx, attempt) {
             try {
                 const result = await requestFn(slotIdx);
                 return result;
                 } catch (e) {
-                var errMsg = translateError((e && e.message) ? e.message : String(e));
-                // 判断是否是可重试的错误
+                // 【优化 #8】网络错误判定改用原生字段，不再依赖翻译后的字符串匹配
+                // translateError 之后文案是中文的，一旦未来改 i18n 这里就漏判
                 var isRetryable =
-                errMsg.includes('网络') ||
-                errMsg.includes('network') ||
-                errMsg.includes('timeout') ||
-                errMsg.includes('超时') ||
-                errMsg.includes('ECONNREFUSED') ||
-                errMsg.includes('ETIMEDOUT') ||
-                errMsg.includes('fetch') ||
-                errMsg.includes('Failed to fetch') ||
-                errMsg.includes('abort') ||
-                errMsg.includes('AbortError') ||
-                (e.name === 'TypeError' && errMsg.includes('fetch'));
+                    (e && e.name === 'AbortError') ||
+                    (e && e.name === 'TypeError' && /fetch|network/i.test(String(e.message || ''))) ||
+                    (e && (e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND' || e.code === 'EAI_AGAIN')) ||
+                    (e && /network|fetch failed|timeout|aborted/i.test(String(e.message || '')));
 
                 if (isRetryable && attempt < MAX_RETRIES - 1) {
                     var delay = RETRY_DELAY_BASE * Math.pow(2, attempt); // 指数退避
@@ -779,18 +776,30 @@ var LocalGameAPI = {
     if (!this._autoRotate) {
         try {
             var result = await retryRequest(this._currentSlot, 0);
-            this._logRequest(this._currentSlot, true);
+            this._logRequest(this._currentSlot, true, '', Date.now() - startTs);
             return result;
             } catch (e) {
-            this._logRequest(this._currentSlot, false, e.message);
+            this._logRequest(this._currentSlot, false, e.message, Date.now() - startTs);
             this._markModelFailed(this._currentSlot);
             throw e;
             }
     }
     const totalSlots = this._configs.length;
     let attemptedCount = 0;
+    // 【优化 #9】轮换顺序：当前 slot 起循环，但"近期失败"的 slot 排到末尾
+    // 注意：仍然会尝试失败 slot（玩家想用就能用），只是优先尝试健康的
+    var orderedSlots = [];
+    for (let i = 0; i < totalSlots; i++) {
+        orderedSlots.push((this._currentSlot + i) % totalSlots);
+    }
+    var self = this;
+    orderedSlots.sort(function(a, b) {
+        var aFailed = self.isModelFailedForSlot(a) ? 1 : 0;
+        var bFailed = self.isModelFailedForSlot(b) ? 1 : 0;
+        return aFailed - bFailed; // 非失败(0)排在失败(1)前面
+    });
     for (let attempt = 0; attempt < totalSlots; attempt++) {
-        const slotIdx = (this._currentSlot + attempt) % totalSlots;
+        const slotIdx = orderedSlots[attempt];
         const cfg = this._configs[slotIdx];
         // 跳过配置不完整的API
         if (!cfg.baseUrl || !cfg.apiKey) {
@@ -802,7 +811,7 @@ var LocalGameAPI = {
         attemptedCount++;
     try {
         const result = await retryRequest(slotIdx, 0);
-        this._logRequest(slotIdx, true);
+        this._logRequest(slotIdx, true, '', Date.now() - startTs);
         if (attempt > 0 && slotIdx !== this._currentSlot) {
             this.setCurrentSlot(slotIdx);
             UI.toast('已自动切换到配置 ' + (slotIdx + 1));
@@ -810,7 +819,7 @@ var LocalGameAPI = {
         return result;
         } catch (e) {
         var errMsg = translateError((e && e.message) ? e.message : String(e));
-        this._logRequest(slotIdx, false, errMsg);
+        this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
         // 【修复】只有"临时性"错误（网络/限流）才标记模型失败 24h
         // model_not_found / invalid_api_key / context_length_exceeded
         // 这类错误不会因时间流逝而自愈，不能标记失败（否则会被永久跳过浪费配置）
@@ -829,13 +838,14 @@ var LocalGameAPI = {
     }
     throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败，请检查API配置');
     },
-    _logRequest(slot, success, error) {
+    _logRequest(slot, success, error, durationMs) {
         var cfg = this._configs[slot];
         if (!cfg) return;
         this._requestLog.push({
             slot: slot,
             model: cfg.model || '?',
             time: Date.now(),
+            durationMs: durationMs || 0,
             success: !!success,
             error: error || ''
             });
@@ -855,7 +865,10 @@ var LocalGameAPI = {
     _markModelFailed(slot) {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return;
-        this._failedModels[cfg.model] = Date.now();
+        // 【优化 #14】key 改为 slot+model 组合
+        // 之前用 model 名，两个 slot 用同模型时一个挂会误标记另一个
+        var key = slot + '|' + cfg.model;
+        this._failedModels[key] = Date.now();
         // 复用延迟保存机制，避免重试循环中频繁写 localStorage
         if (!this._savePending) {
             this._savePending = true;
@@ -865,6 +878,13 @@ var LocalGameAPI = {
                 self.save();
             }, 2000);
         }
+    },
+    // 【优化 #14】按 slot 判断是否被标记为失败（与 _markModelFailed 的 key 对应）
+    isModelFailedForSlot(slot) {
+        var cfg = this._configs[slot];
+        if (!cfg || !cfg.model) return false;
+        var key = slot + '|' + cfg.model;
+        return this.isModelFailed(key);
     },
     isModelFailed(modelName) {
         if (!modelName || !this._failedModels[modelName]) return false;
@@ -884,8 +904,10 @@ var LocalGameAPI = {
     getFailedModels() {
         var result = [];
         for (var m in this._failedModels) {
+            // 【优化 #14】key 可能是 "slot|model" 形式，UI 显示时拆出 model
+            var modelName = m.indexOf('|') >= 0 ? m.split('|').slice(1).join('|') : m;
             result.push({
-                model: m,
+                model: modelName,
                 failedAt: this._failedModels[m]
                 });
         }
@@ -3449,341 +3471,378 @@ function clearRecentApiErrors() {
 // ========================================
 // AI调用函数（替代 GameAPI.call）
 // ========================================
-async function callAI(messages, options = {}) {
-    if (!LocalGameAPI.getCurrentConfig() || !LocalGameAPI.getCurrentConfig().baseUrl || !LocalGameAPI
-    .getCurrentConfig().apiKey) {
-        throw new Error('请先配置API（设置 → API配置）');
-    }
 
-return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
-    const config = LocalGameAPI._configs[slotIdx];
-    const url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
-    // 【修复】先检查 PresetManager 是否存在，再调用 getParams()
+// 【优化 #13】参数默认值表——值等于表中默认值的字段会被过滤掉，避免某些 API 后端报错
+// 同时作为 truthy 判定参考（频率/存在惩罚是 OpenAI 标准参数，按非零决定是否发送）
+var SKIP_DEFAULTS = {
+    top_k: 0, min_p: 0, top_a: 0,
+    repetition_penalty: 1, typical_p: 1, tfs: 1,
+    mirostat_mode: 0, repetition_penalty_range: 0, repetition_penalty_slope: 0,
+    epsilon_cutoff: 0, eta_cutoff: 0, dry_multiplier: 0, xtc_probability: 0,
+    tool_reasoning_mode: 'disabled'
+};
+
+// 【优化 #18】合法的 reasoning_effort 值白名单，避免中转站收到乱写值后报错
+var VALID_REASONING_EFFORT = ['low', 'medium', 'high', 'auto'];
+
+// 【优化 #4】从 API 错误对象中提取并本地化错误信息
+// 显式判断字段，避免 translateError 对 undefined 返回 undefined 时链式调用炸掉
+function extractErrorMessage(errObj, fallback) {
+    if (!errObj) return fallback;
+    if (errObj.message) {
+        var m = translateError(errObj.message);
+        if (m) return m;
+    }
+    if (errObj.code) {
+        var c = translateError(errObj.code);
+        if (c) return c;
+    }
+    if (errObj.type) {
+        var t = translateError(errObj.type);
+        if (t) return t;
+    }
+    if (errObj.error) {
+        var e = translateError(errObj.error);
+        if (e) return e;
+    }
+    return fallback;
+}
+
+// 把 PresetManager 当前预设里的"高级采样参数"合并到 presetParams
+// 这些参数是 PresetManager.getParams() 没暴露的，需要手动取
+function mergeAdvancedPresetParams(presetParams) {
+    if (typeof PresetManager === 'undefined') return;
+    if (!PresetManager.presets || PresetManager.currentPresetIndex < 0) return;
+    var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
+    if (!_curPreset || !_curPreset.params) return;
+    var _pp = _curPreset.params;
+    if (_pp.top_k != null && !presetParams.top_k) presetParams.top_k = Number(_pp.top_k) || 0;
+    if (_pp.top_a != null && !presetParams.top_a) presetParams.top_a = Number(_pp.top_a) || 0;
+    if (_pp.min_p != null && !presetParams.min_p) presetParams.min_p = Number(_pp.min_p) || 0;
+    if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
+    if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
+    if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;
+    if (_pp.mirostat_mode != null && _pp.mirostat_mode !== 0) presetParams.mirostat_mode = Number(_pp.mirostat_mode) || 0;
+    if (_pp.mirostat_tau != null && _pp.mirostat_tau !== 5.0) presetParams.mirostat_tau = Number(_pp.mirostat_tau) || 5.0;
+    if (_pp.mirostat_eta != null && _pp.mirostat_eta !== 0.1) presetParams.mirostat_eta = Number(_pp.mirostat_eta) || 0.1;
+    if (_pp.dry_multiplier != null && _pp.dry_multiplier !== 0) presetParams.dry_multiplier = Number(_pp.dry_multiplier) || 0;
+    if (_pp.xtc_probability != null && _pp.xtc_probability !== 0) presetParams.xtc_probability = Number(_pp.xtc_probability) || 0;
+    if (_pp.reasoning_effort != null) presetParams.reasoning_effort = String(_pp.reasoning_effort);
+    if (_pp.seed != null) presetParams.seed = Number(_pp.seed) || null;
+    if (_pp.max_tokens && Number(_pp.max_tokens) > 0) presetParams.max_tokens = Number(_pp.max_tokens);
+}
+
+// 【优化 #13 + #18】过滤请求参数：去掉 null/undefined/默认值/非法 reasoning_effort
+function filterRequestParams(params) {
+    var filtered = {};
+    for (var key in params) {
+        if (!Object.prototype.hasOwnProperty.call(params, key)) continue;
+        var val = params[key];
+        if (val === null || val === undefined) continue;
+        // 表驱动默认值过滤
+        if (Object.prototype.hasOwnProperty.call(SKIP_DEFAULTS, key) && val === SKIP_DEFAULTS[key]) continue;
+        filtered[key] = val;
+    }
+    // 【优化 #18】reasoning_effort 白名单
+    if (filtered.reasoning_effort && VALID_REASONING_EFFORT.indexOf(String(filtered.reasoning_effort).toLowerCase()) < 0) {
+        console.warn('[API] reasoning_effort 值不合法，已过滤:', filtered.reasoning_effort);
+        delete filtered.reasoning_effort;
+    }
+    return filtered;
+}
+
+// 【优化 #15】构建单次 AI 请求的 body
+// 兼容模式（compatibleMode）只发 OpenAI 标准 4 大参数 + 可选 freq/presence
+// 正常模式发完整高级采样参数（中转站自己挑能用哪些）
+function buildAIRequestBody(messages, options, config) {
     if (typeof PresetManager === 'undefined') {
         throw new Error('PresetManager 未初始化');
     }
-var presetParams = PresetManager.getParams();
-// 【增强】合并预设中的高级采样参数（如果预设有定义）
-// 【修复】添加类型校验，确保数值参数为Number类型
-if (PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
-    var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
-    if (_curPreset && _curPreset.params) {
-        var _pp = _curPreset.params;
-        // 合并未在 getParams 中暴露的高级参数（带类型转换）
-        if (_pp.top_k != null && !presetParams.top_k) presetParams.top_k = Number(_pp.top_k) || 0;
-        if (_pp.top_a != null && !presetParams.top_a) presetParams.top_a = Number(_pp.top_a) || 0;
-        if (_pp.min_p != null && !presetParams.min_p) presetParams.min_p = Number(_pp.min_p) || 0;
-        if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
-        if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
-        if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;
-        if (_pp.mirostat_mode != null && _pp.mirostat_mode !== 0) presetParams.mirostat_mode = Number(_pp.mirostat_mode) || 0;
-        if (_pp.mirostat_tau != null && _pp.mirostat_tau !== 5.0) presetParams.mirostat_tau = Number(_pp.mirostat_tau) || 5.0;
-        if (_pp.mirostat_eta != null && _pp.mirostat_eta !== 0.1) presetParams.mirostat_eta = Number(_pp.mirostat_eta) || 0.1;
-        if (_pp.dry_multiplier != null && _pp.dry_multiplier !== 0) presetParams.dry_multiplier = Number(_pp.dry_multiplier) || 0;
-        if (_pp.xtc_probability != null && _pp.xtc_probability !== 0) presetParams.xtc_probability = Number(_pp.xtc_probability) || 0;
-        if (_pp.reasoning_effort != null) presetParams.reasoning_effort = String(_pp.reasoning_effort);
-        if (_pp.seed != null) presetParams.seed = Number(_pp.seed) || null;
-        // 确保max_tokens使用预设值（带类型转换）
-        if (_pp.max_tokens && Number(_pp.max_tokens) > 0) presetParams.max_tokens = Number(_pp.max_tokens);
+    var presetParams = PresetManager.getParams();
+    mergeAdvancedPresetParams(presetParams);
+
+    var isCompatibleMode = config.compatibleMode === true;
+    if (isCompatibleMode) {
+        console.log('[API] 使用兼容模式，只发送基本参数');
     }
-}
 
-// 【修复】对中转站API不做提供商检测和参数过滤
-// 中转站通常兼容OpenAI格式，发送所有参数让中转站自行处理
-// 如果用户明确开启了 compatibleMode，则只发送基本参数
-var isCompatibleMode = config.compatibleMode === true;
-if (isCompatibleMode) {
-    console.log('[API] 使用兼容模式，只发送基本参数');
-}
+    // 基础参数（兼容模式只发这些）
+    var params = {
+        model: config.model || 'gpt-3.5-turbo',
+        messages: messages,
+        temperature: presetParams.temperature,
+        max_tokens: presetParams.max_tokens,
+        top_p: presetParams.top_p
+    };
 
-// 构建请求参数（兼容模式只发基本参数）
-var params = {
-    model: config.model || 'gpt-3.5-turbo',
-    messages: messages,
-    temperature: presetParams.temperature,
-    max_tokens: presetParams.max_tokens,
-    top_p: presetParams.top_p,
-    ...(isCompatibleMode ? {} : {
-        top_k: presetParams.top_k || 0,
-        frequency_penalty: presetParams.frequency_penalty,
-        presence_penalty: presetParams.presence_penalty,
-        min_p: presetParams.min_p || 0,
-        top_a: presetParams.top_a || 0,
-        repetition_penalty: presetParams.repetition_penalty || 1,
-        typical_p: presetParams.typical_p || 1,
-        min_length: presetParams.min_length || 0,
-        max_time: presetParams.max_time || null,
-        mirostat_mode: presetParams.mirostat_mode || 0,
-        mirostat_tau: presetParams.mirostat_tau || 5.0,
-        mirostat_eta: presetParams.mirostat_eta || 0.1,
-        repetition_penalty_range: presetParams.repetition_penalty_range || 0,
-        repetition_penalty_slope: presetParams.repetition_penalty_slope || 0,
-        tfs: presetParams.tail_free_sampling || 1,
-        epsilon_cutoff: presetParams.epsilon_cutoff || 0,
-        eta_cutoff: presetParams.eta_cutoff || 0,
-        dry_multiplier: presetParams.dry_multiplier || 0,
-        dry_range: presetParams.dry_range || 0,
-        dry_allowed_length: presetParams.dry_allowed_length || 2,
-        xtc_probability: presetParams.xtc_probability || 0,
-        xtc_threshold: presetParams.xtc_threshold || 0,
-        seed: presetParams.seed || null,
-        response_format: presetParams.response_format || null,
-        modalities: presetParams.modalities || null,
-        tool_reasoning_mode: presetParams.tool_reasoning_mode || 'disabled',
-        reasoning_effort: presetParams.reasoning_effort || null
-    })
-};
-
-if (presetParams.stop_sequences) {
-    params.stop = presetParams.stop_sequences;
-}
-if (isCompatibleMode) {
-    if (presetParams.frequency_penalty !== undefined && presetParams.frequency_penalty !== 0) {
+    if (!isCompatibleMode) {
+        // 正常模式：补完整高级采样参数
+        params.top_k = presetParams.top_k || 0;
         params.frequency_penalty = presetParams.frequency_penalty;
+        params.presence_penalty = presetParams.presence_penalty;
+        params.min_p = presetParams.min_p || 0;
+        params.top_a = presetParams.top_a || 0;
+        params.repetition_penalty = presetParams.repetition_penalty || 1;
+        params.typical_p = presetParams.typical_p || 1;
+        params.min_length = presetParams.min_length || 0;
+        params.max_time = presetParams.max_time || null;
+        params.mirostat_mode = presetParams.mirostat_mode || 0;
+        params.mirostat_tau = presetParams.mirostat_tau || 5.0;
+        params.mirostat_eta = presetParams.mirostat_eta || 0.1;
+        params.repetition_penalty_range = presetParams.repetition_penalty_range || 0;
+        params.repetition_penalty_slope = presetParams.repetition_penalty_slope || 0;
+        params.tfs = presetParams.tail_free_sampling || 1;
+        params.epsilon_cutoff = presetParams.epsilon_cutoff || 0;
+        params.eta_cutoff = presetParams.eta_cutoff || 0;
+        params.dry_multiplier = presetParams.dry_multiplier || 0;
+        params.dry_range = presetParams.dry_range || 0;
+        params.dry_allowed_length = presetParams.dry_allowed_length || 2;
+        params.xtc_probability = presetParams.xtc_probability || 0;
+        params.xtc_threshold = presetParams.xtc_threshold || 0;
+        params.seed = presetParams.seed || null;
+        params.response_format = presetParams.response_format || null;
+        params.modalities = presetParams.modalities || null;
+        params.tool_reasoning_mode = presetParams.tool_reasoning_mode || 'disabled';
+        params.reasoning_effort = presetParams.reasoning_effort || null;
+    } else {
+        // 【优化 #5】兼容模式：frequency/presence 是 OpenAI 标准参数，保留
+        // 其他中转站可能拒绝的高级采样参数统统不发
+        if (presetParams.frequency_penalty && presetParams.frequency_penalty !== 0) {
+            params.frequency_penalty = presetParams.frequency_penalty;
+        }
+        if (presetParams.presence_penalty && presetParams.presence_penalty !== 0) {
+            params.presence_penalty = presetParams.presence_penalty;
+        }
     }
-if (presetParams.presence_penalty !== undefined && presetParams.presence_penalty !== 0) {
-    params.presence_penalty = presetParams.presence_penalty;
-}
-}
 
-// 允许 options 中的采样参数覆盖预设值
-if (options.temperature != null) params.temperature = options.temperature;
-if (options.max_tokens != null) params.max_tokens = options.max_tokens;
-if (options.top_p != null) params.top_p = options.top_p;
-if (options.top_k != null) params.top_k = options.top_k;
-if (options.frequency_penalty != null) params.frequency_penalty = options.frequency_penalty;
-if (options.presence_penalty != null) params.presence_penalty = options.presence_penalty;
-if (options.stop != null) params.stop = options.stop;
-
-// 过滤掉 null 和默认值参数，避免某些 API 后端报错
-var filteredParams = {};
-Object.keys(params).forEach(function(key) {
-    var val = params[key];
-    if (val !== null && val !== undefined) {
-        if (key === 'top_k' && val === 0) return;
-        if (key === 'min_p' && val === 0) return;
-        if (key === 'top_a' && val === 0) return;
-        if (key === 'repetition_penalty' && val === 1) return;
-        if (key === 'typical_p' && val === 1) return;
-        if (key === 'mirostat_mode' && val === 0) return;
-        if (key === 'repetition_penalty_range' && val === 0) return;
-        if (key === 'repetition_penalty_slope' && val === 0) return;
-        if (key === 'tfs' && val === 1) return;
-        if (key === 'epsilon_cutoff' && val === 0) return;
-        if (key === 'eta_cutoff' && val === 0) return;
-        if (key === 'dry_multiplier' && val === 0) return;
-        if (key === 'xtc_probability' && val === 0) return;
-        if (key === 'tool_reasoning_mode' && val === 'disabled') return;
-        filteredParams[key] = val;
+    if (presetParams.stop_sequences) {
+        params.stop = presetParams.stop_sequences;
     }
-});
-console.log('[API] 参数过滤完成，发送参数数:', Object.keys(filteredParams).length);
 
-if (options.stream) filteredParams.stream = true;
+    // options 中的采样参数覆盖预设
+    if (options.temperature != null) params.temperature = options.temperature;
+    if (options.max_tokens != null) params.max_tokens = options.max_tokens;
+    if (options.top_p != null) params.top_p = options.top_p;
+    if (options.top_k != null) params.top_k = options.top_k;
+    if (options.frequency_penalty != null) params.frequency_penalty = options.frequency_penalty;
+    if (options.presence_penalty != null) params.presence_penalty = options.presence_penalty;
+    if (options.stop != null) params.stop = options.stop;
 
-const body = filteredParams;
-
-// 如果预设中有 reasoning_effort 参数，传递给 API
-// reasoning_effort 支持: "low", "medium", "high", "auto" 等
-if (body.reasoning_effort) {
-    // 某些 API 使用 reasoning_effort，某些使用 thinking.budget_tokens
-    // 这里保持原样传递，让 API 后端自行处理
+    var filtered = filterRequestParams(params);
+    if (options.stream) filtered.stream = true;
+    return filtered;
 }
 
-// 【修复R1】支持自定义signal，避免NPC聊天与主游戏共享AbortController
-const signal = options.signal || (window._currentAbort ? window._currentAbort.signal : undefined);
+// 【优化 #6 + #7】解析一条 SSE 事件文本，把内容累加到 ctx
+// 统一前缀处理：兼容 "data:" 和 "data: " 两种格式
+// 【修复API】兼容推理模型：content / reasoning_content / reasoning 三种字段都尝试
+function parseSSEEventText(eventText, ctx) {
+    if (!eventText) return;
+    var lines = eventText.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i];
+        if (!/^data:\s*/.test(line)) continue;
+        var dataStr = line.replace(/^data:\s*/, '').trim();
+        if (!dataStr || dataStr === '[DONE]') continue;
+        var json;
+        try { json = JSON.parse(dataStr); } catch (e) { continue; }
 
-if (options.stream) {
-    // 流式请求
-    const res = await fetch(url, {
+        if (json.error && !ctx.streamError) {
+            ctx.streamError = extractErrorMessage(json.error, 'API流式错误: ' + JSON.stringify(json.error));
+            console.error('[callAI] 流式错误:', ctx.streamError);
+            continue;
+        }
+        if (!json.choices || !json.choices[0]) continue;
+        var delta = json.choices[0].delta || {};
+        var content = delta.content || delta.reasoning_content || delta.reasoning || '';
+        ctx.fullText += content;
+        // 总是回调（与原版一致），不门控
+        if (ctx.onChunk) {
+            try { ctx.onChunk(content, ctx.fullText); }
+            catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
+        }
+    }
+}
+
+// 【优化 #15】SSE 解析为空时的兜底解析（兼容推理模型、异常格式）
+// 1) 尝试整体 JSON 解析（部分 API 不走 SSE，直接返回 JSON）
+// 2) 如果整体不是 JSON，从 rawBody 中找首条 data 行提取
+// 3) 都失败返回空串（绝不再返回原始 SSE 文本给 UI）
+function parseAIResponseFallback(rawBody) {
+    if (!rawBody) return '';
+    // 1) 整体 JSON
+    try {
+        var jsonData = JSON.parse(rawBody);
+        if (jsonData.error) {
+            throw new Error(extractErrorMessage(jsonData.error, 'API错误: ' + JSON.stringify(jsonData.error)));
+        }
+        var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
+        if (_msg) {
+            return _msg.content || _msg.reasoning_content || _msg.reasoning || '';
+        }
+        if (jsonData.usage) return '';
+    } catch (e) {
+        if (e && e.message && e.message.indexOf('API') === 0) throw e;
+        // 不是纯 JSON，继续走 SSE 兜底
+    }
+    // 2) SSE：首条 data 行（整行内除换行符外不截断，应对嵌套 JSON）
+    var dataLine = (rawBody.match(/data:\s*\{[^\n]+\}/) || [])[0];
+    if (dataLine) {
+        try {
+            var parsed = JSON.parse(dataLine.replace(/^data:\s*/, '').trim());
+            var d = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
+            if (d) return d.content || d.reasoning_content || d.reasoning || '';
+        } catch (_) { /* 忽略 */ }
+    }
+    return '';
+}
+
+// 【优化 #15】执行流式 AI 请求
+async function executeAIStream(url, body, apiKey, signal, onChunk) {
+    var res = await fetch(url, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + config.apiKey
+            'Authorization': 'Bearer ' + apiKey
         },
         body: JSON.stringify(body),
-        signal: signal,
+        signal: signal
     });
     if (!res.ok) {
-        let errMsg = translateError('API错误: ' + res.status);
+        var errMsg = 'API错误: ' + res.status;
         try {
-            const errData = await res.json();
-            var errObj = errData.error || errData;
-            errMsg = translateError(errObj.message) ||
-            translateError(errObj.code) ||
-            translateError(errObj.type) ||
-            translateError(errObj.error) ||
-            errMsg;
+            var errData = await res.json();
+            errMsg = extractErrorMessage(errData.error || errData, errMsg);
         } catch (e) { console.warn('[API] 错误响应解析失败:', e); }
         throw new Error(errMsg);
     }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let fullText = '';
-    let rawBody = '';
-    let sseBuffer = '';
-    let streamError = null;
+
+    var reader = res.body.getReader();
+    var decoder = new TextDecoder();
+    var ctx = { fullText: '', streamError: null, onChunk: onChunk };
+    var sseBuffer = '';
+    // 【优化 #1】rawBody 加 64KB 上限，避免长内容把内存吃光
+    var rawBody = '';
+    var RAW_BODY_MAX = 64 * 1024;
+    var rawBodyTruncated = false;
+
     while (true) {
-        const {
-            done,
-            value
-        } = await reader.read();
-        if (done) {
-            // 流结束时，处理剩余的buffer
+        var readResult = await reader.read();
+        if (readResult.done) {
             if (sseBuffer && sseBuffer.trim()) {
-                const lines = sseBuffer.split('\n');
-                for (const line of lines) {
-                    if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                        try {
-                            const json = JSON.parse(line.slice(6));
-                            if (json.error && !streamError) {
-                                var errObj = json.error;
-                                streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                                console.error('[callAI] 流式错误:', streamError);
-                                continue;
-                            }
-                            // 【修复API】兼容推理模型：content / reasoning_content / reasoning 三种字段都尝试
-                            var _deltaObj = json.choices[0].delta;
-                            var content = _deltaObj.content
-                                || (_deltaObj.reasoning_content || _deltaObj.reasoning)
-                                || '';
-                            fullText += content;
-                            // 【修复API】原版用 if (options.onChunk) 总是回调；新版加了 && content
-                            // 门控，导致推理模型（content 恒为空）下一次也不回调 onStreamChunk，
-                            // 流结束后 streamBuffer 为空，触发 fallback 返回 rawBody，
-                            // 用户会看到原始 SSE JSON。改回总是回调（与原版一致）。
-                            if (options.onChunk) {
-                                try {
-                                    options.onChunk(content, fullText);
-                                } catch (chunkErr) {
-                                    console.warn('[callAI] onChunk 回调异常:', chunkErr);
-                                }
-                            }
-                        } catch (e) {
-                            // JSON解析失败，忽略
-                        }
-                    }
-                }
+                parseSSEEventText(sseBuffer, ctx);
             }
             break;
         }
-        const chunk = decoder.decode(value, {
-            stream: true
-        });
-        rawBody += chunk;
-        // 解析SSE
-        sseBuffer += chunk;
-        // 按双换行分割完整SSE事件
-        const events = sseBuffer.split(/\r?\n\r?\n/);
-        // 最后一段可能不完整，保留在buffer中
-        sseBuffer = events.pop() || '';
-        for (const event of events) {
-            const lines = event.split('\n');
-            for (const line of lines) {
-                if (line.startsWith('data: ') && line !== 'data: [DONE]') {
-                    try {
-                        const json = JSON.parse(line.slice(6));
-                        if (json.error && !streamError) {
-                            var errObj = json.error;
-                            streamError = translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API流式错误: ' + JSON.stringify(errObj));
-                            console.error('[callAI] 流式错误:', streamError);
-                            continue;
-                        }
-                        // 【修复API】兼容推理模型：content / reasoning_content / reasoning 都尝试
-                        var _deltaObj2 = json.choices[0].delta;
-                        var content = _deltaObj2.content
-                            || (_deltaObj2.reasoning_content || _deltaObj2.reasoning)
-                            || '';
-                        fullText += content;
-                        // 【修复API】见上面 done 分支说明：移除 && content 门控，恢复原版"总是回调"
-                        if (options.onChunk) {
-                            try {
-                                options.onChunk(content, fullText);
-                            } catch (chunkErr) {
-                                console.warn('[callAI] onChunk 回调异常 (事件循环):', chunkErr);
-                            }
-                        }
-                    } catch (e) {
-                        // JSON解析失败，忽略
-                    }
-                }
-            }
-        }
-    }
-    // 如果流中检测到错误且没有收到任何有效内容，抛出错误
-    if (streamError && !fullText) {
-        throw new Error(streamError);
-    } else if (streamError && fullText) {
-        console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', streamError);
-    }
-    // 兜底：如果SSE解析为空，尝试将rawBody作为普通JSON解析
-    if (!fullText && rawBody) {
-        try {
-            const jsonData = JSON.parse(rawBody);
-            if (jsonData.error) {
-                var errObj = jsonData.error;
-                throw new Error(translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API错误: ' + JSON.stringify(errObj)));
-            }
-            // 【修复API】推理模型可能只返回 reasoning_content / reasoning
-            var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
-            fullText = (_msg && (_msg.content || _msg.reasoning_content || _msg.reasoning)) || '';
-            // 【修复API】原 fallback 在解析失败/usage 缺失时把整段 rawBody（SSE 原始响应）当作文本返回，
-            // 用户就会在剧情区看到 "data:{...}" 这类原始 JSON。改成只保留可读内容，否则返回空串。
-            if (!fullText && jsonData.usage) {
-                fullText = '';
-            } else if (!fullText) {
-                // rawBody 是 SSE 格式时不能直接当文本；用首条 data 行的 reasoning/content 兜底
-                var _dataLine = (rawBody.match(/data:\s*\{[\s\S]*?\}/) || [])[0];
-                if (_dataLine) {
-                    try {
-                        var _parsed = JSON.parse(_dataLine.slice(5).trim());
-                        var _d = _parsed.choices && _parsed.choices[0] && _parsed.choices[0].delta;
-                        if (_d) fullText = _d.content || _d.reasoning_content || _d.reasoning || '';
-                    } catch (_) { /* 忽略，仍是空 */ }
-                }
-            }
-        } catch (e) {
-            if (e.message && e.message.indexOf('API') === 0) throw e;
-            // rawBody 是 SSE 格式时不能直接当文本；用首条 data 行尝试提取
-            var _dataLine2 = (rawBody.match(/data:\s*\{[\s\S]*?\}/) || [])[0];
-            if (_dataLine2) {
-                try {
-                    var _parsed2 = JSON.parse(_dataLine2.slice(5).trim());
-                    var _d2 = _parsed2.choices && _parsed2.choices[0] && _parsed2.choices[0].delta;
-                    if (_d2) fullText = _d2.content || _d2.reasoning_content || _d2.reasoning || '';
-                } catch (_) { fullText = ''; }
+        var chunk = decoder.decode(readResult.value, { stream: true });
+        // 【优化 #1】限制 rawBody 累积大小
+        if (!rawBodyTruncated) {
+            if (rawBody.length + chunk.length <= RAW_BODY_MAX) {
+                rawBody += chunk;
             } else {
-                fullText = '';
+                rawBody += chunk.substring(0, RAW_BODY_MAX - rawBody.length);
+                rawBodyTruncated = true;
+                console.warn('[callAI] rawBody 达到 64KB 上限，停止累积');
             }
         }
+        sseBuffer += chunk;
+        var events = sseBuffer.split(/\r?\n\r?\n/);
+        sseBuffer = events.pop() || '';
+        for (var i = 0; i < events.length; i++) {
+            parseSSEEventText(events[i], ctx);
+        }
     }
-    return fullText;
-} else {
-// 非流式请求
-const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + config.apiKey
-    },
-body: JSON.stringify(body),
-signal: signal
-});
-if (!res.ok) {
-    const err = await res.json().catch(function() {
-        return {};
+
+    // 流中检测到错误
+    if (ctx.streamError && !ctx.fullText) {
+        throw new Error(ctx.streamError);
+    } else if (ctx.streamError && ctx.fullText) {
+        console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', ctx.streamError);
+        // 【优化 #11】UI 软提示
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('⚠️ 响应可能不完整：' + ctx.streamError);
+        }
+    }
+
+    // 兜底：SSE 解析为空时再尝试从 rawBody 提取
+    if (!ctx.fullText && rawBody) {
+        return parseAIResponseFallback(rawBody);
+    }
+    return ctx.fullText;
+}
+
+// 【优化 #15】执行非流式 AI 请求
+async function executeAINormal(url, body, apiKey, signal) {
+    var res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + apiKey
+        },
+        body: JSON.stringify(body),
+        signal: signal
     });
-var errObj = err.error || err;
-throw new Error(translateError(errObj.message) ||
-translateError(errObj.code) || translateError(errObj.type) ||
-'API错误: ' + res.status);
+    if (!res.ok) {
+        var errData = await res.json().catch(function() { return {}; });
+        var errMsg = extractErrorMessage(errData.error || errData, 'API错误: ' + res.status);
+        throw new Error(errMsg);
+    }
+    var data = await res.json();
+    // 【兼容推理模型】content / reasoning_content / reasoning 都尝试
+    var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
+    return (_nmsg && (_nmsg.content || _nmsg.reasoning_content || _nmsg.reasoning)) || '';
 }
-const data = await res.json();
-// 【修复API】推理模型：尝试 content / reasoning_content / reasoning 三个字段
-var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
-return (_nmsg && (_nmsg.content || _nmsg.reasoning_content || _nmsg.reasoning)) || '';
-}
-});
+
+// AI 调用主入口
+// 【优化 #2 + #3 + #17】每次调用自带 5 分钟超时（按次，不是按流块）
+// 【优化 #3】每次调用创建独立的 AbortController，串联外部 signal，支持 safeAbort 兼容
+// 【优化 #17】入口只读一次配置
+async function callAI(messages, options = {}) {
+    // 【优化 #17】入口只读一次配置
+    var initialCfg = LocalGameAPI.getCurrentConfig();
+    if (!initialCfg || !initialCfg.baseUrl || !initialCfg.apiKey) {
+        throw new Error('请先配置API（设置 → API配置）');
+    }
+
+    // 【优化 #2 + #3】每次调用创建独立的 AbortController
+    // 5 分钟超时：流式模型生成可能很慢（长上下文/复杂剧情），但不能无限挂死
+    var localAC = new AbortController();
+    var timeoutId = setTimeout(function() {
+        try { localAC.abort(new Error('AI请求超时（5分钟）')); }
+        catch (e) { /* 忽略 */ }
+    }, 5 * 60 * 1000);
+
+    // 串联外部 signal：options.signal 优先，其次兼容旧的 window._currentAbort（safeAbort）
+    var externalSignal = options.signal || (window._currentAbort && window._currentAbort.signal);
+    var externalListener = null;
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            try { localAC.abort(externalSignal.reason); } catch (e) { /* 忽略 */ }
+        } else {
+            externalListener = function() {
+                try { localAC.abort(externalSignal.reason); } catch (e) { /* 忽略 */ }
+            };
+            externalSignal.addEventListener('abort', externalListener, { once: true });
+        }
+    }
+
+    try {
+        return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
+            var config = LocalGameAPI._configs[slotIdx];
+            var url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
+            var body = buildAIRequestBody(messages, options, config);
+            if (options.stream) {
+                return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
+            } else {
+                return await executeAINormal(url, body, config.apiKey, localAC.signal);
+            }
+        });
+    } finally {
+        clearTimeout(timeoutId);
+        if (externalListener && externalSignal) {
+            try { externalSignal.removeEventListener('abort', externalListener); } catch (e) { /* 忽略 */ }
+        }
+    }
 }
 // ========================================
 // Context Size 自动检测（动态，不硬编码模型列表）
