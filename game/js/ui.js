@@ -285,6 +285,8 @@
     function openPanel(panelName) {
         currentPanel = panelName;
         sidePanel.classList.remove('hidden');
+        // 面板打开时入导航栈
+        pushGameNav('panel', panelName);
 
         const titles = {
             log: '日志',
@@ -306,6 +308,13 @@
 
     function closePanel() {
         sidePanel.classList.add('hidden');
+        // 从导航栈中移除面板条目
+        for (let i = _gameNavStack.length - 1; i >= 0; i--) {
+            if (_gameNavStack[i].type === 'panel') {
+                _gameNavStack.splice(i, 1);
+                break;
+            }
+        }
     }
 
     // 日志面板
@@ -545,28 +554,39 @@
     }, 60000); // 每分钟自动存档
 
     // ====== 返回键拦截（返回上一级） ======
-    // 利用 history.pushState + popstate 拦截浏览器返回键
-    // 层级：面板打开 → 关闭面板；游戏界面 → 弹确认退出；创建界面 → 拦截防误退
-    function pushHistoryState() {
+    // 游戏子页面独立的导航栈
+    const _gameNavStack = [];
+
+    function pushGameNav(type, id) {
+        _gameNavStack.push({ type, id });
         history.pushState(null, '', location.href);
     }
 
+    function popGameNav() {
+        if (_gameNavStack.length === 0) return false;
+        const top = _gameNavStack.pop();
+        if (top.type === 'panel') {
+            closePanel();
+            return true;
+        }
+        return false;
+    }
+
     // 页面加载时压入初始状态
-    pushHistoryState();
+    history.pushState(null, '', location.href);
 
     window.addEventListener('popstate', function(e) {
         e.preventDefault();
 
-        // 1. 侧边面板打开 → 关闭面板（返回游戏主界面）
-        if (!sidePanel.classList.contains('hidden')) {
-            pushHistoryState(); // 重新压入，防止继续后退
-            closePanel();
+        // 有导航栈条目 → 返回上一级
+        if (_gameNavStack.length > 0) {
+            popGameNav();
             return;
         }
 
-        // 2. 游戏主界面 → 弹确认框
+        // 游戏主界面 → 弹确认框
         if (gameScreen.classList.contains('active')) {
-            pushHistoryState();
+            history.pushState(null, '', location.href);
             showModal('确认离开？', '返回将回到角色创建界面，当前进度已自动存档。确定要离开吗？', [
                 { text: '继续游戏', confirm: false },
                 { text: '离开', confirm: true, className: 'btn-confirm' }
@@ -583,8 +603,8 @@
             return;
         }
 
-        // 3. 创建界面 → 拦截，不退出页面
-        pushHistoryState();
+        // 创建界面 → 拦截，不退出页面
+        history.pushState(null, '', location.href);
     });
 
     // ====== 初始化 ======

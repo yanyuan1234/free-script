@@ -346,6 +346,32 @@ var TOAST_DURATION_MS = POPUP_DURATION_MS;
 var UI = {
     // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
     TOAST_DURATION: POPUP_DURATION_MS,
+    // 【导航栈】支持返回上一级
+    _navStack: [],
+    pushNav: function(type, id) {
+        // type: 'page' 或 'modal'
+        this._navStack.push({ type: type, id: id });
+        history.pushState(null, '', location.href);
+    },
+    popNav: function() {
+        if (this._navStack.length === 0) return false;
+        var top = this._navStack.pop();
+        if (top.type === 'modal') {
+            this.hideModal(top.id);
+            return true;
+        }
+        if (top.type === 'page') {
+            // 非剧情页返回剧情页
+            if (top.id !== 'storyPage') {
+                this.showPage('storyPage');
+                if (typeof renderNavBar === 'function') {
+                    renderNavBar('gameNav', UI.GAME_NAV_TABS, 0);
+                }
+            }
+            return true;
+        }
+        return false;
+    },
     toast: function(msg) {
         var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
@@ -361,6 +387,10 @@ var UI = {
     showPage: function(id) {
         var el = document.getElementById(id);
         if (el && el.classList.contains('active')) return;
+        // 【导航栈】页面切换时入栈（剧情页不入栈，它是根页面）
+        if (id !== 'storyPage' && id !== 'menuPage' && id !== 'loadingPage') {
+            this.pushNav('page', id);
+        }
         var pages = document.querySelectorAll('.page');
         for (var pi = 0; pi < pages.length; pi++) {
             pages[pi].classList.remove('active');
@@ -378,6 +408,8 @@ var UI = {
     showModal: function(id) {
         var el = document.getElementById(id);
         if (el) {
+            // 【导航栈】模态框打开时入栈
+            this.pushNav('modal', id);
             // 模态框栈管理：每次打开新模态框时提升z-index
             this._modalStack.push(id);
             var zIndex = 100 + this._modalStack.length * 10;
@@ -402,6 +434,13 @@ var UI = {
             // 从栈中移除
             var idx = this._modalStack.indexOf(id);
             if (idx !== -1) this._modalStack.splice(idx, 1);
+            // 【导航栈】从导航栈中移除对应条目
+            for (var i = this._navStack.length - 1; i >= 0; i--) {
+                if (this._navStack[i].type === 'modal' && this._navStack[i].id === id) {
+                    this._navStack.splice(i, 1);
+                    break;
+                }
+            }
         }
     },
     confirm: function(title, message) {
@@ -3373,6 +3412,21 @@ function renderNavBar(containerId, tabs, activeIndex) {
         '<span class="nav-label">' + tab.label + '</span></button>';
     }).join('');
 }
+// ========================================
+// 【导航栈】浏览器返回键拦截
+// ========================================
+// 页面加载时压入初始历史状态
+history.pushState(null, '', location.href);
+window.addEventListener('popstate', function(e) {
+    e.preventDefault();
+    // 有导航栈条目 → 返回上一级
+    if (UI._navStack.length > 0) {
+        UI.popNav();
+        return;
+    }
+    // 无导航栈条目（已在剧情页/菜单页）→ 拦截，不退出页面
+    history.pushState(null, '', location.href);
+});
 function showStoryLoading() {
     // 清理定时器，防止泄漏
     TimerManager.clearInterval('loadingTimer');
