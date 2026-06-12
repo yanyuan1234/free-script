@@ -3424,7 +3424,19 @@ window.addEventListener('popstate', function(e) {
         UI.popNav();
         return;
     }
-    // 无导航栈条目（已在剧情页/菜单页）→ 拦截，不退出页面
+    // 在剧情页 → 弹确认框是否回主页
+    var storyEl = document.getElementById('storyPage');
+    if (storyEl && storyEl.classList.contains('active')) {
+        history.pushState(null, '', location.href);
+        UI.confirm('返回主页', '确定要回到主页吗？当前进度已自动保存。').then(function(yes) {
+            if (yes) {
+                UI.showPage('menuPage');
+                UI._navStack = [];
+            }
+        });
+        return;
+    }
+    // 其他根页面 → 拦截，不退出页面
     history.pushState(null, '', location.href);
 });
 function showStoryLoading() {
