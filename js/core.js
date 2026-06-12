@@ -1797,44 +1797,17 @@ const MAX_HISTORY = 50;
 
 // ========================================
 // 打字机「跳过」按钮管理（用户需求：长按快进、点击屏幕一律不要，只保留按钮）
+// 历史：早期在右下角浮动一个 typewriterSkipBtn，现已迁移到 #genControl 状态栏
+// 内的 #genSkipBtn（紧挨取消按钮），这里只保留显示/隐藏同步逻辑。
 // ========================================
-let _skipBtnEl = null;
 function _showSkipButton() {
     if (typeof document === 'undefined') return;
-    if (!_skipBtnEl) {
-        _skipBtnEl = document.getElementById('typewriterSkipBtn');
-        if (!_skipBtnEl) {
-            _skipBtnEl = document.createElement('button');
-            _skipBtnEl.id = 'typewriterSkipBtn';
-            _skipBtnEl.className = 'typewriter-skip-btn';
-            _skipBtnEl.type = 'button';
-            _skipBtnEl.setAttribute('aria-label', '跳过打字机');
-            _skipBtnEl.innerHTML = '<svg class="icon icon-sm" style="stroke:white;vertical-align:-2px;"><use href="#icon-skip"></use></svg><span>跳过</span>';
-            _skipBtnEl.addEventListener('click', function(ev) {
-                ev.stopPropagation();
-                ev.preventDefault();
-                try {
-                    if (typeof TypewriterBuffer !== 'undefined') {
-                        TypewriterBuffer.skip();
-                    }
-                } catch (e) {
-                    console.warn('[SkipBtn] 跳过失败:', e);
-                }
-            });
-            // 只在 body 直接挂载，不插入到可滚动的故事区域里，避免被键盘/弹层遮挡
-            (document.body || document.documentElement).appendChild(_skipBtnEl);
-        }
-    }
-    _skipBtnEl.classList.add('visible');
-    // 【全游戏弹窗策略延伸】同时显示 #genControl 状态栏里的「跳过」按钮（紧挨取消）
-    // 仅控制显示，不重新绑定事件——事件在 phone-ui.js 启动时统一绑定一次
+    // 【状态栏跳过按钮】紧挨 #genCancelBtn，显示在「正在生成」状态栏里
     var _barSkipBtn = document.getElementById('genSkipBtn');
     if (_barSkipBtn) _barSkipBtn.style.display = '';
 }
 function _hideSkipButton() {
-    if (_skipBtnEl) {
-        _skipBtnEl.classList.remove('visible');
-    }
+    if (typeof document === 'undefined') return;
     // 同步隐藏 #genControl 里的「跳过」按钮
     var _barSkipBtn = document.getElementById('genSkipBtn');
     if (_barSkipBtn) _barSkipBtn.style.display = 'none';
