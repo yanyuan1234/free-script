@@ -930,7 +930,10 @@ var LocalGameAPI = {
         return b.failedAt - a.failedAt;
         });
     },
-    // 已下架/历史不推荐模型名单——只是 UI 提醒，玩家依然可以正常使用
+    // 【分类标签】UI提醒列表——纯分类，无任何功能限制
+    // 作用：在UI上给模型打个标签（如"已下架""不推荐"），提醒玩家注意
+    // 重要：列表中的模型完全可以正常使用，调用/轮换/重试逻辑均不检查此列表
+    // 添加/删除模型到此列表，只影响UI显示，不影响任何功能
     _deprecatedModels: [
         'deepseek-v4-flash',
         'gemini-2.5-flash',
@@ -939,6 +942,7 @@ var LocalGameAPI = {
         'meta/llama-3.3-70b-instruct',
         'qwen/qwen3-coder-480b-a35b-instruct'
     ],
+    // 【纯查询】判断模型是否在分类标签中，仅用于UI显示，不影响功能
     isModelDeprecated(modelName) {
         return modelName && this._deprecatedModels.indexOf(modelName) !== -1;
     },
