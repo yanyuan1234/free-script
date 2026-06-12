@@ -2311,7 +2311,7 @@ function renderDiaryPage() {
 
     return '<div class="diary-page">' +
         '<div style="display:flex;align-items:center;gap:8px;padding:8px 15px;flex-shrink:0;"><div class="diary-nav-btn" onclick="diaryBackToList()" style="font-size:20px;">←</div></div>' +
-        '<div class="diary-date-nav"><div class="diary-nav-btn" onclick="diaryChangeDate(-1)" title="上一条"><</div><div class="diary-nav-date" onclick="openDiaryDatePicker()" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;">📅</span>' +
+        '<div class="diary-date-nav"><div class="diary-nav-btn" onclick="diaryChangeDate(-1)" title="上一条"><</div><div class="diary-nav-date" onclick="openDiaryDatePicker()" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;"></span>' +
         dateStr +
         '</div><div class="diary-nav-btn" onclick="diaryChangeDate(1)" title="下一条">></div><div class="diary-nav-btn" onclick="diaryResetDate()" title="返回最近">»</div></div>' +
         '<div class="diary-user-bar"><div class="diary-user-avatar" style="background:' + avatarColor +
@@ -2474,7 +2474,7 @@ function renderShopPage() {
 
     var _balance = gameState.currency || gameState.money || gameState.coins || 0;
     var _cName = gameState.currencyName || '金币';
-    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
+    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;"><span style="display:flex;align-items:center;gap:6px;">◇ <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
     return '<div style="display:flex;flex-direction:column;flex:1;background:#f5f5f5;overflow:hidden;">' +
         balanceBar +
         '<div class="shop-search-box"><div class="shop-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索商品</div></div>' +
@@ -2557,7 +2557,7 @@ function renderCalendarPage() {
 
     // 标题
     var title = document.createElement('h2');
-    title.textContent = '📅 日程表';
+    title.textContent = '日程表';
     title.style.cssText = 'color:#e94560;margin-bottom:20px;text-align:center;';
     container.appendChild(title);
 
@@ -2861,7 +2861,7 @@ function renderPlayerPage() {
             var anchors = EnhancedMemory.longTermMemory.worldAnchors || [];
             var pcId = anchors.filter(function(a) { return a.type === 'pc_identity'; });
             var setting = anchors.filter(function(a) { return a.type === 'setting' || a.type === 'world_rule'; });
-            var hintHtml = '🧠 <b>AI记忆锚点</b>（永不忘）：<br>';
+            var hintHtml = '◇ <b>AI记忆锚点</b>（永不忘）：<br>';
             if (pcId.length > 0) hintHtml += '<b>你的设定：</b>' + escapeHtml(pcId[0].content) + '<br>';
             if (setting.length > 0) hintHtml += '<b>世界：</b>' + escapeHtml(setting[0].content.substring(0, 60)) + (setting[0].content.length > 60 ? '...' : '');
             if (pcId.length === 0 && setting.length === 0) {
@@ -2886,7 +2886,7 @@ function renderPlayerPage() {
             var topChars = chars.slice().sort(function(a, b) {
                 return (b.favorability || 0) - (a.favorability || 0);
             }).slice(0, 3);
-            var rsHtml = '💞 <b>最近的人际关系：</b><br>';
+            var rsHtml = '◇ <b>最近的人际关系：</b><br>';
             topChars.forEach(function(c) {
                 var fav = Math.round(c.favorability || 0);
                 var emoji = fav >= 60 ? '♥' : (fav >= 30 ? '◇' : (fav <= -20 ? '✕' : '◇'));
@@ -3444,7 +3444,7 @@ function showPresetSaveList(preset) {
             listBody.innerHTML =
                 '<div class="pearl-card" style="padding:16px;cursor:pointer;transition:transform 0.2s;" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'">' +
                 '<div style="display:flex;align-items:center;gap:12px;">' +
-                '<div style="width:48px;height:48px;background:var(--accent-soft);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:24px;">📚</div>' +
+                '<div style="width:48px;height:48px;background:var(--accent-soft);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:24px;">☐</div>' +
                 '<div style="flex:1;">' +
                 '<div style="font-size:15px;font-weight:500;color:var(--text);">' + escapeHtml(saveName) +
                 '</div>' +
@@ -5648,10 +5648,10 @@ function saveGameSettings() {
 // 一键应用酒馆前辈沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
 // 注意：字段名是 ID 不会变，_label 仅用于 toast 提示
 var ARCHETYPE_PRESETS = {
-    conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📘 短篇' },
-    natural:      { temperature: 0.95, top_p: 0.95, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📗 中篇' },
-    passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📙 长篇' },
-    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '📕 细腻' }
+    conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '◇ 短篇' },
+    natural:      { temperature: 0.95, top_p: 0.95, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '◇ 中篇' },
+    passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '◇ 长篇' },
+    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '◇ 细腻' }
 };
 function applyArchetype(name) {
     var p = ARCHETYPE_PRESETS[name];

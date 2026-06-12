@@ -396,7 +396,7 @@ var PresetManager = {
                 },
                 {
                     identifier: 'nsfw',
-                    name: '🌌无限叙事',
+                    name: '◇无限叙事',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
@@ -406,7 +406,7 @@ var PresetManager = {
                 },
                 {
                     identifier: 'world-engine',
-                    name: '✟世界引擎',
+                    name: '◇世界引擎',
                     role: 'system',
                     injection_position: 0,
                     injection_depth: 1,
@@ -427,11 +427,11 @@ var PresetManager = {
         // 预设2：果实叙事（学习果实·叶子版的均衡风格）
         // ═══════════════════════════════════════════════════════════
         var fruitNative = self.parsePreset({
-            name: '🍎果实叙事（均衡风格）',
+            name: '◇果实叙事（均衡风格）',
             prompts: [
                 {
                     identifier: 'main',
-                    name: '🍎果实叙事',
+                    name: '◇果实叙事',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
@@ -441,7 +441,7 @@ var PresetManager = {
                 },
                 {
                     identifier: 'nsfw',
-                    name: '🍎自由叙事',
+                    name: '◇自由叙事',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
@@ -451,7 +451,7 @@ var PresetManager = {
                 },
                 {
                     identifier: 'style-guide',
-                    name: '🍎风格指南',
+                    name: '◇风格指南',
                     role: 'system',
                     injection_position: 0,
                     injection_depth: 4,
@@ -470,14 +470,14 @@ var PresetManager = {
         }, 'fruit-native');
 
         // ═══════════════════════════════════════════════════════════
-        // 预设3：蛾摩拉叙事（学习蛾摩拉☼2.4的长篇叙事智慧）
+        // 预设3：蛾摩拉叙事（学习蛾摩拉2.4的长篇叙事智慧）
         // ═══════════════════════════════════════════════════════════
         var gomorrahNative = self.parsePreset({
-            name: '☼长篇叙事（蛾摩拉风格）',
+            name: '◇长篇叙事（蛾摩拉风格）',
             prompts: [
                 {
                     identifier: 'main',
-                    name: '☼身份定义',
+                    name: '◇身份定义',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
@@ -487,7 +487,7 @@ var PresetManager = {
                 },
                 {
                     identifier: 'jailbreak',
-                    name: '☼叙事解放',
+                    name: '◇叙事解放',
                     role: 'system',
                     injection_position: 0,
                     injection_depth: 4,
@@ -496,17 +496,17 @@ var PresetManager = {
                 },
                 {
                     identifier: 'nsfw',
-                    name: '☼长篇剧情规范',
+                    name: '◇长篇剧情规范',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
-                    injection_depth: 0,
+                    injection_depth: 1,
                     injection_order: 3,
                     content: '【长篇叙事规范】\n- 每次回复都是故事的一个完整片段，不是碎片\n- 场景描写要有画面感——读者应该能"看到"场景\n- 对话要有潜台词——角色说的和想的经常不一样\n- 每回合穿插 2-5 个 <giggle>展示角色的真实想法（心声是"没说出口的话"），用<mem>记录世界的变化\n- 伏笔要自然埋下，不要刻意——读者事后回想时才恍然大悟\n- 角色关系是动态的——今天的敌人可能是明天的盟友\n- 关系变化时更新 characters.favorability，长章节用 [章节结束|标题] 收尾'
                 },
                 {
                     identifier: 'world-engine',
-                    name: '☼世界引擎',
+                    name: '◇世界引擎',
                     role: 'system',
                     injection_position: 0,
                     injection_depth: 1,
@@ -3995,12 +3995,12 @@ var MacroEngine = {
         itemMatches.forEach(function(item) {
             var name = (item.match(/name=["']([^"']+)["']/i) || [])[1] || '物品';
             var desc = (item.match(/<desc>([\s\S]*?)<\/desc>/i) || [])[1] || '';
-            var icon = (item.match(/icon=["']([^"']+)["']/i) || [])[1] || '🎁';
+            var icon = (item.match(/icon=["']([^"']+)["']/i) || [])[1] || '□';
             var count = parseInt((item.match(/count=["'](\d+)["']/i) || [])[1]) || 1;
             items.push({ name: name, description: desc, icon: icon, count: count });
             });
         if (items.length === 0) {
-            items.push({ name: '神秘物品', description: result.html.replace(/<[^>]+>/g, '').substring(0, 100), icon: '🎁', count: 1 });
+            items.push({ name: '神秘物品', description: result.html.replace(/<[^>]+>/g, '').substring(0, 100), icon: '□', count: 1 });
         }
     result.data = { items: items };
     return result;
