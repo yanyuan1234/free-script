@@ -3579,10 +3579,16 @@ function filterRequestParams(params) {
         if (Object.prototype.hasOwnProperty.call(SKIP_DEFAULTS, key) && val === SKIP_DEFAULTS[key]) continue;
         filtered[key] = val;
     }
-    // 【优化 #18】reasoning_effort 白名单
-    if (filtered.reasoning_effort && VALID_REASONING_EFFORT.indexOf(String(filtered.reasoning_effort).toLowerCase()) < 0) {
-        console.warn('[API] reasoning_effort 值不合法，已过滤:', filtered.reasoning_effort);
-        delete filtered.reasoning_effort;
+    // 【优化 #18】reasoning_effort 白名单——只过滤明显是误填的值（如 "undefined"、空串、纯数字），
+    //              不要把预设里的非标值（"default" / "minimal" / "thinking_mode" 等）当非法值删掉
+    //              否则中转站收不到这个参数，会回退到默认的"高思考"模式导致生成变慢
+    if (filtered.reasoning_effort) {
+        var _re = String(filtered.reasoning_effort).toLowerCase().trim();
+        // 明显是脏数据：空串、undefined 字面量、纯数字 → 删
+        if (!_re || _re === 'undefined' || _re === 'null' || /^\d+$/.test(_re)) {
+            console.warn('[API] reasoning_effort 值无效已过滤:', filtered.reasoning_effort);
+            delete filtered.reasoning_effort;
+        }
     }
     return filtered;
 }
@@ -3710,8 +3716,9 @@ function parseSSEEventText(eventText, ctx) {
 // 【优化 #15】SSE 解析为空时的兜底解析（兼容推理模型、异常格式）
 // 1) 尝试整体 JSON 解析（部分 API 不走 SSE，直接返回 JSON）
 // 2) 如果整体不是 JSON，从 rawBody 中找首条 data 行提取
-// 3) 都失败返回空串（绝不再返回原始 SSE 文本给 UI）
-// 【修复 #19】只取 content 字段；reasoning_content/reasoning 是思考链，禁止回退
+// 3) 都失败时**回退到 rawBody 原文**——与原版 [backup/index.html L11882-11903] 一致：
+//    原版注释明确说"如果也不是 JSON，直接用原始文本"，避免对未知格式显示空白
+// 【修复 #19】在流式 / 兜底路径里都不要把 reasoning_content 当 content 用
 function parseAIResponseFallback(rawBody) {
     if (!rawBody) return '';
     // 1) 整体 JSON
@@ -3722,9 +3729,16 @@ function parseAIResponseFallback(rawBody) {
         }
         var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
         if (_msg) {
-            return (typeof _msg.content === 'string') ? _msg.content : '';
+            var _content = (typeof _msg.content === 'string') ? _msg.content : '';
+            // 优先用 content；但当 content 为空且没有 usage（说明不是"成功但无输出"），
+            // 回退到 rawBody 原文（与原版一致）——保证用户至少能看到东西
+            if (_content) return _content;
+            if (jsonData.usage) return '';
+            return rawBody;
         }
         if (jsonData.usage) return '';
+        // JSON 解析成功但结构不识别，回退到原文
+        return rawBody;
     } catch (e) {
         if (e && e.message && e.message.indexOf('API') === 0) throw e;
         // 不是纯 JSON，继续走 SSE 兜底
@@ -3735,10 +3749,14 @@ function parseAIResponseFallback(rawBody) {
         try {
             var parsed = JSON.parse(dataLine.replace(/^data:\s*/, '').trim());
             var d = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-            if (d) return (typeof d.content === 'string') ? d.content : '';
+            if (d) {
+                var _dContent = (typeof d.content === 'string') ? d.content : '';
+                if (_dContent) return _dContent;
+            }
         } catch (_) { /* 忽略 */ }
     }
-    return '';
+    // 3) 终极兜底：原文（与原版一致）
+    return rawBody;
 }
 
 // 【优化 #15】执行流式 AI 请求
@@ -3850,7 +3868,8 @@ async function executeAINormal(url, body, apiKey, signal) {
         }
         return _content;
     }
-    return '';
+    // JSON 解析成功但结构不识别，原版兜底行为：返回 res.text() 让用户看到原文
+    try { return await res.text(); } catch (e) { return ''; }
 }
 
 // AI 调用主入口
