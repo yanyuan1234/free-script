@@ -3340,14 +3340,14 @@ function showError(msg, errObj) {
             '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
     }
-    // 15秒后自动淡出并移除错误banner
+    // 3秒后自动淡出并移除错误banner（与其它弹窗保持一致）
     TimerManager.setTimeout('errorBannerFade', function() {
         var banner = document.querySelector('.api-error-banner[data-error-ts]');
         if (banner) {
             banner.style.opacity = '0';
             setTimeout(function() { if (banner.parentNode) banner.remove(); }, 500);
         }
-    }, 15000);
+    }, 3000);
     // 同步记录到 localStorage 方便排查
     try {
         var errs = JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');
