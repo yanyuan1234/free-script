@@ -3492,7 +3492,7 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? (gm._setupLayers.compressed ? '精简版（规则在永久事实）' : '完整注入（每轮）') : '未初始化') + '</div></div>'
             + '</div></div>'
-            + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span>' + this._btn('detail', 'switchTab', 'injection') + '</div>'
+            + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>◇ 注入预览</span>' + this._btn('detail', 'switchTab', 'injection') + '</div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
             + (gm._lastInjectionStats ? '总字符: ' + gm._lastInjectionStats.totalChars + ' / 预算: ' + gm._lastInjectionStats.budget : '尚未生成注入内容')
             + '</div></div></div>';
@@ -3791,7 +3791,7 @@ var MemoryManagerUI = {
         else items.forEach(function(item) {
             var rarityColor = { '普通': '#999', '精良': '#34c759', '珍稀': '#007aff', '传说': '#ff9500' }[item.rarity] || '#999';
             var btns = '<div style="display:flex;flex-direction:column;gap:4px;">' + self._btn('edit', 'editItem', item.name) + self._btn('delete', 'deleteItem', item.name) + '</div>';
-            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">□</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -5278,8 +5278,8 @@ init();
     */
     requiredPrompts: [
     { identifier: "main", name: "静谧之夜" },
-    { identifier: "nsfw", name: "🌌无限月读" },
-    { identifier: "ccb29029-f8b4-43a5-8dd7-433fc42e01a8", name: "==.✟.世界引擎.✟.==" },
+    { identifier: "nsfw", name: "◇无限月读" },
+    { identifier: "ccb29029-f8b4-43a5-8dd7-433fc42e01a8", name: "==.◇.世界引擎.◇.==" },
     { identifier: "6af0bf14-7519-4fe0-b9ff-064d928814ff", name: "获取变量" },
     { identifier: "worldInfoBefore", name: "worldInfoBefore" },
     { identifier: "worldInfoAfter", name: "worldInfoAfter" },
@@ -5312,11 +5312,11 @@ init();
     * 推进节奏（多选一）
     */
     pacing: [
-    { id: "4d9ce617", name: "🌊慢火浸润", desc: "极度细腻" },
-    { id: "ddafe1ba", name: "🌊稳态推进", desc: "均衡（推荐）" },
-    { id: "617bac07", name: "🌊均衡脉冲", desc: "中等节奏" },
-    { id: "fe598bd2", name: "🌊高压疾行", desc: "快速推进" },
-    { id: "cb91db4c", name: "🌊自由变奏", desc: "自动调节" }
+    { id: "4d9ce617", name: "◇慢火浸润", desc: "极度细腻" },
+    { id: "ddafe1ba", name: "◇稳态推进", desc: "均衡（推荐）" },
+    { id: "617bac07", name: "◇均衡脉冲", desc: "中等节奏" },
+    { id: "fe598bd2", name: "◇高压疾行", desc: "快速推进" },
+    { id: "cb91db4c", name: "◇自由变奏", desc: "自动调节" }
     ],
 
     /**
@@ -5352,7 +5352,7 @@ init();
     // 蛾摩拉预设配置
     // ============================================================================
     var GomorrahPresetConfig = {
-    name: "[MoM]蛾摩拉☼2.4",
+    name: "[MoM]蛾摩拉◇2.4",
     version: "2.4",
     author: "蛾摩拉与弥赛亚",
 
@@ -5374,12 +5374,12 @@ init();
     requiredPrompts: [
     { identifier: "main", name: "身份定义3" },
     { identifier: "jailbreak", name: "---❉---" },
-    { identifier: "nsfw", name: "☚长篇剧情规范" },
+    { identifier: "nsfw", name: "◇长篇剧情规范" },
     { identifier: "worldInfoBefore", name: "✪角色定义之前" },
     { identifier: "worldInfoAfter", name: "✪角色定义之后" },
     { identifier: "charDescription", name: "♚<char>设定" },
     { identifier: "charPersonality", name: "♚<char>个性" },
-    { identifier: "scenario", name: "🔹是Gemini🔸是Claude" },
+    { identifier: "scenario", name: "◇是Gemini◇是Claude" },
     { identifier: "chatHistory", name: "Chat History" },
     { identifier: "dialogueExamples", name: "Chat Examples" },
     { identifier: "personaDescription", name: "♔<user>设定" }

@@ -1121,7 +1121,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
             // 【防429模式】精简噪声注入（原版无此功能，过多噪声浪费token）
             if (gameState && gameState.anti429Mode) {
-                messages.push({ role: 'system', content: '[INIT]⚡entropy_burst##START##⚡' });
+                messages.push({ role: 'system', content: '[INIT]--entropy_burst##START##--' });
             }
 
             if (gameState && gameState._useSysprompt !== false) {
