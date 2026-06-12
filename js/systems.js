@@ -587,7 +587,7 @@ var AchievementSystem = {
         var ut = '';
         if (isU && uD) {
             var d = new Date(uD.unlockedAt);
-            ut = '<div class="achieve-unlock-time">◇ ' + d.toLocaleDateString() + '</div>';
+            ut = '<div class="achieve-unlock-time">📅 ' + d.toLocaleDateString() + '</div>';
         }
     var ph = '';
     if (!isU && ach.maxProgress) {

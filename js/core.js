@@ -51,6 +51,8 @@ var GameLinker = {
         }
     },
     // 智能刷新：根据变更的数据类型，自动推断需要刷新的页面
+    // 【性能优化】合并同一帧内的多次刷新请求，避免重复渲染
+    _pendingPages: {},
     refreshByDataChange: function(changeType) {
         var map = {
             playerData: ['playerPage'],
@@ -71,11 +73,19 @@ var GameLinker = {
         if (pages) {
             var self = this;
             for (var i = 0; i < pages.length; i++) {
-                (function(page) {
-                    requestAnimationFrame(function() {
-                        self.refresh(page);
-                    });
-                })(pages[i]);
+                self._pendingPages[pages[i]] = true;
+            }
+            // 合并到同一帧执行，避免多次 rAF 触发多次渲染
+            if (!self._rafScheduled) {
+                self._rafScheduled = true;
+                requestAnimationFrame(function() {
+                    self._rafScheduled = false;
+                    var toRefresh = Object.keys(self._pendingPages);
+                    self._pendingPages = {};
+                    for (var j = 0; j < toRefresh.length; j++) {
+                        self.refresh(toRefresh[j]);
+                    }
+                });
             }
         }
     }
@@ -313,9 +323,9 @@ function _pushKeyEventsToGM() {
             window.GameMemory._saveToStorageWrapped = true;
             clearInterval(checkInterval);
         }
-    }, 100);
-    // 30秒后停止检查
-    setTimeout(function() { clearInterval(checkInterval); }, 30000);
+    }, 200);
+    // 10秒后停止检查（GameMemory 正常情况下 1-2 秒内就初始化完成）
+    setTimeout(function() { clearInterval(checkInterval); }, 10000);
 })();
 
 // ========================================
@@ -977,9 +987,11 @@ var LocalGameAPI = {
     _networkStatus: 'unknown',
     async checkConnectivity(baseUrl) {
         var testUrl = this.normalizeUrl(baseUrl) + '/models';
-        var cfg = this.getCurrentConfig();
+        // 优先使用传入 baseUrl 对应配置的 apiKey，其次用当前配置
+        var matchedCfg = this._configs.find(function(c) { return c.baseUrl && LocalGameAPI.normalizeUrl(c.baseUrl) === LocalGameAPI.normalizeUrl(baseUrl); });
+        var apiKey = matchedCfg ? matchedCfg.apiKey : (this.getCurrentConfig() || {}).apiKey;
         var headers = { 'Content-Type': 'application/json' };
-        if (cfg && cfg.apiKey) headers['Authorization'] = 'Bearer ' + cfg.apiKey;
+        if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
         try {
             var controller = new AbortController();
             var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
@@ -991,8 +1003,8 @@ var LocalGameAPI = {
             this._networkStatus = 'disconnected';
             var msg = '';
             if (e.name === 'AbortError') msg = '连接超时（8秒无响应）';
-            else if (e.message.includes('Failed to fetch')) msg = '网络不可达（DNS解析失败或被阻断）';
-            else msg = e.message;
+            else if (e.message && e.message.includes('Failed to fetch')) msg = '网络不可达（DNS解析失败或被阻断）';
+            else msg = (e && e.message) || '未知错误';
             return { ok: false, status: 0, message: msg };
         }
     },
@@ -1003,11 +1015,15 @@ var LocalGameAPI = {
         if (!baseUrl) return [];
         try {
             const url = this.normalizeUrl(baseUrl) + '/models';
+            const controller = new AbortController();
+            const timeoutId = setTimeout(function() { controller.abort(); }, 10000);
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + apiKey
-                }
+                },
+                signal: controller.signal
             });
+            clearTimeout(timeoutId);
             if (res.ok) {
                 const data = await res.json();
                 return (data.data || []).map(m => m.id).sort();
@@ -1015,6 +1031,7 @@ var LocalGameAPI = {
                 throw new Error(translateError('HTTP错误: ' + res.status));
             }
         } catch (e) {
+            if (e.name === 'AbortError') throw new Error('获取模型列表超时（10秒），请检查网络或手动输入模型名');
         throw new Error('无法获取模型列表。建议：手动输入模型名称');
     }
     },
@@ -1339,14 +1356,14 @@ tags: ['资源管理', '抉择', '废土']
 // ---- 娱乐圈 ----
 {
     category: '娱乐圈',
-    icon: '◇',
+    icon: '💃',
     title: '女团选秀·逆风翻盘',
     desc: '被公司雪藏的练习生，想靠实力在选秀中翻红',
     prompt: '我想玩女团选秀，被公司雪藏的练习生，想靠实力翻红',
     tags: ['选秀', '热血', '成长']
 }, {
 category: '娱乐圈',
-icon: '♪',
+icon: '🎤',
 title: '黑红艺人·洗白上位',
 desc: '十八线黑红艺人，满身黑料但有实力，想洗白',
 prompt: '我想玩娱乐圈，十八线黑红艺人，想洗白上位',
@@ -1403,7 +1420,7 @@ tags: ['青春', '恋爱', '日常']
     tags: ['商战', '创业', '策略']
 }, {
 category: '商战职场',
-icon: '□',
+icon: '🏢',
 title: '办公室政治·升职之路',
 desc: '一个大公司新人，在复杂的办公室关系中生存升职',
 prompt: '我想玩职场游戏，我是刚入职大公司的新人，部门里派系复杂，要在各种办公室政治中升职',
@@ -2961,7 +2978,7 @@ function parseShopContent(html) {
         var name = (match.match(/class=["']name["'][^>]*>([^<]+)/i) || [])[1] || '商品';
         var price = parseInt((match.match(/class=["']price["'][^>]*>([\d]+)/i) || [])[1]) || 100;
         var desc = (match.match(/class=["']description["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || '';
-        goods.push({ name: name, price: price, description: desc.replace(/<[^>]+>/g, ''), icon: '□' });
+        goods.push({ name: name, price: price, description: desc.replace(/<[^>]+>/g, ''), icon: '📦' });
     });
 return goods;
 }
@@ -2990,7 +3007,7 @@ function parseItemsContent(html) {
         var name = (match.match(/class=["']name["'][^>]*>([^<]+)/i) || [])[1] || '物品';
         var count = parseInt((match.match(/class=["']count["'][^>]*>([\d]+)/i) || [])[1]) || 1;
         var rarity = (match.match(/class=["']rarity["'][^>]*>([^<]+)/i) || [])[1] || '普通';
-        items.push({ name: name, count: count, rarity: rarity, icon: '◇' });
+        items.push({ name: name, count: count, rarity: rarity, icon: '🎁' });
     });
 return items;
 }

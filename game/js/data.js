@@ -88,16 +88,16 @@ const FEMALE_NAMES = ['若兰','若雪','若烟','若云','若曦','若琳','若
 
 // 地点
 const LOCATIONS = {
-    palace:    { name: '寝宫',     desc: '你的居所', icon: '◻' },
-    study:     { name: '御书房',   desc: '读书习字', icon: '☐' },
-    garden:    { name: '御花园',   desc: '赏花散步', icon: '❀' },
-    kitchen:   { name: '御膳房',   desc: '品鉴美食', icon: '◎' },
-    court:     { name: '朝堂',     desc: '旁听朝政', icon: '⚖' },
-    mother:    { name: '母妃宫中', desc: '探望母妃', icon: '◇' },
-    market:    { name: '市集',     desc: '出宫游玩', icon: '▣' },
-    temple:    { name: '寺庙',     desc: '祈福还愿', icon: '△' },
-    training:  { name: '演武场',   desc: '习武强身', icon: '✦' },
-    music:     { name: '清音坊',   desc: '听曲学琴', icon: '♪' }
+    palace:    { name: '寝宫',     desc: '你的居所', icon: '🏠' },
+    study:     { name: '御书房',   desc: '读书习字', icon: '📚' },
+    garden:    { name: '御花园',   desc: '赏花散步', icon: '🌸' },
+    kitchen:   { name: '御膳房',   desc: '品鉴美食', icon: '🍜' },
+    court:     { name: '朝堂',     desc: '旁听朝政', icon: '⚖️' },
+    mother:    { name: '母妃宫中', desc: '探望母妃', icon: '👩' },
+    market:    { name: '市集',     desc: '出宫游玩', icon: '🏪' },
+    temple:    { name: '寺庙',     desc: '祈福还愿', icon: '⛩️' },
+    training:  { name: '演武场',   desc: '习武强身', icon: '⚔️' },
+    music:     { name: '清音坊',   desc: '听曲学琴', icon: '🎵' }
 };
 
 // 技能

@@ -165,7 +165,7 @@
         // 控制按钮
         btnPause.addEventListener('click', () => {
             engine.togglePause();
-            btnPause.textContent = engine.paused ? '▷' : '❚❚';
+            btnPause.textContent = engine.paused ? '▶' : '⏸';
             btnPause.classList.toggle('active', engine.paused);
         });
 
@@ -173,7 +173,7 @@
             const speeds = [1, 2, 3];
             const idx = speeds.indexOf(engine.speed);
             engine.setSpeed(speeds[(idx + 1) % speeds.length]);
-            btnSpeed.textContent = ['▷▷', '▷▷▷', '▷▷▷▷'][engine.speed - 1];
+            btnSpeed.textContent = ['▶▶', '▶▶▶', '▶▶▶▶'][engine.speed - 1];
         });
 
         btnSkipEvent.addEventListener('click', () => {
