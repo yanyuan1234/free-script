@@ -3041,12 +3041,13 @@ var GameMemory = {
     _adaptBudget: function() {
         var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
         if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
-        // 按次计费优化：尽可能多用上下文，只留15%给输出，其余全塞游戏数据
-        // 字符/token比约1.7，所以 maxChars ≈ ctxSize * 0.85 * 1.7
-        var base = Math.floor(ctxSize * 0.85 * 1.7);
+        // 【修复】为AI生成保留至少30%的上下文空间，防止输入挤占导致输出为空
+        // 原逻辑只留15%，在max_tokens较小时容易导致AI无输出空间
+        // 字符/token比约1.7，所以 maxChars ≈ ctxSize * 0.70 * 1.7
+        var base = Math.floor(ctxSize * 0.70 * 1.7);
         // 上下限保护
-        if (base < 4000) base = 4000;
-        if (base > 180000) base = 180000;
+        if (base < 3500) base = 3500;
+        if (base > 150000) base = 150000;
         this.budget.maxChars = base;
         // 按次计费：各模块理想预算也按比例放大
         var scale = base / 4000; // 以4000为基准缩放

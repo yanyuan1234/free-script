@@ -3678,6 +3678,11 @@ function buildAIRequestBody(messages, options, config) {
         console.warn('[API] max_tokens 异常大值已修正:', filtered.max_tokens, '→ 4096');
         filtered.max_tokens = 4096;
     }
+    // 【修复】确保 max_tokens 至少为 512，防止模型无输出空间
+    if (!filtered.max_tokens || filtered.max_tokens < 512) {
+        console.warn('[API] max_tokens 过小，已修正为 512');
+        filtered.max_tokens = 512;
+    }
     return filtered;
 }
 
