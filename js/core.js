@@ -1464,7 +1464,7 @@ function createDefaultGameState() {
         rollingSummary: '',
         autoCompress: true,
         tokenCount: 0,
-        maxTokens: 80000,
+        maxTokens: 4096,
         useStream: true,
         streamFailCount: 0,
         generateChoices: true,
@@ -3672,6 +3672,12 @@ function buildAIRequestBody(messages, options, config) {
 
     var filtered = filterRequestParams(params);
     if (options.stream) filtered.stream = true;
+    // 【安全护栏】max_tokens 异常大值修正：历史 bug 误写为 80000，导致模型生成 8 万 token 才会停
+    // 模型只要设了 max_tokens=N，**会一直写到 N 为止**——所以 max_tokens 几乎 = "生成时长上限"
+    if (filtered.max_tokens && filtered.max_tokens > 16000) {
+        console.warn('[API] max_tokens 异常大值已修正:', filtered.max_tokens, '→ 8192');
+        filtered.max_tokens = 8192;
+    }
     return filtered;
 }
 

@@ -3003,6 +3003,14 @@ async function loadFromSlot(slot) {
         // Fix Issue 43: Merge instead of replace to preserve runtime references
         if (!gameState) { gameState = {}; }
         Object.keys(parsed).forEach(function(k) { gameState[k] = parsed[k]; });
+
+        // 【修复AI生成慢】maxTokens 限位：保留旧版本遗留的 80000 等异常大值时，自动修正为合理范围
+        // 历史 bug：默认值曾误写为 80000，导致模型生成 8 万 token 才会停，体感"非常慢"
+        if (typeof gameState.maxTokens === 'undefined' || gameState.maxTokens === null || gameState.maxTokens > 32000) {
+            console.warn('[loadFromSlot] 修正异常的 maxTokens:', gameState.maxTokens, '→ 4096');
+            gameState.maxTokens = 4096;
+        }
+        if (gameState.maxTokens < 256) gameState.maxTokens = 4096;
         
         // 读档后重置临时字段，防止旧数据残留
         if (gameState) {
@@ -3072,7 +3080,7 @@ async function loadFromSlot(slot) {
             if (typeof gameState.customStyle === 'undefined') gameState.customStyle = '';
             if (typeof gameState.systemPrompt === 'undefined') gameState.systemPrompt = '';
             if (typeof gameState.tokenCount === 'undefined') gameState.tokenCount = 0;
-            if (typeof gameState.maxTokens === 'undefined') gameState.maxTokens = 80000;
+            if (typeof gameState.maxTokens === 'undefined') gameState.maxTokens = 4096;
         }
         if (gameState) {
             if (typeof gameState.streamFailCount === 'undefined') gameState.streamFailCount = 0;
