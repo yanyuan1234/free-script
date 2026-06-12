@@ -201,7 +201,7 @@ body {
     position: absolute;
     inset: 0;
     flex-direction: column;
-    animation: fadeIn .3s ease;
+    animation: fadeIn .15s ease;
     overflow: hidden
 }
 

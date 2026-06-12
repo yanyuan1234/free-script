@@ -3236,14 +3236,9 @@ const _navBarClickHandler = function(e) {
     else if (page === 'logPage') renderFn = renderLogPage;
     else if (page === 'memoryPage' && typeof MemoryManagerUI !== 'undefined') renderFn = function() { MemoryManagerUI.show(); UI.showPage('memoryPage'); };
     if (renderFn) requestAnimationFrame(function() { renderFn(); });
-    // 联动：刷新所有页面的数据缓存（让切换回其他页面时显示最新）
-    if (window.GameLinker) {
-        GameLinker.refreshByDataChange('playerData');
-        GameLinker.refreshByDataChange('allCharacters');
-        GameLinker.refreshByDataChange('currentQuests');
-        GameLinker.refreshByDataChange('currentBag');
-        GameLinker.refreshByDataChange('keyEvents');
-    }
+    // 注：原此处有 5 次 GameLinker.refreshByDataChange() 调用，
+    // 但 GameLinker 从未被 register 过（_refreshers 为空），调用本身是空操作，
+    // 反而会调度 5×N 个无意义的 rAF 回调，让点击体感卡顿。已移除。
 };
 function renderNavBar(containerId, tabs, activeIndex) {
     var container = document.getElementById(containerId);
@@ -3253,12 +3248,23 @@ function renderNavBar(containerId, tabs, activeIndex) {
         container.addEventListener('click', _navBarClickHandler);
         container._hasEventDelegate = true;
     }
-container.innerHTML = tabs.map(function(tab, i) {
-    var isActive = i === activeIndex ? ' active' : '';
-    return '<button class="nav-item' + isActive + '" data-nav-page="' + tab.page + '">' +
-    '<svg class="icon"><use href="#' + tab.icon + '"/></svg>' +
-    '<span class="nav-label">' + tab.label + '</span></button>';
-}).join('');
+    // 【性能优化】tabs 结构未变时，只切 active 类，避免每次重建 6 个按钮
+    var tabsKey = tabs.map(function(t) { return t.page + '|' + t.icon + '|' + t.label; }).join('||');
+    if (container._tabsKey === tabsKey) {
+        var items = container.querySelectorAll('.nav-item');
+        for (var ai = 0; ai < items.length; ai++) {
+            if (ai === activeIndex) items[ai].classList.add('active');
+            else items[ai].classList.remove('active');
+        }
+        return;
+    }
+    container._tabsKey = tabsKey;
+    container.innerHTML = tabs.map(function(tab, i) {
+        var isActive = i === activeIndex ? ' active' : '';
+        return '<button class="nav-item' + isActive + '" data-nav-page="' + tab.page + '">' +
+        '<svg class="icon"><use href="#' + tab.icon + '"/></svg>' +
+        '<span class="nav-label">' + tab.label + '</span></button>';
+    }).join('');
 }
 function showStoryLoading() {
     // 清理定时器，防止泄漏

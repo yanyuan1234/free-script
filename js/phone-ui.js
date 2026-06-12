@@ -1027,6 +1027,15 @@ var PresetAppManager = (function() {
 
 // --- 日志页面渲染 ---
 function renderLogPage() {
+    // 【性能优化】日志页数据未变时跳过整页重绘（点击导航栏频繁触发）
+    try {
+        var _presetApps = (gameState && gameState._presetApps) || {};
+        var _wMods = (gameState && gameState._worldModules) || [];
+        var _dateKey = (new Date()).getDate();
+        var _key = Object.keys(_presetApps).length + '|' + _wMods.length + '|' + _dateKey;
+        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderLogPage', _key)) return;
+        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderLogPage', _key);
+    } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var now = new Date();
     var dateEl = document.getElementById('logTopDate');
     if (dateEl) dateEl.textContent = String(now.getMonth() + 1).padStart(2, '0') + '/' + String(now
@@ -3070,6 +3079,13 @@ function exportStoryText() {
 function renderRecapPage() {
     var container = document.getElementById('recapList');
     if (!container) return;
+    // 【性能优化】剧情回顾数据未变时跳过整页重绘（每次点击导航栏都会触发）
+    try {
+        var storiesProbe = getStoryList();
+        var _key = storiesProbe.length + '|' + (storiesProbe.length ? storiesProbe[storiesProbe.length - 1].text.length : 0);
+        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderRecapPage', _key)) return;
+        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderRecapPage', _key);
+    } catch (e) { /* 缓存失败不阻塞渲染 */ }
     // 联动：用记忆里的最近剧情摘要补全回顾
     var stories = getStoryList();
     if (stories.length === 0) {

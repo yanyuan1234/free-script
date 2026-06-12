@@ -4538,6 +4538,17 @@ function renderNpcPage() {
     // 确保 allCharacters 已初始化
     if (gameState && !gameState.allCharacters) gameState.allCharacters = {};
     var chars = Object.values((gameState && gameState.allCharacters) || {});
+    // 【性能优化】数据未变时跳过整页重绘（每次点击导航栏都会触发此函数）
+    try {
+        var totalFav = 0, lastName = '';
+        for (var _ci = 0; _ci < chars.length; _ci++) {
+            totalFav += Number(chars[_ci].favorability) || 0;
+            lastName = chars[_ci].name;
+        }
+        var _key = chars.length + '|' + totalFav + '|' + lastName;
+        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderNpcPage', _key)) return;
+        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderNpcPage', _key);
+    } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var container = document.getElementById('characterList');
     if (!container) return;
     if (chars.length === 0) {
