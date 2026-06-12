@@ -60,15 +60,7 @@ function getCurrentWorldTerms() {
  * 所有世界观统一：AI读取设定后自行决定术语，开局确定后全程固定
  */
 function buildWorldTermsPrompt(_terms) {
-    return '【世界观术语】\n' +
-        '你理解每个世界都有自己的语言体系——界面上的模块标题、货币名称、通讯方式等都应该融入世界观，而不是用通用词汇破坏沉浸感。例如：\n' +
-        '- 现代都市：消息→消息、邮件→邮件、朋友圈→朋友圈、商店→商店、论坛→论坛、货币→元、背包→背包、任务→任务\n' +
-        '- 古代：消息→传话、邮件→飞鸽传书、朋友圈→江湖传闻、商店→集市、论坛→茶馆、货币→银两、背包→行囊、任务→差事\n' +
-        '- 修仙：消息→传音、邮件→传音符、朋友圈→修士手札、商店→灵宝阁、论坛→论道台、货币→灵石、背包→储物袋、任务→历练\n' +
-        '- 无限流/游戏系统：消息→系统消息、邮件→系统邮件、朋友圈→玩家动态、商店→兑换商城、论坛→玩家论坛、货币→积分、背包→空间仓库、任务→副本任务\n' +
-        '- 赛博朋克：消息→全息通讯、邮件→数据包、朋友圈→暗网动态、商店→义体诊所、论坛→黑客频道、货币→信用点、背包→存储芯片、任务→委托\n' +
-        '- 太空歌剧：消息→星际通讯、邮件→量子信标、朋友圈→星网动态、商店→空间站市集、论坛→星际议会、货币→星币、背包→货舱、任务→远征\n' +
-        '请在第一回合的world模块title中体现你选定的术语，之后全程保持一致。';
+    return '【术语】界面模块标题、货币等应融入世界观。例：古代→传话/飞鸽/银两，修仙→传音/灵石，赛博→全息/信用点。第一回合world.title体现，之后保持一致。';
 }
 
 // 【按次计费优化】子功能（论坛/NPC私聊/结局）获取精简版设定
@@ -444,62 +436,26 @@ ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCus
 
 ${_termsPrompt}
 
-【叙事守则】（来自酒馆大佬们的调参智慧）
-- 抗OOC：角色行为必须符合其性格和动机，不为了剧情需要而强行改变。角色不会突然变得温柔或残暴，除非有充分的理由
-- 抗全知：角色只能知道自己应该知道的信息。NPC不会未卜先知，不会读取主角的内心，不会知晓未曾经历的事件
-- 抗刻板：避免将角色简化为标签。强势≠控制，弱势≠依赖，女性角色保有完全的选择权与拒绝权
-- 抗发情：角色不会无缘无故地对主角产生强烈好感或欲望，好感度需要时间培养
-- 关系自然：角色之间保留各自的生活轴线和性格重心，不能因为主角出现就统一变成围绕其旋转的情绪体
-- 情绪克制：强烈情绪必须被自然稀释，避免夸张戏剧冲突。安静、克制、复杂、含蓄，才是真实的人际互动
+【叙事守则】
+- 抗OOC：角色行为符合性格动机，不强行改变
+- 抗全知：NPC不知未经历之事，不读主角内心
+- 抗刻板：角色不简单化为标签
+- 抗发情：好感需时间培养
+- 关系自然：角色保留各自生活轴线
+- 情绪克制：强烈情绪自然稀释，避免夸张
 
 【你的工作方式】
-你的创作通过JSON传递给前端程序来渲染界面。理解这个机制后你就知道为什么格式很重要：前端代码按字段名读取数据，所以字段名必须准确；story放在最前面是因为解析器优先读取它。
-你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
-- story是你的叙事正文，用\\n换行，对话用「」包裹——这是玩家阅读的核心内容
-- choices是主角视角的决策点，让玩家感到自己在推动故事
-- [章节结束|标题] 用来标记长章节或情绪转折的收尾
+输出JSON给前端解析。字段名必须准确，story放第一个字段。
+你大约有 ${_maxTokens} tokens输出空间。
+- story：叙事正文，\\n换行，对话用「」
+- choices：主角视角决策点
+- [章节结束|标题]：标记长章节收尾
 
-【心声系统 <giggle>】
-心声是"角色没说出口的话"——它让场景有温度，让对话有潜台词。每回合的剧情里穿插 2-5 个 <giggle>...</giggle>，散在不同段落中，玩家点击段落末尾的图标就能看到角色的真实想法。
-- 格式：<giggle>角色名：他们的真实想法</giggle>
-- 心声不是台词，是"没说的部分"——口是心非、潜台词、旁观者吐槽都行
-- 在场角色都能发声（不只 NPC，主角的内心戏也算心声）
-- 2-5 是范围不是硬规定：对话密集、节奏紧张时少一点（2-3 个），场景丰富、关系复杂时多一点（4-5 个），自己根据节奏判断
-
-【状态变化 <mem>】
-当重要状态变化时，用 <mem> 主动标记，让记忆系统能精准记录：
-- 事件：<mem type="event" action="add">主角向林婉表白了</mem>
-- 任务：<mem type="quest" action="add">找到失踪的妹妹</mem>，完成时用 action="resolve"
-- 时间推进：<mem type="time" day="3" period="afternoon" />
-- 角色字段：<mem type="character" name="林婉" field="favorability" value="75" />
-- 物品：<mem type="item" name="传家玉佩" qty="1" action="add" />
-- 地点：<mem type="location" name="地下密室" field="status" value="已探索" />
-- 关系或物品数量变化时记得用 <mem> 标记——不写的话记忆系统只能靠正则推断，容易漏
-
-【世界模块使用时机】
-world 数组里的模块会渲染到不同的世界面板，何时用哪种你自己判断：
-- type=text：场景描述、机关解读、剧情注解
-- type=list / ranking：清单、排名（门派排行、势力榜）
-- type=key_value：属性表、状态详情
-- type=cards：任务卡片、成就卡片
-- type=comments：论坛讨论（玩家做出引发讨论的事时用——暴露身份、做出格举动）
-- type=moments：朋友圈动态（玩家或 NPC 做出值得刷屏的事时用）
-- type=mail：邮件/通知（NPC 主动联系、事件触发、邀请时用）
-- type=shop：商店/可购买内容（场景中遇到可交易对象时用）
-- type=diary：角色日记（重要剧情节点后用某 NPC 视角记录内心）
-
-【持续维护】
-- characters 数组里每个 NPC 的 favorability 要随剧情实时更新，关系变化时别忘改
-- 物品获得/消耗时更新 bag 数组
-- 任务完成时更新 quests 状态
-- 长回合（>800 字）或情绪大转折时用 [章节结束|标题] 给玩家一个呼吸点
-
-【信息优先级】
-你在多条消息中收到了大量信息。当它们之间出现矛盾时，按以下规则判断：
-1. 标记为"始终生效"的核心设定 > 其他所有信息
-2. 本轮变化 > 旧的状态记录（变化意味着旧信息已过时）
-3. 增强记忆中的角色/物品/事件状态 > 世界快照中的同类信息（快照是旧数据，记忆是实时更新的）
-4. 玩家的最新指令 > 之前的任何指令
+【心声 <giggle>】每回合2-5个，散在不同段落。<giggle>角色名：真实想法</giggle>
+【状态 <mem>】变化时标记：<mem type="event|quest|character|item|location" ... />
+【world模块】text/list/ranking/key_value/cards/comments/moments/mail/shop/diary按需使用
+【维护】NPC favorability实时更新，bag/quests同步，长回合用[章节结束|标题]
+【信息优先级】始终生效 > 本轮变化 > 增强记忆 > 世界快照 > 旧指令
 
 ${_prefSection}
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
@@ -584,10 +540,7 @@ function buildRecentChatContext() {
             n++;
         }
         if (blocks.length === 0) return '';
-        return '\n【玩家最近私聊记录】\n' +
-            '玩家在剧情之外与部分 NPC 通过手机私聊过，以下是最近对话：\n' +
-            blocks.join('\n\n') + '\n' +
-            '私聊中的约定、情绪和情报会自然影响剧情走向和NPC态度——让这些后果在剧情中自然体现。\n';
+        return '\n【私聊记录】\n' + blocks.join('\n\n') + '\n';
     } catch (e) {
         console.warn('[buildRecentChatContext] 失败：', e);
         return '';
@@ -604,33 +557,17 @@ if (_origStartBtn) {
 function buildProtagonistPrompt() {
     var mc = gameState ? gameState.protagonistSetup : null;
     if (!mc || Object.keys(mc).length === 0) return '';
-    var lines = ['【主角设定】'];
-    if (mc.mcName) lines.push('姓名: ' + mc.mcName);
-    if (mc.mcGender) lines.push('性别: ' + mc.mcGender);
-    if (mc.mcAge) lines.push('年龄: ' + mc.mcAge);
-    if (mc.mcIdentity) lines.push('身份: ' + mc.mcIdentity);
-    if (mc.mcPersonality) lines.push('性格: ' + mc.mcPersonality);
-    if (mc.mcAppearance) lines.push('外貌: ' + mc.mcAppearance);
-    if (mc.mcAbility) lines.push('特殊能力: ' + mc.mcAbility);
-    if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
-    lines.push('');
-    lines.push('主角是玩家操控的角色——player字段对应主角信息，characters字段对应NPC。');
-    // 主角身份可能从三处出现：① 表单字段（这里）② 世界描述（player/identity 字段）③ 记忆系统（pcIdentity）
-    // 告诉 AI 这三处应该是同一份信息，冲突时按权威度判断
-    var hasUserPrompt = gameState && gameState.userPrompt && gameState.userPrompt.length > 200;
-    var hasMemoryIdentity = typeof EnhancedMemory !== 'undefined'
-        && EnhancedMemory.permanentFacts
-        && EnhancedMemory.permanentFacts.pcIdentity
-        && EnhancedMemory.permanentFacts.pcIdentity.length > 0;
-    if (hasUserPrompt && hasMemoryIdentity) {
-        lines.push('提示：主角身份已在【世界描述】和【核心设定】中给出，此处仅作对照。三处冲突时以【核心设定】 > 【世界描述】 > 此处 为准。');
-    } else if (hasUserPrompt) {
-        lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');
-    } else if (hasMemoryIdentity) {
-        lines.push('提示：主角身份已在【核心设定】中给出，以【核心设定】为准。');
-    }
-    lines.push('');
-    return lines.join('\n');
+    var parts = [];
+    if (mc.mcName) parts.push(mc.mcName);
+    if (mc.mcGender) parts.push(mc.mcGender);
+    if (mc.mcAge) parts.push(mc.mcAge);
+    if (mc.mcIdentity) parts.push(mc.mcIdentity);
+    if (mc.mcPersonality) parts.push(mc.mcPersonality);
+    if (mc.mcAppearance) parts.push(mc.mcAppearance);
+    if (mc.mcAbility) parts.push(mc.mcAbility);
+    if (mc.mcExtra) parts.push(mc.mcExtra);
+    if (parts.length === 0) return '';
+    return '【主角】' + parts.join(' | ') + '\n';
 }
 // ========================================
 
@@ -691,10 +628,10 @@ function injectPresetGlobalVars() {
         var style = config.paragraphStyle || config.style || '';
         if (style) {
             var patches = {
-                long: '[长段落] 沉浸式长段落，单段250-600字，拒绝碎片化换行',
-                medium: '[中段落] 均衡段落，单段180-320字',
-                short: '[短段落] 紧凑推进，单段90-180字',
-                free: '[自由段落] 长短错落，根据场景氛围动态调整'
+                long: '长段落：单段250-600字',
+                medium: '中段落：单段180-320字',
+                short: '短段落：单段90-180字',
+                free: '自由段落：长短错落'
             };
             MacroEngine.setGlobalVar('单段落字数', patches[style] || '');
         } else {
@@ -778,29 +715,29 @@ function injectPresetGlobalVars() {
     };
     MacroEngine.setGlobalVar('talk', talkMap[aiMode] || '');
     
-    // === 推进节奏（来自月读预设的智慧） ===
+    // === 推进节奏 ===
     var pacing = config.pacing || '';
     if (pacing) {
         var pacingMap = {
-            'slow': '慢火浸润：极度细腻，每个感官细节都值得停留，场景转换缓慢而沉浸',
-            'steady': '稳态推进：均衡节奏，细节与推进并重，适合大多数叙事',
-            'balanced': '均衡脉冲：中等节奏，关键场景细腻、过渡场景简练',
-            'fast': '高压疾行：快速推进，紧凑有力，适合紧张刺激的场景',
-            'free': '自由变奏：根据场景氛围自动调节节奏，平静时细腻、紧张时加速'
+            'slow': '慢节奏：细腻沉浸',
+            'steady': '均衡节奏：细节与推进并重',
+            'balanced': '中等节奏：关键场景细腻、过渡简练',
+            'fast': '快节奏：紧凑有力',
+            'free': '自由变奏：根据场景自动调节'
         };
         MacroEngine.setGlobalVar('推进节奏', pacingMap[pacing] || '');
     } else {
         MacroEngine.setGlobalVar('推进节奏', '');
     }
     
-    // === 文风选择（来自果实预设的梦境风味系统） ===
+    // === 文风选择 ===
     var writingStyle = config.writingStyle || (gameState && gameState.writingStyle) || '';
     if (writingStyle) {
         var styleMap = {
-            'baimiao': '此乃【白描之梦】\n- 禁止使用多个形容词叠加描述，但也要避免说明书化和平铺直叙，应当体现文学的美感\n- 由动词、名称主宰\n- 克制用词，不走极端，禁止使用"极其/极度/极为"等表达\n- 温和、克制、谨慎地塑造',
-            'liudong': '此乃【流动之梦】\n- 叙事跟随感知流淌，感官印象先于事件浮现——气味、温度、光线、声音是叙事入口\n- 时间感可以扭曲：一瞬间可以延展为漫长凝视，一段时光可以在一行中滑过\n- 内心意识与外部场景互相渗透，边界是模糊的\n- 情绪从不被直接命名，而是在流淌的感知中自然显现',
-            'lengjun': '此乃【冷峻之梦】\n- 叙事如镜头，保持克制的距离，不介入，不评判，不渲染\n- 句子短促，信息密度高；对话简短直接，省去一切多余的情绪说明\n- 用行为与细节替代内心独白，读者自行推断情感\n- 冷静直面荒诞与痛苦——既不回避，也不放大',
-            'nongmo': '此乃【浓墨之梦】\n- 色彩、光影、气味、温度可以承载情感，景物随人物内心微微变形\n- 允许繁复的意象与精准的形容词，但须服务于情感而非纯粹堆砌\n- 情感以具体的物理感受外化——不直接命名，却处处可感\n- 每个细节都带有主观温度，文字本身就是情绪的投射'
+            'baimiao': '白描：动词名词主导，克制用词，禁止多形容词叠加',
+            'liudong': '流动：感官印象先于事件，时间感可扭曲，情绪在感知中自然显现',
+            'lengjun': '冷峻：镜头式叙事，短句高密度，行为替代内心独白',
+            'nongmo': '浓墨：色彩光影承载情感，细节带有主观温度'
         };
         MacroEngine.setGlobalVar('文风指导', styleMap[writingStyle] || '');
     } else {
@@ -1119,10 +1056,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 支持 use_sysprompt 配置（月读预设设为 false）
             // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            // 【防429模式】精简噪声注入（原版无此功能，过多噪声浪费token）
-            if (gameState && gameState.anti429Mode) {
-                messages.push({ role: 'system', content: '[INIT]⚡entropy_burst##START##⚡' });
-            }
+            // 防429噪声注入已移除（节省token）
 
             if (gameState && gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
@@ -1166,53 +1100,24 @@ async function sendAIRequest(userMessage, isInit = false) {
             );
             if (d1) messages.push({ role: 'system', content: d1 });
 
-            // depth 2 = EM_TOP
-            var d2 = mergePositionContent(
-                wiPositionTexts ? wiPositionTexts.emTop : null,
-                positionPrompts['2']
-            );
-            if (d2) messages.push({ role: 'system', content: d2 });
+            // depth 2-5 已移除（节省token，depth 0-1 已覆盖主要世界书注入）
 
-            // depth 3 = EM_BOTTOM
-            var d3 = mergePositionContent(
-                wiPositionTexts ? wiPositionTexts.emBottom : null,
-                positionPrompts['3']
-            );
-            if (d3) messages.push({ role: 'system', content: d3 });
-
-            // depth 4 = AN_TOP
-            var d4 = mergePositionContent(
-                wiPositionTexts ? wiPositionTexts.anTop : null,
-                positionPrompts['4']
-            );
-            if (d4) messages.push({ role: 'system', content: d4 });
-
-            // depth 5 = AN_BOTTOM
-            var d5 = mergePositionContent(
-                wiPositionTexts ? wiPositionTexts.anBottom : null,
-                positionPrompts['5']
-            );
-            if (d5) messages.push({ role: 'system', content: d5 });
-
-            // 游戏状态快照（精简版：与原版backup一致，只发关键信息，节省token）
+            // 世界快照（极简版）
             if (gameState && gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
                 var snap = gameState.worldSnapshot;
-                var snapshotText = '【世界快照】\n';
-                if (snap.player) {
-                    snapshotText += '主角: ' + (snap.player.name || '未知') + ', ' + (snap.player.identity || '') + '\n';
-                    if (snap.player.stats && snap.player.stats.length > 0) {
-                        snapshotText += '属性: ' + snap.player.stats.map(function(s) { return s.label + ':' + s.value; }).join(', ') + '\n';
-                    }
-                }
+                var snapshotParts = [];
+                if (snap.player && snap.player.name) snapshotParts.push('主角:' + snap.player.name);
                 if (snap.characters && snap.characters.length > 0) {
-                    snapshotText += '当前NPC: ' + snap.characters.map(function(c) {
-                        return c.name + '(' + (c.relation || '未知') + ',好感' + (c.favorability || '?') + ')';
-                    }).join('; ') + '\n';
+                    snapshotParts.push('NPC:' + snap.characters.map(function(c) {
+                        return c.name + (c.favorability !== undefined ? '(' + c.favorability + ')' : '');
+                    }).join(','));
                 }
                 if (snap.bag && snap.bag.length > 0) {
-                    snapshotText += '背包: ' + snap.bag.map(function(b) { return b.name + 'x' + (b.count || 1); }).join(', ') + '\n';
+                    snapshotParts.push('背包:' + snap.bag.map(function(b) { return b.name + 'x' + (b.count || 1); }).join(','));
                 }
-                if (snapshotText.length > 10) messages.push({ role: 'system', content: snapshotText });
+                if (snapshotParts.length > 0) {
+                    messages.push({ role: 'system', content: '【快照】' + snapshotParts.join(' | ') });
+                }
             }
 
             // 重要事件记录（精简：只保留最近5条，节省token）
