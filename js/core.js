@@ -3849,12 +3849,19 @@ function parseSSEEventText(eventText, ctx) {
         }
         if (!json.choices || !json.choices[0]) continue;
         var delta = json.choices[0].delta || {};
-        // 【修复 #19】只取剧情正文 content；reasoning_content/reasoning 是思考链，
-        //              统计到 ctx.reasoningText 但绝不进入 fullText
+        // 【修复 #19 + #20】兼容 Cloudflare Workers AI 封装的 Kimi 模型：
+        // 该模型把正文放在 reasoning_content 中，content 为 null。
+        // 策略：优先取 content；content 为空时回退到 reasoning_content。
         var content = (typeof delta.content === 'string') ? delta.content : '';
         var reasoningChunk = (typeof delta.reasoning_content === 'string') ? delta.reasoning_content
                           : (typeof delta.reasoning === 'string') ? delta.reasoning : '';
-        if (reasoningChunk) ctx.reasoningText += reasoningChunk;
+        // Cloudflare Workers AI Kimi: content 为空但 reasoning_content 有内容 → 正文在 reasoning_content 中
+        if (!content && reasoningChunk) {
+            content = reasoningChunk;
+        } else if (reasoningChunk) {
+            // 真正的思考链（DeepSeek-R1 等），统计但不进入正文
+            ctx.reasoningText += reasoningChunk;
+        }
         ctx.fullText += content;
         // 【优化】content为空时跳过回调，避免反复推送空字符串到打字机
         if (ctx.onChunk && content) {
@@ -3881,15 +3888,11 @@ function parseAIResponseFallback(rawBody) {
         var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
         if (_msg) {
             var _content = (typeof _msg.content === 'string') ? _msg.content : '';
-            var _reasoningLen = ((typeof _msg.reasoning_content === 'string') ? _msg.reasoning_content.length : 0)
-                              + ((typeof _msg.reasoning === 'string') ? _msg.reasoning.length : 0);
-            // 优先用 content
+            var _reasoning = (typeof _msg.reasoning_content === 'string') ? _msg.reasoning_content
+                           : (typeof _msg.reasoning === 'string') ? _msg.reasoning : '';
+            // 优先用 content；content 为空时回退到 reasoning_content（兼容 Cloudflare Workers AI Kimi）
             if (_content) return _content;
-            // content 为空但有 reasoning_content → 思考链吃光了 token，返回空串让上游提示
-            if (_reasoningLen > 0) {
-                console.warn('[parseAIResponseFallback] 推理模型仅返回思考链（' + _reasoningLen + ' 字符），未返回正文');
-                return '';
-            }
+            if (_reasoning) return _reasoning;
             if (jsonData.usage) return '';
             return rawBody;
         }
@@ -4017,13 +4020,13 @@ async function executeAINormal(url, body, apiKey, signal) {
     //              打警告并返回空串（绝不回退到思考链），让上游能感知到异常
     var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
     if (_nmsg) {
-        var _reasoningLen = ((typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content.length : 0)
-                          + ((typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning.length : 0);
         var _content = (typeof _nmsg.content === 'string') ? _nmsg.content : '';
-        if (!_content && _reasoningLen > 0) {
-            console.warn('[callAI] 推理模型仅返回思考链（' + _reasoningLen + ' 字符）未返回剧情正文，可能是 max_tokens 过小被思考链吃光');
-        }
-        return _content;
+        var _reasoning = (typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content
+                       : (typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning : '';
+        // 优先用 content；content 为空时回退到 reasoning_content（兼容 Cloudflare Workers AI Kimi）
+        if (_content) return _content;
+        if (_reasoning) return _reasoning;
+        return '';
     }
     // JSON 解析成功但结构不识别，原版兜底行为：返回 res.text() 让用户看到原文
     try { return await res.text(); } catch (e) { return ''; }
