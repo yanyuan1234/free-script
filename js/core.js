@@ -3642,9 +3642,17 @@ if (options.stream) {
                                 console.error('[callAI] 流式错误:', streamError);
                                 continue;
                             }
-                            const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+                            // 【修复API】兼容推理模型：content / reasoning_content / reasoning 三种字段都尝试
+                            var _deltaObj = json.choices[0].delta;
+                            var content = _deltaObj.content
+                                || (_deltaObj.reasoning_content || _deltaObj.reasoning)
+                                || '';
                             fullText += content;
-                            if (options.onChunk && content) {
+                            // 【修复API】原版用 if (options.onChunk) 总是回调；新版加了 && content
+                            // 门控，导致推理模型（content 恒为空）下一次也不回调 onStreamChunk，
+                            // 流结束后 streamBuffer 为空，触发 fallback 返回 rawBody，
+                            // 用户会看到原始 SSE JSON。改回总是回调（与原版一致）。
+                            if (options.onChunk) {
                                 try {
                                     options.onChunk(content, fullText);
                                 } catch (chunkErr) {
@@ -3681,9 +3689,14 @@ if (options.stream) {
                             console.error('[callAI] 流式错误:', streamError);
                             continue;
                         }
-                        const content = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content || '';
+                        // 【修复API】兼容推理模型：content / reasoning_content / reasoning 都尝试
+                        var _deltaObj2 = json.choices[0].delta;
+                        var content = _deltaObj2.content
+                            || (_deltaObj2.reasoning_content || _deltaObj2.reasoning)
+                            || '';
                         fullText += content;
-                        if (options.onChunk && content) {
+                        // 【修复API】见上面 done 分支说明：移除 && content 门控，恢复原版"总是回调"
+                        if (options.onChunk) {
                             try {
                                 options.onChunk(content, fullText);
                             } catch (chunkErr) {
@@ -3711,15 +3724,37 @@ if (options.stream) {
                 var errObj = jsonData.error;
                 throw new Error(translateError(errObj.message) || translateError(errObj.code) || translateError(errObj.msg) || ('API错误: ' + JSON.stringify(errObj)));
             }
-            fullText = (jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message && jsonData.choices[0].message.content) || '';
+            // 【修复API】推理模型可能只返回 reasoning_content / reasoning
+            var _msg = jsonData.choices && jsonData.choices[0] && jsonData.choices[0].message;
+            fullText = (_msg && (_msg.content || _msg.reasoning_content || _msg.reasoning)) || '';
+            // 【修复API】原 fallback 在解析失败/usage 缺失时把整段 rawBody（SSE 原始响应）当作文本返回，
+            // 用户就会在剧情区看到 "data:{...}" 这类原始 JSON。改成只保留可读内容，否则返回空串。
             if (!fullText && jsonData.usage) {
                 fullText = '';
             } else if (!fullText) {
-                fullText = rawBody;
+                // rawBody 是 SSE 格式时不能直接当文本；用首条 data 行的 reasoning/content 兜底
+                var _dataLine = (rawBody.match(/data:\s*\{[\s\S]*?\}/) || [])[0];
+                if (_dataLine) {
+                    try {
+                        var _parsed = JSON.parse(_dataLine.slice(5).trim());
+                        var _d = _parsed.choices && _parsed.choices[0] && _parsed.choices[0].delta;
+                        if (_d) fullText = _d.content || _d.reasoning_content || _d.reasoning || '';
+                    } catch (_) { /* 忽略，仍是空 */ }
+                }
             }
         } catch (e) {
             if (e.message && e.message.indexOf('API') === 0) throw e;
-            fullText = rawBody;
+            // rawBody 是 SSE 格式时不能直接当文本；用首条 data 行尝试提取
+            var _dataLine2 = (rawBody.match(/data:\s*\{[\s\S]*?\}/) || [])[0];
+            if (_dataLine2) {
+                try {
+                    var _parsed2 = JSON.parse(_dataLine2.slice(5).trim());
+                    var _d2 = _parsed2.choices && _parsed2.choices[0] && _parsed2.choices[0].delta;
+                    if (_d2) fullText = _d2.content || _d2.reasoning_content || _d2.reasoning || '';
+                } catch (_) { fullText = ''; }
+            } else {
+                fullText = '';
+            }
         }
     }
     return fullText;
@@ -3744,8 +3779,9 @@ translateError(errObj.code) || translateError(errObj.type) ||
 'API错误: ' + res.status);
 }
 const data = await res.json();
-return (data.choices && data.choices[0] && data.choices[0].message && data
-.choices[0].message.content) || '';
+// 【修复API】推理模型：尝试 content / reasoning_content / reasoning 三个字段
+var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
+return (_nmsg && (_nmsg.content || _nmsg.reasoning_content || _nmsg.reasoning)) || '';
 }
 });
 }
