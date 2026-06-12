@@ -4,13 +4,13 @@
 
 本项目使用 GitHub Pages 部署，地址：https://yanyuan1234.github.io/free-script/
 
-- **CI/CD**：`.github/workflows/deploy.yml` 会在 push 到 `master` 或 `trae/**` 分支时自动部署
-- **每次修改代码后，必须执行以下步骤**：
+- **CI/CD**：`.github/workflows/deploy.yml` 仅在 push 到 `master` 分支时自动部署（trae 分支不触发自动部署）
+- **每次修改代码后，必须手动部署**：
   1. `git add` 改动的文件
   2. `git commit` 提交
   3. 合并到 master：`git checkout master && git merge <当前分支> --no-edit`
   4. 推送：`git push origin master`
-  5. 等待 GitHub Actions 部署完成（约 1-2 分钟）
+  5. 等待 GitHub Actions 部署完成（约 1-2 分钟），可通过 API 确认：`curl -s -H "Authorization: token <TOKEN>" "https://api.github.com/repos/yanyuan1234/free-script/actions/runs?per_page=1" | python3 -c "import json,sys; r=json.load(sys.stdin)['workflow_runs'][0]; print(f'Status: {r[\"status\"]} | Conclusion: {r[\"conclusion\"]}')"`
 
 **不要忘记推送！用户在线上看到的版本必须和本地一致。**
 
