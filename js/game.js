@@ -1458,7 +1458,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 自动计算当前消息的token数，如果接近上下文窗口上限，从最旧的聊天消息开始移除
         // 保留系统消息和固定消息，只移除普通的user/assistant历史消息
         var contextSize = (gameState && gameState.contextSize) || 8000;
-        var reservedForOutput = Math.floor(contextSize * 0.15); // 留15%给输出
+        var reservedForOutput = Math.floor(contextSize * 0.30); // 留30%给输出，防止AI无生成空间
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessages(messages);
         if (currentTokens > maxInputTokens) {
@@ -1528,30 +1528,6 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
-        // 【修复】AI返回空内容检测：如果content为空但API正常返回，提示用户
-        if (!storyText || storyText.trim() === '') {
-            console.warn('[AI生成] 剧情文本为空，可能原因：1) max_tokens过小 2) 模型异常 3) 内容被过滤');
-            // 尝试从原始response中提取任何可读文本作为兜底
-            if (response && typeof response === 'string' && response.trim().length > 0) {
-                // 如果原始响应有内容但storyText为空，说明解析可能有问题
-                // 尝试直接显示清理后的原始响应（去掉JSON标记）
-                var cleanedRaw = response
-                    .replace(/```json[\s\S]*?```/g, '')
-                    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-                    .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
-                    .replace(/💭[\s\S]*?💭/g, '')
-                    .replace(/"story"\s*:\s*""/g, '')
-                    .trim();
-                if (cleanedRaw && cleanedRaw.length > 10) {
-                    storyText = '【AI返回异常，原始响应如下】\n' + cleanedRaw.substring(0, 500);
-                    console.log('[AI生成] 已提取原始响应作为兜底');
-                }
-            }
-            if (!storyText || storyText.trim() === '') {
-                storyText = '【AI未返回剧情内容】\n\n可能原因：\n1. max_tokens设置过小，思考链占用了全部额度\n2. 模型暂时异常，请重试\n3. 上下文过长导致生成空间不足\n\n建议：检查API设置中的max_tokens（建议≥1024），或尝试切换模型。';
-            }
-        }
-
         // === COT（思维链）处理 ===
         // 从AI回复中提取 <ECoT>...</ECoT>、<thinking>...</thinking>、💭...💭 标签内容
         // 这些内容不显示给用户，但需要保存为 {{original}} 的值
@@ -1592,6 +1568,31 @@ async function sendAIRequest(userMessage, isInit = false) {
             var memResult = GameMemory.parseAIEditTags(storyText);
             if (memResult && memResult.cleanedText !== storyText) {
                 storyText = memResult.cleanedText;
+            }
+        }
+
+        // 【修复】AI返回空内容检测：在COT和记忆编辑之后再检测
+        // 这样即使COT清理后变空也能被捕获
+        if (!storyText || storyText.trim() === '') {
+            console.warn('[AI生成] 剧情文本为空，可能原因：1) max_tokens过小 2) 模型异常 3) 内容被过滤 4) COT占用了全部额度');
+            // 尝试从原始response中提取任何可读文本作为兜底
+            if (response && typeof response === 'string' && response.trim().length > 0) {
+                // 如果原始响应有内容但storyText为空，说明解析可能有问题
+                // 尝试直接显示清理后的原始响应（去掉JSON标记和COT）
+                var cleanedRaw = response
+                    .replace(/```json[\s\S]*?```/g, '')
+                    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+                    .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
+                    .replace(/💭[\s\S]*?💭/g, '')
+                    .replace(/"story"\s*:\s*""/g, '')
+                    .trim();
+                if (cleanedRaw && cleanedRaw.length > 10) {
+                    storyText = '【AI返回异常，原始响应如下】\n' + cleanedRaw.substring(0, 500);
+                    console.log('[AI生成] 已提取原始响应作为兜底');
+                }
+            }
+            if (!storyText || storyText.trim() === '') {
+                storyText = '【AI未返回剧情内容】\n\n可能原因：\n1. max_tokens设置过小，思考链占用了全部额度\n2. 模型暂时异常，请重试\n3. 上下文过长导致生成空间不足\n\n建议：检查API设置中的max_tokens（建议≥1024），或尝试切换模型。';
             }
         }
         // 渲染非剧情部分
@@ -2356,11 +2357,18 @@ var _streamModeLocked = false;
 var _streamMode = null; // 'json' 或 'plaintext'
 
 function onStreamChunk(delta, fullText) {
-    if (fullText !== undefined) {
+    // 【修复】空内容保护：delta和fullText都为空时跳过，避免反复推送空字符串
+    if ((!delta && fullText === '') || (fullText !== undefined && !fullText && !delta)) return;
+    if (fullText !== undefined && fullText !== '') {
         streamBuffer = fullText;
+    } else if (fullText === '') {
+        // fullText为空字符串但delta有内容时，用delta累加
+        if (delta) streamBuffer += delta;
     } else {
-        streamBuffer += delta;
+        streamBuffer += (delta || '');
     }
+    // streamBuffer为空时跳过后续处理
+    if (!streamBuffer) return;
     // 模式锁定后直接走对应路径，避免每帧都做正则扫描
     if (_streamModeLocked) {
         if (_streamMode === 'plaintext') {

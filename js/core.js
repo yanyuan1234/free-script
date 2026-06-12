@@ -3720,8 +3720,8 @@ function parseSSEEventText(eventText, ctx) {
                           : (typeof delta.reasoning === 'string') ? delta.reasoning : '';
         if (reasoningChunk) ctx.reasoningText += reasoningChunk;
         ctx.fullText += content;
-        // 总是回调（与原版一致），不门控
-        if (ctx.onChunk) {
+        // 【优化】content为空时跳过回调，避免反复推送空字符串到打字机
+        if (ctx.onChunk && content) {
             try { ctx.onChunk(content, ctx.fullText); }
             catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
         }
