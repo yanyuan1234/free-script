@@ -23,34 +23,40 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-      - name: Install dependencies
-        run: npm install
-      - name: Build (minify JS/CSS)
-        run: npm run build
-      - name: Inject build version & timestamp into index.html
+
+      # 准备 dist 目录：复制所有需要的文件到 dist/
+      # 排除 .git/.github/.trae/backup/node_modules 等运行时不需要的目录
+      - name: Prepare deploy directory
+        run: |
+          mkdir -p dist
+          rsync -a --exclude='.git' --exclude='.github' --exclude='.trae' --exclude='backup' --exclude='dist' --exclude='node_modules' --exclude='.gitignore' ./ dist/
+          echo "Files prepared in dist/:"
+          ls -la dist/
+
+      # 注入构建版本号 + 给 js/css 资源追加 ?v=<version> 破缓存
+      - name: Inject build version & cache-bust assets
         run: |
           TS=$(date -u +"%Y-%m-%d %H:%M UTC")
           SHA=$(echo "$GITHUB_SHA" | cut -c1-7)
           VERSION="b${SHA}-${TS// /_}"
           echo "Build version: ${VERSION}"
           cd dist
-          # 1) Replace placeholder for the visible version badge
+          # 1) 替换 __BUILD_VERSION__ 占位符为真实版本号
           if grep -q "__BUILD_VERSION__" index.html; then
             sed -i "s|__BUILD_VERSION__|${VERSION}|g" index.html
             echo "Injected __BUILD_VERSION__ -> ${VERSION}"
           else
             echo "No __BUILD_VERSION__ placeholder, skipping."
           fi
-          # 2) Cache-busting: append ?v=<version> to every js/css asset
-          sed -i -E "s|(src=\"js/[a-zA-Z0-9_.-]+\\.js)(\")|\\1?v=${VERSION}\\2|g" index.html
-          sed -i -E "s|(href=\"css/[a-zA-Z0-9_.-]+\\.css)(\")|\\1?v=${VERSION}\\2|g" index.html
+          # 2) 给 js/css 资源追加 ?v=<version> 强制浏览器拉新
+          sed -i -E "s|(src=\"js/[a-zA-Z0-9_./-]+\.js)(\")|\\1?v=${VERSION}\\2|g" index.html
+          sed -i -E "s|(src=\"game/[a-zA-Z0-9_./-]+\.js)(\")|\\1?v=${VERSION}\\2|g" index.html
+          sed -i -E "s|(href=\"css/[a-zA-Z0-9_./-]+\.css)(\")|\\1?v=${VERSION}\\2|g" index.html
+          sed -i -E "s|(href=\"game/[a-zA-Z0-9_./-]+\.css)(\")|\\1?v=${VERSION}\\2|g" index.html
           echo "Cache-busting query ?v=${VERSION} injected into all asset URLs."
-          # Sanity: show the first few asset lines
+          # 校验：打印前几行 script/link 看看是否生效
           grep -E "script src=|link rel=\"stylesheet\"" index.html | head -5
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
