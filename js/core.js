@@ -1015,15 +1015,11 @@ var LocalGameAPI = {
         if (!baseUrl) return [];
         try {
             const url = this.normalizeUrl(baseUrl) + '/models';
-            const controller = new AbortController();
-            const timeoutId = setTimeout(function() { controller.abort(); }, 10000);
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + apiKey
-                },
-                signal: controller.signal
+                }
             });
-            clearTimeout(timeoutId);
             if (res.ok) {
                 const data = await res.json();
                 return (data.data || []).map(m => m.id).sort();
@@ -1031,7 +1027,6 @@ var LocalGameAPI = {
                 throw new Error(translateError('HTTP错误: ' + res.status));
             }
         } catch (e) {
-            if (e.name === 'AbortError') throw new Error('获取模型列表超时（10秒），请检查网络或手动输入模型名');
         throw new Error('无法获取模型列表。建议：手动输入模型名称');
     }
     },
