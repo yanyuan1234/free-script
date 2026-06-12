@@ -321,7 +321,21 @@ function _pushKeyEventsToGM() {
 // ========================================
 // UI工具
 // ========================================
+
+/**
+ * 【全游戏弹窗策略】所有自动消失的弹窗都必须在 3 秒内消失
+ * 理由：用户偏好快速反馈，避免视线被无关通知遮蔽
+ * 适用范围：toast / 错误 banner / API 成功失败提示 / 成就解锁 / NPC 消息提醒
+ * 不适用：UI.confirm / UI.alert / UI.prompt / 模态框（需用户主动操作）
+ *
+ * 修改本常量即可全局生效。新增弹窗必须使用本常量，禁用硬编码 3000
+ */
+var POPUP_DURATION_MS = 3000;
+// 兼容旧代码：UI.TOAST_DURATION 是 POPUP_DURATION_MS 的别名
+var TOAST_DURATION_MS = POPUP_DURATION_MS;
 var UI = {
+    // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
+    TOAST_DURATION: POPUP_DURATION_MS,
     toast: function(msg) {
         var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
@@ -329,9 +343,10 @@ var UI = {
         t.className = 'toast';
         t.textContent = msg;
         ct.appendChild(t);
+        // 【全游戏弹窗策略】3 秒自动消失——使用 POPUP_DURATION_MS 常量
         TimerManager.setTimeout('uiToast', function() {
             if (t.parentNode) t.remove();
-            }, 3000);
+            }, POPUP_DURATION_MS);
         },
     showPage: function(id) {
         var el = document.getElementById(id);
@@ -3390,7 +3405,7 @@ function showError(msg, errObj) {
             banner.style.opacity = '0';
             setTimeout(function() { if (banner.parentNode) banner.remove(); }, 500);
         }
-    }, 3000);
+    }, POPUP_DURATION_MS);
     // 同步记录到 localStorage 方便排查
     try {
         var errs = JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');

@@ -4107,7 +4107,8 @@ function showNpcMessageNotification(name, text) {
         TimerManager.setTimeout('npcNotifRemove', function() {
             if (notif.parentNode) notif.remove();
         }, 300);
-    }, 3000);
+        // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）
+    }, typeof POPUP_DURATION_MS !== 'undefined' ? POPUP_DURATION_MS : 3000);
 }
 function sendNpcChat() {
     if (npcChatState.isSending) return;

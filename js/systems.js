@@ -469,7 +469,8 @@ var AchievementSystem = {
             TimerManager.setTimeout('achieveToastRemove', function() {
                 t.remove();
                 }, 500);
-            }, 3000);
+            // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）
+            }, typeof POPUP_DURATION_MS !== 'undefined' ? POPUP_DURATION_MS : 3000);
     },
     countByRarity(pd, r) {
         return pd.unlocked.filter(function(u) {

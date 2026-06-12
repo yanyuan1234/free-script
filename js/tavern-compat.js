@@ -145,10 +145,12 @@ _showToast: function(msg, color) {
     toast.style.cssText = 'background:' + color + ';color:white;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);pointer-events:auto;animation:toastrSlideIn 0.3s ease;max-width:400px;word-break:break-word;';
     toast.textContent = msg;
     container.appendChild(toast);
+    // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）
+    var _popupMs = (typeof POPUP_DURATION_MS !== 'undefined') ? POPUP_DURATION_MS : 3000;
     if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
-        TimerManager.setTimeout('toastrHide_' + Date.now(), function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) TimerManager.setTimeout('toastrRemove_' + Date.now(), function(){toast.remove();},300); }, 3000);
+        TimerManager.setTimeout('toastrHide_' + Date.now(), function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) TimerManager.setTimeout('toastrRemove_' + Date.now(), function(){toast.remove();},300); }, _popupMs);
     } else {
-        setTimeout(function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(function(){toast.remove();},300); }, 3000);
+        setTimeout(function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(function(){toast.remove();},300); }, _popupMs);
     }
 },
 
