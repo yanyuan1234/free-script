@@ -3425,9 +3425,9 @@ function showError(msg, errObj) {
     // 仅在没有内容时覆盖；否则在底部追加错误提示条
     var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
     var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:var(--accent-soft);border:1px solid var(--border);border-radius:6px;padding:12px;margin:12px 0;color:var(--text);font-size:13px;transition:opacity 0.5s;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">⚠️ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">△ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
         '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
-        (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">📍 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
+        (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">◎ 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
         action +
         '<details style="font-size:11px;color:var(--text-secondary);"><summary style="cursor:pointer;color:var(--text-secondary);">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
         '</div>';
@@ -3436,9 +3436,9 @@ function showError(msg, errObj) {
     } else {
         // 真正空时才覆盖
         el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--danger);">' +
-            '<div style="font-size:16px;margin-bottom:8px;">⚠️ 生成失败</div>' +
+            '<div style="font-size:16px;margin-bottom:8px;">△ 生成失败</div>' +
             '<div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
-            (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:8px;">📍 错误位置: ' + escapeHtml(fileLine) + '</div>' : '') +
+            (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:8px;">◎ 错误位置: ' + escapeHtml(fileLine) + '</div>' : '') +
             (action ? '<div style="margin-bottom:12px;">' + action + '</div>' : '') +
             '<details style="font-size:11px;color:var(--text-tertiary);text-align:left;"><summary style="cursor:pointer;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
             '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">请检查网络连接和API设置后重试</div>' +
@@ -3900,7 +3900,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', ctx.streamError);
         // 【优化 #11】UI 软提示
         if (typeof UI !== 'undefined' && UI.toast) {
-            UI.toast('⚠️ 响应可能不完整：' + ctx.streamError);
+            UI.toast('响应可能不完整：' + ctx.streamError);
         }
     }
 

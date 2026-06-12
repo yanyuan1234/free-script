@@ -1937,7 +1937,7 @@ function renderForumPage() {
             }
             return myCommented.map(function(item) {
                 return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
-                    '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">💬</div>' +
+                    '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">◇</div>' +
                     '<div style="flex:1;min-width:0;">' +
                     '<div style="font-size:14px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
                     '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">你发表了 ' + item.count + ' 条评论</div>' +
@@ -2616,8 +2616,8 @@ function renderCalendarPage() {
             eventMeta.style.cssText = 'color:#666;font-size:11px;';
             var metaText = [];
             if (evt.time && evt.time.includes(' ')) metaText.push(evt.time.split(' ')[1]);
-            if (evt.location) metaText.push('📍 ' + evt.location);
-            if (evt.type) metaText.push('🏷️ ' + evt.type);
+            if (evt.location) metaText.push('◎ ' + evt.location);
+            if (evt.type) metaText.push('◇ ' + evt.type);
             eventMeta.textContent = metaText.join(' | ');
             eventCard.appendChild(eventMeta);
 
@@ -2648,7 +2648,7 @@ function renderAuthorNotePage() {
 
     // 标题
     var title = document.createElement('h2');
-    title.textContent = '✍️ 作者有话说';
+    title.textContent = '作者有话说';
     title.style.cssText = 'color:#e94560;margin-bottom:20px;text-align:center;';
     container.appendChild(title);
 
@@ -2889,7 +2889,7 @@ function renderPlayerPage() {
             var rsHtml = '💞 <b>最近的人际关系：</b><br>';
             topChars.forEach(function(c) {
                 var fav = Math.round(c.favorability || 0);
-                var emoji = fav >= 60 ? '❤️' : (fav >= 30 ? '💚' : (fav <= -20 ? '💔' : '💬'));
+                var emoji = fav >= 60 ? '♥' : (fav >= 30 ? '◇' : (fav <= -20 ? '✕' : '◇'));
                 rsHtml += emoji + ' ' + escapeHtml(c.name) + (c.relation ? '（' + escapeHtml(c.relation) + '）' : '') + ' 好感 ' + fav + '<br>';
             });
             relationSummaryEl.innerHTML = rsHtml;
@@ -3576,7 +3576,7 @@ function bindEvents() {
                     if (fallbackEl) fallbackEl.style.display = 'none';
                     
                     autoSave();
-                    UI.toast('✅ 头像已更新');
+                    UI.toast('头像已更新');
                 };
                 img.src = ev.target.result;
             };
@@ -4840,11 +4840,11 @@ function renderAPISettings() {
         var modelIsDeprecated = cfg.model && LocalGameAPI.isModelDeprecated(cfg.model);
         var modelIsFailed = cfg.model && LocalGameAPI.isModelFailed(cfg.model);
         var modelWarnTag = (modelIsDeprecated || modelIsFailed) ?
-            ' <span style="color:#e6a23c;font-size:11px;margin-left:4px;" title="下架/失败提醒（依然可用）">⚠️提醒</span>' : '';
+            ' <span style="color:#e6a23c;font-size:11px;margin-left:4px;" title="下架/失败提醒（依然可用）">△提醒</span>' : '';
 
         // 红色感叹号图标（连接测试失败）
         var errorIcon = isFailed ?
-            '<span style="color:#ff3b30;margin-left:6px;font-size:14px;">❗</span>' : '';
+            '<span style="color:#ff3b30;margin-left:6px;font-size:14px;">!</span>' : '';
 
         return '<div class="pearl-card api-card" role="button" tabindex="0" style="padding:14px;margin-bottom:10px;cursor:pointer;' +
             (isCurrent ? 'border-color:var(--text);' : '') + (isFailed ? 'border-color:#ff3b30;' :
@@ -4967,7 +4967,7 @@ function showApiDetail(slot) {
         if (stats.recentLogs.length > 0) {
             var allLogsHtml = stats.recentLogs.map(function(log) {
                 var timeStr = new Date(log.time).toLocaleTimeString();
-                var icon = log.success ? '✅' : '❌';
+                var icon = log.success ? '✓' : '✕';
                 var errText = log.error ?
                     '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
                     escapeHtml(log.error) + '</div>' : '';
@@ -4983,7 +4983,7 @@ function showApiDetail(slot) {
                 var hiddenLogs = stats.recentLogs.slice(5);
                 var visibleHtml = visibleLogs.map(function(log) {
                     var timeStr = new Date(log.time).toLocaleTimeString();
-                    var icon = log.success ? '✅' : '❌';
+                    var icon = log.success ? '✓' : '✕';
                     var errText = log.error ?
                         '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
                         escapeHtml(log.error) + '</div>' : '';
@@ -4995,7 +4995,7 @@ function showApiDetail(slot) {
                 }).join('');
                 var hiddenHtml = hiddenLogs.map(function(log) {
                     var timeStr = new Date(log.time).toLocaleTimeString();
-                    var icon = log.success ? '✅' : '❌';
+                    var icon = log.success ? '✓' : '✕';
                     var errText = log.error ?
                         '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
                         escapeHtml(log.error) + '</div>' : '';
@@ -5156,7 +5156,7 @@ function showApiDetail(slot) {
                 UI.toast('已取消测试');
             } else {
                 console.error('测试连接失败:', e);
-                UI.toast('❌ 测试失败: ' + translateError(e.message || '未知错误'));
+                UI.toast('测试失败: ' + translateError(e.message || '未知错误'));
             }
         } finally {
             newTestBtn.textContent = '测试连接';
@@ -5251,13 +5251,13 @@ function showApiDetail(slot) {
             try {
                 var models = await LocalGameAPI.fetchModels(url, key);
                 var select = document.getElementById('detailApiModelSelect');
-                // 分类：✅ 正常  vs  ⚠️ 提醒（已下架/失败）—— 分两组显示
+                // 分类：正常  vs  △ 提醒（已下架/失败）—— 分两组显示
                 // 注意：下架/失败模型依然可选、依然能用，仅作提醒
                 select.innerHTML = '<option value="">选择模型</option>';
                 var normalGroup = document.createElement('optgroup');
-                normalGroup.label = '✅ 正常模型';
+                normalGroup.label = '正常模型';
                 var warnGroup = document.createElement('optgroup');
-                warnGroup.label = '⚠️ 提醒（已下架/近期失败，仍可使用）';
+                warnGroup.label = '△ 提醒（已下架/近期失败，仍可使用）';
                 var warnCount = 0;
                 models.forEach(function(m) {
                     var isFailed = LocalGameAPI.isModelFailed(m);
@@ -5344,7 +5344,7 @@ function showApiDetail(slot) {
             if (stats.recentLogs.length > 0) {
                 recentEl.innerHTML = stats.recentLogs.map(function(log) {
                     var timeStr = new Date(log.time).toLocaleTimeString();
-                    var icon = log.success ? '✅' : '❌';
+                    var icon = log.success ? '✓' : '✕';
                     var errText = log.error ?
                         '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
                         log.error + '</div>' : '';
@@ -5456,13 +5456,13 @@ function showCreateApiModal() {
         try {
             var models = await LocalGameAPI.fetchModels(url, key);
             var select = document.getElementById('createApiModelSelect');
-            // 分类：✅ 正常  vs  ⚠️ 提醒（已下架/失败）—— 分两组显示
+            // 分类：正常  vs  △ 提醒（已下架/失败）—— 分两组显示
             // 下架/失败模型依然可选、依然能用，仅作提醒
             select.innerHTML = '<option value="">选择模型</option>';
             var normalGroup = document.createElement('optgroup');
-            normalGroup.label = '✅ 正常模型';
+            normalGroup.label = '正常模型';
             var warnGroup = document.createElement('optgroup');
-            warnGroup.label = '⚠️ 提醒（已下架/近期失败，仍可使用）';
+            warnGroup.label = '△ 提醒（已下架/近期失败，仍可使用）';
             var warnCount = 0;
             models.forEach(function(m) {
                 var isFailed = LocalGameAPI.isModelFailed(m);
@@ -5754,9 +5754,9 @@ async function exportSaves() {
             saves: allSaves
         };
         UI.downloadJSON(exportData, '自由剧本存档_' + new Date().toISOString().slice(0, 10) + '.json');
-        UI.toast('✅ 已导出 ' + Object.keys(allSaves).length + ' 个存档');
+        UI.toast('已导出 ' + Object.keys(allSaves).length + ' 个存档');
     } catch (e) {
-        UI.toast('❌ 导出失败：' + translateError(e.message));
+        UI.toast('导出失败：' + translateError(e.message));
         console.error('导出失败:', e);
     }
 }
@@ -5776,12 +5776,12 @@ async function handleImportFile(e) {
             // 直接就是 {slot: saveData} 格式
             saves = data;
         } else {
-            UI.toast('❌ 文件格式不正确');
+            UI.toast('文件格式不正确');
             return;
         }
         var slots = Object.keys(saves);
         if (slots.length === 0) {
-            UI.toast('❌ 存档文件中没有有效存档');
+            UI.toast('存档文件中没有有效存档');
             return;
         }
         // 验证每个存档的基本结构
@@ -5791,7 +5791,7 @@ async function handleImportFile(e) {
             if (s && s.state && s.time) validCount++;
         }
         if (validCount === 0) {
-            UI.toast('❌ 存档文件中没有有效数据');
+            UI.toast('存档文件中没有有效数据');
             return;
         }
         var msg = '发现 ' + validCount + ' 个存档。\n\n【确定】= 覆盖导入（清空现有存档）\n【取消】= 选择合并模式';
@@ -5804,7 +5804,7 @@ async function handleImportFile(e) {
                     await SaveDB.set(slot, saves[slots[i]]);
                 }
             }
-            UI.toast('✅ 覆盖导入完成');
+            UI.toast('覆盖导入完成');
         } else {
             // 合并模式
             var merge = await UI.confirm('合并导入', '确认以【合并模式】导入？（不会覆盖已有存档）');
@@ -5819,11 +5819,11 @@ async function handleImportFile(e) {
                     imported++;
                 }
             }
-            UI.toast('✅ 合并导入完成');
+            UI.toast('合并导入完成');
         }
         renderSaveUI();
     } catch (e) {
-        UI.toast('❌ 导入失败：' + translateError(e.message));
+        UI.toast('导入失败：' + translateError(e.message));
         console.error('导入失败:', e);
     }
 }

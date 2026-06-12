@@ -289,7 +289,7 @@ var SmartConfigEngine = {
     if (applied.length > 0) {
         console.log('[智能配置] 预设「' + presetName + '」已自动配置:');
         applied.forEach(function(item) {
-            console.log('  ✅ ' + item);
+            console.log('  ✓ ' + item);
             });
         UI.toast('已智能配置 ' + applied.length + ' 项设置');
     }
@@ -382,11 +382,11 @@ var PresetManager = {
         // 预设1：沉浸叙事（学习月读·Gemini的细腻叙事智慧）
         // ═══════════════════════════════════════════════════════════
         var moonreadNative = self.parsePreset({
-            name: '🌙沉浸叙事（月读风格）',
+            name: '沉浸叙事（月读风格）',
             prompts: [
                 {
                     identifier: 'main',
-                    name: '🌙沉浸叙事',
+                    name: '沉浸叙事',
                     role: 'system',
                     system_prompt: true,
                     injection_position: 0,
@@ -1819,14 +1819,14 @@ var PresetManager = {
     console.log('[预设导入] 「' + (preset.name || '未命名') + '」配置分析:');
 
     if (presetConfigs.length > 0) {
-        console.log('  📋 预设已配置（直接使用）:');
+        console.log('  □ 预设已配置（直接使用）:');
         presetConfigs.forEach(function(c) {
             console.log('     • ' + c);
             });
     }
 
     if (manualConfigs.length > 0) {
-        console.log('  ⚙️ 已自动配置（需手动确认）:');
+        console.log('  ◎ 已自动配置（需手动确认）:');
         manualConfigs.forEach(function(c) {
             console.log('     • ' + c);
             });
@@ -3900,7 +3900,7 @@ var MacroEngine = {
         var appMatches = result.html.match(/<app[^>]*>([\s\S]*?)<\/app>/gi) || [];
         appMatches.forEach(function(app) {
             var name = (app.match(/name=["']([^"']+)["']/i) || [])[1] || '应用';
-            var icon = (app.match(/icon=["']([^"']+)["']/i) || [])[1] || '📱';
+            var icon = (app.match(/icon=["']([^"']+)["']/i) || [])[1] || '◇';
             var notification = (app.match(/<notification>([\s\S]*?)<\/notification>/i) || [])[1] || '';
             apps.push({ name: name, icon: icon, notification: notification });
             });
@@ -3920,7 +3920,7 @@ var MacroEngine = {
         statMatches.forEach(function(stat) {
             var name = (stat.match(/name=["']([^"']+)["']/i) || [])[1] || '状态';
             var value = (stat.match(/<value>([\s\S]*?)<\/value>/i) || [])[1] || '';
-            var icon = (stat.match(/icon=["']([^"']+)["']/i) || [])[1] || '📊';
+            var icon = (stat.match(/icon=["']([^"']+)["']/i) || [])[1] || '◇';
             stats.push({ name: name, value: value, icon: icon });
             });
         result.data = { stats: stats };
@@ -3939,7 +3939,7 @@ var MacroEngine = {
         statMatches.forEach(function(stat) {
             var name = (stat.match(/name=["']([^"']+)["']/i) || [])[1] || '状态';
             var value = (stat.match(/<value>([\s\S]*?)<\/value>/i) || [])[1] || '';
-            var icon = (stat.match(/icon=["']([^"']+)["']/i) || [])[1] || '📜';
+            var icon = (stat.match(/icon=["']([^"']+)["']/i) || [])[1] || '◇';
             stats.push({ name: name, value: value, icon: icon });
             });
         result.data = { stats: stats, ancient: true };

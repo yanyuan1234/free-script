@@ -2381,7 +2381,7 @@ var GameMemory = {
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
-            lines.push((imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢')) + '[重要度' + imp + ']' + timeTag + ' ' + e.content);
+            lines.push((imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○')) + '[重要度' + imp + ']' + timeTag + ' ' + e.content);
         });
         return lines;
     },
@@ -3359,7 +3359,7 @@ var MemoryManagerUI = {
                 add:    { color: 'white',          bg: 'var(--accent)', border: 'none',          text: '添加',    fontSize: '13px', padding: '10px 20px' },
                 addOutline: { color: 'var(--accent)', bg: 'none',       border: 'var(--accent)',  text: '+ 添加',  fontSize: '11px', padding: '4px 10px'  },
                 editOutline: { color: 'var(--accent)', bg: 'none',      border: 'var(--accent)',  text: '编辑',    fontSize: '11px', padding: '4px 10px'  },
-                refresh: { color: 'var(--accent)',  bg: 'none',        border: 'var(--accent)',  text: '🔄 刷新', fontSize: '11px', padding: '4px 10px'  },
+                refresh: { color: 'var(--accent)',  bg: 'none',        border: 'var(--accent)',  text: '↻ 刷新', fontSize: '11px', padding: '4px 10px'  },
                 detail: { color: 'var(--accent)',   bg: 'none',        border: 'var(--accent)',  text: '查看详情', fontSize: '11px', padding: '4px 10px'  },
                 search: { color: 'white',           bg: 'var(--accent)', border: 'none',         text: '搜索',    fontSize: '13px', padding: '10px 16px' },
                 resolve: { color: '#4a4',          bg: 'none',         border: 'var(--border)',   text: '完成',    fontSize: '11px', padding: '4px 8px'   }
@@ -3540,7 +3540,7 @@ var MemoryManagerUI = {
                 var hasScene = !!loc.sceneState;
                 html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-                html += '<div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>';
+                html += '<div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' ◈' : '') + '</div>';
                 html += self._btn('edit', 'editSceneState', loc.name);
                 html += '</div>';
                 if (hasScene) {
@@ -3592,7 +3592,7 @@ var MemoryManagerUI = {
             var sorted = events.slice().sort(function(a, b) { return (b.importance || 5) - (a.importance || 5); });
             sorted.forEach(function(e, idx) {
                 var imp = e.importance || 5;
-                var dot = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
+                var dot = imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○');
                 var gameTime = e.gameTime || '';
                 html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">'
                     + dot + ' ' + self._esc(e.content)
@@ -3636,7 +3636,7 @@ var MemoryManagerUI = {
 
     renderPermanentFacts: function(gm) {
         var self = this;
-        var typeLabels = { pcIdentity: '🎭 主角身份', settings: '🌍 世界设定', worldRules: '📜 设定规则', npcProfiles: '👤 关键角色', promises: '🤝 玩家承诺' };
+        var typeLabels = { pcIdentity: '◇ 主角身份', settings: '◇ 世界设定', worldRules: '◇ 设定规则', npcProfiles: '◇ 关键角色', promises: '◇ 玩家承诺' };
         var typeOrder = ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'];
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到</div>' + this._btn('add', 'addPermanentFact', undefined) + '</div>';
         var total = 0; Object.keys(gm.permanentFacts).forEach(function(k) { total += gm.permanentFacts[k].length; });
@@ -3660,11 +3660,11 @@ var MemoryManagerUI = {
     addPermanentFact: function() {
         var fields = [
             { id: 'newFactType', label: '类型', type: 'select', options: [
-                { v: 'pcIdentity', t: '🎭 主角身份' },
-                { v: 'settings',   t: '🌍 世界设定' },
-                { v: 'worldRules', t: '📜 设定规则' },
-                { v: 'npcProfiles',t: '👤 关键角色' },
-                { v: 'promises',   t: '🤝 玩家承诺' }
+                { v: 'pcIdentity', t: '◇ 主角身份' },
+                { v: 'settings',   t: '◇ 世界设定' },
+                { v: 'worldRules', t: '◇ 设定规则' },
+                { v: 'npcProfiles',t: '◇ 关键角色' },
+                { v: 'promises',   t: '◇ 玩家承诺' }
             ], default: 'promises' },
             { id: 'newFactContent', label: '内容', type: 'textarea', placeholder: '输入永久事实内容...', rows: 4, minHeight: '60px' }
         ];
@@ -3715,7 +3715,7 @@ var MemoryManagerUI = {
         if (chars.length === 0) html += '<div class="memory-empty-state"><div>暂无角色数据</div></div>';
         else chars.forEach(function(char) {
             var btns = '<div style="display:flex;flex-direction:column;gap:4px;">' + self._btn('edit', 'editCharacter', char.name) + self._btn('delete', 'deleteCharacter', char.name) + '</div>';
-            html += '<div class="memory-character-card"><div class="memory-character-avatar">👤</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' 🔒' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + self._esc(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div>' + btns + '</div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar">◇</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' ◈' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + self._esc(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -3767,7 +3767,7 @@ var MemoryManagerUI = {
             { id: 'addCharRelation', label: '关系', type: 'text', placeholder: '如：朋友、敌人' },
             { id: 'addCharFav', label: '好感度', type: 'number', default: 50 }
         ];
-        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">+ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('characters', 'saveNewCharacter', undefined);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -3847,7 +3847,7 @@ var MemoryManagerUI = {
             { id: 'addItemRarity', label: '品质', type: 'select', options: ['普通', '精良', '珍稀', '传说'] },
             { id: 'addItemDesc', label: '描述', type: 'textarea', placeholder: '物品描述...', minHeight: '80px' }
         ];
-        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">+ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('items', 'saveNewItem', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -3871,7 +3871,7 @@ var MemoryManagerUI = {
         if (locs.length === 0) html += '<div class="memory-empty-state"><div>暂无地点数据</div></div>';
         else locs.forEach(function(loc) {
             var btns = '<div style="display:flex;gap:4px;">' + self._btn('edit', 'editLocation', loc.name) + self._btn('delete', 'deleteLocation', loc.name) + '</div>';
-            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' 🔒' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + self._esc(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
+            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' ◈' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + self._esc(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -3909,7 +3909,7 @@ var MemoryManagerUI = {
             { id: 'addLocName', label: '名称', type: 'text', placeholder: '地点名称', required: true },
             { id: 'addLocDesc', label: '描述', type: 'textarea', placeholder: '地点描述...', minHeight: '80px' }
         ];
-        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">+ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('locations', 'saveNewLocation', undefined);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -3964,7 +3964,7 @@ var MemoryManagerUI = {
         if (events.length === 0) html += '<div class="memory-empty-state"><div>暂无重要事件</div></div>';
         else events.forEach(function(event, idx) {
             var realIdx = gm.events.length - 1 - idx; var imp = event.importance || 5;
-            var icon = imp >= 9 ? '🔴' : (imp >= 7 ? '🟡' : '🟢');
+            var icon = imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○');
             html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + (event.gameTime ? ' (' + self._esc(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + self._esc(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div>' + self._btn('delete', 'deleteEvent', realIdx) + '</div>';
         });
         html += '</div>'; return html;
@@ -3975,7 +3975,7 @@ var MemoryManagerUI = {
             { id: 'addEventContent', label: '事件内容', type: 'textarea', placeholder: '描述发生了什么...', minHeight: '100px' },
             { id: 'addEventImportance', label: '重要度 (1-10)', type: 'number', min: 1, max: 10, default: 5 }
         ];
-        var html = '<div class="memory-card"><div class="memory-card-title">➕ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">+ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('events', 'saveNewEvent', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -4004,12 +4004,12 @@ var MemoryManagerUI = {
         var self = this; var quests = gm.quests || [];
         var pending = quests.filter(function(q) { return q.status === 'pending'; });
         var resolved = quests.filter(function(q) { return q.status === 'resolved'; });
-        var typeIcons = { promise: '🤝', quest: '📜', threat: '⚠️', mystery: '❓' };
+        var typeIcons = { promise: '◇', quest: '◇', threat: '△', mystery: '?' };
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">' + pending.length + ' 进行中 | ' + resolved.length + ' 已完成</div></div>';
         if (pending.length > 0) {
             html += '<div class="memory-card"><div class="memory-card-title">进行中</div>';
             pending.forEach(function(q, i) {
-                var icon = typeIcons[q.type] || '📜'; var age = gm.currentTurn - (q.createdTurn || 0);
+                var icon = typeIcons[q.type] || '◇'; var age = gm.currentTurn - (q.createdTurn || 0);
                 var staleWarn = q.stale || age > 30 ? '<span style="color:#f44;font-size:11px;margin-left:6px;">[长期未兑现]</span>' : '';
                 html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + self._esc(q.content) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + self._esc(q.createdTurn || 0) + '回合</div></div>' + self._btn('resolve', 'resolveQuestByIndex', quests.indexOf(q)) + '</div>';
             });
@@ -4018,8 +4018,8 @@ var MemoryManagerUI = {
         if (resolved.length > 0) {
             html += '<div class="memory-card"><div class="memory-card-title">已完成</div>';
             resolved.slice(-5).forEach(function(q) {
-                var icon = typeIcons[q.type] || '📜';
-                html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;opacity:0.6;"><div style="font-size:13px;">✅ ' + icon + ' ' + self._esc(q.content) + '</div></div>';
+                var icon = typeIcons[q.type] || '◇';
+                html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;opacity:0.6;"><div style="font-size:13px;">✓ ' + icon + ' ' + self._esc(q.content) + '</div></div>';
             });
             html += '</div>';
         }
@@ -5277,10 +5277,10 @@ init();
     * 必须开启的Prompt条目
     */
     requiredPrompts: [
-    { identifier: "main", name: "🌙静谧之夜" },
+    { identifier: "main", name: "静谧之夜" },
     { identifier: "nsfw", name: "🌌无限月读" },
     { identifier: "ccb29029-f8b4-43a5-8dd7-433fc42e01a8", name: "==.✟.世界引擎.✟.==" },
-    { identifier: "6af0bf14-7519-4fe0-b9ff-064d928814ff", name: "📜获取变量" },
+    { identifier: "6af0bf14-7519-4fe0-b9ff-064d928814ff", name: "获取变量" },
     { identifier: "worldInfoBefore", name: "worldInfoBefore" },
     { identifier: "worldInfoAfter", name: "worldInfoAfter" },
     { identifier: "charDescription", name: "charDescription" },

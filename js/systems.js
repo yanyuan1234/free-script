@@ -664,7 +664,7 @@ var AchievementSystem = {
         ach.desc + '</div>' +
         '<div style="background:var(--bg);border-radius:var(--radius-md);padding:16px;margin-bottom:16px;"><div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">成就点数</div><div style="font-size:24px;font-weight:700;color:' +
         rar.color + ';">+' + rar.points + '</div></div>' +
-        (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✅ 已获得</div>' :
+        (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✓ 已获得</div>' :
         '<div style="color:var(--text-tertiary);font-size:13px;">锁 未解锁 · 进度: ' + (pd.progress[
         id] || 0) + '/' + (ach.maxProgress || 1) + '</div>') +
         '<button class="crystal-btn" style="margin-top:16px;width:100%;" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button></div>';
