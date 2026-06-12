@@ -1172,7 +1172,7 @@ var GameMemory = {
         // 【数据联通】<mem> 直接写入权威源（gm.tables.* / gm.quests / gm.events），
         // 同步到 gameState 视图并触发 GameLinker 通知 UI
         if (edits.length > 0 && typeof _ensureDataLinkage === 'function') {
-            try { _ensureDataLinkage(); } catch (e) {}
+            try { _ensureDataLinkage(); } catch (e) { console.warn('[mem解析] 数据联通同步失败:', e); }
         }
         if (edits.length > 0 && typeof GameLinker !== 'undefined') {
             try {
@@ -1634,7 +1634,17 @@ var GameMemory = {
                     var jsonMatch = content.match(/\{[\s\S]*\}/);
                     if (jsonMatch) jsonStr = jsonMatch[0];
 
-                    var parsed = JSON.parse(jsonStr);
+                    var parsed;
+                    try { parsed = JSON.parse(jsonStr); } catch(jsonErr) {
+                        // 尝试修复常见JSON问题：尾随逗号、单引号
+                        try {
+                            var fixed = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/'/g, '"');
+                            parsed = JSON.parse(fixed);
+                        } catch(fixErr) {
+                            console.warn('[设定解析] JSON解析失败，无法修复:', jsonErr);
+                            return;
+                        }
+                    }
                     if (!parsed || typeof parsed !== 'object') {
                         console.warn('[设定解析] AI返回JSON解析结果非对象');
                         return;

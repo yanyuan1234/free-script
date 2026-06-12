@@ -3727,7 +3727,9 @@ function toggleChatMenu() {
         };
         row.onclick = function() {
             menu.remove();
-            window[item.action]();
+            var fn = window[item.action];
+            if (typeof fn === 'function') fn();
+            else console.warn('[聊天菜单] 函数未定义:', item.action);
         };
         menu.appendChild(row);
     });
@@ -3763,14 +3765,16 @@ function editChatRemark() {
         '<span id="remarkSave" style="padding:6px 16px;font-size:14px;color:#07C160;cursor:pointer;font-weight:500">保存</span></div>';
     header.appendChild(panel);
     var inp = document.getElementById('remarkInput');
+    var cancelBtn = document.getElementById('remarkCancel');
+    var saveBtn = document.getElementById('remarkSave');
+    if (!inp || !cancelBtn || !saveBtn) { panel.remove(); return; }
     TimerManager.setTimeout('remarkFocus', function() {
-        inp.focus();
-        inp.select();
+        if (inp) { inp.focus(); inp.select(); }
     }, 50);
-    document.getElementById('remarkCancel').onclick = function() {
+    cancelBtn.onclick = function() {
         panel.remove();
     };
-    document.getElementById('remarkSave').onclick = function() {
+    saveBtn.onclick = function() {
         var val = inp.value.trim();
         if (gameState) {
             if (!gameState._chatRemarks) gameState._chatRemarks = {};
@@ -4011,7 +4015,7 @@ function renderEmojiPanel() {
         row.appendChild(cancelBtn);
         panel.appendChild(row);
         TimerManager.setTimeout('emojiFocus', function() {
-            inp.focus();
+            if (inp) inp.focus();
         }, 50);
         inp.onkeypress = function(e) {
             if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
