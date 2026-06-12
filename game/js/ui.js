@@ -544,6 +544,49 @@
         }
     }, 60000); // 每分钟自动存档
 
+    // ====== 返回键拦截（返回上一级） ======
+    // 利用 history.pushState + popstate 拦截浏览器返回键
+    // 层级：面板打开 → 关闭面板；游戏界面 → 弹确认退出；创建界面 → 拦截防误退
+    function pushHistoryState() {
+        history.pushState(null, '', location.href);
+    }
+
+    // 页面加载时压入初始状态
+    pushHistoryState();
+
+    window.addEventListener('popstate', function(e) {
+        e.preventDefault();
+
+        // 1. 侧边面板打开 → 关闭面板（返回游戏主界面）
+        if (!sidePanel.classList.contains('hidden')) {
+            pushHistoryState(); // 重新压入，防止继续后退
+            closePanel();
+            return;
+        }
+
+        // 2. 游戏主界面 → 弹确认框
+        if (gameScreen.classList.contains('active')) {
+            pushHistoryState();
+            showModal('确认离开？', '返回将回到角色创建界面，当前进度已自动存档。确定要离开吗？', [
+                { text: '继续游戏', confirm: false },
+                { text: '离开', confirm: true, className: 'btn-confirm' }
+            ], (confirmed) => {
+                if (confirmed) {
+                    engine.save();
+                    engine._stopTick();
+                    gameScreen.classList.remove('active');
+                    createScreen.classList.add('active');
+                    eventList.innerHTML = '';
+                    choiceList.innerHTML = '';
+                }
+            });
+            return;
+        }
+
+        // 3. 创建界面 → 拦截，不退出页面
+        pushHistoryState();
+    });
+
     // ====== 初始化 ======
     document.addEventListener('DOMContentLoaded', () => {
         initCreateScreen();
