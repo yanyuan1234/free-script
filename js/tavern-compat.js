@@ -2137,6 +2137,10 @@ var GameMemory = {
         var topicKeywords = (topic && topic.keywords) ? topic.keywords : [];
         var topicChars = (topic && topic.characters) ? topic.characters : [];
 
+        // 【Token优化】角色近况已注入时，核心设定中的角色档案精简为索引
+        // 避免同一条角色信息在【核心设定】和【角色近况】中重复出现
+        var hasCharSection = Object.keys(this.tables.characters).length > 0;
+
         ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'].forEach(function(t) {
             var list = pf[t];
             if (list && list.length > 0) {
@@ -2155,7 +2159,19 @@ var GameMemory = {
                         kB.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreB += 10; });
                         return scoreB - scoreA;
                     });
-                    sorted.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
+                    if (hasCharSection) {
+                        // 【Token优化】角色近况已注入详细信息，核心设定只保留名字和一句话
+                        sorted.forEach(function(a) {
+                            if (a && a.content) {
+                                // 提取角色名和第一句描述
+                                var content = a.content;
+                                var firstSentence = content.match(/^[^。！？\n]{2,40}[。！？]?/);
+                                lines.push('• ' + (firstSentence ? firstSentence[0] : content.substring(0, 40)));
+                            }
+                        });
+                    } else {
+                        sorted.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
+                    }
                 } else {
                     list.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
                 }

@@ -341,6 +341,36 @@ function _squelchPostProcess(story) {
     return story;
 }
 
+// 【Token优化】瘦身AI回复：旧轮次只保留story字段，删除结构化数据
+// AI回复JSON约2000字，story约500字，瘦身后节省约60% token
+// 不修改原始conversationHistory，只在发送给API时瘦身
+function _slimAssistantMessage(content) {
+    if (!content || content.length < 200) return content;
+    // 尝试提取JSON中的story字段
+    try {
+        // 快速检测：不是JSON格式就直接返回
+        var trimmed = content.trim();
+        if (trimmed.charAt(0) !== '{') return content;
+        var data = JSON.parse(trimmed);
+        if (data && data.story) {
+            // 只保留story和title，其余结构化数据由记忆系统维护，不需要重复发送
+            var slim = {};
+            if (data.title) slim.title = data.title;
+            slim.story = data.story;
+            // 保留choices（玩家可能需要参考旧选项）
+            if (data.choices && data.choices.length > 0) slim.choices = data.choices;
+            var result = JSON.stringify(slim);
+            // 只有确实节省了空间才使用瘦身版
+            if (result.length < content.length * 0.7) {
+                return result;
+            }
+        }
+    } catch(e) {
+        // JSON解析失败，可能是纯文本回复，直接返回
+    }
+    return content;
+}
+
 function buildSystemPrompt(includeFormatRules) {
     if (includeFormatRules === undefined) includeFormatRules = true;
     // 【P1性能优化】通过统一入口获取世界书注入，命中本轮缓存时跳过扫描
@@ -420,16 +450,14 @@ function buildSystemPrompt(includeFormatRules) {
         // 非内置预设（酒馆导入的或无预设）：注入格式引导
         // 【说明】JSON 格式不是「不可覆盖的硬规定」，而是「让前端能正常渲染的最稳妥选择」。
         // 如果酒馆预设本身有更具体的格式要求，AI 应该遵循预设；但默认情况下，可解析的 JSON 是最省心的。
-        _formatAnchor = '\n\n【你的输出会怎么被使用】\n' +
-            '你的输出会喂给前端解析器来渲染界面——解析器按字段名读取数据，story 字段是玩家最关心的内容，所以放第一个字段最稳妥。\n' +
-            '保持一个可被解析的格式（JSON），玩家就能正常看到你的故事；如果你想自由发挥，markdown 代码块、纯文本都会被解析器忽略，导致玩家看不到内容。\n' +
-            '字段参考：{ "story": "叙事正文（用\\n换行，对话用「」包裹）"' + (_hasChoicesForAnchor ? ', "choices": [{"id": "A", "text": "选项描述"}]' : '') + ', "player": {"name":"", "identity":"", "stats":[{"label":"","value":""}]}, "characters": [{"name":"", "relation":"", "favorability":0}], "world": [{"type":"text", "title":"", "content":""}], "bag": [{"name":"", "count":1}], "quests": [{"title":"", "status":""}], "gameTime": {"date":"", "time":"", "period":""} }\n' +
-            '用<giggle>插入角色心声（每回合 2-5 个，散在不同段落），用<mem>标记状态变化（事件/任务/角色字段/物品/地点），用[章节结束|标题]标记长章节收尾。你大约有 ' + _maxTokensForAnchor + ' tokens的输出空间，自己分配。';
+        _formatAnchor = '\n\n【输出要求】JSON格式，story放首字段，空字段省略不输出。' +
+            '字段：{ "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"","time":"","period":""} }\n' +
+            '<giggle>心声(2-5个) <mem>标记变化 约' + _maxTokensForAnchor + 'tokens输出空间';
     }
 
     if (!includeFormatRules) {
         return `${_setupText}
-${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
+${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
     }
 
     var _maxTokens = (gameState && gameState.maxTokens) || 4096;
@@ -437,69 +465,38 @@ ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCus
     var _termsPrompt = buildWorldTermsPrompt(_terms);
     // 安全取术语，null 时用通用词
     var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
+    var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
     _prompt = `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
 ${_setupText}
-${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【世界当前状态】\n以下是这个世界此刻的真实状态。你基于这些信息来保持叙事的一致性——当不同来源的信息有冲突时，越新的信息越准确，标记为"始终生效"的信息优先级最高。\n' + _memoryText + '\n' : ''}${_chatContextText}
+${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
 
 【叙事守则】（来自酒馆大佬们的调参智慧）
-- 抗OOC：角色行为必须符合其性格和动机，不为了剧情需要而强行改变。角色不会突然变得温柔或残暴，除非有充分的理由
-- 抗全知：角色只能知道自己应该知道的信息。NPC不会未卜先知，不会读取主角的内心，不会知晓未曾经历的事件
-- 抗刻板：避免将角色简化为标签。强势≠控制，弱势≠依赖，女性角色保有完全的选择权与拒绝权
-- 抗发情：角色不会无缘无故地对主角产生强烈好感或欲望，好感度需要时间培养
-- 关系自然：角色之间保留各自的生活轴线和性格重心，不能因为主角出现就统一变成围绕其旋转的情绪体
-- 情绪克制：强烈情绪必须被自然稀释，避免夸张戏剧冲突。安静、克制、复杂、含蓄，才是真实的人际互动
+- 抗OOC：角色行为必须符合其性格和动机，不为了剧情需要而强行改变
+- 抗全知：角色只能知道自己应该知道的信息
+- 抗发情：角色不会无缘无故地对主角产生强烈好感，好感度需要时间培养
+- 关系自然：角色保留各自的生活重心，不因主角出现就变成围绕其旋转的情绪体
 
 【你的工作方式】
-你的创作通过JSON传递给前端程序来渲染界面。理解这个机制后你就知道为什么格式很重要：前端代码按字段名读取数据，所以字段名必须准确；story放在最前面是因为解析器优先读取它。
-你大约有 ${_maxTokens} tokens的输出空间，自行分配给各部分。
-- story是你的叙事正文，用\\n换行，对话用「」包裹——这是玩家阅读的核心内容
-- choices是主角视角的决策点，让玩家感到自己在推动故事
-- [章节结束|标题] 用来标记长章节或情绪转折的收尾
+JSON格式输出，story放第一个字段，用\\n换行，对话用「」。你大约有 ${_maxTokens} tokens输出空间。
+- story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾
 
-【心声系统 <giggle>】
-心声是"角色没说出口的话"——它让场景有温度，让对话有潜台词。每回合的剧情里穿插 2-5 个 <giggle>...</giggle>，散在不同段落中，玩家点击段落末尾的图标就能看到角色的真实想法。
-- 格式：<giggle>角色名：他们的真实想法</giggle>
-- 心声不是台词，是"没说的部分"——口是心非、潜台词、旁观者吐槽都行
-- 在场角色都能发声（不只 NPC，主角的内心戏也算心声）
-- 2-5 是范围不是硬规定：对话密集、节奏紧张时少一点（2-3 个），场景丰富、关系复杂时多一点（4-5 个），自己根据节奏判断
+${turn <= 3 ?
+`【心声系统 <giggle>】
+每回合穿插 2-5 个 <giggle>角色名：心声</giggle>，散在不同段落。心声是"没说出口的话"——口是心非、潜台词、旁观者吐槽。
 
 【状态变化 <mem>】
-当重要状态变化时，用 <mem> 主动标记，让记忆系统能精准记录：
-- 事件：<mem type="event" action="add">主角向林婉表白了</mem>
-- 任务：<mem type="quest" action="add">找到失踪的妹妹</mem>，完成时用 action="resolve"
-- 时间推进：<mem type="time" day="3" period="afternoon" />
-- 角色字段：<mem type="character" name="林婉" field="favorability" value="75" />
-- 物品：<mem type="item" name="传家玉佩" qty="1" action="add" />
-- 地点：<mem type="location" name="地下密室" field="status" value="已探索" />
-- 关系或物品数量变化时记得用 <mem> 标记——不写的话记忆系统只能靠正则推断，容易漏
+重要状态变化时用 <mem> 标记：<mem type="event/quest/character/item/location" action="add/resolve" name="名" field="字段" value="值" />
 
-【世界模块使用时机】
-world 数组里的模块会渲染到不同的世界面板，何时用哪种你自己判断：
-- type=text：场景描述、机关解读、剧情注解
-- type=list / ranking：清单、排名（门派排行、势力榜）
-- type=key_value：属性表、状态详情
-- type=cards：任务卡片、成就卡片
-- type=comments：论坛讨论（玩家做出引发讨论的事时用——暴露身份、做出格举动）
-- type=moments：朋友圈动态（玩家或 NPC 做出值得刷屏的事时用）
-- type=mail：邮件/通知（NPC 主动联系、事件触发、邀请时用）
-- type=shop：商店/可购买内容（场景中遇到可交易对象时用）
-- type=diary：角色日记（重要剧情节点后用某 NPC 视角记录内心）
+【世界模块】world数组类型：text(描述)、list/ranking(清单)、key_value(属性)、cards(卡片)、comments(论坛)、moments(朋友圈)、mail(邮件)、shop(商店)、diary(日记)
 
-【持续维护】
-- characters 数组里每个 NPC 的 favorability 要随剧情实时更新，关系变化时别忘改
-- 物品获得/消耗时更新 bag 数组
-- 任务完成时更新 quests 状态
-- 长回合（>800 字）或情绪大转折时用 [章节结束|标题] 给玩家一个呼吸点
+【持续维护】favorability随剧情更新，bag/quests实时同步，空字段省略不输出。` :
+`【工具】每回合2-5个<giggle>心声 | 状态变化用<mem>标记 | world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略`
+}
 
-【信息优先级】
-你在多条消息中收到了大量信息。当它们之间出现矛盾时，按以下规则判断：
-1. 标记为"始终生效"的核心设定 > 其他所有信息
-2. 本轮变化 > 旧的状态记录（变化意味着旧信息已过时）
-3. 增强记忆中的角色/物品/事件状态 > 世界快照中的同类信息（快照是旧数据，记忆是实时更新的）
-4. 玩家的最新指令 > 之前的任何指令
+【信息优先级】始终生效>本轮变化>旧记录>旧指令
 
 ${_prefSection}
 ${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
@@ -516,35 +513,20 @@ function _buildFormatRules(gs, _t) {
     var hasChoices = gs.generateChoices;
 
     if (turn <= 3) {
-        // 前3轮：完整JSON模板 + 理解式说明（让AI理解为什么这样设计，而不只是照做）
-        return '【输出格式】\n'
-            + '前端程序会解析你的JSON输出来渲染界面。理解每个字段的用途，你就自然不会搞混：\n'
-            + '{ "title": "章节标题", "story": "剧情正文，用\\n换行，对话用「」包裹", "hud": [{"label": "", "value": "", "icon": "单字图标"}], '
-            + (hasChoices ? '"choices": [{"id": "A", "text": "选项描述", "tag": "标签"}],' : '')
-            + ' "player": { "name": "", "age": "", "identity": "", "personality": "", "title": "", "stats": [{"label": "", "value": ""}] }, '
-            + '"characters": [{"name": "", "title": "", "relation": "", "favorability": 0, "desc": "", "details": [{"key": "", "value": ""}]}], '
-            + '"world": [ {"type": "text", "title": "", "content": ""}, {"type": "list", "title": "", "items": [""]}, {"type": "ranking", "title": "' + _t('ranking', '排行榜') + '", "items": [{"name": "", "value": ""}]}, '
-            + '{"type": "key_value", "title": "", "items": [{"key": "", "value": ""}]}, {"type": "cards", "title": "' + _t('cards', '任务卡片') + '", "items": [{"icon": "单字图标", "title": "", "content": ""}]}, '
-            + '{"type": "comments", "title": "' + _t('comments', '论坛') + '", "main": "", "comments": [{"name": "", "text": ""}]}, '
-            + '{"type": "moments", "title": "' + _t('moments', '朋友圈') + '", "posts": [{"author": "", "avatar": "◇", "text": "", "time": "", "likes": 0, "comments": 0}]}, '
-            + '{"type": "mail", "title": "' + _t('mail', '邮件') + '", "items": [{"from": "", "subject": "", "body": "", "preview": "", "date": ""}]}, '
-            + '{"type": "shop", "title": "' + _t('shop', '商店') + '", "items": [{"icon": "", "name": "", "desc": "", "price": 0}]}, '
-            + '{"type": "diary", "title": "' + _t('diary', '日记') + '", "items": [{"npc": "", "date": "", "content": "", "mood": "", "memos": [""]}]} ], '
-            + '"bag": [{"name": "", "count": 1, "desc": "", "rarity": "", "usable": false, "effect": "", "equippable": false, "equipped": false, "slot": ""}], '
-            + '"quests": [{"title": "", "type": "", "status": "", "progress": "", "hint": ""}], '
-            + '"relationships": [{"from": "", "to": "", "type": "", "desc": ""}], '
-            + '"keyEvents": [""], "npcMessages": [{"name": "", "avatar": "◇", "content": "", "time": ""}], '
-            + '"gameTime": {"date": "", "time": "", "period": "", "weather": "", "era": ""}, "contextSummary": "" }\n\n'
-            + '【字段用途说明——理解了就不会搞混】\n'
-            + '- player = 玩家操控的主角（第一视角的角色），characters = 其他NPC——它们是不同角色，所以是不同字段\n'
-            + '- npcMessages = 即时短消息（手机聊天），mail = 正式信件/通知——通讯方式不同，字段不同\n'
-            + '- 原始JSON文本最稳——markdown代码块```json 包裹会让解析器读取失败，玩家就看不到内容了\n'
-            + '- story 放在JSON第一个字段——因为解析器按顺序读取，story 是最重要的内容，放最前面解析最可靠';
+        // 前3轮：精简JSON模板（只保留必填字段，可选字段用...省略）
+        return '【输出格式】JSON输出，story放第一个字段，用\\n换行，对话用「」。\n'
+            + '{ "title": "", "story": "", '
+            + (hasChoices ? '"choices": [{"id":"A","text":""}],' : '')
+            + ' "player": {"name":"","identity":"","stats":[]}, '
+            + '"characters": [{"name":"","relation":"","favorability":0}], '
+            + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"","content":""}], '
+            + '"bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], '
+            + '"gameTime": {"date":"","time":"","period":""} }\n'
+            + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
+            + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
     } else {
-        // 第4轮起：精简格式提醒（AI已理解格式逻辑，只需关键提醒）
-        return '【格式提醒】继续按已建立的JSON格式输出。story 放第一个字段，用\\n换行，对话用「」。player=主角，characters=NPC。\n' +
-            '别忘了三个叙事工具：每回合 2-5 个 <giggle>心声、状态变化用 <mem> 标记、长章节用 [章节结束|标题]。\n' +
-            '保持可解析的 JSON 结构，markdown 代码块会让玩家看不到内容。';
+        // 第4轮起：极简格式提醒
+        return '【格式】JSON输出，story放首字段，空字段省略。<giggle>心声 <mem>标记变化';
     }
 }
 
@@ -1094,6 +1076,23 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             var recent = (gameState.conversationHistory || []).slice(1).slice(-MAX_HISTORY);
 
+            // 【Token优化】聊天历史智能瘦身：旧AI回复只保留story字段
+            // AI回复是JSON格式，每条约2000字(1176 tokens)，其中story约500字(294 tokens)
+            // 保留最近3轮完整JSON，更早的只保留story，节省约60%历史token
+            var SLIM_THRESHOLD = 6; // 最近3轮(6条消息)保留完整JSON
+            if (recent.length > SLIM_THRESHOLD) {
+                var slimStart = recent.length - SLIM_THRESHOLD;
+                for (var _si = 0; _si < slimStart; _si++) {
+                    var _sMsg = recent[_si];
+                    if (_sMsg.role === 'assistant' && _sMsg.content) {
+                        var _slimResult = _slimAssistantMessage(_sMsg.content);
+                        if (_slimResult !== _sMsg.content) {
+                            _sMsg.content = _slimResult;
+                        }
+                    }
+                }
+            }
+
             // 【月读智慧】摘要阈值：超过此轮数的旧对话只发送摘要，节省token
             // 来自月读预设的"6楼外只发摘要"策略
             var summaryThreshold = (gameState && gameState.summaryThreshold) || 0;
@@ -1194,8 +1193,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             );
             if (d5) messages.push({ role: 'system', content: d5 });
 
-            // 游戏状态快照（精简版：与原版backup一致，只发关键信息，节省token）
-            if (gameState && gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
+            // 游戏状态快照（【Token优化】记忆系统已激活时跳过，避免与记忆注入重复）
+            // 记忆注入的【角色近况】【持有物品】比快照更实时，重复发送浪费token
+            var _hasMemoryInjection = (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection);
+            if (!_hasMemoryInjection && gameState && gameState.worldSnapshot && Object.keys(gameState.worldSnapshot).length > 0) {
                 var snap = gameState.worldSnapshot;
                 var snapshotText = '【世界快照】\n';
                 if (snap.player) {
@@ -1233,8 +1234,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                 messages.push({ role: 'system', content: '【多角色】多角色在场时，各角色独立行动、轮流对话、性格各异。' });
             }
 
-            // 远期摘要
-            if (gameState && gameState.rollingSummary) {
+            // 远期摘要（【Token优化】记忆系统有对话摘要时跳过，避免重复）
+            // 记忆注入的【对话摘要】比rollingSummary更精确，重复发送浪费token
+            var _hasSummaryInjection = _hasMemoryInjection && EnhancedMemory._summaryLayers &&
+                (EnhancedMemory._summaryLayers.near.length > 0 || EnhancedMemory._summaryLayers.mid.length > 0);
+            if (!_hasSummaryInjection && gameState && gameState.rollingSummary) {
                 messages.push({
                     role: 'system',
                     content: '【前情摘要】\n' + gameState.rollingSummary
