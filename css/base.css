@@ -119,6 +119,19 @@
    反而增加浏览器重排开销（需要反复验证containment边界） */
 #storyText {
 }
+/* 【性能】打字机当前段落——与普通 <p> 视觉一致 */
+.story-typing-para {
+    margin: 0 0 12px 0;
+    line-height: 1.75;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+}
+
+/* 【性能】setWaiting 时的 option 按钮禁用态——通过 body class 接管，避免每 tick 遍历设内联样式 */
+.is-waiting .option-btn {
+    pointer-events: none;
+    opacity: 0.5;
+}
 
 .setting-header {
     display: flex;

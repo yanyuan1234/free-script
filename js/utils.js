@@ -495,3 +495,13 @@ var RenderCache = {
         else this._keys = {};
     }
 };
+
+// 【性能】页面渲染缓存快捷助手：
+// 返回 true 表示应跳过渲染（数据未变化，DOM 仍保留上次的 HTML）
+// 返回 false 表示应继续渲染
+function shouldSkipPageRender(pageName, dataKey) {
+    if (typeof RenderCache === 'undefined') return false;
+    if (RenderCache.same(pageName, dataKey)) return true;
+    RenderCache.mark(pageName, dataKey);
+    return false;
+}

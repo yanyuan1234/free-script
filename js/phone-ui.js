@@ -1406,6 +1406,15 @@ function renderChatPage() {
         return chattedNpcs[name] && gameState.allCharacters[name];
     });
 
+    // 【性能】渲染缓存——切回来时数据没变就不重渲染
+    var _seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
+    var _seenSig = Object.keys(_seen).sort().map(function(k) { return k + ':' + _seen[k]; }).join(',');
+    var _totalLogs = 0;
+    var _logs = gameState._chatLogs || {};
+    for (var _lk in _logs) _totalLogs += _logs[_lk].length;
+    var _key = chattedNames.length + '|' + _totalLogs + '|' + _seenSig;
+    if (shouldSkipPageRender('renderChatPage', _key)) return;
+
     if (chattedNames.length === 0) {
         return '<div class="chat-list-page">' +
             '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">请在「人际」页面选择角色<br>点击「找TA聊聊」开始对话</p></div>' +
@@ -1465,6 +1474,11 @@ function renderAchievePage() {
 // 渲染世界信息页面
 function renderWorldPage() {
     var modules = gameState._worldModules || [];
+    // 【性能】渲染缓存
+    var _lastTitle = modules.length > 0 ? (modules[modules.length-1].title || '') : '';
+    var _lastMain = modules.length > 0 ? String(modules[modules.length-1].main || modules[modules.length-1].content || '').slice(0, 40) : '';
+    var _key = modules.length + '|' + _lastTitle + '|' + _lastMain;
+    if (shouldSkipPageRender('renderWorldPage', _key)) return;
     if (modules.length === 0) {
         return '<div class="empty-state"><div class="empty-state-icon">世</div><p>暂无世界信息</p></div>';
     }
@@ -1543,6 +1557,10 @@ function renderMomentsPage() {
     var momentModules = modules.filter(function(m) {
         return m.type === 'moments';
     });
+    // 【性能】渲染缓存
+    var _lastContent = momentModules.length > 0 ? String(momentModules[momentModules.length-1].content || '').slice(0, 30) : '';
+    var _key = 'moments:' + momentModules.length + '|' + _lastContent;
+    if (shouldSkipPageRender('renderMomentsPage', _key)) return;
 
     var posts = [];
     momentModules.forEach(function(mod) {
@@ -1769,6 +1787,11 @@ function renderForumPage() {
     var commentMods = modules.filter(function(m) {
         return m.type === 'comments';
     });
+    // 【性能】渲染缓存
+    var _lastMod = commentMods.length > 0 ? commentMods[commentMods.length-1] : null;
+    var _lastSig = _lastMod ? String(_lastMod.title || '').slice(0, 20) + '|' + (_lastMod.comments || []).length : '';
+    var _key = 'forum:' + commentMods.length + '|' + _lastSig;
+    if (shouldSkipPageRender('renderForumPage', _key)) return;
     var playerName = gameState.playerName || '我';
     var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2',
         '#1890ff', '#52c41a'
@@ -1938,6 +1961,9 @@ function renderRankPage() {
     var rankMods = modules.filter(function(m) {
         return m.type === 'ranking';
     });
+    // 【性能】渲染缓存
+    var _key = 'rank:' + rankMods.length + '|' + (rankMods[0] ? String(rankMods[0].title || '').slice(0, 20) : '');
+    if (shouldSkipPageRender('renderRankPage', _key)) return;
     var playerData = gameState.playerData || {};
     var playerName = playerData.name || (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '我';
     var playerTitle = playerData.title || '';
@@ -2047,6 +2073,10 @@ function renderItemsPage() {
     var playerName = gameState.playerName || '我';
     var currency = gameState.currency || gameState.money || gameState.coins || 0;
     var currencyName = gameState.currencyName || '金币';
+    // 【性能】渲染缓存
+    var _lastItem = bag.length > 0 ? String(bag[bag.length-1].name || bag[bag.length-1].title || '') : '';
+    var _key = 'items:' + bag.length + '|' + currency + '|' + _lastItem;
+    if (shouldSkipPageRender('renderItemsPage', _key)) return;
 
     var itemsHtml = '';
     if (bag.length === 0) {
@@ -2296,6 +2326,11 @@ function renderMailPage() {
     var mailModules = (gameState._worldModules || []).filter(function(m) {
         return m.type === 'mail';
     });
+    // 【性能】渲染缓存
+    var _lastMod = mailModules.length > 0 ? mailModules[mailModules.length-1] : null;
+    var _lastSig = _lastMod ? (_lastMod.items ? _lastMod.items.length : 0) : 0;
+    var _key = 'mail:' + mailModules.length + '|' + _lastSig;
+    if (shouldSkipPageRender('renderMailPage', _key)) return;
     var allMails = [];
     mailModules.forEach(function(mod) {
         if (mod.items && Array.isArray(mod.items)) {
@@ -2346,6 +2381,10 @@ function renderShopPage() {
     var shopModules = (gameState._worldModules || []).filter(function(m) {
         return m.type === 'shop';
     });
+    // 【性能】渲染缓存
+    var _currency = gameState.currency || gameState.money || 0;
+    var _key = 'shop:' + shopModules.length + '|' + _currency;
+    if (shouldSkipPageRender('renderShopPage', _key)) return;
     var allGoods = [];
     var categories = [];
 
@@ -2506,6 +2545,12 @@ function buyShopItem(index) {
 
 // 【小剧场融合】日程表页面渲染
 function renderCalendarPage() {
+    // 【性能】渲染缓存
+    var _calMod = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'calendar'; });
+    var _events = (_calMod && _calMod.events) || [];
+    var _lastTime = _events.length > 0 ? String(_events[_events.length-1].time || _events[_events.length-1].title || '') : '';
+    var _key = 'calendar:' + _events.length + '|' + _lastTime;
+    if (shouldSkipPageRender('renderCalendarPage', _key)) return;
     var container = document.createElement('div');
     container.className = 'calendar-page';
     container.style.cssText = 'padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;';
@@ -2517,8 +2562,8 @@ function renderCalendarPage() {
     container.appendChild(title);
 
     // 获取日程数据
-    var calendarModule = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'calendar'; });
-    var events = (calendarModule && calendarModule.events) || [];
+    var calendarModule = _calMod;
+    var events = _events;
 
     // 如果没有数据，显示提示
     if (events.length === 0) {
@@ -2587,6 +2632,16 @@ function renderCalendarPage() {
 
 // 【小剧场融合】作者有话说页面渲染
 function renderAuthorNotePage() {
+    // 【性能】渲染缓存
+    var _noteMod = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'author_note'; });
+    var _theaterNotes = gameState._theaterContent ? Object.keys(gameState._theaterContent).filter(function(k) {
+        return gameState._theaterContent[k] && gameState._theaterContent[k].type === 'author_note';
+    }).length : 0;
+    var _lastNote = _theaterNotes > 0 ? String((gameState._theaterContent[Object.keys(gameState._theaterContent).filter(function(k) {
+        return gameState._theaterContent[k] && gameState._theaterContent[k].type === 'author_note';
+    }).pop()].content || '')).slice(0, 30) : '';
+    var _key = 'author_note:' + (_noteMod ? 1 : 0) + '|' + _theaterNotes + '|' + _lastNote;
+    if (shouldSkipPageRender('renderAuthorNotePage', _key)) return;
     var container = document.createElement('div');
     container.className = 'author-note-page';
     container.style.cssText = 'padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;';
@@ -2598,7 +2653,7 @@ function renderAuthorNotePage() {
     container.appendChild(title);
 
     // 获取作话数据
-    var noteModule = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'author_note'; });
+    var noteModule = _noteMod;
     var notes = [];
 
     // 从 _theaterContent 中也获取

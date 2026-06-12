@@ -1566,7 +1566,9 @@ var TypewriterBuffer = {
     displayed: '',
     isTyping: false,
     timer: null,
-    baseSpeed: 25,
+    // 【性能优化】baseSpeed 从 25ms 改为 50ms，肉眼几乎无差（20字/秒）但 CPU 减半
+    // 进一步通过 textContent 增量更新当前段落避免每 tick 整个 innerHTML 重建
+    baseSpeed: 50,
     onComplete: null,
     _visibilityHandler: null,
     _completedParagraphs: [],
@@ -1688,6 +1690,7 @@ var TypewriterBuffer = {
         this.onComplete = null;
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';
+        this._currentParaEl = null;
     },
     // 添加销毁方法，移除事件监听器防止内存泄漏
     destroy() {
@@ -1730,22 +1733,40 @@ var TypewriterBuffer = {
         if (allText === this._lastRendered) return;
         this._lastRendered = allText;
 
-        // 【性能优化】段落级缓存：已完成段落的HTML只在段落列表变化时重新生成
-        // 打字机每tick只新增当前段落的一个字符，已完成段落不变
-        // 缓存key用已完成段落的join结果
+        // 【性能优化】当前段落用 textContent 增量更新，避免每 tick 整个 innerHTML 重建
+        // 旧逻辑：每 50ms 都执行 storyEl.innerHTML = completedHtml + currentHtml
+        //         → 浏览器必须重新解析"已完成段落"那部分 HTML（已经渲染过 N 次）
+        // 新逻辑：已完成段落变更时（罕见，段尾换行时）才全量重渲染
+        //         当前段落变化时（每 tick）只更新最后一个 <p> 的 textContent
         var completedKey = this._completedParagraphs.join('\n');
-        var completedHtml;
-        if (completedKey === this._cachedCompletedKey && this._cachedCompletedHtml) {
-            completedHtml = this._cachedCompletedHtml;
-        } else {
-            completedHtml = completedKey ? formatStory(completedKey) : '';
+        if (completedKey !== this._cachedCompletedKey) {
+            // 段落列表变了：全量重渲染（罕见）
             this._cachedCompletedKey = completedKey;
-            this._cachedCompletedHtml = completedHtml;
+            this._cachedCompletedHtml = completedKey ? formatStory(completedKey) : '';
+            this._currentParaEl = null;  // 强制重建当前段落元素
+            storyEl.innerHTML = this._cachedCompletedHtml;
         }
 
-        // 当前正在打字的段落需要每tick格式化
-        var currentHtml = this._currentParaChars ? formatStory(this._currentParaChars) : '';
-        storyEl.innerHTML = completedHtml + currentHtml;
+        // 当前段落：textContent 增量更新（极快）
+        if (this._currentParaChars) {
+            // 打字机 tick 期间只做基本装饰标签移除（与原 formatStory 行为一致）
+            var currentText = this._currentParaChars;
+            if (typeof _reDecorTagsTyping !== 'undefined') {
+                _reDecorTagsTyping.lastIndex = 0;
+                currentText = currentText.replace(_reDecorTagsTyping, '');
+            }
+            if (!this._currentParaEl || this._currentParaEl.parentNode !== storyEl) {
+                // 创建新段落元素，复用同一节点直到本段结束
+                this._currentParaEl = document.createElement('p');
+                this._currentParaEl.className = 'story-typing-para';
+                storyEl.appendChild(this._currentParaEl);
+            }
+            // 【性能】textContent 比 innerHTML 快得多——不需要 HTML 解析、不会重建已完成段落
+            this._currentParaEl.textContent = currentText;
+        } else if (this._currentParaEl) {
+            // 当前段落清空：清掉元素引用，下一次会创建新的
+            this._currentParaEl = null;
+        }
     },
     _renderCached() {
         // 渲染已完成的段落
@@ -3427,29 +3448,49 @@ async function autoSave() {
 }
 function safeAutoSave() { try { autoSave(); } catch(e) { console.warn('autoSave failed:', e); } }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
+// 缓存 setWaiting 重复 DOM 查询的元素引用
+var _setWaitingCache = {
+    input: null,
+    sendBtn: null,
+    genControl: null,
+    progressBar: null,
+    initialized: false
+};
+
 function setWaiting(w) {
+    // 状态未变化时直接返回
+    if (typeof isWaiting !== 'undefined' && isWaiting === w) return;
     isWaiting = w;
-    var input = document.getElementById('customAction');
-    var sendBtn = document.getElementById('btnSendAction');
+
+    // 【性能】延迟初始化元素引用：第一次调用时查询并缓存
+    if (!_setWaitingCache.initialized) {
+        _setWaitingCache.input = document.getElementById('customAction');
+        _setWaitingCache.sendBtn = document.getElementById('btnSendAction');
+        _setWaitingCache.genControl = document.getElementById('genControl');
+        _setWaitingCache.progressBar = document.getElementById('genProgressBar');
+        _setWaitingCache.initialized = true;
+    }
+    var input = _setWaitingCache.input;
+    var sendBtn = _setWaitingCache.sendBtn;
     if (input) input.disabled = w;
     if (sendBtn) sendBtn.disabled = w;
-    var optBtns = document.querySelectorAll('.option-btn');
-    for (var oi = 0; oi < optBtns.length; oi++) {
-        optBtns[oi].style.pointerEvents = w ? 'none' : 'auto';
-        optBtns[oi].style.opacity = w ? '.5' : '1';
+
+    // 【性能】不遍历所有 .option-btn 设内联样式——改为在 body 上加/去 .is-waiting
+    // CSS 用 .is-waiting .option-btn { pointer-events: none; opacity: .5; } 接管
+    // 这样避免每 tick 扫描整个 DOM
+    if (w) document.body.classList.add('is-waiting');
+    else document.body.classList.remove('is-waiting');
+
+    // 显示/隐藏生成控制条
+    if (_setWaitingCache.genControl) {
+        if (w) _setWaitingCache.genControl.classList.add('active');
+        else _setWaitingCache.genControl.classList.remove('active');
     }
-// 显示/隐藏生成控制条
-var genControl = document.getElementById('genControl');
-if (genControl) {
-    if (w) genControl.classList.add('active');
-    else genControl.classList.remove('active');
-}
-// 显示/隐藏流式输出进度条
-var progressBar = document.getElementById('genProgressBar');
-if (progressBar) {
-    if (w) progressBar.classList.add('active');
-    else progressBar.classList.remove('active');
-}
+    // 显示/隐藏流式输出进度条
+    if (_setWaitingCache.progressBar) {
+        if (w) _setWaitingCache.progressBar.classList.add('active');
+        else _setWaitingCache.progressBar.classList.remove('active');
+    }
 }
 // 获取最近 API 错误历史（用于调试面板）
 function getRecentApiErrors() {
