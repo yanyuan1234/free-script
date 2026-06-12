@@ -648,7 +648,7 @@ var AchievementSystem = {
         var m = document.createElement('div');
         m.className = 'modal-overlay';
         m.style.cssText =
-        'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:200;display:flex;align-items:center;justify-content:center;';
+        'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center;';
         m.innerHTML =
         '<div style="background:var(--card);border-radius:var(--radius-lg);max-width:320px;width:90%;max-height:80vh;overflow-y:auto;padding:24px;text-align:center;">' +
         '<div class="achieve-icon-wrap ' + ach.rarity +

@@ -124,7 +124,7 @@ _initToastr: function() {
     if (window.toastr) return;
     var container = document.createElement('div');
     container.id = 'tavern-toastr-container';
-    container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
+    container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:999999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
     document.body.appendChild(container);
     var style = document.createElement('style');
     style.id = 'tavern-toastr-style';

@@ -4042,7 +4042,7 @@ function showNpcMessageNotification(name, text) {
         container = document.createElement('div');
         container.id = 'npcNotifContainer';
         container.style.cssText =
-            'position:fixed;top:0;left:0;right:0;z-index:10000;display:flex;flex-direction:column;align-items:center;pointer-events:none;padding-top:8px;gap:6px';
+            'position:fixed;top:0;left:0;right:0;z-index:999999;display:flex;flex-direction:column;align-items:center;pointer-events:none;padding-top:8px;gap:6px';
         document.body.appendChild(container);
     }
     var notif = document.createElement('div');
