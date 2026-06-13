@@ -3159,9 +3159,25 @@ async function loadFromSlot(slot) {
         
         // 兼容旧存档缺少的字段（统一由 ensureGameStateDefaults 处理）
         ensureGameStateDefaults();
-        // _stats 需要特殊处理：重置 startTime 并补全子字段
-        if (gameState._stats) {
+        // _stats 需要特殊处理：重置 startTime，首次创建时计算 totalTurns
+        if (!gameState._stats) {
+            gameState._stats = {
+                startTime: Date.now(),
+                totalTurns: (gameState.conversationHistory || []).filter(function(m) { return m.role === 'assistant'; }).length,
+                totalTokens: 0,
+                maxTokensInTurn: 0,
+                totalCharacters: Object.keys(gameState.allCharacters || {}).length,
+                completedQuests: 0,
+                totalPlayTime: 0
+            };
+        } else {
             gameState._stats.startTime = Date.now();
+            if (gameState._stats.totalTurns === undefined) gameState._stats.totalTurns = 0;
+            if (gameState._stats.totalTokens === undefined) gameState._stats.totalTokens = 0;
+            if (gameState._stats.maxTokensInTurn === undefined) gameState._stats.maxTokensInTurn = 0;
+            if (gameState._stats.totalCharacters === undefined) gameState._stats.totalCharacters = 0;
+            if (gameState._stats.completedQuests === undefined) gameState._stats.completedQuests = 0;
+            if (gameState._stats.totalPlayTime === undefined) gameState._stats.totalPlayTime = 0;
         }
 
         // 恢复记忆数据（从存档中还原EnhancedMemory）

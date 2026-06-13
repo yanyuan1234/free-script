@@ -1424,7 +1424,8 @@ function renderChatPage() {
             '</div>';
     }
 
-    var colors = AVATAR_COLORS;
+    // 聊天列表使用自己的配色方案（不含棕色/蓝色，更鲜艳）
+    var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
     var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
@@ -2153,7 +2154,7 @@ function renderDiaryPage() {
     var diaries = gameState._npcDiaries || {};
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
     var chars = Object.values(gameState.allCharacters || {});
-    var colors = AVATAR_COLORS;
+    var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2'];
     var now = new Date();
     var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
         '0');
