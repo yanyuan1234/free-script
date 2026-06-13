@@ -573,7 +573,8 @@ ${(gameState && gameState.pureTextMode) ?
 
 【持续维护】favorability随剧情更新，bag/quests实时同步，空字段省略不输出。`}
 ` :
-`【工具】每回合2-5个<giggle>心声 | 状态变化用<mem>标记 | ${(gameState && gameState.pureTextMode) ? '纯文本模式：所有token用在story上' : 'world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略'}`
+`【工具】每回合2-5个<giggle>心声 | 状态变化用<mem>标记 | ${(gameState && gameState.pureTextMode) ? '纯文本模式：所有token用在story上' : 'world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略'}
+**【强制要求】**本回合必须输出至少 1 个 <mem> 状态标签（time/event/location/item/character/quest 任一类型），否则前端无法维护游戏状态。`
 }
 
 【信息优先级】始终生效>本轮变化>旧记录>旧指令
@@ -1602,13 +1603,20 @@ async function sendAIRequest(userMessage, isInit = false) {
                 console.log('[智能上下文] 淘汰了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
             }
         }
+        // 【P0优化】流式失败自动降级：连续失败2次后切换为非流式
+        // 流式偶发断流/空回时，自动降级避免用户看到半截JSON
+        var _streamFailCount = (gameState && gameState.streamFailCount) || 0;
+        var _useStreamNow = gameState && gameState.useStream && _streamFailCount < 2;
         var options = {
-            stream: gameState && gameState.useStream,
+            stream: _useStreamNow,
             temperature: (gameState && gameState.temperature != null) ? gameState.temperature : 0.8,
             onChunk: function(delta, fullText) {
                 onStreamChunk(delta, fullText);
             }
         };
+        if (gameState && !_useStreamNow && _streamFailCount >= 2) {
+            console.log('[流式降级] 连续失败' + _streamFailCount + '次, 本轮使用非流式');
+        }
         // 触发事件：GENERATION_AFTER_COMMANDS（生成前，命令执行后）
         if (typeof TavernHelperCompat !== 'undefined') {
             TavernHelperCompat.emit('GENERATION_AFTER_COMMANDS', {
@@ -1642,6 +1650,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         var parseResult = parseAIResponse(response);
         var data = parseResult.data;
         var storyText = parseResult.storyText;
+
+        // 【P0优化】成功收到有效剧情，清零流式失败计数
+        if (gameState && gameState.streamFailCount && storyText && storyText.trim().length > 0) {
+            gameState.streamFailCount = 0;
+        }
 
         // 【方案C】应用<mem>标签解析结果到gameState（自动维护结构化数据）
         if (parseResult.mems && parseResult.mems.length > 0) {
@@ -1695,6 +1708,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 这样即使COT清理后变空也能被捕获
         if (!storyText || storyText.trim() === '') {
             console.warn('[AI生成] 剧情文本为空，可能原因：1) max_tokens过小 2) 模型异常 3) 内容被过滤 4) COT占用了全部额度');
+            // 【P0优化】流式失败计数：连续失败2次后自动切非流式
+            if (gameState && _useStreamNow) {
+                gameState.streamFailCount = (_streamFailCount || 0) + 1;
+                console.log('[流式降级] 失败计数: ' + gameState.streamFailCount + '/2');
+            }
             // 尝试从原始response中提取任何可读文本作为兜底
             if (response && typeof response === 'string' && response.trim().length > 0) {
                 // 如果原始响应有内容但storyText为空，说明解析可能有问题
