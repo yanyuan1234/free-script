@@ -4627,11 +4627,38 @@ if (gameState.customStyle && PresetManager.currentPresetIndex < 0) {
 if (typeof GameTimeSystem !== 'undefined') {
     GameTimeSystem.updateUI();
 }
-// 开局前：用AI提取设定，预填充记忆系统（按次计费，多一次API调用无妨）
+// 开局前：用AI提取设定，预填充记忆系统
+// 【优化】设置标志防止 processSetupPrompt 中的 _aiParseSetup 重复调用AI
+// 设定解析统一由 extractSetupToMemory 负责，完成后同步结果到 _setupLayers
+window._setupExtractPending = true;
 extractSetupToMemory().then(function() {
+    // extractSetupToMemory 成功后，同步结果到 _setupLayers（替代 _aiParseSetup 的职责）
+    if (typeof GameMemory !== 'undefined' && GameMemory._setupLayers) {
+        var gm = GameMemory;
+        var layers = gm._setupLayers;
+        // 从 permanentFacts 反向构建 coreRules 和 worldSummary
+        var rules = (gm.permanentFacts.worldRules || []).map(function(a) { return a.content; }).filter(Boolean);
+        if (rules.length > 0) {
+            layers.coreRules = rules.join('\n');
+        }
+        var npcSummaries = (gm.permanentFacts.npcProfiles || []).map(function(a) { return a.content; }).filter(Boolean);
+        if (npcSummaries.length > 0) {
+            layers.worldSummary = (layers.coreRules || '') + '\n' + npcSummaries.join('\n');
+        }
+        // 收集关键词
+        var allKeywords = [];
+        (gm.permanentFacts.npcProfiles || []).forEach(function(a) {
+            if (a.keywords) allKeywords = allKeywords.concat(a.keywords);
+        });
+        if (allKeywords.length > 0) layers.setupKeywords = allKeywords;
+        gm.saveToStorage();
+        console.log('[开局设定] extractSetupToMemory 完成，已同步到 _setupLayers');
+    }
+    delete window._setupExtractPending;
     sendAIRequest('请开始游戏，描述开局场景。', true);
 }).catch(function(e) {
     console.warn('[开局设定提取] 失败，直接开局:', e && e.message);
+    delete window._setupExtractPending;
     sendAIRequest('请开始游戏，描述开局场景。', true);
 });
 } catch (e) {

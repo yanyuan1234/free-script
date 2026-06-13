@@ -1578,8 +1578,13 @@ var GameMemory = {
         self._setupLayers.worldSummary = fullSetup;
         self.saveToStorage();
 
-        // AI驱动解析：让AI自己分类、提取关键词、生成摘要
-        self._aiParseSetup(fullSetup);
+        // 【优化】不再调用 _aiParseSetup，避免与 extractSetupToMemory 重复调用AI
+        // 设定解析统一由 extractSetupToMemory 负责，完成后通过 applyExtractResult 同步到 _setupLayers
+        // _aiParseSetup 保留为备用入口（读档/重开等场景 extractSetupToMemory 不触发时使用）
+        if (typeof window._setupExtractPending === 'undefined') {
+            // extractSetupToMemory 未在流程中，使用 _aiParseSetup 作为兜底
+            self._aiParseSetup(fullSetup);
+        }
     },
 
     // AI驱动的设定解析（核心方法）
