@@ -307,47 +307,11 @@
     if (typeof gameState === 'undefined') {
         window.gameState = {};
     }
-    
-    // 确保关键路径存在
-    const ensureExists = (path, defaultValue = {}) => {
-        const keys = path.split('.');
-        let current = window;
-        
-        for (let i = 0; i < keys.length; i++) {
-            const key = keys[i];
-            if (i === keys.length - 1) {
-                if (current[key] === undefined) {
-                    current[key] = defaultValue;
-                }
-            } else {
-                if (!current[key] || typeof current[key] !== 'object') {
-                    current[key] = {};
-                }
-                current = current[key];
-            }
-        }
-    };
-    
-    ensureExists('gameState.allCharacters', {});
-    ensureExists('gameState.currentBag', []);
-    ensureExists('gameState.currentQuests', []);
-    ensureExists('gameState.relationships', []);
-    ensureExists('gameState.keyEvents', []);
-    ensureExists('gameState.conversationHistory', []);
-    
-    // 确保动态属性存在
-    if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
-    if (!gameState._theaterContent) gameState._theaterContent = {};
-    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-    if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-    if (!gameState._chatRemarks) gameState._chatRemarks = {};
-    if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
-    if (!gameState._presetApps) gameState._presetApps = {};
-    if (!gameState._depthPrompts) gameState._depthPrompts = {};
-    if (!gameState._positionPrompts) gameState._positionPrompts = {};
-    if (!Array.isArray(gameState._afterChatPrompts)) gameState._afterChatPrompts = [];
-    if (!Array.isArray(gameState._undoHistory)) gameState._undoHistory = [];
-    if (!gameState.pinnedModules) gameState.pinnedModules = {};
-    
+
+    // 统一由 ensureGameStateDefaults() 处理所有默认值补全
+    if (typeof ensureGameStateDefaults === 'function') {
+        ensureGameStateDefaults();
+    }
+
     console.log('[Fix Patch v3.0] ✅ 安全修复补丁已加载');
 })();

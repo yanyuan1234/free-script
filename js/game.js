@@ -3157,78 +3157,11 @@ async function loadFromSlot(slot) {
             WorldInfo._currentTurn = 0;
         }
         
-        // 确保版本号更新
-        if (gameState) gameState._version = GAME_VERSION;
-        
-        // 兼容旧存档缺少的字段
-        if (gameState) {
-            if (!gameState.pinnedModules) gameState.pinnedModules = {};
-            if (!gameState.rollingSummary) gameState.rollingSummary = '';
-            if (!gameState.allCharacters) gameState.allCharacters = {};
-            if (!gameState.keyEvents) gameState.keyEvents = [];
-            if (!gameState.worldSnapshot) gameState.worldSnapshot = {};
-            if (!gameState.currentQuests) gameState.currentQuests = [];
-            if (!gameState.relationships) gameState.relationships = [];
-            if (!gameState.currentBag) gameState.currentBag = [];
-            if (gameState.playerData === undefined) gameState.playerData = null;
-            if (!gameState.favStories) gameState.favStories = [];
-            if (!gameState.generatedNovel) gameState.generatedNovel = '';
-            if (!gameState.conversationHistory) gameState.conversationHistory = [];
-            if (typeof gameState.autoCompress === 'undefined') gameState.autoCompress = true;
-            if (typeof gameState.useStream === 'undefined') gameState.useStream = true;
-            if (typeof gameState.temperature === 'undefined') gameState.temperature = 0.8;
-            if (typeof gameState.fontSize === 'undefined') gameState.fontSize = 16;
-            if (typeof gameState.generateChoices === 'undefined') gameState.generateChoices = true;
-            if (!gameState.protagonistSetup) gameState.protagonistSetup = {};
-            if (!gameState._presetApps) gameState._presetApps = {};
-            if (!gameState._stats) {
-                gameState._stats = {
-                    startTime: Date.now(),
-                    totalTurns: (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length,
-                    totalTokens: 0,
-                    maxTokensInTurn: 0,
-                    totalCharacters: Object.keys(gameState.allCharacters || {}).length,
-                    completedQuests: 0,
-                    totalPlayTime: 0
-                };
-            } else {
-                gameState._stats.startTime = Date.now();
-                if (typeof gameState._stats.totalTurns === 'undefined') gameState._stats.totalTurns = 0;
-                if (typeof gameState._stats.totalTokens === 'undefined') gameState._stats.totalTokens = 0;
-                if (typeof gameState._stats.maxTokensInTurn === 'undefined') gameState._stats.maxTokensInTurn = 0;
-                if (typeof gameState._stats.totalCharacters === 'undefined') gameState._stats.totalCharacters = 0;
-                if (typeof gameState._stats.completedQuests === 'undefined') gameState._stats.completedQuests = 0;
-                if (typeof gameState._stats.totalPlayTime === 'undefined') gameState._stats.totalPlayTime = 0;
-            }
-            if (!gameState._undoHistory) gameState._undoHistory = [];
-            if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-            if (!Array.isArray(gameState._moments)) gameState._moments = [];
-            if (!gameState._npcDiaries) gameState._npcDiaries = {};
-            if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-            if (!gameState._chatLogs) gameState._chatLogs = {};
-            if (!gameState._mail) gameState._mail = [];
-            if (!gameState._diary) gameState._diary = [];
-            if (typeof gameState.userPrompt === 'undefined') gameState.userPrompt = '';
-            if (typeof gameState.customStyle === 'undefined') gameState.customStyle = '';
-            if (typeof gameState.systemPrompt === 'undefined') gameState.systemPrompt = '';
-            if (typeof gameState.tokenCount === 'undefined') gameState.tokenCount = 0;
-            if (typeof gameState.maxTokens === 'undefined') gameState.maxTokens = 4096;
-        }
-        if (gameState) {
-            if (typeof gameState.streamFailCount === 'undefined') gameState.streamFailCount = 0;
-            if (!gameState.gameTime) gameState.gameTime = {date: '', time: '', period: '', weather: '', era: ''};
-            if (typeof gameState._jailbreakPrompt === 'undefined') gameState._jailbreakPrompt = '';
-            if (typeof gameState._assistantPrompt === 'undefined') gameState._assistantPrompt = '';
-            if (typeof gameState._MAX_UNDO_HISTORY === 'undefined') gameState._MAX_UNDO_HISTORY = 50;
-            if (!gameState.wordCountConfig) {
-                gameState.wordCountConfig = {
-                    enabled: true, min: 1500, max: 3000,
-                    paragraphMin: 15, paragraphMax: 17,
-                    paragraphStyle: 'medium', lengthPreset: 'medium'
-                };
-            }
-            if (!gameState._theaterContent) gameState._theaterContent = {};
-            if (gameState._lastAIReply === undefined) gameState._lastAIReply = null;
+        // 兼容旧存档缺少的字段（统一由 ensureGameStateDefaults 处理）
+        ensureGameStateDefaults();
+        // _stats 需要特殊处理：重置 startTime 并补全子字段
+        if (gameState._stats) {
+            gameState._stats.startTime = Date.now();
         }
 
         // 恢复记忆数据（从存档中还原EnhancedMemory）

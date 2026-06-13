@@ -1599,6 +1599,11 @@ _theaterContent: {},
 _worldModules: [],
 _chatLogs: {},
 _chattedNpcs: {},
+_chatRemarks: {},
+_blockedNpcs: {},
+_npcAvatars: {},
+_notifSeenSnapshot: {},
+_diaryDateOffset: 0,
 _lastAIReply: null,
 _depthPrompts: {},
 _positionPrompts: {},
@@ -1608,6 +1613,10 @@ _moments: [],
 _npcDiaries: {},
 _mail: [],
 _diary: [],
+_theaterConfig: {},
+_globalVars: {},
+_charVars: {},
+_quickReplyLog: [],
 // 【酒馆预设融合】新增叙事增强字段
 anti429Mode: false,          // 防429模式（来自果实预设）
 writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
@@ -1652,6 +1661,30 @@ presetArchetype: 'free',     // conservative / natural / passionate / delicate /
 // === 预设助手大总结书签（来自象牙塔预设的summarize功能） ===
 summaryBookmarks: []         // [{ id, label, timestamp, hidden }]
 };
+}
+
+// 确保 gameState 缺失字段有默认值（用于旧存档兼容、安全补丁等场景）
+// 唯一来源：所有默认值以 createDefaultGameState() 为准
+function ensureGameStateDefaults() {
+    if (!gameState) return;
+    var defaults = createDefaultGameState();
+    for (var key in defaults) {
+        if (defaults.hasOwnProperty(key)) {
+            // 对象/数组类型：仅当缺失时才设默认值（保留已有数据）
+            // 标量类型：仅当 undefined 时才设默认值（保留 0/false/'' 等合法值）
+            if (gameState[key] === undefined) {
+                gameState[key] = defaults[key];
+            }
+        }
+    }
+    // 特殊修正：_chatLogs 旧版可能是数组，需强制为对象
+    if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
+    // _worldModules / _moments / _afterChatPrompts 必须是数组
+    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+    if (!Array.isArray(gameState._moments)) gameState._moments = [];
+    if (!Array.isArray(gameState._afterChatPrompts)) gameState._afterChatPrompts = [];
+    // 版本号始终更新到当前
+    gameState._version = GAME_VERSION;
 }
 
 var gameState = createDefaultGameState();

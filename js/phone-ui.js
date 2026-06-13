@@ -1,5 +1,10 @@
 
 // ========================================
+// 头像颜色常量（统一管理，避免多处重复定义）
+// ========================================
+var AVATAR_COLORS = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#1890ff', '#52c41a'];
+
+// ========================================
 // 第7层: 论坛系统
 // ========================================
 function _switchForumView(showHot) {
@@ -1419,7 +1424,7 @@ function renderChatPage() {
             '</div>';
     }
 
-    var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+    var colors = AVATAR_COLORS;
     var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
@@ -1791,9 +1796,7 @@ function renderForumPage() {
     var _key = 'forum:' + commentMods.length + '|' + _lastSig;
     if (shouldSkipPageRender('renderForumPage', _key)) return;
     var playerName = gameState.playerName || '我';
-    var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2',
-        '#1890ff', '#52c41a'
-    ];
+    var colors = AVATAR_COLORS;
     var tagClasses = ['hot', 'bao', 'xin', 'hot', 'bao', 'xin'];
     var timeLabels = ['刚刚', '1分钟前', '3分钟前', '5分钟前', '10分钟前', '半小时前', '1小时前', '2小时前', '昨天', '前天'];
 
@@ -2150,7 +2153,7 @@ function renderDiaryPage() {
     var diaries = gameState._npcDiaries || {};
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
     var chars = Object.values(gameState.allCharacters || {});
-    var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2'];
+    var colors = AVATAR_COLORS;
     var now = new Date();
     var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
         '0');
@@ -6483,17 +6486,9 @@ function changeNpcAvatar() {
     };
     input.click();
 }
-function blockNpc() {
+// NPC 操作确认弹窗（统一 blockNpc/deleteNpcChat 的重复弹窗代码）
+function _showNpcActionConfirm(opts) {
     var name = npcChatState.npcName;
-    if (gameState) {
-        if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
-        if (gameState._blockedNpcs[name]) {
-            gameState._blockedNpcs[name] = false;
-            autoSave();
-            UI.toast('已取消拉黑「' + name + '」');
-            return;
-        }
-    }
     var menu = document.getElementById('chatMenuPanel');
     if (menu) menu.remove();
     var header = document.querySelector('.chat-detail-header');
@@ -6501,54 +6496,54 @@ function blockNpc() {
     var panel = document.createElement('div');
     panel.style.cssText =
         'position:absolute;top:44px;left:50%;transform:translateX(-50%);background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:16px;z-index:200;text-align:center;min-width:200px';
-    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">确定拉黑「' + escapeHtml(name) +
-        '」？</div>' +
-        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">拉黑后将不再收到消息</div>' +
+    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">' + opts.title + '</div>' +
+        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">' + opts.subtitle + '</div>' +
         '<div style="display:flex;gap:12px;justify-content:center">' +
-        '<span id="blockCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
-        '<span id="blockConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">拉黑</span></div>';
+        '<span id="npcActionCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
+        '<span id="npcActionConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">' + opts.confirmText + '</span></div>';
     header.appendChild(panel);
-    document.getElementById('blockCancel').onclick = function() {
-        panel.remove();
-    };
-    document.getElementById('blockConfirm').onclick = function() {
-        if (gameState) {
-            if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
-            gameState._blockedNpcs[name] = true;
-        }
+    document.getElementById('npcActionCancel').onclick = function() { panel.remove(); };
+    document.getElementById('npcActionConfirm').onclick = function() {
+        opts.onConfirm(name);
         autoSave();
         panel.remove();
-        closeNpcChat();
+        if (opts.closeAfter !== false) closeNpcChat();
     };
+}
+
+function blockNpc() {
+    var name = npcChatState.npcName;
+    if (gameState && gameState._blockedNpcs && gameState._blockedNpcs[name]) {
+        gameState._blockedNpcs[name] = false;
+        autoSave();
+        UI.toast('已取消拉黑「' + name + '」');
+        return;
+    }
+    _showNpcActionConfirm({
+        title: '确定拉黑「' + escapeHtml(name) + '」？',
+        subtitle: '拉黑后将不再收到消息',
+        confirmText: '拉黑',
+        onConfirm: function(n) {
+            if (gameState) {
+                if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
+                gameState._blockedNpcs[n] = true;
+            }
+        }
+    });
 }
 function deleteNpcChat() {
     var name = npcChatState.npcName;
-    var menu = document.getElementById('chatMenuPanel');
-    if (menu) menu.remove();
-    var header = document.querySelector('.chat-detail-header');
-    if (!header) return;
-    var panel = document.createElement('div');
-    panel.style.cssText =
-        'position:absolute;top:44px;left:50%;transform:translateX(-50%);background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:16px;z-index:200;text-align:center;min-width:200px';
-    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">删除与「' + escapeHtml(name) +
-        '」的聊天？</div>' +
-        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">聊天记录将被清除，不可恢复</div>' +
-        '<div style="display:flex;gap:12px;justify-content:center">' +
-        '<span id="delCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
-        '<span id="delConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">删除</span></div>';
-    header.appendChild(panel);
-    document.getElementById('delCancel').onclick = function() {
-        panel.remove();
-    };
-    document.getElementById('delConfirm').onclick = function() {
-        if (gameState) {
-            if (gameState._chatLogs) delete gameState._chatLogs[name];
-            if (gameState._chattedNpcs) delete gameState._chattedNpcs[name];
+    _showNpcActionConfirm({
+        title: '删除与「' + escapeHtml(name) + '」的聊天？',
+        subtitle: '聊天记录将被清除，不可恢复',
+        confirmText: '删除',
+        onConfirm: function(n) {
+            if (gameState) {
+                if (gameState._chatLogs) delete gameState._chatLogs[n];
+                if (gameState._chattedNpcs) delete gameState._chattedNpcs[n];
+            }
         }
-        autoSave();
-        panel.remove();
-        closeNpcChat();
-    };
+    });
 }
 function toggleEmojiPanel() {
     var panel = document.getElementById('emojiPanel');
