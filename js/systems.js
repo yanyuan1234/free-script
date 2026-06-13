@@ -242,7 +242,7 @@ var QuestSystem = {
     }
     tracker.style.display = 'block';
     var html =
-    '<div class="quest-tracker-toggle" onclick="QuestSystem.toggleTracker()">◀</div><div class="quest-tracker-title"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>任务追踪</span><span style="font-size:11px;color:var(--text-tertiary);">' +
+    '<div class="quest-tracker-toggle" data-action="toggleQuestTracker">◀</div><div class="quest-tracker-title"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>任务追踪</span><span style="font-size:11px;color:var(--text-tertiary);">' +
     aq.length + '</span></div>';
     aq.forEach(function(q) {
         var p = QuestSystem.parseProgress(q.progress);
@@ -663,7 +663,7 @@ var AchievementSystem = {
         (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✓ 已获得</div>' :
         '<div style="color:var(--text-tertiary);font-size:13px;">锁 未解锁 · 进度: ' + (pd.progress[
         id] || 0) + '/' + (ach.maxProgress || 1) + '</div>') +
-        '<button class="crystal-btn" style="margin-top:16px;width:100%;" onclick="UI.hideModal(\'achieveDetailModal\')">关闭</button></div>';
+        '<button class="crystal-btn" style="margin-top:16px;width:100%;" data-action="hideModal" data-modal="achieveDetailModal">关闭</button></div>';
         // 使用统一弹窗管理器
         if (typeof UI !== 'undefined' && UI.createModal) {
             UI.createModal({ id: 'achieveDetailModal', html: html });
@@ -752,7 +752,7 @@ function renderQuests() {
         return (order[a.status] || 0) - (order[b.status] || 0);
     });
     var html =
-        '<div class="module-header" onclick="toggleQuestList()" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:#a2d2ff;transition:transform .2s">▼</span></div>';
+        '<div class="module-header" data-action="toggleQuestList" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:#a2d2ff;transition:transform .2s">▼</span></div>';
     html += '<div class="quest-list" id="questListInner">';
     sorted.forEach(function(q) {
         var isDone = q.status === '已完成' || q.status === '失败';
@@ -896,4 +896,12 @@ function getRelationTagClass(type) {
     }
 
     return 'relation-tag-neutral';
+}
+
+// 【systems.js 全局委托】注册 toggleQuestTracker / toggleQuestList
+if (UI && UI.uiKit) {
+    UI.uiKit.delegate(document.body, 'click', {
+        toggleQuestTracker: function() { QuestSystem.toggleTracker(); },
+        toggleQuestList: function() { toggleQuestList(); }
+    });
 }

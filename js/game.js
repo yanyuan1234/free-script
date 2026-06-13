@@ -2852,7 +2852,7 @@ function createThoughtTriggerHTML(id, thoughts) {
     }
 
     return '<span class="thought-trigger" data-target="thought-' + id +
-        '" onclick="toggleThought(this)" title="查看心声">' +
+        '" data-action="toggleThought" title="查看心声">' +
         '<svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>' +
         countBadge + '</span>';
 }
@@ -2925,7 +2925,7 @@ function renderChoices(choices) {
         return;
     }
     var toggleHtml =
-        '<div class="choices-toggle" onclick="toggleChoicesPanel()" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text-secondary);user-select:none;">' +
+        '<div class="choices-toggle" data-action="toggleChoicesPanel" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;cursor:pointer;font-size:13px;color:var(--text-secondary);user-select:none;">' +
         '<span>选项 (' + choices.length + '个)</span>' +
         '<span id="choicesToggleIcon" style="transition:transform 0.2s;transform:rotate(-90deg);">▼</span></div>' +
         '<div id="choicesPanel" style="overflow:hidden;transition:max-height 0.3s ease;max-height:0px;">';
@@ -2939,7 +2939,7 @@ function renderChoices(choices) {
         var tagHtml = c.tag ?
             '<span class="badge badge-soft" style="margin-left:8px;font-size:10px;">' + escapeHtml(c.tag) +
             '</span>' : '';
-        return '<button class="option-btn" onclick="fillChoiceToInput(' + safeT + ')">' +
+        return '<button class="option-btn" data-action="fillChoiceToInput" data-choice-text="' + escapeHtml(text) + '">' +
             '<span class="option-index">' + id + '</span><span>' + escapeHtml(text) + '</span>' + tagHtml +
             '</button>';
     }).join('');
@@ -3451,8 +3451,7 @@ async function requestNpcReply(playerText) {
                         var choicesHtml = choices.map(function(ch) {
                             var safe = String(ch).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(
                                 /"/g, '&quot;').replace(/\n/g, ' ');
-                            return '<button class="npc-chat-choice" onclick="selectNpcChatChoice(\'' +
-                                safe + '\')">' + escapeHtml(ch) + '</button>';
+                            return '<button class="npc-chat-choice" data-action="selectNpcChatChoice" data-choice-text="' + escapeHtml(ch) + '">' + escapeHtml(ch) + '</button>';
                         }).join('');
                         document.getElementById('npcChatChoices').innerHTML =
                             choicesHtml;
@@ -3515,4 +3514,14 @@ function refreshAllPanels() {
     try { renderBag(); } catch (e) { console.warn('renderBag error:', e); }
     try { if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) AchievementSystem.checkAchievements(); } catch (e) { console.warn('AchievementSystem error:', e); }
     UI.toast('面板已刷新');
+}
+
+// 【game.js 全局委托】注册 toggleThought / toggleChoicesPanel / fillChoiceToInput / selectNpcChatChoice
+if (UI && UI.uiKit) {
+    UI.uiKit.delegate(document.body, 'click', {
+        toggleThought: function(d, el) { toggleThought(el); },
+        toggleChoicesPanel: function() { toggleChoicesPanel(); },
+        fillChoiceToInput: function(d) { fillChoiceToInput(d.choiceText); },
+        selectNpcChatChoice: function(d) { selectNpcChatChoice(d.choiceText); }
+    });
 }

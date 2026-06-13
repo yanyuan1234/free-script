@@ -346,6 +346,8 @@ var TOAST_DURATION_MS = POPUP_DURATION_MS;
 var UI = {
     // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
     TOAST_DURATION: POPUP_DURATION_MS,
+    // 【UIKit 引用】统一事件委托工具，挂在 UI 对象上方便下游调用
+    uiKit: UIKit,
     // 【导航栈】支持返回上一级
     _navStack: [],
     pushNav: function(type, id) {
@@ -699,6 +701,16 @@ var UI = {
         if (modal) this.hideModal('generatingModal');
     }
 };
+
+// 【core.js 全局委托】注册 hideModal / closeErrorBanner
+UI.uiKit.delegate(document.body, 'click', {
+    hideModal: function(d) { UI.hideModal(d.modal); },
+    closeErrorBanner: function(d, el) {
+        var banner = el.closest('.api-error-banner');
+        if (banner) banner.remove();
+    }
+});
+
 // ==================== API配置管理 ====================
 // 来源：game_integrated.html 第 3438-3531 行
 // 功能：多API端点管理、分组、自动轮询、连接测试、模型列表获取
@@ -3686,13 +3698,13 @@ function showError(msg, errObj) {
     var action = '';
     var low = (msg || '').toLowerCase();
     if (low.indexOf('api key') !== -1 || low.indexOf('认证') !== -1 || low.indexOf('401') !== -1) {
-        action = '<button onclick="UI.hideModal(\'settingsModal\');" data-close="settingsModal" style="margin-top:6px;padding:4px 10px;background:#856404;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">前往设置</button>';
+        action = '<button data-action="hideModal" data-modal="settingsModal" style="margin-top:6px;padding:4px 10px;background:#856404;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">前往设置</button>';
     }
     // 【修复】不要清空剧情区，避免覆盖流式已渲染的内容
     // 仅在没有内容时覆盖；否则在底部追加错误提示条
     var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
     var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:var(--accent-soft);border:1px solid var(--border);border-radius:6px;padding:12px;margin:12px 0;color:var(--text);font-size:13px;transition:opacity 0.5s;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">△ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">△ 生成失败</span><button data-action="closeErrorBanner" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
         '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
         (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">◎ 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
         action +

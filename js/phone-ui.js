@@ -145,8 +145,7 @@ function appendForumReply(postIdx, comment) {
         '<div class="forum-reply-main"><div class="forum-reply-name">' + escapeHtml(comment.name || '匿名') + '</div>' +
         '<div class="forum-reply-content">' + replyPrefix + escapeHtml(comment.text || '') + '</div>' +
         '<div class="forum-reply-meta">' + escapeHtml(comment.time || '刚刚') +
-        '　<span style="cursor:pointer" onclick="replyToForumComment(' + postIdx + ',' + ((detail
-            .querySelectorAll('.forum-reply-item').length)) + ')">回复</span></div></div>';
+        '　<span style="cursor:pointer" data-action="replyForumComment" data-post-idx="' + postIdx + '">回复</span></div></div>';
     list.appendChild(item);
     requestAnimationFrame(function() {
         item.style.opacity = '1';
@@ -419,12 +418,12 @@ function openDiaryDatePicker() {
         }
     });
     dateList.sort(function(a, b) { return a < b ? 1 : (a > b ? -1 : 0); });
-    var html = '<div id="diaryDatePicker" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeDiaryDatePicker()">' +
+    var html = '<div id="diaryDatePicker" data-action="closeDiaryDatePicker" data-self-only="true" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;">' +
         '<div style="background:var(--bg);border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
-        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="closeDiaryDatePicker()">×</span></div>' +
+        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" data-action="closeDiaryDatePicker">×</span></div>' +
         dateList.map(function(d) {
-            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="closeDiaryDatePicker();diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" data-action="jumpDiaryDate" data-date="' + escapeHtml(d) + '">' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div></div>';
     var container = document.querySelector('.diary-page') || document.getElementById('logSubContent');
@@ -488,7 +487,7 @@ function openMailDetail(index) {
     body = sanitizeHtml(body);
     var detailHtml =
         '<div style="display:flex;flex-direction:column;flex:1;background:var(--bg);overflow:hidden;">' +
-        '<div class="mail-detail-nav"><div class="mail-detail-back" onclick="backToMailList()">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" onclick="deleteMail(' + index + ')"></div></div></div>' +
+        '<div class="mail-detail-nav"><div class="mail-detail-back" data-action="backToMailList">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" data-action="deleteMail" data-mail-idx="' + index + '"></div></div></div>' +
         '<div class="mail-detail-scroll">' +
         '<div class="mail-detail-subject">' + escapeHtml(subject) + '</div>' +
         '<div class="mail-detail-meta"><div class="mail-detail-avatar">' + escapeHtml(avatar) +
@@ -1694,11 +1693,11 @@ function renderMomentsPage() {
             // 互动栏：点赞 + 评论
             html += '<div class="moment-actions" style="display:flex;border-top:1px solid #f0f0f0;margin-top:8px;padding-top:8px;gap:20px;">';
             var isLiked = post.likes && Array.isArray(post.likes) && post.likes.indexOf(playerName) !== -1;
-            html += '<span style="font-size:13px;color:' + (isLiked ? '#ff3b30' : '#999') + ';cursor:pointer;" onclick="toggleMomentLike(' + idx + ')">' + (isLiked ? '已赞' : '赞') + '</span>';
-            html += '<span style="font-size:13px;color:#576b95;cursor:pointer;" onclick="showMomentCommentInput(' + idx + ',this)">评论</span>';
+            html += '<span style="font-size:13px;color:' + (isLiked ? '#ff3b30' : '#999') + ';cursor:pointer;" data-action="toggleMomentLike" data-moment-idx="' + idx + '">' + (isLiked ? '已赞' : '赞') + '</span>';
+            html += '<span style="font-size:13px;color:#576b95;cursor:pointer;" data-action="showMomentCommentInput" data-moment-idx="' + idx + '">评论</span>';
             html += '</div>';
             html += '<div id="momentCommentBox_' + idx + '" style="display:none;margin-top:8px;">';
-            html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" placeholder="写评论..." style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;" onkeydown="if(event.key===\'Enter\')sendMomentComment(' + idx + ')"><span style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" onclick="sendMomentComment(' + idx + ')">发送</span></div>';
+            html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" placeholder="写评论..." style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;" data-action="sendMomentComment" data-moment-idx="' + idx + '"><span style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" data-action="sendMomentComment" data-moment-idx="' + idx + '">发送</span></div>';
             html += '</div>';
             html += '</div>';
         });
@@ -1814,8 +1813,8 @@ function renderForumPage() {
         for (var si = 0; si < titleStr.length; si++) seed = ((seed << 5) - seed + titleStr
             .charCodeAt(si)) | 0;
         var count = (Math.abs(seed) % 450 + 50) + '.' + (Math.abs(seed >> 8) % 9) + '万';
-        return '<div class="forum-hot-item" role="button" tabindex="0" onclick="openForumPost(' +
-            idx + ')">' +
+        return '<div class="forum-hot-item" role="button" tabindex="0" data-action="openForumPost" data-forum-idx="' +
+            idx + '">' +
             '<div class="forum-hot-rank ' + rankClass + '">' + (idx + 1) + '</div>' +
             '<div class="forum-hot-info"><div class="forum-hot-title">' + escapeHtml(mod.title ||
                 '帖子') + '</div><div class="forum-hot-count">' + count + '</div></div>' +
@@ -1837,8 +1836,8 @@ function renderForumPage() {
         var shares = Math.abs(seed >> 8) % 950 + 50;
         var bodyText = mod.main || mod.content || '';
         var tagText = mod.title || '';
-        return '<div class="forum-feed-item" role="button" tabindex="0" onclick="openForumPost(' +
-            idx + ')">' +
+        return '<div class="forum-feed-item" role="button" tabindex="0" data-action="openForumPost" data-forum-idx="' +
+            idx + '">' +
             '<div class="forum-feed-header">' +
             '<div class="forum-feed-avatar" style="background:' + avatarColor + ';">' + avatarChar +
             '</div>' +
@@ -1875,16 +1874,16 @@ function renderForumPage() {
                 '</div>' +
                 '<div class="forum-reply-meta"><span>' + timeLabels[(idx + ci) % timeLabels
                     .length] +
-                '</span><span style="cursor:pointer" onclick="replyToForumComment(' + idx +
-                ',' + ci + ')">回复</span></div>' +
+                '</span><span style="cursor:pointer" data-action="replyForumComment" data-post-idx="' + idx +
+                '" data-comment-idx="' + ci + '">回复</span></div>' +
                 '</div></div>';
         }).join('');
 
         return '<div class="forum-post-detail" id="forumPostDetail' + idx +
             '" style="display:none;flex-direction:column;">' +
-            '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="closeForumPost(' +
+            '<div class="forum-nav-bar"><div class="forum-nav-back" data-action="closeForumPost" data-forum-idx="' +
             idx +
-            ')">←</div><div class="forum-nav-title">帖子详情</div><div class="forum-nav-right">↻</div></div>' +
+            '">←</div><div class="forum-nav-title">帖子详情</div><div class="forum-nav-right">↻</div></div>' +
             '<div class="forum-post-scroll">' +
             '<div class="forum-post-main"><div class="forum-post-title">' + (mod.title || '帖子') +
             '</div><div class="forum-post-sub">1分钟前　回复</div></div>' +
@@ -1895,9 +1894,8 @@ function renderForumPage() {
             '<div class="forum-my-avatar" style="background:#333;">' + playerName.charAt(0) +
             '</div>' +
             '<div class="forum-comment-input" contenteditable="true" data-post-idx="' + idx +
-            '" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendForumComment(' +
-            idx + ')}"></div>' +
-            '<div class="forum-send-btn" onclick="sendForumComment(' + idx + ')">></div>' +
+            '" data-action="sendForumComment" data-forum-idx="' + idx + '"></div>' +
+            '<div class="forum-send-btn" data-action="sendForumComment" data-forum-idx="' + idx + '">></div>' +
             '</div>' +
             '</div>';
     }).join('');
@@ -1912,11 +1910,11 @@ function renderForumPage() {
         '</div>' +
         '</div>' +
         '<div id="forumTopicView" style="display:none;">' +
-        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" data-action="showForumHot">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
         '<div class="forum-topic-body">' + feedItems + '</div>' +
         '</div>' +
         '<div id="forumMineView" style="display:none;">' +
-        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" data-action="showForumHot">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
         '<div class="forum-mine-body">' + (function() {
             var mineHtml = '';
             var myCommented = [];
@@ -1934,7 +1932,7 @@ function renderForumPage() {
                 return '<div style="padding:60px 20px;text-align:center;color:var(--text-secondary);">还没发表过评论<br><span style="font-size:12px;">去点击话题发表你的观点吧</span></div>';
             }
             return myCommented.map(function(item) {
-                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
+                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" data-action="openForumPost" data-forum-idx="' + item.idx + '">' +
                     '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">◇</div>' +
                     '<div style="flex:1;min-width:0;">' +
                     '<div style="font-size:14px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
@@ -1947,9 +1945,9 @@ function renderForumPage() {
         '</div>' +
         postDetails +
         '<div class="forum-tab-bar" id="forumTabBar">' +
-        '<div class="forum-tab-item active" onclick="showForumHot()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
-        '<div class="forum-tab-item" onclick="showForumTopic()"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
-        '<div class="forum-tab-item" onclick="showForumMine()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
+        '<div class="forum-tab-item active" data-action="showForumHot"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
+        '<div class="forum-tab-item" data-action="showForumTopic"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
+        '<div class="forum-tab-item" data-action="showForumMine"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
         '</div>' +
         '</div>';
 }
@@ -2124,11 +2122,11 @@ function renderItemsPage() {
         '<div class="items-card-circles"><div class="items-card-circle red"></div><div class="items-card-circle orange"></div></div>' +
         '</div>' +
         '<div class="items-tab-switch">' +
-        '<div class="items-tab-btn active" onclick="switchItemsTab(\'items\',this)">物品</div>' +
-        '<div class="items-tab-btn" onclick="switchItemsTab(\'bill\',this)">账单</div>' +
+        '<div class="items-tab-btn active" data-action="switchItemsTab" data-tab="items">物品</div>' +
+        '<div class="items-tab-btn" data-action="switchItemsTab" data-tab="bill">账单</div>' +
         '</div>' +
         '<div id="itemsSection">' +
-        '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" onclick="filterBagItems(\'all\',this)">全部</div><div class="items-sub-tab" onclick="filterBagItems(\'装备\',this)">装备</div><div class="items-sub-tab" onclick="filterBagItems(\'消耗品\',this)">消耗品</div><div class="items-sub-tab" onclick="filterBagItems(\'材料\',this)">材料</div></div>' +
+        '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" data-action="filterBagItems" data-cat="all">全部</div><div class="items-sub-tab" data-action="filterBagItems" data-cat="装备">装备</div><div class="items-sub-tab" data-action="filterBagItems" data-cat="消耗品">消耗品</div><div class="items-sub-tab" data-action="filterBagItems" data-cat="材料">材料</div></div>' +
         '<div class="items-grid" id="itemsGrid" style="justify-items:center;">' + itemsHtml + '</div>' +
         '</div>' +
         '<div id="billSection" style="display:none;">' +
@@ -2210,8 +2208,7 @@ function renderDiaryPage() {
                 }
                 var mentionTag = mentionCount > 0 ?
                     '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
-                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" onclick="viewNpcDiary(\'' +
-                    escapeHtml(npcName).replace(/'/g, "\\'") + '\')">' +
+                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" data-action="viewNpcDiary" data-npc-name="' + escapeHtml(npcName) + '">' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
                     '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
@@ -2308,10 +2305,10 @@ function renderDiaryPage() {
     }
 
     return '<div class="diary-page">' +
-        '<div style="display:flex;align-items:center;gap:8px;padding:8px 15px;flex-shrink:0;"><div class="diary-nav-btn" onclick="diaryBackToList()" style="font-size:20px;">←</div></div>' +
-        '<div class="diary-date-nav"><div class="diary-nav-btn" onclick="diaryChangeDate(-1)" title="上一条"><</div><div class="diary-nav-date" onclick="openDiaryDatePicker()" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;">📅</span>' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:8px 15px;flex-shrink:0;"><div class="diary-nav-btn" data-action="diaryBackToList" style="font-size:20px;">←</div></div>' +
+        '<div class="diary-date-nav"><div class="diary-nav-btn" data-action="diaryChangeDate" data-dir="-1" title="上一条"><</div><div class="diary-nav-date" data-action="openDiaryDatePicker" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;">📅</span>' +
         dateStr +
-        '</div><div class="diary-nav-btn" onclick="diaryChangeDate(1)" title="下一条">></div><div class="diary-nav-btn" onclick="diaryResetDate()" title="返回最近">»</div></div>' +
+        '</div><div class="diary-nav-btn" data-action="diaryChangeDate" data-dir="1" title="下一条">></div><div class="diary-nav-btn" data-action="diaryResetDate" title="返回最近">»</div></div>' +
         '<div class="diary-user-bar"><div class="diary-user-avatar" style="background:' + avatarColor +
         ';color:#fff;font-size:14px;">' + currentDiaryNpc.charAt(0) +
         '</div><div class="diary-user-name">' + currentDiaryNpc + (npcChar.title ? ' · ' + npcChar.title :
@@ -2358,8 +2355,8 @@ function renderMailPage() {
             preview = preview.replace(/<[^>]*>/g, '');
             var subjectStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
             var senderStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
-            return '<div class="mail-list-item' + unread + '" onclick="openMailDetail(' + i +
-                ')" style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
+            return '<div class="mail-list-item' + unread + '" data-action="openMailDetail" data-mail-idx="' + i +
+                '" style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
                 '<div class="mail-list-header">' + unreadDot + '<div class="mail-list-sender" style="' + senderStyle + '">' + escapeHtml(sender) +
                 '</div><div class="mail-list-date">' + escapeHtml(date) + '</div></div>' +
                 '<div class="mail-list-subject" style="' + subjectStyle + '">' + escapeHtml(subject) + '</div>' +
@@ -2456,8 +2453,8 @@ function renderShopPage() {
                 '<span style="font-size:11px;padding:2px 8px;background:#ccc;color:#fff;border-radius:10px;cursor:not-allowed;white-space:nowrap;">已售稀</span>' :
                 '<span style="font-size:11px;padding:2px 8px;background:var(--accent,#333);color:#fff;border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span>';
             var itemStyle = isSoldOut ? 'opacity:0.6;cursor:not-allowed;' : 'cursor:pointer;';
-            var itemClick = isSoldOut ? '' : ' onclick="buyShopItem(' + gi + ')"';
-            return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemClick + '><div class="shop-goods-icon">' + escapeHtml(icon) +
+            var itemAttrs = isSoldOut ? '' : ' data-action="buyShopItem" data-shop-idx="' + gi + '"';
+            return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemAttrs + '><div class="shop-goods-icon">' + escapeHtml(icon) +
                 '</div><div class="shop-goods-info"><div class="shop-goods-name">' + escapeHtml(name) +
                 '</div><div class="shop-goods-desc">' + escapeHtml(desc) + '</div>' +
                 ownedDisplay + stockTag + soldOutTag +
@@ -3165,7 +3162,7 @@ function renderRecapPage() {
             var isCurrent = i === stories.length - 1;
             var summary = (s.text || '').substring(0, 80);
             return '<div class="timeline-item ' + (isCurrent ? 'current' : '') +
-                '" onclick="showRecapDetail(' + i + ')">' +
+                '" data-action="showRecapDetail" data-recap-idx="' + i + '">' +
                 '<div class="timeline-item-head"><span class="timeline-item-title">第' + (i + 1) +
                 '段</span></div>' +
                 '<div class="timeline-item-summary">' + escapeHtml(summary) + '...</div></div>';
@@ -3440,7 +3437,7 @@ function showPresetSaveList(preset) {
             var saveName = saveData.name || saveData.prompt || '存档';
 
             listBody.innerHTML =
-                '<div class="pearl-card" style="padding:16px;cursor:pointer;transition:transform 0.2s;" onmouseover="this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.transform=\'none\'">' +
+                '<div class="pearl-card pearl-card-hover" style="padding:16px;cursor:pointer;">' +
                 '<div style="display:flex;align-items:center;gap:12px;">' +
                 '<div style="width:48px;height:48px;background:var(--accent-soft);border-radius:var(--radius-md);display:flex;align-items:center;justify-content:center;font-size:24px;">📚</div>' +
                 '<div style="flex:1;">' +
@@ -4264,6 +4261,108 @@ function bindEvents() {
         document.getElementById('incrementalOff').classList.add('active');
         document.getElementById('incrementalOn').classList.remove('active');
     }
+
+    // ========================================
+    // 【UIKit 统一事件委托】消除内联 onclick/onkeydown
+    // ========================================
+    // 在 document.body 上挂载两个全局委托，处理全游戏所有 data-action 元素。
+    // 后续阶段 C/D/E 会把所有 69 处内联事件替换为 data-action 属性。
+    if (UIKit && typeof UIKit.delegate === 'function') {
+        UIKit.delegate(document.body, 'click', {
+            // 论坛
+            openForumPost: function(d) { window.openForumPost(Number(d.forumIdx)); },
+            closeForumPost: function(d) { window.closeForumPost(Number(d.forumIdx)); },
+            showForumHot: function() { window.showForumHot(); },
+            showForumTopic: function() { window.showForumTopic(); },
+            showForumMine: function() { window.showForumMine(); },
+            sendForumComment: function(d) { window.sendForumComment(Number(d.forumIdx), d.replyTo || ''); },
+            replyForumComment: function(d) {
+                var postIdx = Number(d.postIdx);
+                if ('commentIdx' in d) {
+                    // 帖子详情页内的回复按钮：使用数据中的评论索引
+                    window.replyToForumComment(postIdx, Number(d.commentIdx));
+                } else {
+                    // appendForumReply 动态添加的回复：计算 DOM 中回复数
+                    var cnt = document.querySelectorAll('#forumPostDetail' + d.postIdx + ' .forum-reply-item').length;
+                    window.replyToForumComment(postIdx, cnt);
+                }
+            },
+            // 朋友圈
+            toggleMomentLike: function(d) { window.toggleMomentLike(Number(d.momentIdx)); },
+            showMomentCommentInput: function(d, el) { window.showMomentCommentInput(Number(d.momentIdx), el); },
+            sendMomentComment: function(d) { window.sendMomentComment(Number(d.momentIdx)); },
+            // 邮件
+            openMailDetail: function(d) { window.openMailDetail(Number(d.mailIdx)); },
+            backToMailList: function() { window.backToMailList(); },
+            deleteMail: function(d) { window.deleteMail(Number(d.mailIdx)); },
+            // 日记
+            diaryBackToList: function() { window.diaryBackToList(); },
+            diaryChangeDate: function(d) { window.diaryChangeDate(Number(d.dir)); },
+            openDiaryDatePicker: function() { window.openDiaryDatePicker(); },
+            diaryResetDate: function() { window.diaryResetDate(); },
+            closeDiaryDatePicker: function(d, el, e) {
+                if (d.selfOnly === 'true' && e.target !== el) return;
+                window.closeDiaryDatePicker();
+            },
+            jumpDiaryDate: function(d) { window.closeDiaryDatePicker(); window.diaryJumpToDate(d.date); },
+            // 物品/商店
+            switchItemsTab: function(d, el) { window.switchItemsTab(d.tab, el); },
+            filterBagItems: function(d, el) { window.filterBagItems(d.cat, el); },
+            buyShopItem: function(d) { window.buyShopItem(Number(d.shopIdx)); },
+            // NPC
+            viewNpcDiary: function(d) { window.viewNpcDiary(d.npcName); },
+            openNpcDetail: function(d) { window.openNpcDetail(d.npcName); },
+            // 通用工具
+            toggleClass: function(d, el) { el.classList.toggle(d.class); },
+            toggleNpcThought: function(d, el) { el.classList.toggle('expanded'); },
+            // 存档
+            loadFromSlot: function(d) { window.loadFromSlot(Number(d.slot)); },
+            saveToSlot: function(d) { window.saveToSlot(Number(d.slot)); },
+            safeSaveSlot: function(d) { window.safeSaveSlot(Number(d.slot)); },
+            safeLoadSlot: function(d) { window.safeLoadSlot(Number(d.slot)); },
+            deleteSaveSlot: function(d) { window.deleteSaveSlot(Number(d.slot)); },
+            deleteFromSlot: function(d) { window.deleteFromSlot(Number(d.slot)); },
+            renameSave: function(d) { window.renameSave(Number(d.slot)); },
+            exportSaves: function() { window.exportSaves(); },
+            clickInput: function(d) { var el = document.getElementById(d.inputId); if (el) el.click(); },
+            // 弹窗
+            hideModal: function(d) { window.UI.hideModal(d.modal); },
+            modalThenExport: function(d) { window.UI.hideModal(d.modal); window.exportSaves(); },
+            // 错误条
+            closeErrorBanner: function(d, el) { var b = el.closest('.api-error-banner'); if (b) b.remove(); },
+            // API
+            showApiDetail: function(d) { window.showApiDetail(Number(d.apiSlot)); },
+            // 任务
+            toggleQuestTracker: function() { window.QuestSystem.toggleTracker(); },
+            toggleQuestList: function() { window.toggleQuestList(); },
+            // 回忆
+            showRecapDetail: function(d) { window.showRecapDetail(Number(d.recapIdx)); },
+            // game.js
+            toggleThought: function(d, el) { window.toggleThought(el); },
+            toggleChoicesPanel: function() { window.toggleChoicesPanel(); },
+            fillChoiceToInput: function(d) { window.fillChoiceToInput(d.choiceText); },
+            selectNpcChatChoice: function(d) { window.selectNpcChatChoice(d.choiceText); },
+            // 记忆管理（tavern-compat）
+            memAction: function(d) {
+                var fn = window.MemoryManagerUI && window.MemoryManagerUI[d.memFn];
+                if (typeof fn !== 'function') { console.warn('[UIKit] memAction: 未找到函数', d.memFn); return; }
+                var args = [];
+                for (var i = 0; i < 5; i++) {
+                    var k = 'memArg' + i;
+                    if (!(k in d)) break;
+                    var v = d[k];
+                    args.push(/^-?\d+$/.test(v) ? Number(v) : v);
+                }
+                fn.apply(window.MemoryManagerUI, args);
+            }
+        });
+
+        // Enter 键委托（覆盖 2 处 onkeydown：论坛评论、朋友圈评论）
+        UIKit.delegate(document.body, 'keydown', {
+            sendForumComment: function(d) { window.sendForumComment(Number(d.forumIdx), d.replyTo || ''); },
+            sendMomentComment: function(d) { window.sendMomentComment(Number(d.momentIdx)); }
+        }, { keyForKeydown: 'Enter', ignoreShift: true });
+    }
 }
 function startNewGame() {
     var prompt = document.getElementById('worldDescription').value.trim();
@@ -4846,7 +4945,7 @@ function renderAPISettings() {
 
         return '<div class="pearl-card api-card" role="button" tabindex="0" style="padding:14px;margin-bottom:10px;cursor:pointer;' +
             (isCurrent ? 'border-color:var(--text);' : '') + (isFailed ? 'border-color:#ff3b30;' :
-                '') + '" onclick="showApiDetail(' + i + ')" data-api-index="' + i + '">' +
+                '') + '" data-action="showApiDetail" data-api-slot="' + i + '">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div><div style="font-size:14px;font-weight:500;display:flex;align-items:center;">' +
             apiName + errorIcon + '</div>' +
@@ -6096,7 +6195,7 @@ async function openSaveLoadModal() {
             html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
                 escapeHtml(autoData.name || '自动存档') + '</div><div class="sl-slot-meta">' + escapeHtml(
                     autoData.time || '') +
-                '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(0)">读取</button></div></div>';
+                '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" data-action="loadFromSlot" data-slot="0">读取</button></div></div>';
         } else {
             html +=
                 '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">暂无自动存档</div></div></div>';
@@ -6109,20 +6208,20 @@ async function openSaveLoadModal() {
                 html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
                     escapeHtml(s.data.name || ('存档 ' + s.slot)) + '</div><div class="sl-slot-meta">' +
                     escapeHtml(s.data.time || '') +
-                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(' +
-                    s.slot + ')">读取</button><button class="sl-btn" onclick="saveToSlot(' + s.slot +
-                    ')">覆盖</button><button class="sl-btn danger" onclick="deleteSaveSlot(' + s.slot +
-                    ')">删除</button></div></div>';
+                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" data-action="loadFromSlot" data-slot="' +
+                    s.slot + '">读取</button><button class="sl-btn" data-action="saveToSlot" data-slot="' + s.slot +
+                    '">覆盖</button><button class="sl-btn danger" data-action="deleteSaveSlot" data-slot="' + s.slot +
+                    '">删除</button></div></div>';
             } else {
                 html +=
                     '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">存档位 ' +
                     s.slot +
-                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" onclick="saveToSlot(' +
-                    s.slot + ')">保存</button></div></div>';
+                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" data-action="saveToSlot" data-slot="' +
+                    s.slot + '">保存</button></div></div>';
             }
         }
         html +=
-            '<div class="sl-bottom-actions"><button class="sl-btn" onclick="UI.hideModal(\'saveLoadModal\')">关闭</button></div>';
+            '<div class="sl-bottom-actions"><button class="sl-btn" data-action="hideModal" data-modal-id="saveLoadModal">关闭</button></div>';
         body.innerHTML = html;
     } catch (e) {
         console.error('openSaveLoadModal出错:', e);
@@ -6148,17 +6247,17 @@ async function renderSaveUI() {
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8;flex-wrap:wrap;gap:4px">' +
                 '<span style="font-size:13px;color:var(--text-tertiary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' +
                 displayName + '</span>' + '<div style="display:flex;gap:4px;flex-shrink:0">' +
-                '<button class="save-action-btn" onclick="renameSave(' + slot + ')">改名</button>' +
-                '<button class="save-action-btn" onclick="loadFromSlot(' + slot + ')">读取</button>' + (
-                    showSave ? '<button class="save-action-btn" onclick="safeSaveSlot(' + slot +
-                    ')">覆盖</button>' : '') +
-                '<button class="save-action-btn" onclick="deleteFromSlot(' + slot +
-                ')" style="color:#ff6b6b">删除</button>' + '</div></div>';
+                '<button class="save-action-btn" data-action="renameSave" data-slot="' + slot + '">改名</button>' +
+                '<button class="save-action-btn" data-action="loadFromSlot" data-slot="' + slot + '">读取</button>' + (
+                    showSave ? '<button class="save-action-btn" data-action="safeSaveSlot" data-slot="' + slot +
+                    '">覆盖</button>' : '') +
+                '<button class="save-action-btn" data-action="deleteFromSlot" data-slot="' + slot +
+                '" style="color:#ff6b6b">删除</button>' + '</div></div>';
         } else {
             displayName = icon + ' ' + label + ' - 空';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8">' +
                 '<span style="font-size:13px;color:var(--text-tertiary)">' + displayName + '</span>' + (showSave ?
-                    '<button class="save-action-btn" onclick="safeSaveSlot(' + slot + ')">保存</button>' :
+                    '<button class="save-action-btn" data-action="safeSaveSlot" data-slot="' + slot + '">保存</button>' :
                     '') + '</div>';
         }
     }
@@ -6181,8 +6280,8 @@ async function renderSaveUI() {
     html += '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border)">' +
         '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;text-align:center">包 存档导入 / 导出</div>' +
         '<div style="display:flex;gap:8px">' +
-        '<button class="pixel-btn blue big" onclick="exportSaves()" style="flex:1">导出全部存档</button>' +
-        '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+        '<button class="pixel-btn blue big" data-action="exportSaves" style="flex:1">导出全部存档</button>' +
+        '<button class="pixel-btn big" data-action="clickInput" data-input-id="importFileInput" style="flex:1">导入存档</button>' +
         '</div>' +
         '<div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:6px">导出为JSON文件，可在其他设备导入恢复</div>' +
         '</div>';
@@ -6197,8 +6296,8 @@ async function openLoadModal() {
         function loadRow(label, icon, data, slot) {
             if (!data) return '';
             var info = _formatSaveSlotData(data);
-            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);margin-bottom:6px;border:2px solid #a2d2ff;cursor:pointer" onclick="safeLoadSlot(' +
-                slot + ')">' + '<div style="flex:1;min-width:0;overflow:hidden">' +
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);margin-bottom:6px;border:2px solid #a2d2ff;cursor:pointer" data-action="safeLoadSlot" data-slot="' +
+                slot + '">' + '<div style="flex:1;min-width:0;overflow:hidden">' +
                 '<div style="font-size:14px;color:var(--text-tertiary);font-weight:600">' + icon + ' ' + escapeHtml(info.name) +
                 '</div>' + '<div style="font-size:11px;color:var(--text-tertiary)">' + label + ' · ' + escapeHtml(info.time) +
                 '</div>' + '</div>' +
@@ -6226,8 +6325,8 @@ async function openLoadModal() {
         }
         html +=
             '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border);display:flex;gap:8px">' +
-            '<button class="pixel-btn blue big" onclick="UI.hideModal(\'loadModal\');exportSaves()" style="flex:1">导出存档</button>' +
-            '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+            '<button class="pixel-btn blue big" data-action="modalThenExport" data-modal="loadModal" style="flex:1">导出存档</button>' +
+            '<button class="pixel-btn big" data-action="clickInput" data-input-id="importFileInput" style="flex:1">导入存档</button>' +
             '</div>';
         // 使用统一弹窗管理器
         UI.createModal({
@@ -6945,8 +7044,7 @@ function renderNpcPage() {
             // 添加好感度等级标签
             tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
 
-            return '<div class="character-card pearl-card" onclick="openNpcDetail(\'' + sn +
-                '\')">' +
+            return '<div class="character-card pearl-card" data-action="openNpcDetail" data-npc-name="' + escapeHtml(sn) + '">' +
                 '<div class="avatar avatar-md"><span>' + c.name.charAt(0) + '</span></div>' +
                 '<div class="char-info">' +
                 '<div class="char-name">' + escapeHtml(c.name) + '</div>' +
@@ -6957,7 +7055,7 @@ function renderNpcPage() {
                 fav + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
                 (c.desc ?
-                    '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
+                    '<div class="npc-thought-bubble" data-action="toggleNpcThought"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
                     escapeHtml(c.desc) + '</div></div></div>' : '') +
                 '</div></div>';
         }).join('');

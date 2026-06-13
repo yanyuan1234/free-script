@@ -51,14 +51,6 @@ _evictIfNeeded() {
 }
 };
 
-var Logger = {
-    DEBUG: false, INFO: false, WARN: true, ERROR: true,
-    debug: function() { if (this.DEBUG && console && console.log) console.log.apply(console, ['[DEBUG]'].concat(Array.from(arguments))); },
-    info: function() { if (this.INFO && console && console.info) console.info.apply(console, ['[INFO]'].concat(Array.from(arguments))); },
-    warn: function() { if (this.WARN && console && console.warn) console.warn.apply(console, ['[WARN]'].concat(Array.from(arguments))); },
-    error: function() { if (this.ERROR && console && console.error) console.error.apply(console, ['[ERROR]'].concat(Array.from(arguments))); }
-};
-
 var TimerManager = {
     _intervals: {}, _timeouts: {},
     setInterval: function(id, fn, delay) { this.clearInterval(id); this._intervals[id] = setInterval(fn, delay); },
@@ -503,3 +495,70 @@ function shouldSkipPageRender(pageName, dataKey) {
     RenderCache.mark(pageName, dataKey);
     return false;
 }
+
+// ========================================
+// UIKit: 统一事件委托工具（消除内联 onclick）
+// ========================================
+// 核心思路：在指定父元素上挂一个委托监听器，统一处理所有带 data-action 的子元素。
+// 子元素用 data-* 属性携带参数，handler 接收 (data, el, e) 三参。
+// 优势：
+// 1. 消除内联 onclick/onkeydown，杜绝 XSS 注入面
+// 2. innerHTML 反复渲染不掉事件（委托挂在父元素上）
+// 3. 参数通过 dataset API 传递，自动反转义 HTML 实体
+var UIKit = {
+    /**
+     * 在父元素上注册统一事件委托
+     * @param {HTMLElement} parent 委托根（建议 document.body）
+     * @param {string} type 事件类型：'click' / 'keydown' / 'mouseover' 等
+     * @param {Object} handlerMap 形如 { actionName: function(data, el, e) {...} }
+     * @param {Object} [options] 额外配置
+     *   - keyForKeydown: 仅 keydown 时，按此键触发（默认 'Enter'）
+     *   - ignoreShift: 仅 keydown 时，是否忽略 Shift+Enter（默认 true）
+     */
+    delegate: function(parent, type, handlerMap, options) {
+        if (!parent || parent._uikitBound) {
+            parent._uikitBound = parent._uikitBound || {};
+        }
+        var key = '_uikit_' + type;
+        if (parent._uikitBound[key]) return;
+        parent._uikitBound[key] = true;
+
+        options = options || {};
+        var keyForKeydown = options.keyForKeydown || 'Enter';
+        var ignoreShift = options.ignoreShift !== false;
+
+        parent.addEventListener(type, function(e) {
+            // 1. 找到最近的带 data-action 的祖先
+            var el = e.target.closest && e.target.closest('[data-action]');
+            if (!el) return;
+
+            var action = el.dataset.action;
+            var fn = handlerMap[action];
+            if (!fn) return;
+
+            // 2. 提取 data-* 属性为 data 对象（去掉 data- 前缀，驼峰化）
+            var data = {};
+            for (var i = 0; i < el.attributes.length; i++) {
+                var attr = el.attributes[i];
+                if (attr.name.indexOf('data-') !== 0) continue;
+                if (attr.name === 'data-action') continue;
+                var keyName = attr.name.slice(5).replace(/-([a-z])/g, function(_, c) { return c.toUpperCase(); });
+                data[keyName] = attr.value;
+            }
+
+            // 3. 特殊处理：keydown 过滤
+            if (type === 'keydown') {
+                if (e.key !== keyForKeydown && e.keyCode !== 13) return;
+                if (ignoreShift && e.shiftKey) return;
+            }
+
+            // 4. 调用 handler
+            try {
+                fn(data, el, e);
+            } catch (err) {
+                console.error('[UIKit] handler "' + action + '" error:', err);
+            }
+        });
+    }
+};
+

@@ -3385,17 +3385,16 @@ var MemoryManagerUI = {
     // borderRadius: 可选，默认 6px（与原版小按钮一致；大表单按钮传 8px）
     _btn: function(action, fnName, arg, borderRadius) {
         var s = MemoryManagerUI._btnPresets._getPreset(action);
-        var argStr;
-        if (arg === undefined || arg === null) {
-            argStr = '';
-        } else if (typeof arg === 'number') {
-            argStr = String(arg);
-        } else {
-            argStr = '\'' + this._escAttr(arg) + '\'';
-        }
-        var onclick = 'MemoryManagerUI.' + fnName + (argStr ? '(' + argStr + ')' : '()');
         var radius = borderRadius || '6px';
-        return '<button onclick="' + onclick + '" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:' + radius + ';cursor:pointer;">' + s.text + '</button>';
+        var attrs = 'data-action="memAction" data-mem-fn="' + fnName + '"';
+        if (arg === undefined || arg === null) {
+            // 无参数
+        } else if (typeof arg === 'number') {
+            attrs += ' data-mem-arg0="' + arg + '" data-mem-arg0-type="number"';
+        } else {
+            attrs += ' data-mem-arg0="' + this._esc(arg) + '" data-mem-arg0-type="string"';
+        }
+        return '<button ' + attrs + ' style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:' + radius + ';cursor:pointer;">' + s.text + '</button>';
     },
 
     // 获取按钮预设样式（供 _formFooter 等复用）
@@ -3456,11 +3455,18 @@ var MemoryManagerUI = {
         if (saveArgs === undefined || saveArgs === null) {
             saveBtn = this._btn(action, saveFn, undefined, '8px');
         } else if (Array.isArray(saveArgs)) {
-            var parts = saveArgs.map(function(a) {
-                return typeof a === 'string' ? "'" + this._escAttr(a) + "'" : a;
-            }, this);
+            // 数组参数：用 data-mem-arg0/1 + data-mem-arg{idx}-type
             var s = MemoryManagerUI._btnPresets._getPreset(action);
-            saveBtn = '<button onclick="MemoryManagerUI.' + saveFn + '(' + parts.join(',') + ')" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:8px;cursor:pointer;">' + s.text + '</button>';
+            var attrs = 'data-action="memAction" data-mem-fn="' + saveFn + '"';
+            for (var ai = 0; ai < saveArgs.length; ai++) {
+                var a = saveArgs[ai];
+                if (typeof a === 'number') {
+                    attrs += ' data-mem-arg' + ai + '="' + a + '" data-mem-arg' + ai + '-type="number"';
+                } else {
+                    attrs += ' data-mem-arg' + ai + '="' + this._esc(a) + '" data-mem-arg' + ai + '-type="string"';
+                }
+            }
+            saveBtn = '<button ' + attrs + ' style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:8px;cursor:pointer;">' + s.text + '</button>';
         } else {
             saveBtn = this._btn(action, saveFn, saveArgs, '8px');
         }
@@ -3697,8 +3703,8 @@ var MemoryManagerUI = {
             list.forEach(function(a, i) {
                 var sourceTag = a.source === 'manual' ? '<span style="font-size:10px;background:#4a4;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">手动</span>' : a.source === 'auto' ? '<span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">自动</span>' : '';
                 var escType = self._escAttr(t);
-                var editBtn = '<button onclick="MemoryManagerUI.editPermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
-                var delBtn  = '<button onclick="MemoryManagerUI.deletePermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
+                var editBtn = '<button data-action="memAction" data-mem-fn="editPermanentFact" data-mem-arg0="' + self._esc(t) + '" data-mem-arg0-type="string" data-mem-arg1="' + i + '" data-mem-arg1-type="number" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
+                var delBtn  = '<button data-action="memAction" data-mem-fn="deletePermanentFact" data-mem-arg0="' + self._esc(t) + '" data-mem-arg0-type="string" data-mem-arg1="' + i + '" data-mem-arg1-type="number" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
                 var btns = '<div style="display:flex;gap:6px;flex-shrink:0;">' + editBtn + delBtn + '</div>';
                 html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div>' + btns + '</div>';
             });
@@ -5578,5 +5584,26 @@ return result;
     global.MoonReadPresetConfig = MoonReadPresetConfig;
     global.FruitPresetConfig = FruitPresetConfig;
     global.GomorrahPresetConfig = GomorrahPresetConfig;
+
+    // 【tavern-compat.js 全局委托】注册 memAction 通用处理器
+    if (global.UI && global.UI.uiKit) {
+        global.UI.uiKit.delegate(global.document.body, 'click', {
+            memAction: function(d) {
+                var fn = global.MemoryManagerUI && global.MemoryManagerUI[d.memFn];
+                if (!fn) return;
+                var args = [];
+                var i = 0;
+                while (d.hasOwnProperty('memArg' + i)) {
+                    var v = d['memArg' + i];
+                    if (d['memArg' + i + 'Type'] === 'number') {
+                        v = Number(v);
+                    }
+                    args.push(v);
+                    i++;
+                }
+                fn.apply(global.MemoryManagerUI, args);
+            }
+        });
+    }
 
 })(window);
