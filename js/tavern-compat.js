@@ -2696,20 +2696,53 @@ var GameMemory = {
 
     // 逐层摘要注入（Qvink风格：近详细→远压缩）
     // 按次计费：注入更多摘要，让AI掌握更多剧情脉络
+    // 【优化】话题聚类检索：根据当前话题优先注入相关摘要，不相关的只保留最近几条
     _buildSummaryLayersSection: function() {
         var lines = [];
         var self = this;
-        // 远层：关键句
+        var topic = self.detectCurrentTopic();
+        // 收集当前话题关键词（角色名+物品名+地点名+动词关键词）
+        var topicWords = [].concat(topic.characters || [], topic.items || [], topic.locations || [], topic.keywords || []);
+        var hasTopic = topicWords.length > 0;
+
+        // 话题匹配函数：判断摘要条目是否与当前话题相关
+        function isRelevantToTopic(text) {
+            if (!hasTopic || !text) return false;
+            for (var i = 0; i < topicWords.length; i++) {
+                if (text.indexOf(topicWords[i]) >= 0) return true;
+            }
+            return false;
+        }
+
+        // 远层：关键句 - 话题相关的全部注入，不相关的只保留最近3条
         if (self._summaryLayers.far && self._summaryLayers.far.length > 0) {
             lines.push('〔更早〕');
-            self._summaryLayers.far.slice(-10).forEach(function(s) { if (s) lines.push('• ' + s); });
+            var farRelevant = [];
+            var farOther = [];
+            self._summaryLayers.far.forEach(function(s) {
+                if (!s) return;
+                if (isRelevantToTopic(s)) farRelevant.push(s);
+                else farOther.push(s);
+            });
+            // 话题相关的优先
+            farRelevant.slice(-10).forEach(function(s) { lines.push('• ' + s); });
+            // 不相关的只保留最近3条（避免挤占token）
+            farOther.slice(-3).forEach(function(s) { lines.push('• ' + s); });
         }
-        // 中层：压缩摘要
+        // 中层：压缩摘要 - 话题相关的全部注入，不相关的只保留最近3条
         if (self._summaryLayers.mid && self._summaryLayers.mid.length > 0) {
             lines.push('〔近期摘要〕');
-            self._summaryLayers.mid.slice(-8).forEach(function(s) { if (s) lines.push('• ' + s); });
+            var midRelevant = [];
+            var midOther = [];
+            self._summaryLayers.mid.forEach(function(s) {
+                if (!s) return;
+                if (isRelevantToTopic(s)) midRelevant.push(s);
+                else midOther.push(s);
+            });
+            midRelevant.slice(-8).forEach(function(s) { lines.push('• ' + s); });
+            midOther.slice(-3).forEach(function(s) { lines.push('• ' + s); });
         }
-        // 近层：详细
+        // 近层：详细 - 全部注入（近层本身只有3条，不需要筛选）
         if (self._summaryLayers.near && self._summaryLayers.near.length > 0) {
             lines.push('〔最近对话〕');
             self._summaryLayers.near.forEach(function(s) { if (s) lines.push('• ' + s); });

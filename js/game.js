@@ -4598,6 +4598,399 @@ async function requestNpcReply(playerText) {
         if (inputEl) inputEl.focus();
     }
 }
+// ========================================
+// 群聊功能
+// ========================================
+// 创建群聊
+function createGroupChat(name, members) {
+    gameState._groupChats = gameState._groupChats || {};
+    gameState._joinedGroups = gameState._joinedGroups || {};
+    var groupId = 'group_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+    gameState._groupChats[groupId] = {
+        name: name,
+        members: members,
+        chatHistory: [],
+        createdAt: Date.now()
+    };
+    gameState._joinedGroups[groupId] = true;
+    safeAutoSave();
+    // 返回群列表页
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('群组「' + name + '」创建成功');
+    // 关闭子页面，重新打开群组页
+    var subContainer = document.getElementById('logSubContainer');
+    if (subContainer) {
+        subContainer.classList.add('hidden');
+        subContainer.style.display = 'none';
+    }
+    var logMainContent = document.getElementById('logMainContent');
+    if (logMainContent) logMainContent.style.display = '';
+    // 刷新群组页面缓存
+    if (typeof _pageRenderCache !== 'undefined') {
+        _pageRenderCache['renderGroupPage'] = null;
+    }
+    // 直接打开群聊
+    openGroupChat(groupId);
+    return groupId;
+}
+// 打开群聊
+function openGroupChat(groupId) {
+    gameState._groupChats = gameState._groupChats || {};
+    var group = gameState._groupChats[groupId];
+    if (!group) return;
+    groupChatState.groupId = groupId;
+    groupChatState.chatHistory = group.chatHistory ? group.chatHistory.slice() : [];
+    groupChatState.isSending = false;
+    groupChatState.abortController = null;
+    var titleEl = document.getElementById('groupChatTitle');
+    var msgsEl = document.getElementById('groupChatMessages');
+    var choicesEl = document.getElementById('groupChatChoices');
+    var inputEl = document.getElementById('groupChatInput');
+    var sendEl = document.getElementById('groupChatSend');
+    var memberBar = document.getElementById('groupChatMemberBar');
+    if (!titleEl || !msgsEl || !choicesEl || !inputEl || !sendEl) {
+        console.warn('groupChatModal not found');
+        return;
+    }
+    titleEl.textContent = group.name + '(' + (group.members || []).length + ')';
+    msgsEl.innerHTML = '';
+    choicesEl.innerHTML = '';
+    inputEl.value = '';
+    inputEl.placeholder = '在群聊中说话...';
+    sendEl.disabled = false;
+    // 渲染成员头像条
+    if (memberBar) {
+        var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+        var barHtml = '';
+        (group.members || []).forEach(function(npcName) {
+            var colorIdx = npcName.charCodeAt(0) % colors.length;
+            var firstChar = npcName.charAt(0) || '?';
+            barHtml += '<div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;background:' + colors[colorIdx] + ';flex-shrink:0;" title="' + escapeHtml(npcName) + '">' + escapeHtml(firstChar) + '</div>';
+        });
+        memberBar.innerHTML = barHtml;
+    }
+    // 重新渲染历史气泡
+    groupChatState.chatHistory.forEach(function(msg) {
+        addGroupChatBubble(msg.role, msg.name || '', msg.text, true);
+    });
+    UI.showModal('groupChatModal');
+    // 绑定回车
+    var input = document.getElementById('groupChatInput');
+    if (input && !input._hasGroupEnterBinding) {
+        input._hasGroupEnterBinding = true;
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
+                if (!e.shiftKey) {
+                    e.preventDefault();
+                    sendGroupChat();
+                }
+            }
+        });
+    }
+}
+// 关闭群聊
+function closeGroupChat() {
+    UI.hideModal('groupChatModal');
+    groupChatState.groupId = '';
+    groupChatState.chatHistory = [];
+    groupChatState.abortController = null;
+    groupChatState.isSending = false;
+}
+// 发送群聊消息
+function sendGroupChat() {
+    if (groupChatState.isSending) return;
+    var input = document.getElementById('groupChatInput');
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    addGroupChatBubble('player', '我', text);
+    try {
+        var p = requestGroupReply(text);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[群聊] 异步操作失败:', e);
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+                }
+            });
+        }
+    } catch (e) {
+        console.error('[群聊] 同步错误:', e);
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+        }
+    }
+}
+// 添加群聊气泡（带名字标签）
+function addGroupChatBubble(role, name, text, skipPush) {
+    var messages = document.getElementById('groupChatMessages');
+    if (!messages) return;
+    var isPlayer = role === 'player';
+    var avatarChar = isPlayer ? '我' : (name ? name.charAt(0) : '?');
+    var now = new Date();
+    var timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+    var avatarColor = isPlayer ? '#07C160' : (name ? colors[name.charCodeAt(0) % colors.length] : '#999');
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-message' + (isPlayer ? ' self' : '');
+    // 名字标签（NPC消息显示名字，玩家消息不显示）
+    var nameLabel = '';
+    if (!isPlayer && name) {
+        nameLabel = '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:2px;margin-left:4px;">' + escapeHtml(name) + '</div>';
+    }
+    bubble.innerHTML = '<div class="chat-message-avatar" style="background:' + avatarColor + ';">' + escapeHtml(avatarChar) + '</div>' +
+        '<div>' + nameLabel + '<div class="chat-message-content">' + renderRichMessage(text) +
+        '</div><div class="chat-message-meta"><span>' + timeStr + '</span></div></div>';
+    messages.appendChild(bubble);
+    messages.scrollTop = messages.scrollHeight;
+    if (!skipPush) {
+        groupChatState.chatHistory.push({
+            role: role,
+            name: name,
+            text: text
+        });
+        // 限制聊天历史长度
+        if (groupChatState.chatHistory.length > 100) {
+            groupChatState.chatHistory = groupChatState.chatHistory.slice(-50);
+        }
+        // 同步到gameState
+        if (gameState && gameState._groupChats && groupChatState.groupId) {
+            gameState._groupChats[groupChatState.groupId].chatHistory = groupChatState.chatHistory.slice();
+        }
+        safeAutoSave();
+    }
+}
+// 请求群聊AI回复
+async function requestGroupReply(playerText) {
+    if (groupChatState.abortController) {
+        try { groupChatState.abortController.abort(); } catch(e) {}
+    }
+    groupChatState.isSending = true;
+    groupChatState.abortController = new AbortController();
+    var sendEl = document.getElementById('groupChatSend');
+    if (sendEl) sendEl.disabled = true;
+    try {
+        var groupId = groupChatState.groupId;
+        var group = gameState._groupChats[groupId];
+        if (!group) {
+            groupChatState.isSending = false;
+            if (sendEl) sendEl.disabled = false;
+            return;
+        }
+        var members = group.members || [];
+        // 构建群聊系统提示
+        var systemMsg = '你是一个群聊模拟器。以下是群聊中的角色：\n\n';
+        members.forEach(function(npcName) {
+            var c = gameState.allCharacters[npcName] || {};
+            systemMsg += '【' + npcName + '】\n';
+            if (c.title) systemMsg += '身份: ' + c.title + '\n';
+            if (c.relation) systemMsg += '与主角关系: ' + c.relation + '\n';
+            if (c.favorability !== undefined) systemMsg += '好感度: ' + c.favorability + '\n';
+            if (c.desc) systemMsg += '当前状态: ' + c.desc + '\n';
+            if (c.details && c.details.length > 0) {
+                c.details.forEach(function(d) {
+                    systemMsg += d.key + ': ' + d.value + '\n';
+                });
+            }
+            systemMsg += '\n';
+        });
+        // 注入主角信息
+        var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
+        systemMsg += '【玩家信息】\n名字: ' + playerName + '\n';
+        var _compactSetup = getCompactSetupForSubFunction();
+        if (_compactSetup && _compactSetup.trim()) {
+            systemMsg += '【玩家设定】\n' + _compactSetup.trim() + '\n';
+        }
+        // 注入增强记忆
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.buildSmartInjection) {
+            var _groupMemText = EnhancedMemory.buildSmartInjection();
+            if (_groupMemText) {
+                systemMsg += '\n【剧情记忆】\n' + _groupMemText + '\n';
+            }
+        }
+        // 注入世界书
+        if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
+            var _groupWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
+            var _groupWIText = (typeof _groupWI === 'object' && _groupWI !== null) ? (_groupWI.text || '') : (_groupWI || '');
+            if (_groupWIText) {
+                systemMsg += '\n【世界知识】\n' + _groupWIText + '\n';
+            }
+        }
+        // 剧情背景
+        if (gameState && gameState.rollingSummary) {
+            systemMsg += '\n【剧情背景】\n' + gameState.rollingSummary + '\n';
+        }
+        systemMsg += '\n玩家刚说了：「' + playerText + '」\n\n';
+        systemMsg += '请生成群聊中各角色的回复。每个角色根据自己的性格和关系独立回应，不要所有人都回复，选择2-3个最可能回复的角色。\n\n';
+        systemMsg += '输出格式（每行一个角色的回复）：\n{name=角色名}回复内容\n{name=角色名}回复内容\n\n';
+        systemMsg += '注意：\n';
+        systemMsg += '- 角色之间也可能互相回应\n';
+        systemMsg += '- 不同角色语气和用词不同\n';
+        systemMsg += '- 好感度影响回复热情程度\n';
+        systemMsg += '- 有些角色可能不回复（在忙、不感兴趣等）\n';
+        systemMsg += '- 每个角色的回复要短，像微信群里打字一样自然\n';
+        systemMsg += '- 最后给出3个玩家可以接着说的选项\n\n';
+        systemMsg += '请严格用以下JSON格式输出：\n';
+        systemMsg += '{"replies":[{"name":"角色名","text":"回复内容"},{"name":"角色名","text":"回复内容"}],"choices":["选项1","选项2","选项3"]}';
+        // 注入预设写作风格
+        systemMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
+        // 构建消息列表
+        var chatMessages = [{
+            role: 'system',
+            content: systemMsg
+        }];
+        // 加入对话历史（最近10条）
+        var recentChat = groupChatState.chatHistory.slice(-10);
+        if (recentChat.length > 0) {
+            recentChat.forEach(function(msg) {
+                chatMessages.push({
+                    role: msg.role === 'player' ? 'user' : 'assistant',
+                    content: msg.role === 'player' ? msg.text : ('{' + msg.name + '}' + msg.text)
+                });
+            });
+        }
+        // 确保最新玩家消息在历史中
+        var lastInHistory = groupChatState.chatHistory.length > 0 ? groupChatState.chatHistory[groupChatState.chatHistory.length - 1] : null;
+        var alreadyInHistory = lastInHistory && lastInHistory.role === 'player' && lastInHistory.text === playerText;
+        if (!alreadyInHistory) {
+            chatMessages.push({
+                role: 'user',
+                content: playerText
+            });
+        }
+        chatMessages = _applyUseSysprompt(chatMessages);
+        var response = await callAI(chatMessages, {
+            stream: false,
+            temperature: gameState.temperature != null ? gameState.temperature : 0.8,
+            max_tokens: 1024,
+            antiRepeat: true,
+            signal: groupChatState.abortController ? groupChatState.abortController.signal : undefined
+        });
+        // 解析回复
+        var replies = [];
+        var choices = [];
+        var parsed = safeJSONParse(response);
+        if (parsed) {
+            if (parsed.replies && Array.isArray(parsed.replies)) {
+                replies = parsed.replies;
+            }
+            choices = parsed.choices || [];
+        } else {
+            // 尝试解析 {name=角色名}回复内容 格式
+            var lines = response.split('\n');
+            lines.forEach(function(line) {
+                var match = line.match(/\{name=([^}]+)\}(.+)/);
+                if (match) {
+                    replies.push({ name: match[1].trim(), text: match[2].trim() });
+                }
+            });
+            // 尝试提取choices
+            choices = extractArr(response, 'choices') || [];
+        }
+        if (replies.length === 0) {
+            // 如果解析失败，让第一个成员回复
+            if (members.length > 0) {
+                replies = [{ name: members[0], text: '...' }];
+            }
+        }
+        // 分批显示群聊消息
+        var delay = 0;
+        replies.forEach(function(reply, i) {
+            TimerManager.setTimeout('groupReply_' + i, function() {
+                var npcName = reply.name || (members[0] || '未知');
+                var text = reply.text || '...';
+                addGroupChatBubble('npc', npcName, text);
+                // 最后一条消息显示完后，渲染选项
+                if (i === replies.length - 1) {
+                    if (choices.length > 0) {
+                        var choicesHtml = choices.map(function(ch) {
+                            var safe = String(ch).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(
+                                /"/g, '&quot;').replace(/\n/g, ' ');
+                            return '<button class="npc-chat-choice" onclick="selectGroupChatChoice(\'' +
+                                safe + '\')">' + escapeHtml(ch) + '</button>';
+                        }).join('');
+                        document.getElementById('groupChatChoices').innerHTML = choicesHtml;
+                    } else {
+                        document.getElementById('groupChatChoices').innerHTML = '';
+                    }
+                }
+            }, delay);
+            delay += 400 + Math.random() * 500;
+        });
+        // 联动：把群聊摘要加入剧情记忆
+        if (replies.length > 0) {
+            var chatSummary = '群聊「' + (group.name || '') + '」：' + replies.map(function(r) { return r.name + ': ' + (r.text || ''); }).join(' / ');
+            if (window.EnhancedMemory && EnhancedMemory.addImportantEvent) {
+                try {
+                    EnhancedMemory.addImportantEvent({
+                        content: chatSummary,
+                        importance: 3,
+                        source: 'group_chat',
+                        type: 'group_chat'
+                    });
+                } catch (e) { /* 静默失败 */ }
+            }
+        }
+        // 广播群聊数据更新
+        if (window.GameLinker) {
+            GameLinker.refreshByDataChange('_groupChats');
+        }
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        addGroupChatBubble('npc', '系统', '（群聊出错了: ' + e.message + '）');
+        console.error('群聊失败:', e);
+    } finally {
+        groupChatState.isSending = false;
+        groupChatState.abortController = null;
+        var sendBtn = document.getElementById('groupChatSend');
+        if (sendBtn) sendBtn.disabled = false;
+        var inputEl = document.getElementById('groupChatInput');
+        if (inputEl) inputEl.focus();
+    }
+}
+// 选择群聊选项
+function selectGroupChatChoice(text) {
+    if (groupChatState.isSending) return;
+    document.getElementById('groupChatChoices').innerHTML = '';
+    addGroupChatBubble('player', '我', text);
+    try {
+        var p = requestGroupReply(text);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[群聊] 异步操作失败:', e);
+            });
+        }
+    } catch (e) {
+        console.error('[群聊] 同步错误:', e);
+    }
+}
+// 显示群成员列表
+function renderGroupChatMembers(groupId) {
+    gameState._groupChats = gameState._groupChats || {};
+    var group = gameState._groupChats[groupId];
+    if (!group) return;
+    var members = group.members || [];
+    var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+    var html = '<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;display:flex;align-items:flex-end;justify-content:center;" onclick="this.remove()">';
+    html += '<div style="background:var(--bg);border-radius:16px 16px 0 0;width:100%;max-width:400px;max-height:60vh;overflow-y:auto;padding:20px;" onclick="event.stopPropagation()">';
+    html += '<div style="font-size:16px;font-weight:600;margin-bottom:16px;color:var(--text);">群成员（' + members.length + '人）</div>';
+    members.forEach(function(npcName) {
+        var c = gameState.allCharacters[npcName] || {};
+        var colorIdx = npcName.charCodeAt(0) % colors.length;
+        var firstChar = npcName.charAt(0) || '?';
+        html += '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);">';
+        html += '<div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;color:#fff;background:' + colors[colorIdx] + ';">' + escapeHtml(firstChar) + '</div>';
+        html += '<div><div style="font-size:14px;font-weight:500;color:var(--text);">' + escapeHtml(npcName) + '</div>';
+        if (c.title) html += '<div style="font-size:12px;color:var(--text-secondary);">' + escapeHtml(c.title) + '</div>';
+        html += '</div></div>';
+    });
+    html += '<div style="text-align:center;padding:12px;color:var(--text-secondary);font-size:13px;cursor:pointer;" onclick="this.closest(\'div[style*=fixed]\').remove()">关闭</div>';
+    html += '</div></div>';
+    var overlay = document.createElement('div');
+    overlay.innerHTML = html;
+    document.body.appendChild(overlay.firstElementChild);
+}
 function openEditNpcModal(name) {
     UI.hideModal('npcDetailModal');
     npcEditingName = name;

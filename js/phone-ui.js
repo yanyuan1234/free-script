@@ -1134,6 +1134,8 @@ function getLogPageRenderers() {
     if (_logPageRenderers) return _logPageRenderers;
     _logPageRenderers = {
         chat: renderChatPage,
+        group: renderGroupPage,
+        groupCreate: renderCreateGroupPage,
         quests: renderQuestsPage,
         achieve: renderAchievePage,
         world: renderWorldPage,
@@ -1345,7 +1347,7 @@ function openLogSubPage(type) {
 }
 // 应用日志页面样式
 function _applyLogPageStyle(content, type, html) {
-    var isFullScreen = ['chat', 'forum', 'moments', 'rank', 'items', 'diary', 'mail', 'shop', 'quests',
+    var isFullScreen = ['chat', 'group', 'forum', 'moments', 'rank', 'items', 'diary', 'mail', 'shop', 'quests',
         'achieve'
     ].indexOf(type) >= 0;
 
@@ -1381,6 +1383,49 @@ function _applyLogPageStyle(content, type, html) {
                 if (n && typeof openNpcChat === 'function') {
                     openNpcChat(n);
                 }
+            }
+        });
+    }
+    // 群组页面事件委托：点击群组打开群聊，点击创建按钮打开创建页
+    if (type === 'group' && !content._groupClickBound) {
+        content._groupClickBound = true;
+        content.addEventListener('click', function(e) {
+            var groupItem = e.target.closest('[data-group-id]');
+            if (groupItem) {
+                var gid = groupItem.getAttribute('data-group-id');
+                if (gid && typeof openGroupChat === 'function') {
+                    openGroupChat(gid);
+                }
+                return;
+            }
+            var createBtn = e.target.closest('[data-action="createGroup"]');
+            if (createBtn && typeof showLogSubPage === 'function') {
+                showLogSubPage('创建群组', 'groupCreate');
+            }
+        });
+    }
+    // 创建群组页面事件委托
+    if (type === 'groupCreate' && !content._groupCreateBound) {
+        content._groupCreateBound = true;
+        content.addEventListener('click', function(e) {
+            var createBtn = e.target.closest('[data-action="doCreateGroup"]');
+            if (createBtn && typeof createGroupChat === 'function') {
+                var nameInput = content.querySelector('#newGroupName');
+                var groupName = nameInput ? nameInput.value.trim() : '';
+                if (!groupName) {
+                    if (typeof UI !== 'undefined' && UI.toast) UI.toast('请输入群名');
+                    return;
+                }
+                var checkboxes = content.querySelectorAll('.group-member-check:checked');
+                var members = [];
+                checkboxes.forEach(function(cb) {
+                    members.push(cb.value);
+                });
+                if (members.length < 2) {
+                    if (typeof UI !== 'undefined' && UI.toast) UI.toast('至少选择2名群成员');
+                    return;
+                }
+                createGroupChat(groupName, members);
             }
         });
     }
@@ -1463,6 +1508,88 @@ function renderChatPage() {
                 escapeHtml(lastMsg) + '</div></div></div>';
         }).join('') +
         '</div></div>';
+    return html;
+}
+// 渲染群组页面
+function renderGroupPage() {
+    gameState._groupChats = gameState._groupChats || {};
+    gameState._joinedGroups = gameState._joinedGroups || {};
+    var groupIds = Object.keys(gameState._joinedGroups);
+    var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+
+    var html = '<div class="chat-list-page" style="position:relative;">';
+    // 创建群组按钮
+    html += '<div style="position:sticky;top:0;z-index:10;background:var(--bg);padding:8px 0 8px 0;">';
+    html += '<div data-action="createGroup" role="button" tabindex="0" style="display:flex;align-items:center;justify-content:center;gap:6px;padding:10px 16px;margin:0 0 4px 0;background:var(--bg-secondary);border-radius:10px;cursor:pointer;color:var(--text-secondary);font-size:14px;">';
+    html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 5v14M5 12h14"/></svg>';
+    html += '创建群组</div></div>';
+
+    if (groupIds.length === 0) {
+        html += '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无群聊</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">点击上方「创建群组」<br>邀请角色一起聊天</p></div>';
+    } else {
+        html += '<div class="chat-list">';
+        groupIds.forEach(function(gid) {
+            var group = gameState._groupChats[gid];
+            if (!group) return;
+            var memberCount = (group.members || []).length;
+            var lastMsg = '点击开始群聊';
+            if (group.chatHistory && group.chatHistory.length > 0) {
+                var last = group.chatHistory[group.chatHistory.length - 1];
+                var prefix = last.role === 'player' ? '我: ' : (last.name ? last.name + ': ' : '');
+                var fullMsg = prefix + (last.text || '');
+                lastMsg = fullMsg.length > 20 ? fullMsg.substring(0, 20) + '...' : fullMsg;
+            }
+            var colorIdx = gid.charCodeAt(0) % colors.length;
+            var avatarColor = colors[colorIdx];
+            var firstChar = (group.name || '群').charAt(0);
+            html += '<div class="chat-item" role="button" tabindex="0" data-group-id="' + escapeHtml(gid) + '">' +
+                '<div class="chat-avatar" style="background:' + avatarColor + ';">' + escapeHtml(firstChar) + '</div>' +
+                '<div class="chat-content"><div class="chat-row"><div class="chat-name">' + escapeHtml(group.name || '未命名群组') +
+                '<span style="font-size:11px;color:var(--text-secondary);margin-left:4px;">(' + memberCount + '人)</span>' +
+                '</div></div><div class="chat-preview">' + escapeHtml(lastMsg) + '</div></div></div>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    return html;
+}
+// 渲染创建群组页面
+function renderCreateGroupPage() {
+    gameState._groupChats = gameState._groupChats || {};
+    var allNpcs = gameState.allCharacters || {};
+    var npcNames = Object.keys(allNpcs);
+
+    var html = '<div style="padding:16px;">';
+    html += '<div style="margin-bottom:16px;">';
+    html += '<label style="display:block;font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">群组名称</label>';
+    html += '<input type="text" id="newGroupName" placeholder="请输入群名" style="width:100%;padding:10px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;">';
+    html += '</div>';
+    html += '<div style="margin-bottom:16px;">';
+    html += '<label style="display:block;font-size:14px;font-weight:600;margin-bottom:8px;color:var(--text);">选择群成员</label>';
+
+    if (npcNames.length === 0) {
+        html += '<p style="color:var(--text-secondary);font-size:13px;">暂无可选角色，请先在游戏中添加角色</p>';
+    } else {
+        html += '<div style="max-height:300px;overflow-y:auto;">';
+        var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+        npcNames.forEach(function(name) {
+            var c = allNpcs[name];
+            var colorIdx = name.charCodeAt(0) % colors.length;
+            var avatarColor = colors[colorIdx];
+            var firstChar = name.charAt(0) || '?';
+            var title = c.title || '';
+            html += '<label style="display:flex;align-items:center;gap:10px;padding:8px 0;cursor:pointer;border-bottom:1px solid var(--border);">';
+            html += '<input type="checkbox" class="group-member-check" value="' + escapeHtml(name) + '" style="width:18px;height:18px;accent-color:#07C160;">';
+            html += '<div class="chat-avatar" style="background:' + avatarColor + ';width:36px;height:36px;font-size:14px;flex-shrink:0;">' + escapeHtml(firstChar) + '</div>';
+            html += '<div><div style="font-size:14px;font-weight:500;color:var(--text);">' + escapeHtml(name) + '</div>';
+            if (title) html += '<div style="font-size:12px;color:var(--text-secondary);">' + escapeHtml(title) + '</div>';
+            html += '</div></label>';
+        });
+        html += '</div>';
+    }
+    html += '</div>';
+    html += '<div data-action="doCreateGroup" role="button" tabindex="0" style="display:flex;align-items:center;justify-content:center;padding:12px;background:#07C160;color:#fff;border-radius:10px;font-size:15px;font-weight:600;cursor:pointer;">创建群组</div>';
+    html += '</div>';
     return html;
 }
 function renderQuestsPage() {
@@ -4294,6 +4421,12 @@ function startNewGame() {
     npcChatState.chatHistory = [];
     npcChatState.abortController = null;
     npcChatState.isSending = false;
+
+    // 清空群聊状态
+    groupChatState.groupId = '';
+    groupChatState.chatHistory = [];
+    groupChatState.abortController = null;
+    groupChatState.isSending = false;
 
     // 清空打字机缓冲
     TypewriterBuffer.stop();

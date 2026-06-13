@@ -65,6 +65,7 @@ var GameLinker = {
             worldSnapshot: ['storyPage', 'playerPage', 'npcPage'],
             conversationHistory: ['storyPage', 'recapPage'],
             _chatLogs: ['npcPage', 'storyPage'],
+            _groupChats: ['logPage', 'npcPage'],
             _worldModules: ['logPage', 'storyPage'],
             _memory: ['memoryPage'],
             gameTime: ['storyPage', 'logPage']
@@ -1555,6 +1556,8 @@ _theaterContent: {},
 _worldModules: [],
 _chatLogs: {},
 _chattedNpcs: {},
+_groupChats: {},
+_joinedGroups: {},
 _lastAIReply: null,
 _depthPrompts: {},
 _positionPrompts: {},
@@ -1864,6 +1867,14 @@ const npcChatState = {
     // [{role:'player'|'npc', text:'...'}]
     isSending: false,
     // 【修复R1】NPC聊天使用独立的AbortController，避免与主游戏共享导致竞态条件
+    abortController: null
+};
+// 群聊状态
+var groupChatState = {
+    groupId: '',
+    chatHistory: [],
+    // [{role:'player'|'npc', name:'NPC名', text:'...'}]
+    isSending: false,
     abortController: null
 };
 // ========================================
