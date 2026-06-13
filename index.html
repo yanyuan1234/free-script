@@ -896,7 +896,8 @@
                     <div class="wi-global-settings">
                         <label>扫描深度 <input type="number" id="wiScanDepth" value="5" min="1" max="50"></label>
                         <label>Token预算 <input type="number" id="wiTokenBudget" value="2000" min="100" max="8000" step="100"></label>
-                        <label><input type="checkbox" id="wiRecursive" checked> 递归扫描</label>
+                        <!-- 递归扫描默认开启，隐藏开关 -->
+                        <input type="checkbox" id="wiRecursive" checked class="hidden">
                     </div>
                     <!-- 世界书信息（隐藏，由JS控制显示） -->
                     <div id="wiBookInfo" class="hidden">
@@ -1066,30 +1067,6 @@
                                     </div>
                                 </div>
                                 <div class="wi-field-row" style="margin-top:10px;">
-                                    <div class="wi-checkbox" id="wiEditPreventRec" onclick="this.classList.toggle('checked')">
-                                        <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                        <span>Prevent Recursion</span>
-                                    </div>
-                                    <div class="wi-checkbox" id="wiEditCaseSensitive" onclick="this.classList.toggle('checked')">
-                                        <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                        <span>Case-Sensitive</span>
-                                    </div>
-                                </div>
-                                <div class="wi-field-row" style="margin-top:10px;">
-                                    <div class="wi-checkbox" id="wiEditWholeWords" onclick="this.classList.toggle('checked')">
-                                        <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                        <span>Whole Words 全词匹配</span>
-                                    </div>
-                                    <div class="wi-checkbox" id="wiEditIgnoreBudget" onclick="this.classList.toggle('checked')">
-                                        <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                        <span>Ignore Budget 忽略预算</span>
-                                    </div>
-                                </div>
-                                <div class="wi-field-row" style="margin-top:10px;">
-                                    <div class="wi-checkbox" id="wiEditAddMemo" onclick="this.classList.toggle('checked')">
-                                        <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
-                                        <span>Add Memo 显示条目名</span>
-                                    </div>
                                     <div class="wi-checkbox" id="wiEditDelayUntilRec" onclick="this.classList.toggle('checked')">
                                         <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
                                         <span>Delay Until Recursion</span>
@@ -1100,6 +1077,12 @@
                                     <input type="checkbox" id="wiEntryConstant">
                                     <input type="checkbox" id="wiEntrySelective">
                                     <input type="checkbox" id="wiEntryEnabled" checked>
+                                    <!-- 以下为隐藏的开关，默认值由JS控制 -->
+                                    <div class="wi-checkbox" id="wiEditPreventRec"></div>
+                                    <div class="wi-checkbox" id="wiEditCaseSensitive"></div>
+                                    <div class="wi-checkbox" id="wiEditWholeWords"></div>
+                                    <div class="wi-checkbox" id="wiEditIgnoreBudget"></div>
+                                    <div class="wi-checkbox checked" id="wiEditAddMemo"></div>
                                 </div>
                             </div>
                         </div>
@@ -1156,9 +1139,9 @@
                                         <input type="number" id="wiEditDelay" class="wi-field-input" value="" min="0" max="999" placeholder="null=关" style="font-size:12px;">
                                     </div>
                                 </div>
-                                <!-- 概率开关 -->
-                                <div class="mt-10">
-                                    <div class="wi-checkbox" id="wiEditUseProbability" onclick="this.classList.toggle('checked')">
+                                <!-- 概率开关（默认开启，隐藏UI） -->
+                                <div class="hidden">
+                                    <div class="wi-checkbox checked" id="wiEditUseProbability">
                                         <div class="wi-checkbox-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
                                         <span>Use Probability 启用概率控制</span>
                                     </div>

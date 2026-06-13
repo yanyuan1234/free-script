@@ -900,7 +900,7 @@ var WorldInfo = {
         delay: safeGet(raw.delay, ext.delay, null, null),
         delayUntilRecursion: safeGet(raw.delayUntilRecursion, raw.delay_until_recursion, ext.delay_until_recursion, 0),
         ignoreBudget: !!raw.ignoreBudget || !!raw.ignore_budget || !!ext.ignore_budget,
-        addMemo: !!raw.addMemo || !!ext.addMemo,
+        addMemo: raw.addMemo !== false && ext.addMemo !== false,
         useGroupScoring: safeGet(raw.useGroupScoring, raw.use_group_scoring, ext.use_group_scoring, null),
         vectorized: !!raw.vectorized || !!ext.vectorized,
         triggers: raw.triggers || ext.triggers || [],
@@ -975,7 +975,7 @@ var WorldInfo = {
         if (cb.caseSensitive) cb.caseSensitive.classList.toggle('checked', !!entry.caseSensitive);
         if (cb.wholeWords) cb.wholeWords.classList.toggle('checked', !!entry.matchWholeWords);
         if (cb.ignoreBudget) cb.ignoreBudget.classList.toggle('checked', !!entry.ignoreBudget);
-        if (cb.addMemo) cb.addMemo.classList.toggle('checked', !!entry.addMemo);
+        if (cb.addMemo) cb.addMemo.classList.toggle('checked', entry.addMemo !== false);
         if (cb.delayUntilRec) cb.delayUntilRec.classList.toggle('checked', !!entry.delayUntilRecursion);
         if (cb.groupOverride) cb.groupOverride.classList.toggle('checked', !!entry.groupOverride);
         if (cb.useGroupScoring) cb.useGroupScoring.classList.toggle('checked', !!entry.useGroupScoring);
@@ -1068,11 +1068,11 @@ var WorldInfo = {
         if (cb.caseSensitive) entry.caseSensitive = cb.caseSensitive.classList.contains('checked');
         if (cb.wholeWords) entry.matchWholeWords = cb.wholeWords.classList.contains('checked');
         if (cb.ignoreBudget) entry.ignoreBudget = cb.ignoreBudget.classList.contains('checked');
-        if (cb.addMemo) entry.addMemo = cb.addMemo.classList.contains('checked');
+        entry.addMemo = cb.addMemo ? cb.addMemo.classList.contains('checked') : true;
         if (cb.delayUntilRec) entry.delayUntilRecursion = cb.delayUntilRec.classList.contains('checked');
         if (cb.groupOverride) entry.groupOverride = cb.groupOverride.classList.contains('checked');
         if (cb.useGroupScoring) entry.useGroupScoring = cb.useGroupScoring.classList.contains('checked');
-        if (cb.useProbability) entry.useProbability = cb.useProbability.classList.contains('checked');
+        entry.useProbability = cb.useProbability ? cb.useProbability.classList.contains('checked') : true;
 
         // 高级设置
         var groupEl = document.getElementById('wiEditGroup');
@@ -1215,7 +1215,7 @@ var WorldInfo = {
             delay: null,
             delayUntilRecursion: false,
             ignoreBudget: false,
-            addMemo: false,
+            addMemo: true,
             useGroupScoring: null,
             useProbability: true,
             vectorized: false,
