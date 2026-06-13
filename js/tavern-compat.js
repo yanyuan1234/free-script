@@ -12,7 +12,7 @@ var TavernHelperCompat = {
     // 初始化
     init: function() {
         this._initToastr();
-        console.log('[TavernHelperCompat] 酒馆助手兼容层已初始化');
+        GameLogger.info('TavernHelperCompat', '酒馆助手兼容层已初始化');
     },
     
     // 1. getContext() 兼容层
@@ -153,7 +153,8 @@ _showToast: function(msg, color) {
     toast.textContent = msg;
     container.appendChild(toast);
     var _popupMs = (typeof POPUP_DURATION_MS !== 'undefined') ? POPUP_DURATION_MS : 3000;
-    setTimeout(function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(function(){toast.remove();},300); }, _popupMs);
+    var _toastTmId = 'tm_toast_' + Date.now() + '_' + Math.random().toString(36).substr(2,4);
+    TimerManager.setTimeout(_toastTmId, function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; TimerManager.setTimeout(_toastTmId + '_rm', function(){toast.remove();},300); }, _popupMs);
 },
 
 // 3. 斜杠命令系统
@@ -197,7 +198,7 @@ _executeSingleCommand: function(cmdStr) {
             result = argsStr; break;
         case 'echo':
             var sevMatch = argsStr.match(/severity=(\w+)\s+(.*)/);
-            if (sevMatch) { var s=sevMatch[1]; var t=sevMatch[2]; if(window.toastr&&toastr[s])toastr[s](t); else console.log('[echo '+s+'] '+t); result=t; }
+            if (sevMatch) { var s=sevMatch[1]; var t=sevMatch[2]; if(window.toastr&&toastr[s])toastr[s](t); else GameLogger.info('echo '+s, t); result=t; }
             else { if(window.toastr)toastr.info(argsStr); result=argsStr; } break;
         case 'input':
             var promptText = argsStr.replace(/okButton="[^"]*"/g,'').replace(/cancelButton="[^"]*"/g,'').trim();
@@ -341,7 +342,7 @@ _executeSingleCommand: function(cmdStr) {
             if(this._scripts[scriptName]){
                 result=this.executeScript(this._scripts[scriptName]);
             }else{
-                console.warn('[TavernHelper] 脚本未找到: '+scriptName);
+                GameLogger.warn('TavernHelper', '脚本未找到: '+scriptName);
             }
             break;
         // 新增：trigger-name命令（触发命名事件）
@@ -425,7 +426,7 @@ _executeSingleCommand: function(cmdStr) {
             result=''; break;
         default:
             if(this._slashCommands[commandName]) result=this._slashCommands[commandName](argsStr);
-            else console.warn('[TavernHelper] 未知命令: /'+commandName);
+            else GameLogger.warn('TavernHelper', '未知命令: /'+commandName);
     }
     return Promise.resolve(result);
 },
@@ -588,7 +589,7 @@ _renderQuickReplyButtons: function() {
                             input: (document.getElementById('userInput') || {}).value || ''
                         });
                     } catch (e) {
-                        console.warn('[快捷回复] 宏处理失败:', e);
+                        GameLogger.warn('快捷回复', '宏处理失败: ' + e);
                         promptText = btn.prompt;
                     }
                     if (promptText && promptText.trim()) {
@@ -617,14 +618,14 @@ _renderQuickReplyButtons: function() {
                     try {
                         self.triggerSlash(btn.script);
                     } catch(e) {
-                        console.warn('[快捷回复] 脚本执行失败:', e);
+                        GameLogger.warn('快捷回复', '脚本执行失败: ' + e);
                     }
                 }
             };
         container.appendChild(button);
     });
     
-    console.log('[快捷回复] 已渲染', this._quickReplies.length, '个按钮');
+    GameLogger.info('快捷回复', '已渲染 ' + this._quickReplies.length + ' 个按钮');
 },
 
 // 添加 renderQuickReplyBar 别名方法，兼容预设导入调用
@@ -649,7 +650,7 @@ _createSandbox: function() {
     return {
         getContext: function(){return self.getContext();},
         triggerSlash: function(cmd){return self.triggerSlash(cmd);},
-        toastr: window.toastr||{info:function(m){console.log('[toastr] '+m);},success:function(m){console.log('[toastr] '+m);},warning:function(m){console.log('[toastr] '+m);},error:function(m){console.log('[toastr] '+m);}},
+        toastr: window.toastr||{info:function(m){GameLogger.info('toastr', m);},success:function(m){GameLogger.info('toastr', m);},warning:function(m){GameLogger.warn('toastr', m);},error:function(m){GameLogger.error('toastr', m);}},
         eventSource: {on:function(e,cb){self.on(e,cb);},emit:function(e,d){self.emit(e,d);},once:function(e,cb){var w=function(d){self._removeListener(e,w);cb(d);};self.on(e,w);},removeListener:function(e,cb){self._removeListener(e,cb);}},
         // 【修复】暴露 SillyTavern 引用，让脚本中的 window.SillyTavern 可用
         SillyTavern: window.SillyTavern
@@ -671,11 +672,11 @@ executeScript: function(scriptContent) {
 // 5. 限制代码长度防止资源耗尽攻击
 _executeScriptCode: function(code, sourceName) {
     if (typeof code !== 'string') {
-        console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: 代码必须是字符串');
+        GameLogger.warn('TavernHelper', (sourceName || '脚本') + ' 错误: 代码必须是字符串');
         return '';
     }
     if (code.length > 100000) {
-        console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: 代码长度超过限制 (100KB)');
+        GameLogger.warn('TavernHelper', (sourceName || '脚本') + ' 错误: 代码长度超过限制 (100KB)');
         return '';
     }
     var dangerousPatterns = [
@@ -687,7 +688,7 @@ _executeScriptCode: function(code, sourceName) {
     ];
     for (var i = 0; i < dangerousPatterns.length; i++) {
         if (dangerousPatterns[i].test(code)) {
-            console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: 检测到危险代码模式');
+            GameLogger.warn('TavernHelper', (sourceName || '脚本') + ' 错误: 检测到危险代码模式');
             return '';
         }
     }
@@ -700,14 +701,14 @@ _executeScriptCode: function(code, sourceName) {
         fn(sandbox.getContext, sandbox.triggerSlash, sandbox.toastr, sandbox.eventSource, console, setTimeout, setInterval, clearTimeout, clearInterval, Promise, fetch);
         return '';
     } catch(e) {
-        console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: ' + e.message);
+        GameLogger.warn('TavernHelper', (sourceName || '脚本') + ' 错误: ' + e.message);
         return '';
     }
 },
 
 // 7. 主入口
 loadFromPreset: function(presetData) {
-    console.log('[TavernHelper] 正在加载酒馆助手兼容层...');
+    GameLogger.info('TavernHelper', '正在加载酒馆助手兼容层...');
     this._initToastr();
     var th = presetData.tavern_helper||presetData.extensions_tavern_helper||null;
     if(th){
@@ -725,18 +726,11 @@ loadFromPreset: function(presetData) {
         this.parseQuickReplies({ button: { buttons: presetData.spresetButtons } });
     }
     // 【修复】触发 APP_READY 事件（酒馆助手脚本可能依赖此事件）
-    if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
-        TimerManager.setTimeout('appReady', function() {
-            TavernHelperCompat.emit('APP_READY', {});
-            console.log('[TavernHelper] APP_READY 事件已触发');
-        }, 500);
-    } else {
-        setTimeout(function() {
-            TavernHelperCompat.emit('APP_READY', {});
-            console.log('[TavernHelper] APP_READY 事件已触发');
-        }, 500);
-    }
-    console.log('[TavernHelper] ✅ 酒馆助手兼容层加载完成');
+    TimerManager.setTimeout('appReady', function() {
+        TavernHelperCompat.emit('APP_READY', {});
+        GameLogger.info('TavernHelper', 'APP_READY 事件已触发');
+    }, 500);
+    GameLogger.info('TavernHelper', '✅ 酒馆助手兼容层加载完成');
 },
 
 _loadPresetConfigs: function(presets) {
@@ -774,7 +768,7 @@ _loadPresetConfigs: function(presets) {
             Object.keys(wcConfig).forEach(function(k) { if (wcConfig[k] === undefined) delete wcConfig[k]; });
             if (Object.keys(wcConfig).length > 1) {
                 currentPreset.wordCountConfig = wcConfig;
-                console.log('[TavernHelper] 已从预设配置同步 wordCountConfig:', JSON.stringify(wcConfig));
+                GameLogger.info('TavernHelper', '已从预设配置同步 wordCountConfig: ' + JSON.stringify(wcConfig));
             }
         }
     }
@@ -794,15 +788,15 @@ chat: [],
 characters: [],
 getCharacters: function(){ return (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters) || []; },
 checkCharExists: function(name){ var chars = this.getCharacters(); return chars.some(function(c){return c.name === name;}); },
-saveChat: function(){ console.log('[SillyTavern] saveChat: 游戏自动存档已处理'); },
-saveChatConditional: function(){ console.log('[SillyTavern] saveChatConditional: 游戏自动存档已处理'); },
+saveChat: function(){ GameLogger.info('SillyTavern', 'saveChat: 游戏自动存档已处理'); },
+saveChatConditional: function(){ GameLogger.info('SillyTavern', 'saveChatConditional: 游戏自动存档已处理'); },
 generateRaw: function(prompt, options){
-    console.log('[SillyTavern] generateRaw: 通过 sendAIRequest 发送');
+    GameLogger.info('SillyTavern', 'generateRaw: 通过 sendAIRequest 发送');
     if(typeof sendAIRequest === 'function') sendAIRequest(prompt);
     return '';
 },
 generateRawQuiet: function(prompt, options){
-    console.log('[SillyTavern] generateRawQuiet: 静默生成');
+    GameLogger.info('SillyTavern', 'generateRawQuiet: 静默生成');
     return '';
 },
 getChatMetadata: function(){ return (gameState && gameState.chatMetadata) || {}; },
@@ -842,7 +836,7 @@ TavernHelperCompat._removeListener = function(event, cb){
 };
 }
 
-console.log('[TavernHelper] 酒馆助手兼容层已加载 (SillyTavern API 已补全)');
+GameLogger.info('TavernHelper', '酒馆助手兼容层已加载 (SillyTavern API 已补全)');
 
 // 自初始化：确保即使 initApp 在定义之前执行，init 也能被调用
 if (typeof initApp !== 'undefined' && initApp._initialized) {
@@ -986,7 +980,7 @@ var GameMemory = {
         var oldData = null;
         try { oldData = JSON.parse(localStorage.getItem('freeScript_enhancedMemory') || 'null'); } catch(e) { oldData = null; }
         if (!oldData) return false;
-        console.log('[GameMemory] 检测到旧版 EnhancedMemory 数据，开始迁移...');
+        GameLogger.memory('检测到旧版 EnhancedMemory 数据，开始迁移...');
         var old = oldData;
         var turn = (old.stats && old.stats.totalMessages) || 0;
         self.currentTurn = turn;
@@ -1057,7 +1051,7 @@ var GameMemory = {
         if (old.stats) self.stats = { totalMessages: old.stats.totalMessages || 0, totalSummaries: old.stats.totalSummaries || 0, lastUpdateTime: old.stats.lastUpdateTime || null, tokenSaved: old.stats.tokenSaved || 0 };
         if (old.compressionConfig) { self.compressionConfig.triggerThreshold = old.compressionConfig.triggerThreshold || 0.75; self.compressionConfig.incrementalUpdate = old.compressionConfig.incrementalUpdate !== false; }
         self.saveToStorage();
-        console.log('[GameMemory] 旧版数据迁移完成');
+        GameLogger.memory('旧版数据迁移完成');
         return true;
     },
 
@@ -1174,7 +1168,7 @@ var GameMemory = {
         // 【数据联通】<mem> 直接写入权威源（gm.tables.* / gm.quests / gm.events），
         // 同步到 gameState 视图并触发 GameLinker 通知 UI
         if (edits.length > 0 && typeof _ensureDataLinkage === 'function') {
-            try { _ensureDataLinkage(); } catch (e) { console.warn('[mem解析] 数据联通同步失败:', e); }
+            try { _ensureDataLinkage(); } catch (e) { GameLogger.warn('mem解析', '数据联通同步失败: ' + e); }
         }
         if (edits.length > 0 && typeof GameLinker !== 'undefined') {
             try {
@@ -1232,7 +1226,7 @@ var GameMemory = {
                             triggered: false,
                             priority: fPriority
                         };
-                        console.log('[AI叙事] 注册新伏笔:', fId, fDesc);
+                        GameLogger.ai('注册新伏笔: ' + fId + ' ' + fDesc);
                     }
                 }
             }
@@ -1246,12 +1240,12 @@ var GameMemory = {
                     // 尝试匹配角色
                     if (self.tables.characters && self.tables.characters[recallTarget]) {
                         self._setDormantStatus('characters', recallTarget, 'active');
-                        console.log('[AI叙事] AI唤醒角色:', recallTarget);
+                        GameLogger.ai('AI唤醒角色: ' + recallTarget);
                     }
                     // 尝试匹配物品
                     if (self.tables.items && self.tables.items[recallTarget]) {
                         self._setDormantStatus('items', recallTarget, 'active');
-                        console.log('[AI叙事] AI唤醒物品:', recallTarget);
+                        GameLogger.ai('AI唤醒物品: ' + recallTarget);
                     }
                 }
             }
@@ -1266,7 +1260,7 @@ var GameMemory = {
                     if (fs) {
                         fs.triggered = true;
                         fs.triggeredTurn = self.currentTurn;
-                        console.log('[AI叙事] 伏笔已触发:', triggerId, fs.desc);
+                        GameLogger.ai('伏笔已触发: ' + triggerId + ' ' + fs.desc);
                     } else {
                         // 尝试按描述匹配
                         Object.keys(self._dormantTracking.foreshadowings).forEach(function(k) {
@@ -1274,7 +1268,7 @@ var GameMemory = {
                             if (f && f.desc.indexOf(triggerId) >= 0) {
                                 f.triggered = true;
                                 f.triggeredTurn = self.currentTurn;
-                                console.log('[AI叙事] 伏笔已触发(描述匹配):', k, f.desc);
+                                GameLogger.ai('伏笔已触发(描述匹配): ' + k + ' ' + f.desc);
                             }
                         });
                     }
@@ -1287,11 +1281,11 @@ var GameMemory = {
             while ((pm = planRe.exec(text)) !== null) {
                 var planText = (pm[1] || '').trim();
                 if (planText) {
-                    console.log('[AI叙事] AI编剧计划:', planText.substring(0, 100) + (planText.length > 100 ? '...' : ''));
+                    GameLogger.ai('AI编剧计划: ' + planText.substring(0, 100) + (planText.length > 100 ? '...' : ''));
                 }
             }
         } catch (e) {
-            console.warn('[AI叙事] Plan标签解析错误:', e);
+            GameLogger.warn('AI叙事', 'Plan标签解析错误: ' + e);
         }
     },
 
@@ -1351,7 +1345,7 @@ var GameMemory = {
                 if (track.status !== 'active') {
                     track.status = 'active';
                     track.dormantRounds = 0;
-                    console.log('[AI叙事] 角色激活:', name);
+                    GameLogger.ai('角色激活: ' + name);
                 }
                 track.lastMentioned = currentTurn;
             } else {
@@ -1377,7 +1371,7 @@ var GameMemory = {
                 if (track.status !== 'active') {
                     track.status = 'active';
                     track.dormantRounds = 0;
-                    console.log('[AI叙事] 物品激活:', name);
+                    GameLogger.ai('物品激活: ' + name);
                 }
                 track.lastMentioned = currentTurn;
             } else {
@@ -1633,7 +1627,7 @@ var GameMemory = {
                         }
                     }
                     if (!content || typeof content !== 'string') {
-                        console.warn('[设定解析] AI返回内容为空或格式异常');
+                        GameLogger.warn('设定解析', 'AI返回内容为空或格式异常');
                         return;
                     }
                     // 提取JSON
@@ -1648,21 +1642,21 @@ var GameMemory = {
                             var fixed = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/'/g, '"');
                             parsed = JSON.parse(fixed);
                         } catch(fixErr) {
-                            console.warn('[设定解析] JSON解析失败，无法修复:', jsonErr);
+                            GameLogger.warn('设定解析', 'JSON解析失败，无法修复: ' + jsonErr);
                             return;
                         }
                     }
                     if (!parsed || typeof parsed !== 'object') {
-                        console.warn('[设定解析] AI返回JSON解析结果非对象');
+                        GameLogger.warn('设定解析', 'AI返回JSON解析结果非对象');
                         return;
                     }
                     self._applyAIParsedSetup(parsed);
                 } catch(e) {
-                    console.warn('[设定解析] AI解析失败，使用默认分层:', e);
+                    GameLogger.warn('设定解析', 'AI解析失败，使用默认分层: ' + e);
                     // 失败时保留简单截断方案
                 }
             }).catch(function(e) {
-                console.warn('[设定解析] AI调用失败:', e);
+                GameLogger.warn('设定解析', 'AI调用失败: ' + e);
             });
         }
     },
@@ -1765,7 +1759,7 @@ var GameMemory = {
         }
 
         self.saveToStorage();
-        console.log('[设定解析] AI解析完成，核心规则' + (parsed.coreRules ? parsed.coreRules.length : 0) + '条，角色' + (parsed.characters ? parsed.characters.length : 0) + '个，角色原型' + (parsed.characterArchetypes ? parsed.characterArchetypes.length : 0) + '个');
+        GameLogger.info('设定解析', 'AI解析完成，核心规则' + (parsed.coreRules ? parsed.coreRules.length : 0) + '条，角色' + (parsed.characters ? parsed.characters.length : 0) + '个，角色原型' + (parsed.characterArchetypes ? parsed.characterArchetypes.length : 0) + '个');
 
         // AI解析完成后，删除settings中来自userPrompt的原始整条设定（避免与结构化数据重复）
         if (self.permanentFacts.settings && self.permanentFacts.settings.length > 0) {
@@ -1775,7 +1769,7 @@ var GameMemory = {
             });
             var removed = beforeLen - self.permanentFacts.settings.length;
             if (removed > 0) {
-                console.log('[设定解析] 已清理' + removed + '条原始开场设定（已被AI结构化数据替代）');
+                GameLogger.info('设定解析', '已清理' + removed + '条原始开场设定（已被AI结构化数据替代）');
                 self.saveToStorage();
             }
         }
@@ -2944,7 +2938,7 @@ var GameMemory = {
                     var toEvict = evictable.slice(0, evictable.length - keep);
                     var evictSet = new Set(toEvict);
                     self.permanentFacts[k] = list.filter(function(a) { return !evictSet.has(a); });
-                    console.log('[永久事实淘汰] ' + k + ': 淘汰' + toEvict.length + '条低权重事实, 保留' + self.permanentFacts[k].length);
+                    GameLogger.memory(k + ': 淘汰' + toEvict.length + '条低权重事实, 保留' + self.permanentFacts[k].length);
                 }
             });
         }
@@ -3203,18 +3197,18 @@ var GameMemory = {
             var result = safeSetItem('freeScript_memory', JSON.stringify(data));
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
-        finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) { TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } else { setTimeout(function() { self.saveToStorage(); }, 50); } } }
+        finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } }
     },
 
     _handleSaveFailure: function(result, originalData) {
         try {
-            console.warn('[GameMemory] 保存失败，降级处理:', (result && result.message) || 'unknown');
+            GameLogger.warn('GameMemory', '保存失败，降级处理: ' + ((result && result.message) || 'unknown'));
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
             var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, stats: this.stats, savedAt: Date.now() };
             var r2 = safeSetItem('freeScript_memory', JSON.stringify(reduced));
-            if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
+            if (r2 && r2.success) GameLogger.memory('降级保存成功');
             else console.error('[GameMemory] 降级保存仍然失败：', r2);
         } catch(e2) { console.error('[GameMemory] 降级保存异常：', e2); }
     },
@@ -5120,7 +5114,7 @@ setVar(name, value, scope = 'local') {
 GlobalCleanup.registerListener(document, 'DOMContentLoaded', () => {
 if (!global.stscriptEngine) {
     global.stscriptEngine = new STscriptEngine();
-    console.log('[STscript v2.1] 引擎已初始化 — 兼容果实/月读/蛾摩拉预设');
+    GameLogger.info('STscript', 'v2.1 引擎已初始化 — 兼容果实/月读/蛾摩拉预设');
 }
 });
     }
@@ -5165,7 +5159,7 @@ if (!global.stscriptEngine) {
             global.stscriptEngine = new STscriptEngine();
         }
     this.engine = global.stscriptEngine;
-    console.log('[GameAdapter v2.0] 集成适配器已初始化');
+    GameLogger.info('GameAdapter', 'v2.0 集成适配器已初始化');
     },
 
     // ── 预设加载（核心入口） ──
@@ -5179,10 +5173,10 @@ if (!global.stscriptEngine) {
             this.currentPreset.regexScripts = this.currentPreset.extensions.regex_scripts;
         }
 
-    console.log('[GameAdapter] 预设已加载:', this.currentPreset.name,
-    '| prompts:', (this.currentPreset.prompts || []).length,
-    '| regex:', (this.currentPreset.regexScripts || []).length,
-    '| prompt_order:', !!(this.currentPreset.prompt_order));
+    GameLogger.info('GameAdapter', '预设已加载: ' + this.currentPreset.name +
+    ' | prompts: ' + (this.currentPreset.prompts || []).length +
+    ' | regex: ' + (this.currentPreset.regexScripts || []).length +
+    ' | prompt_order: ' + !!(this.currentPreset.prompt_order));
 
     if (global.UI?.toast) {
         UI.toast(`已加载预设: ${this.currentPreset.name} (STscript v2.0 已激活)`);
@@ -5384,7 +5378,7 @@ if (!global.stscriptEngine) {
             }
         });
 
-    console.log('[GameAdapter] 已应用快速切换配置:', profile.name);
+    GameLogger.info('GameAdapter', '已应用快速切换配置: ' + profile.name);
     return true;
     }
     };

@@ -185,7 +185,7 @@ function getWorldInfoInjection() {
         }
         return fresh;
     } catch (e) {
-        console.warn('[getWorldInfoInjection] 扫描失败:', e);
+        GameLogger.warn('getWorldInfoInjection', '扫描失败: ' + e);
         return null;
     }
 }
@@ -488,7 +488,7 @@ function buildSystemPrompt(includeFormatRules) {
     if (typeof EnhancedMemory !== 'undefined') {
         _memoryText = EnhancedMemory.buildSmartInjection();
         if (_memoryText) {
-            console.log('[buildSystemPrompt] 已注入增强记忆');
+            GameLogger.memory('已注入增强记忆');
         }
     }
 
@@ -693,7 +693,7 @@ function buildRecentChatContext() {
             blocks.join('\n\n') + '\n' +
             '私聊中的约定、情绪和情报会自然影响剧情走向和NPC态度——让这些后果在剧情中自然体现。\n';
     } catch (e) {
-        console.warn('[buildRecentChatContext] 失败：', e);
+        GameLogger.warn('buildRecentChatContext', '失败：' + e);
         return '';
     }
 }
@@ -954,7 +954,7 @@ function injectPresetGlobalVars() {
     }
     MacroEngine.setGlobalVar('抢转设置', grabSettings);
     
-    console.log('[injectPresetGlobalVars] 全局宏变量已注入');
+    GameLogger.info('injectPresetGlobalVars', '全局宏变量已注入');
 }
 
 /**
@@ -1114,7 +1114,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     gameState._wiPositionTexts = (typeof _initWI === 'object' && _initWI !== null && _initWI.positionTexts) ? _initWI.positionTexts : null;
                 }
             } catch(e) {
-                console.warn('[isInit] 世界书扫描失败:', e);
+                GameLogger.warn('isInit', '世界书扫描失败: ' + e);
             }
             if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
                 var initPreset = PresetManager.presets[PresetManager.currentPresetIndex];
@@ -1126,7 +1126,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     }
                 }
             } else {
-                try { gameState.systemPrompt = buildSystemPrompt(); } catch(e) { console.warn('[buildSystemPrompt]', e); }
+                try { gameState.systemPrompt = buildSystemPrompt(); } catch(e) { GameLogger.warn('buildSystemPrompt', '' + e); }
             }
             // 构建isInit消息列表（含世界书position注入和世界快照）
             messages = [];
@@ -1193,7 +1193,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     gameState.conversationHistory[0].content = rebuiltPrompt;
                 }
             } catch(e) {
-                console.warn('[修复] 重建系统提示词失败:', e);
+                GameLogger.warn('修复', '重建系统提示词失败: ' + e);
             }
 
             var recent = (gameState.conversationHistory || []).slice(1).slice(-MAX_HISTORY);
@@ -1226,7 +1226,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 无论是否有摘要，都只保留最近N轮（避免上下文溢出）
                 // 如果有摘要，旧对话信息已包含在摘要中；如果没有摘要，旧对话也需要裁剪以节省token
                 recent = newMessages;
-                console.log('[摘要阈值] 保留最近' + newMessages.length + '条对话（阈值=' + summaryThreshold + '轮）');
+                GameLogger.info('摘要阈值', '保留最近' + newMessages.length + '条对话（阈值=' + summaryThreshold + '轮）');
             }
 
             // 2. 获取世界书分组数据
@@ -1449,7 +1449,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
             messages = squashed;
-            console.log('[消息构建] 已合并相邻system消息 (squash_system_messages)');
+            GameLogger.info('消息构建', '已合并相邻system消息 (squash_system_messages)');
         }
         // 注入 impersonation_prompt（用户人设）
         // 酒馆中 impersonation_prompt 被插入到最后一条 assistant 消息之后
@@ -1595,7 +1595,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessages(messages);
         if (currentTokens > maxInputTokens) {
-            console.log('[智能上下文] 当前 ' + currentTokens + ' tokens，预算 ' + maxInputTokens + '（上下文' + contextSize + '-输出预留' + reservedForOutput + '），开始裁剪');
+            GameLogger.info('智能上下文', '当前 ' + currentTokens + ' tokens，预算 ' + maxInputTokens + '（上下文' + contextSize + '-输出预留' + reservedForOutput + '），开始裁剪');
             
             // 第一阶段：先瘦身旧AI回复（比直接删除更省，保留story内容）
             var lastAssistantIdx = -1;
@@ -1619,7 +1619,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
             if (slimmedCount > 0) {
-                console.log('[智能上下文] 瘦身了 ' + slimmedCount + ' 条旧AI回复，当前 ' + currentTokens + ' tokens');
+                GameLogger.info('智能上下文', '瘦身了 ' + slimmedCount + ' 条旧AI回复，当前 ' + currentTokens + ' tokens');
             }
             
             // 第二阶段：瘦身还不够，从最旧的聊天历史开始淘汰
@@ -1641,7 +1641,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
             if (removedCount > 0) {
-                console.log('[智能上下文] 淘汰了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
+                GameLogger.info('智能上下文', '淘汰了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
             }
         }
         // 【P0优化】流式失败自动降级：连续失败2次后切换为非流式
@@ -1656,7 +1656,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         };
         if (gameState && !_useStreamNow && _streamFailCount >= 2) {
-            console.log('[流式降级] 连续失败' + _streamFailCount + '次, 本轮使用非流式');
+            GameLogger.info('流式降级', '连续失败' + _streamFailCount + '次, 本轮使用非流式');
         }
         // 触发事件：GENERATION_AFTER_COMMANDS（生成前，命令执行后）
         if (typeof TavernHelperCompat !== 'undefined') {
@@ -1676,7 +1676,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             gameState._lastInputTokens = inputTokens;
             gameState._lastContextUsage = Math.round(inputTokens / contextSize * 100);
         }
-        console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + (gameState && gameState._lastContextUsage) + '%)');
+        GameLogger.info('Token', '输入: ' + inputTokens + '/' + contextSize + ' (' + (gameState && gameState._lastContextUsage) + '%)');
 
         try {
             response = await callAI(messages, options);
@@ -1730,7 +1730,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) gameState._lastOriginalContent = storyText;
             // 保存COT内容供调试查看
             if (gameState) gameState._lastCotContent = cotMatches.join('\n---\n');
-            console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
+            GameLogger.info('COT', '提取到思维链内容: ' + cotMatches.length + ' 段');
         }
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
@@ -1748,11 +1748,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【修复】AI返回空内容检测：在COT和记忆编辑之后再检测
         // 这样即使COT清理后变空也能被捕获
         if (!storyText || storyText.trim() === '') {
-            console.warn('[AI生成] 剧情文本为空，可能原因：1) max_tokens过小 2) 模型异常 3) 内容被过滤 4) COT占用了全部额度');
+            GameLogger.warn('AI生成', '剧情文本为空，可能原因：1) max_tokens过小 2) 模型异常 3) 内容被过滤 4) COT占用了全部额度');
             // 【P0优化】流式失败计数：连续失败2次后自动切非流式
             if (gameState && _useStreamNow) {
                 gameState.streamFailCount = (_streamFailCount || 0) + 1;
-                console.log('[流式降级] 失败计数: ' + gameState.streamFailCount + '/2');
+                GameLogger.info('流式降级', '失败计数: ' + gameState.streamFailCount + '/2');
             }
             // 尝试从原始response中提取任何可读文本作为兜底
             if (response && typeof response === 'string' && response.trim().length > 0) {
@@ -1769,7 +1769,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 var isRawSSE = cleanedRaw.indexOf('data:') !== -1 && cleanedRaw.indexOf('"object"') !== -1;
                 if (cleanedRaw && cleanedRaw.length > 10 && !isRawSSE) {
                     storyText = '【AI返回异常，原始响应如下】\n' + cleanedRaw.substring(0, 500);
-                    console.log('[AI生成] 已提取原始响应作为兜底');
+                    GameLogger.ai('已提取原始响应作为兜底');
                 }
             }
             if (!storyText || storyText.trim() === '') {
@@ -1912,7 +1912,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
                 // 【数据联通】同步推送到权威源 gm.events
                 if (typeof _pushKeyEventsToGM === 'function') {
-                    try { _pushKeyEventsToGM(); } catch (e) { console.warn('[pushKeyEvents]', e); }
+                    try { _pushKeyEventsToGM(); } catch (e) { GameLogger.warn('pushKeyEvents', '' + e); }
                 }
                 // 触发 UI 刷新
                 if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('keyEvents');
@@ -2287,7 +2287,7 @@ async function _compressConversation(removed, sys) {
         if (isImportant) importantMessages.push(m);
         else normalMessages.push(m);
     });
-    console.log('[分步压缩] 重要消息:', importantMessages.length, '条，普通消息:', normalMessages.length, '条');
+    GameLogger.info('分步压缩', '重要消息: ' + importantMessages.length + ' 条，普通消息: ' + normalMessages.length + ' 条');
     // Step 2: 处理重要消息 - 提取关键信息存入表格
     if (importantMessages.length > 0 && typeof EnhancedMemory !== 'undefined') {
         importantMessages.forEach(function(m) { _extractAndStoreImportantInfo(m); });
@@ -2330,14 +2330,14 @@ async function _compressConversation(removed, sys) {
         // 同步逐层摘要
         if (EnhancedMemory._updateSummaryLayers) EnhancedMemory._updateSummaryLayers();
         EnhancedMemory.saveToStorage();
-        console.log('[智能总结] 已同步到EnhancedMemory');
+        GameLogger.memory('已同步到EnhancedMemory');
     }
     // 统计Token节省（用统一估算口径，避免与触发阈值算法不一致）
     var originalTokens = estimateTokensForMessagesUtil(removed);
     var summaryTokens = estimateTokensUtil(summary);
     var savedTokens = originalTokens - summaryTokens;
     if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.stats.tokenSaved += Math.max(0, savedTokens);
-    console.log('[压缩统计] 原始:', originalTokens, 'token → 摘要:', summaryTokens, 'token → 节省:', savedTokens, 'token');
+    GameLogger.info('压缩统计', '原始: ' + originalTokens + ' token → 摘要: ' + summaryTokens + ' token → 节省: ' + savedTokens + ' token');
     return summary;
 }
 
@@ -2472,7 +2472,7 @@ async function autoCompressContext() {
             // 把固定消息从removed移到keep
             removed = removed.filter(function(m) { return m._pinned !== true; });
             keep = pinnedMessages.concat(keep);
-            console.log('[压缩] 保留了 ' + pinnedMessages.length + ' 条固定消息');
+            GameLogger.info('压缩', '保留了 ' + pinnedMessages.length + ' 条固定消息');
         }
 
         if (removed.length === 0) {
@@ -2485,7 +2485,7 @@ async function autoCompressContext() {
         // 早期游戏上下文短，原文注入即可，摘要反而割裂连贯性
         var _historyTurns = Math.floor(dialogOnly.length / 2);
         if (_historyTurns < 10) {
-            console.log('[摘要跳过] 历史仅' + _historyTurns + '轮 (<10), 不生成摘要');
+            GameLogger.info('摘要跳过', '历史仅' + _historyTurns + '轮 (<10), 不生成摘要');
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
             return;
@@ -3151,7 +3151,7 @@ function buildSaveData(customName) {
             };
         }
     } catch(e) {
-        console.warn('[buildSaveData] 打包记忆数据失败:', e);
+        GameLogger.warn('buildSaveData', '打包记忆数据失败: ' + e);
     }
 
     return {
@@ -3203,7 +3203,7 @@ async function loadFromSlot(slot) {
         
         // 版本兼容性检查
         var saveVersion = parsed._version || data.version || '1.0.0';
-        console.log('[存档] 版本:', saveVersion, '当前:', GAME_VERSION);
+        GameLogger.info('存档', '版本: ' + saveVersion + ' 当前: ' + GAME_VERSION);
         
         // 版本迁移处理（简化）
         if (saveVersion !== GAME_VERSION) {
@@ -3221,7 +3221,7 @@ async function loadFromSlot(slot) {
         // 【修复AI生成慢】maxTokens 限位：保留旧版本遗留的 80000 等异常大值时，自动修正为合理范围
         // 历史 bug：默认值曾误写为 80000，导致模型生成 8 万 token 才会停，体感"非常慢"
         if (typeof gameState.maxTokens === 'undefined' || gameState.maxTokens === null || gameState.maxTokens > 32000) {
-            console.warn('[loadFromSlot] 修正异常的 maxTokens:', gameState.maxTokens, '→ 4096');
+            GameLogger.warn('loadFromSlot', '修正异常的 maxTokens: ' + gameState.maxTokens + ' → 4096');
             gameState.maxTokens = 4096;
         }
         if (gameState.maxTokens < 256) gameState.maxTokens = 4096;
@@ -3328,7 +3328,7 @@ async function loadFromSlot(slot) {
                     EnhancedMemory.saveToStorage();
                 }
             } catch(memErr) {
-                console.warn('[loadFromSlot] 恢复记忆数据失败:', memErr);
+                GameLogger.warn('loadFromSlot', '恢复记忆数据失败: ' + memErr);
             }
         }
 
@@ -3989,7 +3989,7 @@ function toggleChatMenu() {
             menu.remove();
             var fn = window[item.action];
             if (typeof fn === 'function') fn();
-            else console.warn('[聊天菜单] 函数未定义:', item.action);
+            else GameLogger.warn('聊天菜单', '函数未定义: ' + item.action);
         };
         menu.appendChild(row);
     });

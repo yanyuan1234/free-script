@@ -467,6 +467,222 @@ var PopupManager = {
 };
 window.PopupManager = PopupManager;
 
+// ===== 统一数据层 =====
+// 所有数据操作走统一入口，自动同步 gameState ↔ GameMemory
+var DataStore = {
+    // 更新角色数据（自动双写 + 通知）
+    updateCharacter: function(name, updates) {
+        // 更新 GameMemory
+        var gm = window.GameMemory;
+        if (gm && gm.tables.characters[name]) {
+            var char = gm.tables.characters[name];
+            for (var k in updates) {
+                if (updates.hasOwnProperty(k)) char[k] = updates[k];
+            }
+            char.lastChangedTurn = gm.currentTurn;
+            char.gameTime = gm.getGameTimeStr();
+        }
+        // 同步到 gameState
+        if (typeof gameState !== 'undefined' && gameState.allCharacters) {
+            if (!gameState.allCharacters[name]) gameState.allCharacters[name] = {};
+            var gc = gameState.allCharacters[name];
+            if (updates.title !== undefined) gc.title = updates.title;
+            if (updates.relation !== undefined) gc.relation = updates.relation;
+            if (updates.favorability !== undefined) gc.favorability = updates.favorability;
+            if (updates.desc !== undefined) gc.desc = updates.desc;
+            if (updates.name && updates.name !== name) {
+                gameState.allCharacters[updates.name] = gc;
+                delete gameState.allCharacters[name];
+            }
+        }
+        this._notify('characters', 'allCharacters');
+    },
+
+    // 删除角色
+    deleteCharacter: function(name) {
+        var gm = window.GameMemory;
+        if (gm && gm.tables.characters[name]) delete gm.tables.characters[name];
+        if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) delete gameState.allCharacters[name];
+        this._notify('characters', 'allCharacters', '角色已删除');
+    },
+
+    // 更新物品数据
+    updateItem: function(name, updates) {
+        var gm = window.GameMemory;
+        if (gm && gm.tables.items[name]) {
+            var item = gm.tables.items[name];
+            for (var k in updates) {
+                if (updates.hasOwnProperty(k)) item[k] = updates[k];
+            }
+            item.lastChangedTurn = gm.currentTurn;
+        }
+        // 同步到 gameState.currentBag
+        if (typeof gameState !== 'undefined' && gameState.currentBag) {
+            var found = false;
+            for (var i = 0; i < gameState.currentBag.length; i++) {
+                if (gameState.currentBag[i].name === name) {
+                    if (updates.qty !== undefined) gameState.currentBag[i].count = updates.qty;
+                    if (updates.rarity !== undefined) gameState.currentBag[i].rarity = updates.rarity;
+                    if (updates.desc !== undefined) gameState.currentBag[i].desc = updates.desc;
+                    found = true; break;
+                }
+            }
+            if (!found && (updates.qty !== undefined)) {
+                gameState.currentBag.push({ name: name, count: updates.qty || 1, desc: updates.desc || '', rarity: updates.rarity || '普通' });
+            }
+        }
+        this._notify('items', 'currentBag');
+    },
+
+    // 删除物品
+    deleteItem: function(name) {
+        var gm = window.GameMemory;
+        if (gm && gm.tables.items[name]) delete gm.tables.items[name];
+        if (typeof gameState !== 'undefined' && gameState.currentBag) {
+            gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== name; });
+        }
+        this._notify('items', 'currentBag', '物品已删除');
+    },
+
+    // 更新地点
+    updateLocation: function(name, updates) {
+        var gm = window.GameMemory;
+        if (gm && gm.tables.locations[name]) {
+            var loc = gm.tables.locations[name];
+            for (var k in updates) {
+                if (updates.hasOwnProperty(k)) loc[k] = updates[k];
+            }
+            loc.lastChangedTurn = gm.currentTurn;
+        }
+        this._notify('locations', 'worldSnapshot');
+    },
+
+    // 删除地点
+    deleteLocation: function(name) {
+        var gm = window.GameMemory;
+        if (gm && gm.tables.locations[name]) delete gm.tables.locations[name];
+        this._notify('locations', 'worldSnapshot', '地点已删除');
+    },
+
+    // 更新事件
+    addEvent: function(content, importance) {
+        var gm = window.GameMemory;
+        if (!gm) return;
+        importance = importance || 5;
+        gm.events.push({ content: content, turn: gm.currentTurn, gameTime: gm.getGameTimeStr(), importance: importance, decayScore: importance });
+        if (gm.events.length > 50) gm.events = gm.events.slice(-50);
+        if (typeof gameState !== 'undefined') {
+            if (!gameState.keyEvents) gameState.keyEvents = [];
+            if (gameState.keyEvents.indexOf(content) === -1) {
+                gameState.keyEvents.push(content);
+                if (gameState.keyEvents.length > 30) gameState.keyEvents = gameState.keyEvents.slice(-30);
+            }
+        }
+        this._notify('events', 'keyEvents');
+    },
+
+    // 删除事件
+    deleteEvent: function(index) {
+        var gm = window.GameMemory;
+        if (!gm || !gm.events[index]) return;
+        var evtContent = gm.events[index].content;
+        gm.events.splice(index, 1);
+        if (typeof gameState !== 'undefined' && gameState.keyEvents && evtContent) {
+            var idx = gameState.keyEvents.indexOf(evtContent);
+            if (idx >= 0) gameState.keyEvents.splice(idx, 1);
+        }
+        this._notify('events', 'keyEvents', '事件已删除');
+    },
+
+    // 更新约定/任务
+    resolveQuest: function(index) {
+        var gm = window.GameMemory;
+        if (!gm || !gm.quests[index]) return;
+        gm.quests[index].status = 'resolved';
+        gm.quests[index].resolvedTurn = gm.currentTurn;
+        this._syncQuestsToGameState();
+        this._notify('quests', 'currentQuests', '约定已完成');
+    },
+
+    deleteQuest: function(index) {
+        var gm = window.GameMemory;
+        if (!gm || !gm.quests[index]) return;
+        gm.quests.splice(index, 1);
+        this._syncQuestsToGameState();
+        this._notify('quests', 'currentQuests', '约定已删除');
+    },
+
+    addQuest: function(content, type) {
+        var gm = window.GameMemory;
+        if (!gm) return;
+        type = type || 'promise';
+        gm.quests.push({ content: content, type: type, status: 'pending', createdTurn: gm.currentTurn, stale: false });
+        this._syncQuestsToGameState();
+        this._notify('quests', 'currentQuests', '约定已添加');
+    },
+
+    // 同步任务到 gameState
+    _syncQuestsToGameState: function() {
+        var gm = window.GameMemory;
+        if (typeof gameState === 'undefined') return;
+        gameState.currentQuests = gm.quests.map(function(q) {
+            return { content: q.content, type: q.type, status: q.status };
+        });
+    },
+
+    // 统一通知：保存 + 刷新UI + 弹窗
+    _notify: function(tab, dataKey, toastMsg) {
+        try { if (window.GameMemory) GameMemory.saveToStorage(); } catch(e) {}
+        try { if (typeof GameLinker !== 'undefined' && dataKey) GameLinker.refreshByDataChange(dataKey); } catch(e) {}
+        try { if (typeof autoSave === 'function') autoSave(); } catch(e) {}
+        if (toastMsg && typeof PopupManager !== 'undefined') PopupManager.success(toastMsg);
+        else if (toastMsg && typeof UI !== 'undefined' && UI.toast) UI.toast(toastMsg);
+    }
+};
+window.DataStore = DataStore;
+
+// ===== 统一日志系统 =====
+// 替代分散的 console.log/warn/error，统一格式和开关
+var GameLogger = {
+    _enabled: true,
+    _level: 0, // 0=debug, 1=info, 2=warn, 3=error
+
+    // 设置日志级别
+    setLevel: function(level) { this._level = level; },
+    enable: function() { this._enabled = true; },
+    disable: function() { this._enabled = false; },
+
+    debug: function(tag, msg) {
+        if (!this._enabled || this._level > 0) return;
+        console.log('%c[DEBUG][' + tag + '] ' + msg, 'color:#999');
+    },
+
+    info: function(tag, msg) {
+        if (!this._enabled || this._level > 1) return;
+        console.log('%c[INFO][' + tag + '] ' + msg, 'color:#2196F3');
+    },
+
+    warn: function(tag, msg) {
+        if (!this._enabled || this._level > 2) return;
+        console.warn('[WARN][' + tag + '] ' + msg);
+    },
+
+    error: function(tag, msg) {
+        if (!this._enabled) return;
+        console.error('[ERROR][' + tag + '] ' + msg);
+    },
+
+    // 记忆系统专用
+    memory: function(msg) { this.info('记忆', msg); },
+    // AI请求专用
+    ai: function(msg) { this.info('AI', msg); },
+    // 渲染专用
+    render: function(msg) { this.debug('渲染', msg); },
+    // 数据同步专用
+    sync: function(msg) { this.debug('同步', msg); }
+};
+window.GameLogger = GameLogger;
+
 var UI = {
     // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
     TOAST_DURATION: POPUP_DURATION_MS,
