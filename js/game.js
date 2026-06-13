@@ -345,7 +345,7 @@ function _squelchPostProcess(story) {
 // AI回复JSON约2000字，story约500字，瘦身后节省约60% token
 // 不修改原始conversationHistory，只在发送给API时瘦身
 // 【方案C】纯文本模式下，根据story末段自动生成3个默认选项
-function _generateAutoChoices(storyText) {
+function _generateAutoChoices(storyText, lastChoices) {
     if (!storyText || storyText.trim().length === 0) return null;
     // 提取story末段（最后200字）
     var lastSegment = storyText.slice(-300);
@@ -383,6 +383,41 @@ function _generateAutoChoices(storyText) {
         choices.push({ id: 'A', text: location ? ('前往' + location) : '继续前进' });
         choices.push({ id: 'B', text: npcName ? ('寻找' + npcName) : '探索周围' });
         choices.push({ id: 'C', text: '原地休整，整理思路' });
+    }
+    // 【P2优化】去重：与上一轮选项文本相似度>0.6的，标记isDuplicate
+    // 避免连续多轮出现"和XX一起"型套路选项
+    if (lastChoices && Array.isArray(lastChoices) && lastChoices.length > 0) {
+        var _normalizedLast = lastChoices.map(function(c) {
+            return (typeof c === 'string' ? c : (c && c.text) || '').replace(/\s+/g, '');
+        }).filter(function(s) { return s.length > 0; });
+        choices.forEach(function(ch) {
+            var _cur = (ch.text || '').replace(/\s+/g, '');
+            var _isDup = _normalizedLast.some(function(prev) {
+                if (prev === _cur) return true;
+                // 简单相似度：检查是否有>=60%的字符重叠
+                var minLen = Math.min(prev.length, _cur.length);
+                var overlap = 0;
+                for (var i = 0; i < minLen; i++) {
+                    if (prev.indexOf(_cur[i]) !== -1) overlap++;
+                }
+                return minLen > 4 && (overlap / minLen) >= 0.6;
+            });
+            ch.isDuplicate = _isDup;
+        });
+        // 如果3个选项都被标记为重复，则追加一个"自由行动"选项保底
+        if (choices.every(function(c) { return c.isDuplicate; })) {
+            choices = [];
+            choices.push({ id: 'A', text: '换个思路，另寻他法' });
+            choices.push({ id: 'B', text: '深入思考当前局势' });
+            choices.push({ id: 'C', text: '回顾之前的线索' });
+        } else {
+            // 过滤掉重复的，保留非重复的
+            choices = choices.filter(function(c) { return !c.isDuplicate; });
+            // 如果过滤后不足2个，补一个通用项
+            while (choices.length < 2) {
+                choices.push({ id: 'X' + choices.length, text: '自由行动：' + (npcName ? ('与' + npcName + '交谈') : '观察周围') });
+            }
+        }
     }
     return choices;
 }
@@ -543,6 +578,12 @@ ${_termsPrompt}
 - 抗全知：角色只能知道自己应该知道的信息
 - 抗发情：角色不会无缘无故地对主角产生强烈好感，好感度需要时间培养
 - 关系自然：角色保留各自的生活重心，不因主角出现就变成围绕其旋转的情绪体
+
+【引导玩家输入】（提升剧情质量）
+- 好的输入：包含**动作+对象+意图**，如"我想去图书室查阅螺旋塔的资料"、"我假装不经意地绕到薇拉身后"
+- 避免空洞输入：单纯的"继续"、"嗯"、"好"等无法展开剧情
+- 鼓励玩家输入：行为描写/对话/内心活动/环境观察
+- 即便玩家输入简短，也**主动**丰富场景：补充NPC反应、环境细节、伏笔
 
 【你的工作方式】
 ${(gameState && gameState.pureTextMode) ?
@@ -1781,12 +1822,19 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 【方案C】纯文本模式：AI没输出choices时，基于story末段自动生成3个选项
         if (gameState && gameState.pureTextMode && gameState.generateChoices && !data.choices) {
-            var autoChoices = _generateAutoChoices(storyText);
+            // 【P2优化】传入上一轮选项用于去重，避免套路化
+            var autoChoices = _generateAutoChoices(storyText, gameState._lastChoices);
             if (autoChoices && autoChoices.length > 0) {
                 renderChoices(autoChoices);
                 data = data || {};
                 data.choices = autoChoices;
             }
+        }
+        // 【P2优化】记录本轮选项，供下一轮去重
+        if (data && data.choices && gameState) {
+            gameState._lastChoices = data.choices.map(function(c) {
+                return typeof c === 'string' ? c : (c && c.text) || '';
+            });
         }
         
         // 处理增强记忆
@@ -2377,6 +2425,15 @@ async function autoCompressContext() {
 
         if (removed.length === 0) {
             // 提前返回时需要正确恢复状态
+            isCompressing = false;
+            if (!_wasWaiting) isWaiting = false;
+            return;
+        }
+        // 【P1优化】历史<10轮时不生成摘要：节省200-500 tokens
+        // 早期游戏上下文短，原文注入即可，摘要反而割裂连贯性
+        var _historyTurns = Math.floor(dialogOnly.length / 2);
+        if (_historyTurns < 10) {
+            console.log('[摘要跳过] 历史仅' + _historyTurns + '轮 (<10), 不生成摘要');
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
             return;

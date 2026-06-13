@@ -2874,16 +2874,40 @@ var GameMemory = {
                     var entry = self.permanentFacts[key][i];
                     if (entry && entry.content && entry.content.indexOf(name) === 0) {
                         if (entry.source === 'manual') return null;
-                        self.permanentFacts[key][i] = { content: content, source: source || 'auto', locked: true, createdTurn: createdTurn || self.currentTurn };
+                        self.permanentFacts[key][i] = { content: content, source: source || 'auto', locked: true, importance: 1.0, createdTurn: createdTurn || self.currentTurn };
                         return self.permanentFacts[key][i];
                     }
                 }
             }
         }
-        var anchor = { content: content, source: source || 'auto', locked: true, createdTurn: createdTurn || self.currentTurn };
+        // 【P1优化】根据类型分配重要性权重
+        // 核心设定(pc/世界规则/角色) = 1.0, 次要(设定/承诺) = 0.5
+        var _importance = (type === 'pc_identity' || type === 'world_rule' || type === 'npc_profile') ? 1.0 : 0.5;
+        var anchor = { content: content, source: source || 'auto', locked: true, importance: _importance, createdTurn: createdTurn || self.currentTurn };
         self.permanentFacts[key].push(anchor);
         var total = 0; Object.keys(self.permanentFacts).forEach(function(k) { total += self.permanentFacts[k].length; });
-        if (total > 50 && self.permanentFacts.npcProfiles && self.permanentFacts.npcProfiles.length > 15) self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles.slice(-15);
+        // 【P1优化】超过30条时按重要性权重淘汰（保留locked和高权重）
+        // 避免100轮后token堆积膨胀
+        if (total > 30) {
+            Object.keys(self.permanentFacts).forEach(function(k) {
+                var list = self.permanentFacts[k];
+                if (!list || list.length === 0) return;
+                // 找出可淘汰的（!locked），按重要性升序
+                var evictable = list.filter(function(a) { return a && !a.locked; });
+                if (evictable.length === 0) return;
+                evictable.sort(function(a, b) {
+                    return ((a.importance) || 0) - ((b.importance) || 0);
+                });
+                // 保留数量 = 当前key数 × (30/total)，最低5条
+                var keep = Math.max(5, Math.floor(list.length * 30 / total));
+                if (evictable.length > keep) {
+                    var toEvict = evictable.slice(0, evictable.length - keep);
+                    var evictSet = new Set(toEvict);
+                    self.permanentFacts[k] = list.filter(function(a) { return !evictSet.has(a); });
+                    console.log('[永久事实淘汰] ' + k + ': 淘汰' + toEvict.length + '条低权重事实, 保留' + self.permanentFacts[k].length);
+                }
+            });
+        }
         return anchor;
     },
 
