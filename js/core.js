@@ -454,23 +454,12 @@ var UI = {
         content.innerHTML = opts.html || '';
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
-        // 点击遮罩关闭
-        overlay.addEventListener('click', function(e) {
-            if (e.target === overlay) {
-                UI.hideModal(id);
-                if (!opts.persistent) {
-                    overlay.remove();
-                }
-                if (typeof opts.onClose === 'function') opts.onClose();
-            }
-        });
         document.body.appendChild(overlay);
-        // 注册关闭回调
-        if (opts.onClose) {
-            overlay._onClose = opts.onClose;
-            overlay._persistent = opts.persistent;
-        }
-        // 自动显示
+        // 注册关闭回调和持久化标记（由 hideModal 统一调度）
+        if (opts.onClose) overlay._onClose = opts.onClose;
+        overlay._persistent = !!opts.persistent;
+        overlay._isDynamic = true; // 标记为动态创建的弹窗
+        // 自动显示（showModal 会统一绑定遮罩点击关闭事件）
         UI.showModal(id);
         return overlay;
     },
@@ -492,8 +481,8 @@ var UI = {
             }
             // 触发关闭回调
             if (el._onClose) el._onClose();
-            // 非持久化弹窗自动清理 DOM
-            if (!el._persistent && el.classList.contains('modal-overlay') && el.id.indexOf('dynamicModal_') === 0) {
+            // 非持久化的动态弹窗自动清理 DOM
+            if (el._isDynamic && !el._persistent) {
                 el.remove();
             }
         }

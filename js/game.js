@@ -736,7 +736,6 @@ function buildProtagonistPrompt() {
     lines.push('');
     return lines.join('\n');
 }
-// ========================================
 
 // ========================================
 // AI 请求核心
@@ -2504,7 +2503,6 @@ async function manualCompress(btn) {
         if (el && !el.value) el.value = lastPrompt;
     }
 })();
-// ========================================
 
 // ========================================
 // 渲染器 - 使用集成版UI样式
@@ -2968,13 +2966,8 @@ function fillChoiceToInput(text) {
     }
 }
 
-
-
 // ========================================
-// 第5层: 数据管理
-// ========================================
-// ========================================
-// NPC人物（累积 + 弹窗详情）
+// 第5层: 数据管理 - NPC人物（累积 + 弹窗详情）
 // ========================================
 function mergeCharacters(chars) {
     if (!chars || chars.length === 0) return;
@@ -3295,9 +3288,6 @@ async function deleteFromSlot(slot) {
         UI.toast('删除失败');
     }
 }
-
-
-
 
 async function requestNpcReply(playerText) {
     // 先清理旧的 AbortController，避免竞态条件

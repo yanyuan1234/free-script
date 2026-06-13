@@ -1151,8 +1151,6 @@ function getLogPageRenderers() {
     return _logPageRenderers;
 }
 
-
-
 // ========================================
 // 预设动态app渲染
 // ========================================
@@ -5950,13 +5948,17 @@ function loadGameSettings() {
 // ========================================
 // 任务系统
 // ========================================
-// 渲染任务页面（返回null让QuestSystem处理）
-// 渲染成就页面（返回null让AchievementSystem处理）
-// ========================================
 
 // ========================================
 // 存档系统 - UI操作（从 game.js 收拢）
 // ========================================
+
+// 存档常量
+const SAVE_GAME_ID = 'freeScript';
+const LOCAL_SAVE_KEY = 'freeScript_localSaves';
+const LOCAL_MANUAL_COUNT = 5;
+const LOCAL_EXT_START = 6;
+const LOCAL_EXT_END = 10;
 
 // 显示游戏统计面板
 function showGameStats() {
@@ -6131,13 +6133,6 @@ async function openSaveLoadModal() {
 async function deleteSaveSlot(slot) {
     return deleteFromSlot(slot);
 }
-
-// 存档常量（从 game.js 收拢）
-const SAVE_GAME_ID = 'freeScript';
-const LOCAL_SAVE_KEY = 'freeScript_localSaves';
-const LOCAL_MANUAL_COUNT = 5;
-const LOCAL_EXT_START = 6;
-const LOCAL_EXT_END = 10;
 
 async function renderSaveUI() {
     var ct = document.getElementById('saveLoadBody');
