@@ -344,6 +344,129 @@ function _pushKeyEventsToGM() {
 var POPUP_DURATION_MS = 3000;
 // 兼容旧代码：UI.TOAST_DURATION 是 POPUP_DURATION_MS 的别名
 var TOAST_DURATION_MS = POPUP_DURATION_MS;
+
+// ===== 统一弹窗管理器 =====
+// 所有弹窗统一入口：置顶堆叠 + 3秒自动消失
+var PopupManager = {
+    _container: null,
+    _popupCount: 0,
+
+    _ensureContainer: function() {
+        if (this._container) return;
+        this._container = document.getElementById('unifiedPopupContainer');
+        if (!this._container) {
+            this._container = document.createElement('div');
+            this._container.id = 'unifiedPopupContainer';
+            this._container.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999999;display:flex;flex-direction:column;align-items:center;pointer-events:none;padding-top:env(safe-area-inset-top,8px);gap:6px;';
+            document.body.appendChild(this._container);
+        }
+    },
+
+    // 统一弹窗入口
+    // type: 'info' | 'success' | 'warning' | 'error' | 'npc' | 'log'
+    // msg: 文本内容
+    // options: { icon, subtitle, onClick, duration }
+    show: function(type, msg, options) {
+        var self = this;
+        self._ensureContainer();
+        options = options || {};
+        var duration = options.duration || POPUP_DURATION_MS || 3000;
+
+        var popup = document.createElement('div');
+        popup.className = 'unified-popup unified-popup-' + type;
+
+        // 样式：根据类型选择颜色和图标
+        var colors = {
+            info: '#2196F3', success: '#4CAF50', warning: '#FF9800', error: '#F44336',
+            npc: '#667eea', log: '#07C160'
+        };
+        var icons = {
+            info: 'ℹ️', success: '✅', warning: '⚠️', error: '❌',
+            npc: '💬', log: '📋'
+        };
+        var color = colors[type] || colors.info;
+        var icon = options.icon || icons[type] || icons.info;
+
+        popup.style.cssText = 'background:rgba(0,0,0,0.88);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;max-width:340px;pointer-events:auto;cursor:' + (options.onClick ? 'pointer' : 'default') + ';opacity:0;transform:translateY(-20px);transition:opacity .3s,transform .3s;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);backdrop-filter:blur(10px);';
+
+        // 图标
+        var iconEl = document.createElement('span');
+        iconEl.style.cssText = 'font-size:16px;flex-shrink:0;';
+        iconEl.textContent = icon;
+        popup.appendChild(iconEl);
+
+        // 内容
+        var contentEl = document.createElement('div');
+        contentEl.style.cssText = 'flex:1;min-width:0;';
+        contentEl.innerHTML = '<div style="font-weight:600;font-size:12px;opacity:0.9;">' + (options.subtitle || '') + '</div><div style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:260px;">' + (msg || '') + '</div>';
+        popup.appendChild(contentEl);
+
+        // 类型指示条
+        var bar = document.createElement('div');
+        bar.style.cssText = 'position:absolute;left:0;top:0;bottom:0;width:3px;border-radius:20px 0 0 20px;background:' + color + ';';
+        popup.appendChild(bar);
+
+        self._container.appendChild(popup);
+        self._popupCount++;
+
+        // 入场动画
+        requestAnimationFrame(function() {
+            popup.style.opacity = '1';
+            popup.style.transform = 'translateY(0)';
+        });
+
+        // 点击事件
+        if (options.onClick) {
+            popup.onclick = function() {
+                popup.remove();
+                self._popupCount--;
+                options.onClick();
+            };
+        }
+
+        // 自动消失
+        var timerId = 'popup_' + Date.now() + '_' + (self._popupCount);
+        TimerManager.setTimeout(timerId, function() {
+            popup.style.opacity = '0';
+            popup.style.transform = 'translateY(-20px)';
+            TimerManager.setTimeout(timerId + '_rm', function() {
+                if (popup.parentNode) popup.remove();
+                self._popupCount--;
+            }, 300);
+        }, duration);
+    },
+
+    // 快捷方法
+    info: function(msg, subtitle) { this.show('info', msg, { subtitle: subtitle }); },
+    success: function(msg, subtitle) { this.show('success', msg, { subtitle: subtitle }); },
+    warning: function(msg, subtitle) { this.show('warning', msg, { subtitle: subtitle }); },
+    error: function(msg, subtitle) { this.show('error', msg, { subtitle: subtitle }); },
+
+    // NPC消息通知
+    npc: function(name, text) {
+        this.show('npc', text, {
+            icon: name.charAt(0),
+            subtitle: name,
+            onClick: function() { if (typeof openNpcChat === 'function') openNpcChat(name); }
+        });
+    },
+
+    // 日志内容生成通知
+    log: function(category, msg, onClick) {
+        var icons = {
+            chat: '💬', forum: '📰', items: '📦', shop: '🛒', quests: '📋',
+            ranking: '🏆', moments: '📸', diary: '📖', mail: '✉️', calendar: '📅',
+            group: '👥', achievement: '🏅'
+        };
+        this.show('log', msg, {
+            icon: icons[category] || '📋',
+            subtitle: category,
+            onClick: onClick
+        });
+    }
+};
+window.PopupManager = PopupManager;
+
 var UI = {
     // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
     TOAST_DURATION: POPUP_DURATION_MS,
@@ -374,17 +497,22 @@ var UI = {
         return false;
     },
     toast: function(msg) {
+        // 统一走 PopupManager
+        if (typeof PopupManager !== 'undefined') {
+            PopupManager.info(msg);
+            return;
+        }
+        // fallback
         var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
         var t = document.createElement('div');
         t.className = 'toast';
         t.textContent = msg;
         ct.appendChild(t);
-        // 【全游戏弹窗策略】3 秒自动消失——使用 POPUP_DURATION_MS 常量
         TimerManager.setTimeout('uiToast', function() {
             if (t.parentNode) t.remove();
-            }, POPUP_DURATION_MS);
-        },
+        }, POPUP_DURATION_MS);
+    },
     showPage: function(id) {
         var el = document.getElementById(id);
         if (el && el.classList.contains('active')) return;

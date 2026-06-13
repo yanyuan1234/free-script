@@ -449,6 +449,10 @@ var AchievementSystem = {
         newly.forEach(function(a, i) {
             TimerManager.setTimeout('achieveToast_' + i, function() {
                 AchievementSystem.showUnlockToast(a);
+                // 统一弹窗：成就解锁通知
+                if (typeof PopupManager !== 'undefined') {
+                    PopupManager.log('achievement', '成就解锁: ' + (a.name || ''));
+                }
                 }, i * 800);
             });
     }

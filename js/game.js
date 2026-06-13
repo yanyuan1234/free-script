@@ -1774,6 +1774,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
             if (!storyText || storyText.trim() === '') {
                 storyText = '【AI未返回剧情内容】\n\n可能原因：\n1. max_tokens设置过小，思考链占用了全部额度\n2. 模型暂时异常，请重试\n3. 上下文过长导致生成空间不足\n\n建议：检查API设置中的max_tokens（建议≥1024），或尝试切换模型。';
+                // 统一弹窗：AI返回为空警告
+                if (typeof PopupManager !== 'undefined') {
+                    PopupManager.warning('AI返回为空', 'AI响应');
+                }
             }
         }
         // 渲染非剧情部分
@@ -1782,7 +1786,15 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.hud) renderHUD(data.hud);
             if (data.choices) renderChoices(data.choices);
             if (data.player) renderPlayerStats(data.player);
-            if (data.characters) mergeCharacters(data.characters);
+            if (data.characters) {
+                mergeCharacters(data.characters);
+                // 统一弹窗：新角色通知
+                if (typeof PopupManager !== 'undefined' && data.characters.forEach) {
+                    data.characters.forEach(function(c) {
+                        if (c && c.name) PopupManager.log('chat', '新角色: ' + c.name);
+                    });
+                }
+            }
             // 更新章节标题（如果有）
             if (data.title || data.scene) {
                 updateSceneTitle(data.title || data.scene);
@@ -1800,12 +1812,38 @@ async function sendAIRequest(userMessage, isInit = false) {
                     mergeCharacters(rescuedChars);
                 }
             }
-            if (data.world) renderWorldModules(data.world);
-            if (data.bag) renderBag(data.bag);
+            if (data.world) {
+                renderWorldModules(data.world);
+                // 统一弹窗：世界模块生成通知
+                if (typeof PopupManager !== 'undefined' && data.world.forEach) {
+                    data.world.forEach(function(mod) {
+                        if (mod && mod.type) {
+                            var typeLabelMap = { forum: '论坛', shop: '商店', moments: '朋友圈', diary: '日记', mail: '邮件', calendar: '日程', group: '群聊', ranking: '排行榜' };
+                            var label = typeLabelMap[mod.type] || mod.type;
+                            PopupManager.log(mod.type, label + '已更新');
+                        }
+                    });
+                }
+            }
+            if (data.bag) {
+                renderBag(data.bag);
+                // 统一弹窗：新增物品通知
+                if (typeof PopupManager !== 'undefined' && data.bag.forEach) {
+                    data.bag.forEach(function(item) {
+                        if (item && item.name) PopupManager.log('items', '新增: ' + item.name);
+                    });
+                }
+            }
             // === 任务系统 ===
             if (data.quests) {
                 mergeQuests(data.quests);
                 renderQuests();
+                // 统一弹窗：任务更新通知
+                if (typeof PopupManager !== 'undefined' && data.quests.forEach) {
+                    data.quests.forEach(function(q) {
+                        if (q && q.title) PopupManager.log('quests', q.title + (q.status ? ' (' + q.status + ')' : ''));
+                    });
+                }
             }
             // === 关系网 ===
             if (data.relationships) {
@@ -1928,6 +1966,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                             gameState._chatLogs[msg.from] = gameState._chatLogs[msg.from].slice(-50);
                         }
                         showNpcMessageNotification(msg.from, msg.text);
+                        // 统一弹窗：NPC消息日志
+                        if (typeof PopupManager !== 'undefined') {
+                            PopupManager.log('chat', msg.from + ': ' + (msg.text || '').slice(0, 30));
+                        }
                     }
                 });
                 safeAutoSave();
@@ -2063,6 +2105,16 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 确保异常路径也调用 hideStoryLoading
         hideStoryLoading();
         var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
+        // 统一弹窗：API错误通知
+        if (typeof PopupManager !== 'undefined') {
+            if (error && error.name === 'AbortError') {
+                PopupManager.warning('请求已取消', 'AI响应');
+            } else if (error && error.message && (error.message.indexOf('timeout') !== -1 || error.message.indexOf('超时') !== -1)) {
+                PopupManager.warning('请求超时，请重试', 'AI响应');
+            } else {
+                PopupManager.error('API请求失败: ' + (error && error.message ? error.message : '未知错误'), 'AI响应');
+            }
+        }
         // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
         showError(errDisplay, error);
         console.error('请求出错:', error);
@@ -4245,6 +4297,11 @@ function insertEmoji(emoji) {
     input.selectionStart = input.selectionEnd = start + emoji.length;
 }
 function showNpcMessageNotification(name, text) {
+    if (typeof PopupManager !== 'undefined') {
+        PopupManager.npc(name, text);
+        return;
+    }
+    // fallback: 原有逻辑
     var container = document.getElementById('npcNotifContainer');
     if (!container) {
         container = document.createElement('div');
@@ -4281,7 +4338,6 @@ function showNpcMessageNotification(name, text) {
         TimerManager.setTimeout('npcNotifRemove', function() {
             if (notif.parentNode) notif.remove();
         }, 300);
-        // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）
     }, typeof POPUP_DURATION_MS !== 'undefined' ? POPUP_DURATION_MS : 3000);
 }
 function sendNpcChat() {
@@ -4587,6 +4643,10 @@ async function requestNpcReply(playerText) {
         var loadingEl2 = document.getElementById('npcChatLoading');
         if (loadingEl2) loadingEl2.remove();
         addNpcChatBubble('npc', '（对话出错了: ' + e.message + '）');
+        // 统一弹窗：NPC对话错误通知
+        if (typeof PopupManager !== 'undefined') {
+            PopupManager.error('NPC对话失败: ' + (e.message || '未知错误'), 'AI响应');
+        }
         console.error('NPC对话失败:', e);
     } finally {
         npcChatState.isSending = false;
@@ -4938,6 +4998,10 @@ async function requestGroupReply(playerText) {
     } catch (e) {
         if (e.name === 'AbortError') return;
         addGroupChatBubble('npc', '系统', '（群聊出错了: ' + e.message + '）');
+        // 统一弹窗：群聊错误通知
+        if (typeof PopupManager !== 'undefined') {
+            PopupManager.error('群聊失败: ' + (e.message || '未知错误'), 'AI响应');
+        }
         console.error('群聊失败:', e);
     } finally {
         groupChatState.isSending = false;
