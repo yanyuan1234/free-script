@@ -344,6 +344,49 @@ function _squelchPostProcess(story) {
 // 【Token优化】瘦身AI回复：旧轮次只保留story字段，删除结构化数据
 // AI回复JSON约2000字，story约500字，瘦身后节省约60% token
 // 不修改原始conversationHistory，只在发送给API时瘦身
+// 【方案C】纯文本模式下，根据story末段自动生成3个默认选项
+function _generateAutoChoices(storyText) {
+    if (!storyText || storyText.trim().length === 0) return null;
+    // 提取story末段（最后200字）
+    var lastSegment = storyText.slice(-300);
+    // 找出现次数最多的角色名（>=2字中文名）
+    var npcNameMatch = lastSegment.match(/「([\u4e00-\u9fa5]{2,4})」/) ||
+                       lastSegment.match(/([\u4e00-\u9fa5]{2,4})[道说问][：:]/) ||
+                       lastSegment.match(/向([\u4e00-\u9fa5]{2,4})/);
+    var npcName = npcNameMatch ? npcNameMatch[1] : null;
+    // 提取地点关键词
+    var locationMatch = lastSegment.match(/([^，。\s]{2,8}(?:殿|阁|场|院|山|宫|楼|台|谷|门|府|城|林|堂|室|道|路))/);
+    var location = locationMatch ? locationMatch[1] : null;
+    // 检测场景类型
+    var isBattle = /(攻击|战斗|剑|刀|雷|火|法术|灵力)/.test(lastSegment);
+    var isDialogue = /「[^」]+」/.test(lastSegment) && npcName;
+    var isInvestigation = /(秘密|线索|真相|发现|研究|探索)/.test(lastSegment);
+
+    var choices = [];
+    if (isDialogue && npcName) {
+        // 对话场景：直接回应/询问/离开
+        choices.push({ id: 'A', text: '向' + npcName + '继续询问' });
+        choices.push({ id: 'B', text: '向' + npcName + '坦诚相告' });
+        choices.push({ id: 'C', text: '沉默片刻，观察' + npcName + '的反应' });
+    } else if (isBattle) {
+        // 战斗场景：进攻/防御/撤退
+        choices.push({ id: 'A', text: '运转灵力，全力进攻' });
+        choices.push({ id: 'B', text: '凝神防御，寻找破绽' });
+        choices.push({ id: 'C', text: '拉开距离，重新评估' });
+    } else if (isInvestigation) {
+        // 探索场景：深入/回查/离开
+        choices.push({ id: 'A', text: '深入调查，追根究底' });
+        choices.push({ id: 'B', text: '回到宗门，请教师门长辈' });
+        choices.push({ id: 'C', text: '暂时搁置，先巩固修为' });
+    } else {
+        // 通用兜底
+        choices.push({ id: 'A', text: location ? ('前往' + location) : '继续前进' });
+        choices.push({ id: 'B', text: npcName ? ('寻找' + npcName) : '探索周围' });
+        choices.push({ id: 'C', text: '原地休整，整理思路' });
+    }
+    return choices;
+}
+
 function _slimAssistantMessage(content) {
     if (!content || content.length < 200) return content;
     // 尝试提取JSON中的story字段
@@ -448,12 +491,28 @@ function buildSystemPrompt(includeFormatRules) {
     }
     if (!_hasNativePreset) {
         // 非内置预设（酒馆导入的或无预设）：注入格式引导
-        // 【说明】JSON 格式不是「不可覆盖的硬规定」，而是「让前端能正常渲染的最稳妥选择」。
-        // 如果酒馆预设本身有更具体的格式要求，AI 应该遵循预设；但默认情况下，可解析的 JSON 是最省心的。
-        // 【关键】明确禁止"思考过程"前缀（"让我开始..." "title:" "story:"），直接输出 { 开头
-        _formatAnchor = '\n\n【输出要求】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。' +
-            '字段：{ "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"","time":"","period":""} }\n' +
-            '<giggle>心声(2-5个) <mem>标记变化 约' + _maxTokensForAnchor + 'tokens输出空间';
+        // 【方案C】双模式：按次计费时优先用纯文本模式（story质量优先）
+        var _pureTextMode = gameState && gameState.pureTextMode;
+        if (_pureTextMode) {
+            // 【纯文本模式】AI只输出纯文本story + <mem> + <giggle>，无需JSON
+            // 节省的tokens全部用于story，story字数从739字提升到2500+字
+            _formatAnchor = '\n\n【输出要求·纯文本模式】\n' +
+                '**直接输出纯文本剧情**，不要任何JSON包裹，不要```json```代码块，不要"{"或"}"符号。\n' +
+                '格式：纯叙事文本，对话用「」包裹，换行用\\n。\n' +
+                '当状态变化时，在剧情中穿插<mem>标签：\n' +
+                '- 事件：<mem type="event" action="add">陈墨获得雷引玉简</mem>\n' +
+                '- 物品：<mem type="item" name="雷令" qty="1" action="add"/>\n' +
+                '- 角色：<mem type="character" name="林婉" field="favorability" value="70"/>\n' +
+                '- 任务：<mem type="quest" action="add">明日卯时去后山找清虚</mem>\n' +
+                '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
+                '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
+                '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
+        } else {
+            // 【JSON模式】原有逻辑保持兼容
+            _formatAnchor = '\n\n【输出要求】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。' +
+                '字段：{ "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"","time":"","period":""} }\n' +
+                '<giggle>心声(2-5个) <mem>标记变化 约' + _maxTokensForAnchor + 'tokens输出空间';
+        }
     }
 
     if (!includeFormatRules) {
@@ -469,7 +528,10 @@ ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCus
     var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
     _prompt = `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
-【关键】你的回复将直接被前端JSON解析器读取。**不要输出任何思考过程、计划、解释、前缀**。每次回复都以 { 开头，以 } 结尾，中间是合法的JSON。
+【关键】${(gameState && gameState.pureTextMode) ?
+'【纯文本模式】**直接输出纯文本剧情**，不要任何JSON包裹、不要```json```代码块、不要"{"或"}"符号。\n' +
+'你只需要写出剧情本身——状态变化用<mem>标签穿插在剧情中（前端自动提取维护结构化数据），心声用<giggle>标签。' :
+'你的回复将直接被前端JSON解析器读取。**不要输出任何思考过程、计划、解释、前缀**。每次回复都以 { 开头，以 } 结尾，中间是合法的JSON。'}
 
 ${_setupText}
 ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
@@ -483,21 +545,35 @@ ${_termsPrompt}
 - 关系自然：角色保留各自的生活重心，不因主角出现就变成围绕其旋转的情绪体
 
 【你的工作方式】
-**直接输出JSON**（以 { 开头），不要任何前缀（不要"让我开始"、不要"title:"、不要"story:"等思考过程）。
-story放第一个字段，用\\n换行，对话用「」。你大约有 ${_maxTokens} tokens输出空间。
-- story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾
+${(gameState && gameState.pureTextMode) ?
+'**直接输出纯文本剧情**。故事是核心，所有token预算都用在故事上。\\n\\n' +
+'对话用「」包裹，换行用\\n。\n' +
+'状态变化用<mem>穿插在剧情中（前端自动提取维护），心声用<giggle>穿插。\n' +
+'你大约有 ' + _maxTokens + ' tokens输出空间——把故事写完整、写精彩。' :
+'**直接输出JSON**（以 { 开头），不要任何前缀（不要"让我开始"、不要"title:"、不要"story:"等思考过程）。\n' +
+'story放第一个字段，用\\n换行，对话用「」。你大约有 ' + _maxTokens + ' tokens输出空间。\n' +
+'- story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾'
+}
 
 ${turn <= 3 ?
 `【心声系统 <giggle>】
 每回合穿插 2-5 个 <giggle>角色名：心声</giggle>，散在不同段落。心声是"没说出口的话"——口是心非、潜台词、旁观者吐槽。
 
 【状态变化 <mem>】
-重要状态变化时用 <mem> 标记：<mem type="event/quest/character/item/location" action="add/resolve" name="名" field="字段" value="值" />
+重要状态变化时用 <mem> 标记，前端会自动提取并维护结构化数据：
+- <mem type="event" action="add">陈墨获得雷引玉简</mem>（关键事件）
+- <mem type="item" name="雷令" qty="1" action="add"/>（获得物品）
+- <mem type="character" name="林婉" field="favorability" value="70"/>（角色好感/状态变化）
+- <mem type="quest" action="add">明日卯时去后山</mem>（新任务）
+- <mem type="time" day="3" period="afternoon"/>（时间推进）
 
-【世界模块】world数组类型：text(描述)、list/ranking(清单)、key_value(属性)、cards(卡片)、comments(论坛)、moments(朋友圈)、mail(邮件)、shop(商店)、diary(日记)
+${(gameState && gameState.pureTextMode) ?
+`【持续维护】你不需要输出player/characters/bag/quests/gameTime等结构化数据——前端会从剧情和<mem>标签中自动提取。你只管写好故事，结构化数据由系统维护。` :
+`【世界模块】world数组类型：text(描述)、list/ranking(清单)、key_value(属性)、cards(卡片)、comments(论坛)、moments(朋友圈)、mail(邮件)、shop(商店)、diary(日记)
 
-【持续维护】favorability随剧情更新，bag/quests实时同步，空字段省略不输出。` :
-`【工具】每回合2-5个<giggle>心声 | 状态变化用<mem>标记 | world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略`
+【持续维护】favorability随剧情更新，bag/quests实时同步，空字段省略不输出。`}
+` :
+`【工具】每回合2-5个<giggle>心声 | 状态变化用<mem>标记 | ${(gameState && gameState.pureTextMode) ? '纯文本模式：所有token用在story上' : 'world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略'}`
 }
 
 【信息优先级】始终生效>本轮变化>旧记录>旧指令
@@ -1567,6 +1643,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
+        // 【方案C】应用<mem>标签解析结果到gameState（自动维护结构化数据）
+        if (parseResult.mems && parseResult.mems.length > 0) {
+            _applyMemsToGameState(parseResult.mems);
+        }
+
         // === COT（思维链）处理 ===
         // 从AI回复中提取 <ECoT>...</ECoT>、<thinking>...</thinking>、💭...💭 标签内容
         // 这些内容不显示给用户，但需要保存为 {{original}} 的值
@@ -1637,6 +1718,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
         // 渲染非剧情部分
+        // 【方案C】纯文本模式下，AI不输出JSON时，根据story末段自动生成3个选项
         if (data) {
             if (data.hud) renderHUD(data.hud);
             if (data.choices) renderChoices(data.choices);
@@ -1672,11 +1754,21 @@ async function sendAIRequest(userMessage, isInit = false) {
                 renderRelationships();
             }
             if (data.contextSummary) gameState.rollingSummary = data.contextSummary;
-        
+
         // 时间系统：从AI返回的JSON中解析gameTime字段
         if (typeof GameTimeSystem !== 'undefined') {
             GameTimeSystem.parseFromAI(data);
             GameTimeSystem.updateUI();
+        }
+
+        // 【方案C】纯文本模式：AI没输出choices时，基于story末段自动生成3个选项
+        if (gameState && gameState.pureTextMode && gameState.generateChoices && !data.choices) {
+            var autoChoices = _generateAutoChoices(storyText);
+            if (autoChoices && autoChoices.length > 0) {
+                renderChoices(autoChoices);
+                data = data || {};
+                data.choices = autoChoices;
+            }
         }
         
         // 处理增强记忆

@@ -1514,6 +1514,8 @@ function createDefaultGameState() {
         useStream: true,
         streamFailCount: 0,
         generateChoices: true,
+        // 【方案C】按次计费优化：默认开启纯文本模式，story质量优先
+        pureTextMode: true,
         keyEvents: [],
         worldSnapshot: {},
         currentQuests: [],
@@ -2212,7 +2214,128 @@ if (bag) r.bag = bag;
 if (Object.keys(r).length > 0) ok = true;
 return ok ? r : null;
 }
-// 主解析函数
+// === <mem>标签解析器（方案C核心：状态自动提取）===
+// AI只输出纯文本story + <mem>状态变化 + <giggle>心声
+// 前端从<mem>标签自动维护：player/characters/bag/quests/world/gameTime等结构化数据
+// AI无需输出JSON，节省的tokens全用在story上
+function _parseMemTags(reply) {
+    if (!reply || typeof reply !== 'string') return { mems: [], cleanedReply: reply || '' };
+    var mems = [];
+    // 匹配所有 <mem ...>...</mem> 或 <mem .../>
+    var memPattern = /<mem\s+([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/mem>)/g;
+    var match;
+    while ((match = memPattern.exec(reply)) !== null) {
+        var attrsStr = match[1];
+        var content = match[2] || '';
+        var mem = { _raw: match[0] };
+        // 解析属性
+        var attrPattern = /(\w+)\s*=\s*"([^"]*)"/g;
+        var attrMatch;
+        while ((attrMatch = attrPattern.exec(attrsStr)) !== null) {
+            mem[attrMatch[1]] = attrMatch[2];
+        }
+        // 如果是 <mem>内容</mem> 形式，type可能放在attrsStr里，也可能content是描述
+        if (content && !mem.type) {
+            // 尝试从内容推断type
+            if (content.match(/^\d+$/)) mem.qty = content; // <mem>1</mem>
+        }
+        if (!mem.type) mem.type = 'note';
+        mem._content = content;
+        mems.push(mem);
+    }
+    // 从reply中移除<mem>标签，得到纯净的story
+    var cleanedReply = reply.replace(memPattern, '').trim();
+    return { mems: mems, cleanedReply: cleanedReply };
+}
+
+// 将<mem>解析结果应用到gameState，自动维护结构化数据
+function _applyMemsToGameState(mems) {
+    if (!mems || mems.length === 0 || typeof gameState === 'undefined' || !gameState) return;
+    mems.forEach(function(mem) {
+        try {
+            switch (mem.type) {
+                case 'event':
+                    if (mem.action === 'add' && mem._content) {
+                        // 添加到重要事件
+                        if (!gameState.keyEvents) gameState.keyEvents = [];
+                        if (gameState.keyEvents.indexOf(mem._content) === -1) {
+                            gameState.keyEvents.push(mem._content);
+                            if (gameState.keyEvents.length > 20) gameState.keyEvents.shift();
+                        }
+                    }
+                    break;
+                case 'item':
+                    if (!gameState.bag) gameState.bag = [];
+                    var qty = parseInt(mem.qty) || 1;
+                    if (mem.action === 'add') {
+                        var existItem = gameState.bag.find(function(b) { return b.name === mem.name; });
+                        if (existItem) {
+                            existItem.count = (existItem.count || 0) + qty;
+                        } else {
+                            gameState.bag.push({ name: mem.name, count: qty, desc: mem._content || '' });
+                        }
+                    } else if (mem.action === 'remove') {
+                        var rmItem = gameState.bag.find(function(b) { return b.name === mem.name; });
+                        if (rmItem) {
+                            rmItem.count = Math.max(0, (rmItem.count || 0) - qty);
+                            if (rmItem.count === 0) {
+                                gameState.bag = gameState.bag.filter(function(b) { return b.name !== mem.name; });
+                            }
+                        }
+                    }
+                    break;
+                case 'character':
+                    if (!gameState.characters) gameState.characters = [];
+                    var ch = gameState.characters.find(function(c) { return c.name === mem.name; });
+                    if (ch) {
+                        if (mem.field && mem.value !== undefined) {
+                            // 数字字段（好感度等）
+                            var numVal = parseFloat(mem.value);
+                            if (!isNaN(numVal)) {
+                                ch[mem.field] = numVal;
+                            } else {
+                                ch[mem.field] = mem.value;
+                            }
+                        }
+                    } else if (mem.name) {
+                        // 新角色
+                        var newCh = { name: mem.name };
+                        if (mem.field && mem.value !== undefined) newCh[mem.field] = mem.value;
+                        gameState.characters.push(newCh);
+                    }
+                    break;
+                case 'quest':
+                    if (!gameState.quests) gameState.quests = [];
+                    if (mem.action === 'add') {
+                        var newQuest = { title: mem._content || mem.name || '新任务', status: 'pending' };
+                        gameState.quests.push(newQuest);
+                    } else if (mem.action === 'resolve') {
+                        var q = gameState.quests.find(function(qq) { return qq.title === (mem._content || mem.name); });
+                        if (q) q.status = 'completed';
+                    }
+                    break;
+                case 'time':
+                    if (gameState.gameTime) {
+                        if (mem.day) gameState.gameTime.day = mem.day;
+                        if (mem.period) gameState.gameTime.period = mem.period;
+                    }
+                    break;
+                case 'location':
+                    if (!gameState.world) gameState.world = [];
+                    if (mem.action === 'add' && mem.name) {
+                        var loc = gameState.world.find(function(w) { return w.type === 'location' && w.name === mem.name; });
+                        if (!loc) {
+                            gameState.world.push({ type: 'location', name: mem.name, desc: mem._content || '' });
+                        }
+                    }
+                    break;
+            }
+        } catch (e) {
+            console.warn('[<mem>应用失败]', mem, e.message);
+        }
+    });
+}
+
 function parseAIResponse(reply) {
     let data = null;
     let storyText = '';
@@ -2226,6 +2349,13 @@ function parseAIResponse(reply) {
         reply = reply.replace(/^(title|story|choices|player|characters|world|bag|quests|gameTime|key|narrative|scene)\s*[:：][^\n]*\n+/gi, '').trim();
         // 匹配AI的"元思考"（"我将使用JSON格式..." "让我构思..." 等）
         reply = reply.replace(/^(我将使用|我使用|让我构思|让我想想|让我来写|下面是|以下是我的|我的输出格式|按要求)[^\n{]*\n+/g, '').trim();
+    }
+    // 【方案C】<mem>标签解析 - 在JSON解析前先提取
+    var memParseResult = _parseMemTags(reply);
+    if (memParseResult.mems.length > 0) {
+        console.log('[方案C] 检测到 ' + memParseResult.mems.length + ' 个 <mem> 标签');
+        // 将解析结果暂存到全局，供后续使用
+        if (typeof window !== 'undefined') window._lastParsedMems = memParseResult.mems;
     }
     // 1. 先尝试直接解析纯JSON（新格式）
     data = safeJSONParse(reply);
@@ -2361,7 +2491,8 @@ if (reply && typeof reply === 'string') {
 
 return {
     data,
-    storyText
+    storyText,
+    mems: memParseResult.mems
 };
 }
 
