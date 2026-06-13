@@ -1930,7 +1930,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                         showNpcMessageNotification(msg.from, msg.text);
                     }
                 });
-                safeAutoSave();
+                autoSave();
             }
         }
         // 刷新通知中心红点

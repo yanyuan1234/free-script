@@ -103,7 +103,7 @@ function sendForumComment(postIdx, replyToName) {
     };
     commentMods[postIdx].comments.push(newComment);
     appendForumReply(postIdx, newComment);
-    safeAutoSave();
+    autoSave();
     requestForumNpcReplies(postIdx, text, playerName);
 }
 function replyToForumComment(postIdx, commentIdx) {
@@ -474,7 +474,7 @@ function openMailDetail(index) {
             if (allMails[mi].read) seenMailCount++;
         }
         gameState._notifSeenSnapshot.mail.count = Math.max(gameState._notifSeenSnapshot.mail.count, seenMailCount);
-        safeAutoSave();
+        autoSave();
     }
     var sender = mail.from || mail.sender || '未知发件人';
     var avatar = sender.charAt(0);
@@ -519,14 +519,14 @@ function deleteMail(index) {
     if (mailModules.length > 0 && mailModules[0].items && Array.isArray(mailModules[0].items)) {
         if (index >= 0 && index < mailModules[0].items.length) {
             mailModules[0].items.splice(index, 1);
-            safeAutoSave();
+            autoSave();
             UI.toast('邮件已删除');
             backToMailList();
         }
     } else if (gameState._mails && Array.isArray(gameState._mails)) {
         if (index >= 0 && index < gameState._mails.length) {
             gameState._mails.splice(index, 1);
-            safeAutoSave();
+            autoSave();
             UI.toast('邮件已删除');
             backToMailList();
         }
@@ -1756,7 +1756,7 @@ function toggleMomentLike(idx) {
     var likeIdx = post.likes.indexOf(playerName);
     if (likeIdx === -1) { post.likes.push(playerName); }
     else { post.likes.splice(likeIdx, 1); }
-    safeAutoSave();
+    autoSave();
     // 刷新朋友圈页面
     var content = document.getElementById('logSubContent');
     if (content) { content.innerHTML = renderMomentsPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
@@ -1775,7 +1775,7 @@ function sendMomentComment(idx) {
     var playerName = gameState.playerName || '我';
     if (!Array.isArray(post.comments)) post.comments = [];
     post.comments.push({ name: playerName, text: text, replyTo: '' });
-    safeAutoSave();
+    autoSave();
     UI.toast('评论成功');
     // 刷新朋友圈页面
     var content = document.getElementById('logSubContent');
@@ -2531,7 +2531,7 @@ function buyShopItem(index) {
         item.count = Math.max(0, (parseInt(item.count) || 0) - 1);
     }
     UI.toast('购买成功：' + bagItem.name);
-    safeAutoSave();
+    autoSave();
     var newCurrency = parseInt(gameState.currency || gameState.money || gameState.coins || 0);
     var content = document.getElementById('logSubContent');
     if (content) { content.innerHTML = renderShopPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
@@ -2739,7 +2739,7 @@ function renderDefaultPage(type) {
                 case 'list':
                     inner = (mod.items || []).map(function(it) {
                         var txt = (typeof it === 'object' && it !== null) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
-                        return '<div style="padding:6px 0;font-size:14px;">▸ ' + escapeHTML(txt) +
+                        return '<div style="padding:6px 0;font-size:14px;">▸ ' + escapeHtml(txt) +
                             '</div>';
                     }).join('');
                     break;
@@ -2748,30 +2748,30 @@ function renderDefaultPage(type) {
                         var txt = (typeof it === 'object' && it !== null) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
                         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;"><span style="font-weight:600;color:' +
                             (i < 3 ? 'var(--text)' : 'var(--text-tertiary)') + ';">' + (i +
-                                1) + '</span><span style="font-size:14px;">' + escapeHTML(txt) +
+                                1) + '</span><span style="font-size:14px;">' + escapeHtml(txt) +
                             '</span></div>';
                     }).join('');
                     break;
                 case 'key_value':
                     inner = (mod.items || []).map(function(kv) {
                         return '<div class="player-field"><span class="player-field-label">' +
-                            escapeHTML(kv && kv.key) + '</span><span class="player-field-value">' + escapeHTML(kv && kv.value) +
+                            escapeHtml(kv && kv.key) + '</span><span class="player-field-value">' + escapeHtml(kv && kv.value) +
                             '</span></div>';
                     }).join('');
                     break;
                 case 'cards':
                     inner = (mod.items || []).map(function(c) {
                         return '<div class="pearl-card" style="padding:12px;margin-bottom:8px;"><div style="font-weight:500;">' +
-                            escapeHTML(c && c.icon || '') + ' ' + escapeHTML(c && c.title) +
+                            escapeHtml(c && c.icon || '') + ' ' + escapeHtml(c && c.title) +
                             '</div><div style="font-size:13px;color:var(--text-secondary);margin-top:4px;">' +
-                            escapeHTML(c && c.content || '') + '</div></div>';
+                            escapeHtml(c && c.content || '') + '</div></div>';
                     }).join('');
                     break;
                 case 'comments':
-                    inner = '<div style="font-size:14px;margin-bottom:8px;">' + escapeHTML(mod.main || '') +
+                    inner = '<div style="font-size:14px;margin-bottom:8px;">' + escapeHtml(mod.main || '') +
                         '</div>' + (mod.comments || []).map(function(cm) {
                             return '<div style="padding:8px 0;border-top:1px solid var(--border);font-size:13px;"><strong>' +
-                                escapeHTML(cm && cm.name) + ':</strong> ' + escapeHTML(cm && cm.text) + '</div>';
+                                escapeHtml(cm && cm.name) + ':</strong> ' + escapeHtml(cm && cm.text) + '</div>';
                         }).join('');
                     break;
                 case 'moments':
@@ -3840,7 +3840,7 @@ function bindEvents() {
                 gameState.conversationHistory[lastAssistantIdx].content = editedText;
             }
 
-            safeAutoSave();
+            autoSave();
 
             // 退出编辑模式
             storyTextEl.contentEditable = 'false';
@@ -6234,16 +6234,12 @@ async function openLoadModal() {
             '<button class="pixel-btn blue big" onclick="UI.hideModal(\'loadModal\');exportSaves()" style="flex:1">导出存档</button>' +
             '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
             '</div>';
-        // 移除旧弹窗（如果有）
-        var old = document.getElementById('loadModal');
-        if (old) old.remove();
-        var overlay = document.createElement('div');
-        overlay.className = 'modal-overlay active';
-        overlay.id = 'loadModal';
-        overlay.innerHTML =
-            '<div class="pixel-modal"><div class="modal-titlebar"><span class="modal-titlebar-text">读取存档</span><div class="modal-close-btn" onclick="UI.hideModal(\'loadModal\')">×</div></div><div class="modal-body">' +
-            html + '</div></div>';
-        document.body.appendChild(overlay);
+        // 使用统一弹窗管理器
+        UI.createModal({
+            id: 'loadModal',
+            html: '<div class="modal-titlebar"><span class="modal-titlebar-text">读取存档</span></div><div class="modal-body">' + html + '</div>',
+            persistent: true
+        });
     } catch (e) {
         console.error('打开存档列表失败:', e);
         UI.toast('读取存档列表时出错: ' + translateError(e.message));
@@ -6807,7 +6803,7 @@ function addNpcChatBubble(role, text, skipPush) {
             gameState._chatLogs[npcChatState.npcName] = npcChatState.chatHistory.slice();
         }
         // 自动保存聊天记录
-        safeAutoSave();
+        autoSave();
     }
 }
 function openEditNpcModal(name) {

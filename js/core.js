@@ -3785,7 +3785,6 @@ async function autoSave() {
 }
 }, 2000);
 }
-function safeAutoSave() { try { autoSave(); } catch(e) { console.warn('autoSave failed:', e); } }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
 // 缓存 setWaiting 重复 DOM 查询的元素引用
 var _setWaitingCache = {
