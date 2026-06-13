@@ -5089,6 +5089,143 @@ function saveNpcEdit() {
     autoSave();
     UI.toast('角色「' + name + '」已保存');
 }
+// --- NPC详情内联编辑模式 ---
+function editNpcDetail(name) {
+    if (!gameState || !gameState.allCharacters) return;
+    var c = gameState.allCharacters[name];
+    if (!c) return;
+
+    // 同时读取 GameMemory 中的数据
+    var gm = (typeof GameMemory !== 'undefined' && GameMemory.tables && GameMemory.tables.characters) ? GameMemory.tables.characters[name] : null;
+
+    var fav = c.favorability !== undefined ? c.favorability : 50;
+    var mood = gm ? (gm.mood || '') : '';
+    var location = gm ? (gm.location || '') : '';
+
+    var html = '';
+    // 头像和名称（保持不变）
+    html += '<div style="text-align:center;margin-bottom:16px;">' +
+        '<div class="avatar avatar-lg" style="margin:0 auto;"><span>' + escapeHtml(c.name.charAt(0)) + '</span></div>' +
+        '<h3 style="font-size:20px;font-weight:600;margin-top:10px;">' + escapeHtml(c.name) + '</h3>' +
+        '</div>';
+
+    // 编辑表单
+    html += '<div class="pearl-card" style="padding:12px;margin-bottom:12px;">';
+
+    // 身份/称号
+    html += '<div style="margin-bottom:12px;">' +
+        '<label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:4px;font-weight:500;">身份/称号</label>' +
+        '<input type="text" id="npcEditInlineTitle" value="' + escapeHtml(c.title || '') + '" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;" />' +
+        '</div>';
+
+    // 关系
+    html += '<div style="margin-bottom:12px;">' +
+        '<label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:4px;font-weight:500;">关系</label>' +
+        '<input type="text" id="npcEditInlineRelation" value="' + escapeHtml(c.relation || '') + '" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;" />' +
+        '</div>';
+
+    // 好感度
+    html += '<div style="margin-bottom:12px;">' +
+        '<label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:4px;font-weight:500;">好感度（-100 ~ 100）</label>' +
+        '<input type="number" id="npcEditInlineFavor" value="' + fav + '" min="-100" max="100" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;" />' +
+        '</div>';
+
+    // 心情
+    html += '<div style="margin-bottom:12px;">' +
+        '<label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:4px;font-weight:500;">心情</label>' +
+        '<input type="text" id="npcEditInlineMood" value="' + escapeHtml(mood) + '" placeholder="如：开心、忧虑" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;" />' +
+        '</div>';
+
+    // 位置
+    html += '<div style="margin-bottom:0;">' +
+        '<label style="display:block;font-size:13px;color:var(--text-secondary);margin-bottom:4px;font-weight:500;">位置</label>' +
+        '<input type="text" id="npcEditInlineLocation" value="' + escapeHtml(location) + '" placeholder="如：城镇广场" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:14px;background:var(--bg);color:var(--text);box-sizing:border-box;" />' +
+        '</div>';
+
+    html += '</div>';
+
+    // 保存/取消按钮
+    html += '<div style="display:flex;gap:8px;margin-top:12px;">' +
+        '<button class="crystal-btn flex-1" id="btnNpcEditSave" style="background:var(--primary);color:#fff;">保存</button>' +
+        '<button class="crystal-btn flex-1" id="btnNpcEditCancel" style="background:#f5f5f5;color:#333;">取消</button>' +
+        '</div>';
+
+    document.getElementById('npcDetailBody').innerHTML = html;
+
+    // 隐藏底部按钮栏（编辑模式下不需要）
+    var footer = document.querySelector('#npcDetailModal .modal-footer');
+    if (footer) footer.style.display = 'none';
+
+    // 绑定保存按钮
+    var saveBtn = document.getElementById('btnNpcEditSave');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+            saveNpcDetail(name);
+        });
+    }
+
+    // 绑定取消按钮
+    var cancelBtn = document.getElementById('btnNpcEditCancel');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function() {
+            openNpcDetail(name);
+        });
+    }
+}
+
+// --- 保存NPC详情编辑 ---
+function saveNpcDetail(name) {
+    if (!gameState || !gameState.allCharacters || !gameState.allCharacters[name]) return;
+
+    // 读取编辑框的值
+    var titleEl = document.getElementById('npcEditInlineTitle');
+    var relationEl = document.getElementById('npcEditInlineRelation');
+    var favorEl = document.getElementById('npcEditInlineFavor');
+    var moodEl = document.getElementById('npcEditInlineMood');
+    var locationEl = document.getElementById('npcEditInlineLocation');
+
+    var title = titleEl ? titleEl.value.trim() : '';
+    var relation = relationEl ? relationEl.value.trim() : '';
+    var favor = favorEl ? (parseInt(favorEl.value) || 0) : 0;
+    var mood = moodEl ? moodEl.value.trim() : '';
+    var location = locationEl ? locationEl.value.trim() : '';
+
+    // 好感度范围限制 -100 ~ 100
+    favor = Math.max(-100, Math.min(100, favor));
+
+    // 更新 gameState.allCharacters
+    gameState.allCharacters[name].title = title;
+    gameState.allCharacters[name].relation = relation;
+    gameState.allCharacters[name].favorability = favor;
+
+    // 更新 GameMemory.tables.characters
+    var gm = (typeof GameMemory !== 'undefined' && GameMemory.tables && GameMemory.tables.characters) ? GameMemory : null;
+    if (gm) {
+        if (!gm.tables.characters[name]) {
+            gm.tables.characters[name] = { name: name };
+        }
+        gm.tables.characters[name].title = title;
+        gm.tables.characters[name].relation = relation;
+        gm.tables.characters[name].favorability = favor;
+        gm.tables.characters[name].mood = mood;
+        gm.tables.characters[name].location = location;
+        gm.tables.characters[name].lastChangedTurn = gm.currentTurn || 0;
+        gm.tables.characters[name].gameTime = gm.getGameTimeStr ? gm.getGameTimeStr() : '';
+    }
+
+    // 同步记忆系统
+    if (typeof UI !== 'undefined' && UI.afterMemoryChange) {
+        UI.afterMemoryChange('characters', 'allCharacters', undefined);
+    }
+
+    // 恢复底部按钮栏
+    var footer = document.querySelector('#npcDetailModal .modal-footer');
+    if (footer) footer.style.display = '';
+
+    // 重新渲染只读详情
+    openNpcDetail(name);
+    UI.toast('角色「' + name + '」已保存');
+}
 // --- 刷新所有面板（原版功能：一键重新渲染所有UI面板） ---
 function refreshAllPanels() {
     try { renderPlayerStats(); } catch (e) { console.warn('renderPlayerStats error:', e); }
@@ -5272,6 +5409,27 @@ function openNpcDetail(name) {
     }
 
     document.getElementById('npcDetailBody').innerHTML = html;
+
+    // 在模态框头部添加编辑按钮
+    var headerEl = document.querySelector('#npcDetailModal .modal-header');
+    if (headerEl && !headerEl.querySelector('.npc-header-edit-btn')) {
+        var headerEditBtn = document.createElement('button');
+        headerEditBtn.className = 'circle-btn npc-header-edit-btn';
+        headerEditBtn.setAttribute('aria-label', '编辑');
+        headerEditBtn.innerHTML = '<svg class="icon icon-sm"><use href="#icon-edit" /></svg>';
+        headerEditBtn.style.marginRight = '8px';
+        headerEditBtn.addEventListener('click', function() {
+            editNpcDetail(name);
+        });
+        // 插入到关闭按钮前面
+        var closeBtn = headerEl.querySelector('[data-close]');
+        if (closeBtn) {
+            headerEl.insertBefore(headerEditBtn, closeBtn);
+        } else {
+            headerEl.appendChild(headerEditBtn);
+        }
+    }
+
     UI.showModal('npcDetailModal');
 
     // 绑定聊天按钮
@@ -5295,14 +5453,13 @@ function openNpcDetail(name) {
             viewNpcDiary(name);
         });
     }
-    // 绑定编辑按钮
+    // 绑定编辑按钮（切换为内联编辑模式）
     var editBtn = document.getElementById('btnNpcEdit');
     if (editBtn) {
         var newEditBtn = editBtn.cloneNode(true);
         editBtn.parentNode.replaceChild(newEditBtn, editBtn);
         newEditBtn.addEventListener('click', function() {
-            UI.hideModal('npcDetailModal');
-            openEditNpcModal(name);
+            editNpcDetail(name);
         });
     }
     // 绑定删除按钮

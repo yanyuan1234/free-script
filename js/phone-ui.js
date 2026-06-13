@@ -1429,6 +1429,43 @@ function _applyLogPageStyle(content, type, html) {
             }
         });
     }
+    // 约定页面事件委托：完成、删除、添加等操作
+    if (type === 'quests' && !content._questsClickBound) {
+        content._questsClickBound = true;
+        content.addEventListener('click', function(e) {
+            var resolveBtn = e.target.closest('[data-action="resolveQuestByIndex"]');
+            if (resolveBtn) {
+                var idx = parseInt(resolveBtn.getAttribute('data-index'));
+                if (!isNaN(idx) && typeof resolveQuestByIndex === 'function') {
+                    resolveQuestByIndex(idx);
+                }
+                return;
+            }
+            var deleteBtn = e.target.closest('[data-action="deleteQuestByIndex"]');
+            if (deleteBtn) {
+                var didx = parseInt(deleteBtn.getAttribute('data-index'));
+                if (!isNaN(didx) && typeof deleteQuestByIndex === 'function') {
+                    deleteQuestByIndex(didx);
+                }
+                return;
+            }
+            var addBtn = e.target.closest('[data-action="addQuestManual"]');
+            if (addBtn && typeof addQuestManual === 'function') {
+                addQuestManual();
+                return;
+            }
+            var saveBtn = e.target.closest('[data-action="saveNewQuestManual"]');
+            if (saveBtn && typeof saveNewQuestManual === 'function') {
+                saveNewQuestManual();
+                return;
+            }
+            var cancelBtn = e.target.closest('[data-action="cancelAddQuest"]');
+            if (cancelBtn && typeof cancelAddQuest === 'function') {
+                cancelAddQuest();
+                return;
+            }
+        });
+    }
     if (type === 'achieve') {
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.renderAchievePage) {
             AchievementSystem.renderAchievePage(content);
@@ -1593,7 +1630,182 @@ function renderCreateGroupPage() {
     return html;
 }
 function renderQuestsPage() {
-    return null;
+    // 读取 GameMemory.quests 作为主数据源
+    var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
+    var quests = (gm && gm.quests) ? gm.quests.slice() : [];
+    // 补充 gameState.currentQuests 中不在 GameMemory 里的约定
+    var currentQuests = (typeof gameState !== 'undefined' && gameState.currentQuests) ? gameState.currentQuests : [];
+    if (currentQuests.length > 0 && quests.length === 0) {
+        // GameMemory 无数据时用 gameState 兜底
+        quests = currentQuests.map(function(q) {
+            return {
+                content: q.title || q.content || '',
+                status: (q.status === '已完成' || q.status === 'resolved') ? 'resolved' : 'pending',
+                type: q.type || 'quest',
+                createdTurn: q.turn || 0,
+                stale: false
+            };
+        });
+    }
+    // 分类
+    var pending = [];
+    var resolved = [];
+    quests.forEach(function(q, i) {
+        q._idx = i; // 保留原始索引
+        if (q.status === 'resolved') { resolved.push(q); }
+        else { pending.push(q); }
+    });
+    // 类型图标
+    var typeIcons = { promise: '◇', quest: '◆', threat: '△', mystery: '?' };
+    var typeLabels = { promise: '约定', quest: '任务', threat: '威胁', mystery: '谜团' };
+    // 渲染缓存
+    var _lastContent = quests.length > 0 ? String(quests[quests.length - 1].content || '').slice(0, 30) : '';
+    var _key = 'quests:' + quests.length + '|' + pending.length + '|' + _lastContent;
+    if (shouldSkipPageRender('renderQuestsPage', _key)) return;
+
+    var html = '<div style="padding:16px;">';
+    // 顶部操作栏
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">';
+    html += '<div style="font-size:13px;color:var(--text-tertiary);">' + pending.length + ' 进行中 · ' + resolved.length + ' 已完成</div>';
+    html += '<div data-action="addQuestManual" role="button" tabindex="0" style="display:inline-flex;align-items:center;gap:4px;padding:6px 14px;background:var(--accent);color:#fff;border-radius:16px;font-size:13px;font-weight:500;cursor:pointer;">+ 添加约定</div>';
+    html += '</div>';
+
+    // 添加约定表单（默认隐藏）
+    html += '<div id="addQuestForm" style="display:none;padding:14px;background:var(--bg-secondary);border-radius:12px;margin-bottom:16px;">';
+    html += '<div style="font-size:14px;font-weight:600;margin-bottom:10px;color:var(--text);">新增约定</div>';
+    html += '<input id="addQuestContent" type="text" placeholder="输入约定内容..." style="width:100%;padding:10px 12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;margin-bottom:8px;box-sizing:border-box;">';
+    html += '<div style="display:flex;gap:8px;align-items:center;">';
+    html += '<select id="addQuestType" style="padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;outline:none;flex:1;">';
+    html += '<option value="promise">◇ 约定</option><option value="quest">◆ 任务</option><option value="threat">△ 威胁</option><option value="mystery">? 谜团</option>';
+    html += '</select>';
+    html += '<div data-action="saveNewQuestManual" role="button" tabindex="0" style="padding:8px 16px;background:var(--accent);color:#fff;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;">保存</div>';
+    html += '<div data-action="cancelAddQuest" role="button" tabindex="0" style="padding:8px 16px;background:var(--bg);border:1px solid var(--border);border-radius:8px;font-size:13px;color:var(--text-secondary);cursor:pointer;white-space:nowrap;">取消</div>';
+    html += '</div></div>';
+
+    // 进行中
+    if (pending.length > 0) {
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:4px;height:16px;background:var(--accent);border-radius:2px;"></span>进行中</div>';
+        pending.forEach(function(q) {
+            var icon = typeIcons[q.type] || '◇';
+            var typeLabel = typeLabels[q.type] || '约定';
+            var age = (gm && gm.currentTurn) ? (gm.currentTurn - (q.createdTurn || 0)) : 0;
+            var staleWarn = (q.stale || age > 30) ? '<span style="color:#f44;font-size:11px;margin-left:6px;">⚠ 长期未兑现</span>' : '';
+            html += '<div class="pearl-card" style="padding:14px;margin-bottom:8px;border-left:3px solid var(--accent);">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+            html += '<div style="flex:1;">';
+            html += '<div style="font-size:14px;font-weight:500;color:var(--text);line-height:1.5;">' + icon + ' ' + escapeHtml(q.content || '') + staleWarn + '</div>';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-top:6px;">';
+            html += '<span class="char-tag" style="font-size:11px;">' + escapeHtml(typeLabel) + '</span>';
+            html += '<span style="font-size:11px;color:var(--text-tertiary);">第' + (q.createdTurn || 0) + '回合</span>';
+            html += '</div></div>';
+            html += '<div data-action="resolveQuestByIndex" data-index="' + q._idx + '" role="button" tabindex="0" style="padding:5px 12px;background:#e8f5e9;color:#2e7d32;border-radius:12px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0;">完成</div>';
+            html += '</div></div>';
+        });
+        html += '</div>';
+    }
+
+    // 已完成
+    if (resolved.length > 0) {
+        html += '<div style="margin-bottom:20px;">';
+        html += '<div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:10px;display:flex;align-items:center;gap:6px;"><span style="display:inline-block;width:4px;height:16px;background:#999;border-radius:2px;"></span>已完成</div>';
+        resolved.forEach(function(q) {
+            var icon = typeIcons[q.type] || '◇';
+            var typeLabel = typeLabels[q.type] || '约定';
+            html += '<div class="pearl-card" style="padding:12px;margin-bottom:6px;opacity:0.65;border-left:3px solid #ccc;">';
+            html += '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">';
+            html += '<div style="flex:1;">';
+            html += '<div style="font-size:13px;color:var(--text-secondary);line-height:1.5;text-decoration:line-through;">✓ ' + icon + ' ' + escapeHtml(q.content || '') + '</div>';
+            html += '<div style="display:flex;align-items:center;gap:8px;margin-top:4px;">';
+            html += '<span class="char-tag" style="font-size:11px;background:#f0f0f0;color:#999;">' + escapeHtml(typeLabel) + '</span>';
+            if (q.resolvedTurn) {
+                html += '<span style="font-size:11px;color:var(--text-tertiary);">第' + q.resolvedTurn + '回合完成</span>';
+            }
+            html += '</div></div>';
+            html += '<div data-action="deleteQuestByIndex" data-index="' + q._idx + '" role="button" tabindex="0" style="padding:5px 10px;background:#ffebee;color:#c62828;border-radius:12px;font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0;">删除</div>';
+            html += '</div></div>';
+        });
+        html += '</div>';
+    }
+
+    // 空状态
+    if (quests.length === 0) {
+        html += '<div class="empty-state" style="padding:60px 20px;">';
+        html += '<div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>';
+        html += '<p>暂无约定或任务</p>';
+        html += '<p style="font-size:12px;margin-top:4px;color:var(--text-secondary);">点击「添加约定」手动创建</p>';
+        html += '</div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+// 标记约定为已完成
+function resolveQuestByIndex(idx) {
+    var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
+    if (!gm || !gm.quests || !gm.quests[idx]) return;
+    gm.quests[idx].status = 'resolved';
+    gm.quests[idx].resolvedTurn = gm.currentTurn || 0;
+    // 同步 gameState.currentQuests
+    if (typeof gameState !== 'undefined' && gameState.currentQuests && gm.quests[idx].content) {
+        var questContent = gm.quests[idx].content;
+        for (var i = 0; i < gameState.currentQuests.length; i++) {
+            if (gameState.currentQuests[i].title && gameState.currentQuests[i].title.indexOf(questContent.substring(0, 10)) >= 0) {
+                gameState.currentQuests[i].status = '已完成';
+                break;
+            }
+        }
+    }
+    UI.afterMemoryChange('quests', 'currentQuests', '约定已完成');
+}
+// 删除约定
+function deleteQuestByIndex(idx) {
+    var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
+    if (!gm || !gm.quests || !gm.quests[idx]) return;
+    gm.quests.splice(idx, 1);
+    UI.afterMemoryChange('quests', 'currentQuests', '约定已删除');
+}
+// 显示添加约定表单
+function addQuestManual() {
+    var form = document.getElementById('addQuestForm');
+    if (form) form.style.display = 'block';
+}
+// 取消添加
+function cancelAddQuest() {
+    var form = document.getElementById('addQuestForm');
+    if (form) form.style.display = 'none';
+    var input = document.getElementById('addQuestContent');
+    if (input) input.value = '';
+}
+// 保存新约定
+function saveNewQuestManual() {
+    var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
+    if (!gm) { alert('记忆系统未就绪'); return; }
+    if (!gm.quests) gm.quests = [];
+    var content = document.getElementById('addQuestContent');
+    var typeSelect = document.getElementById('addQuestType');
+    if (!content || !content.value.trim()) { alert('请输入约定内容'); return; }
+    var newQuest = {
+        content: content.value.trim(),
+        status: 'pending',
+        type: typeSelect ? typeSelect.value : 'promise',
+        createdTurn: gm.currentTurn || 0,
+        stale: false
+    };
+    gm.quests.push(newQuest);
+    // 同步 gameState.currentQuests
+    if (typeof gameState !== 'undefined') {
+        if (!gameState.currentQuests) gameState.currentQuests = [];
+        gameState.currentQuests.push({
+            title: newQuest.content,
+            status: 'pending',
+            type: newQuest.type,
+            turn: newQuest.createdTurn
+        });
+    }
+    // 隐藏表单并清空
+    cancelAddQuest();
+    UI.afterMemoryChange('quests', 'currentQuests', '约定已添加');
 }
 function renderAchievePage() {
     return null;
@@ -2215,7 +2427,8 @@ function renderItemsPage() {
             var rarity = item.rarity || '普通';
             var rarityClass = item.rarityClass || 'common';
             var equipped = item.equipped ? ' [已装备]' : '';
-            return '<div class="items-box" role="button" tabindex="0" style="padding:20px 10px;">' +
+            var safeName = (item.name || '未知物品').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+            return '<div class="items-box" role="button" tabindex="0" style="padding:20px 10px;cursor:pointer;" onclick="openItemDetail(\'' + safeName + '\')">' +
                 '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;">' + (item.name || '未知物品') + equipped + '</div>' +
                 '<div class="items-box-count" style="margin-bottom:4px;">x' + count + '</div>' +
                 '<div class="items-box-rarity ' + rarityClass + '">' + rarity + '</div></div>';
@@ -2270,6 +2483,171 @@ function renderItemsPage() {
         '</div>' +
         '</div>';
 }
+// 打开物品详情编辑弹窗
+var _itemEditingName = ''; // 记录当前编辑的物品原名
+function openItemDetail(itemName) {
+    if (!gameState || !gameState.currentBag) return;
+    // 从 gameState.currentBag 查找物品
+    var bagItem = null;
+    for (var i = 0; i < gameState.currentBag.length; i++) {
+        if (gameState.currentBag[i].name === itemName) {
+            bagItem = gameState.currentBag[i];
+            break;
+        }
+    }
+    if (!bagItem) { UI.toast('未找到该物品'); return; }
+
+    // 从 GameMemory.tables.items 获取补充信息
+    var gmItem = null;
+    if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables && window.GameMemory.tables.items) {
+        gmItem = window.GameMemory.tables.items[itemName] || null;
+    }
+
+    _itemEditingName = itemName;
+
+    // 合并数据：bagItem 优先，gmItem 补充
+    var name = bagItem.name || '';
+    var count = bagItem.count || gmItem && gmItem.qty || 1;
+    var rarity = bagItem.rarity || gmItem && gmItem.rarity || '普通';
+    var desc = bagItem.desc || gmItem && gmItem.desc || '';
+
+    // 构建详情表单
+    var html = '';
+    html += '<div class="edit-form">';
+    html += '<div class="edit-form-row">';
+    html += '<div><label class="field-label">名称</label><input type="text" class="input-field" id="itemEditName" value="' + escapeHtml(name) + '" placeholder="物品名称"></div>';
+    html += '<div><label class="field-label">数量</label><input type="number" class="input-field" id="itemEditCount" value="' + count + '" min="0"></div>';
+    html += '</div>';
+    html += '<div class="edit-form-row">';
+    html += '<div><label class="field-label">品质</label><select class="input-field" id="itemEditRarity">';
+    var rarities = ['普通', '精良', '珍稀', '传说'];
+    for (var r = 0; r < rarities.length; r++) {
+        html += '<option value="' + rarities[r] + '"' + (rarities[r] === rarity ? ' selected' : '') + '>' + rarities[r] + '</option>';
+    }
+    html += '</select></div>';
+    html += '</div>';
+    html += '<div><label class="field-label">描述</label><textarea class="input-field textarea-field" id="itemEditDesc" rows="3" placeholder="物品描述">' + escapeHtml(desc) + '</textarea></div>';
+    html += '</div>';
+
+    document.getElementById('itemDetailBody').innerHTML = html;
+    UI.showModal('itemDetailModal');
+}
+
+// 保存物品编辑
+function saveItemEdit() {
+    var nameEl = document.getElementById('itemEditName');
+    if (!nameEl) { UI.toast('页面未加载完整'); return; }
+    var newName = nameEl.value.trim();
+    if (!newName) { UI.toast('请填写物品名称'); return; }
+
+    var countEl = document.getElementById('itemEditCount');
+    var rarityEl = document.getElementById('itemEditRarity');
+    var descEl = document.getElementById('itemEditDesc');
+
+    var count = countEl ? (parseInt(countEl.value) || 0) : 1;
+    var rarity = rarityEl ? rarityEl.value : '普通';
+    var desc = descEl ? descEl.value.trim() : '';
+
+    // 更新 gameState.currentBag
+    if (!gameState || !gameState.currentBag) return;
+    var found = false;
+    for (var i = 0; i < gameState.currentBag.length; i++) {
+        if (gameState.currentBag[i].name === _itemEditingName) {
+            // 如果改名了，检查新名是否已存在
+            if (_itemEditingName !== newName) {
+                var dup = false;
+                for (var j = 0; j < gameState.currentBag.length; j++) {
+                    if (gameState.currentBag[j].name === newName) { dup = true; break; }
+                }
+                if (dup) { UI.toast('已存在同名物品'); return; }
+            }
+            gameState.currentBag[i].name = newName;
+            gameState.currentBag[i].count = count;
+            gameState.currentBag[i].rarity = rarity;
+            gameState.currentBag[i].desc = desc;
+            // 更新品质对应的 CSS class
+            var rarityClassMap = { '普通': 'common', '精良': 'fine', '珍稀': 'rare', '传说': 'legendary' };
+            gameState.currentBag[i].rarityClass = rarityClassMap[rarity] || 'common';
+            found = true;
+            break;
+        }
+    }
+    if (!found) { UI.toast('未找到该物品'); return; }
+
+    // 同步到 GameMemory.tables.items
+    if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
+        var gm = window.GameMemory;
+        if (!gm.tables.items) gm.tables.items = {};
+        // 先保留旧数据（改名时需要从旧键读取）
+        var oldGmItem = gm.tables.items[_itemEditingName] || null;
+        // 如果改名了，删除旧键
+        if (_itemEditingName !== newName && gm.tables.items[_itemEditingName]) {
+            delete gm.tables.items[_itemEditingName];
+        }
+        gm.tables.items[newName] = {
+            name: newName,
+            qty: count,
+            unit: oldGmItem ? oldGmItem.unit : '个',
+            rarity: rarity,
+            desc: desc,
+            usable: oldGmItem ? oldGmItem.usable : false,
+            effect: oldGmItem ? oldGmItem.effect : '',
+            equippable: oldGmItem ? oldGmItem.equippable : false,
+            equipped: oldGmItem ? oldGmItem.equipped : false,
+            slot: oldGmItem ? oldGmItem.slot : '',
+            obtainedTurn: oldGmItem ? oldGmItem.obtainedTurn : gm.currentTurn,
+            lastChangedTurn: gm.currentTurn
+        };
+    }
+
+    // 刷新UI
+    _itemEditingName = '';
+    UI.hideModal('itemDetailModal');
+    // 清除渲染缓存，强制刷新物品页
+    if (typeof RenderCache !== 'undefined') RenderCache.mark('renderItemsPage', '');
+    if (typeof renderItemsPage === 'function') renderItemsPage();
+    // 刷新手机屏幕内容
+    var screen = document.getElementById('phoneScreen');
+    if (screen && typeof UI !== 'undefined' && UI._currentPage === 'items') {
+        screen.innerHTML = renderItemsPage();
+    }
+    if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
+    autoSave();
+    UI.toast('物品「' + newName + '」已保存');
+}
+
+// 删除物品
+function deleteItemEdit() {
+    if (!_itemEditingName) return;
+    if (!gameState || !gameState.currentBag) return;
+    // 从 gameState.currentBag 中删除
+    var idx = -1;
+    for (var i = 0; i < gameState.currentBag.length; i++) {
+        if (gameState.currentBag[i].name === _itemEditingName) { idx = i; break; }
+    }
+    if (idx === -1) { UI.toast('未找到该物品'); return; }
+    var deletedName = _itemEditingName;
+    gameState.currentBag.splice(idx, 1);
+
+    // 从 GameMemory.tables.items 中删除
+    if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables && window.GameMemory.tables.items) {
+        delete window.GameMemory.tables.items[deletedName];
+    }
+
+    _itemEditingName = '';
+    UI.hideModal('itemDetailModal');
+    // 清除渲染缓存，强制刷新物品页
+    if (typeof RenderCache !== 'undefined') RenderCache.mark('renderItemsPage', '');
+    if (typeof renderItemsPage === 'function') renderItemsPage();
+    var screen = document.getElementById('phoneScreen');
+    if (screen && typeof UI !== 'undefined' && UI._currentPage === 'items') {
+        screen.innerHTML = renderItemsPage();
+    }
+    if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
+    autoSave();
+    UI.toast('物品「' + deletedName + '」已删除');
+}
+
 // 渲染日记页面
 function renderDiaryPage() {
     // 【已重构】日记数据完全从 AI 的 world[].type === 'diary' 模块读取，不再依赖本地生成
@@ -4214,6 +4592,16 @@ function bindEvents() {
     // NPC编辑保存
     bindEvent('npcEditSave', 'click', function() {
         saveNpcEdit();
+    });
+
+    // 物品编辑保存
+    bindEvent('btnItemSave', 'click', function() {
+        saveItemEdit();
+    });
+
+    // 物品编辑删除
+    bindEvent('btnItemDelete', 'click', function() {
+        deleteItemEdit();
     });
 
     // NPC详情聊天按钮

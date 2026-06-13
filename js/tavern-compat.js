@@ -3574,7 +3574,12 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">进行中约定</div><div style="font-size:20px;font-weight:600;">' + pendingQuests + ' 待办</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + gm.currentTurn + '</div></div>'
             + '</div></div>'
-            + '<div class="memory-card"><div class="memory-card-title">新功能状态</div><div style="display:flex;gap:16px;flex-wrap:wrap;">'
+            + '<div class="memory-card"><div class="memory-card-title">快捷编辑</div><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;">角色、物品、约定等数据已移至日志页面，可直接编辑</div><div style="display:flex;gap:8px;flex-wrap:wrap;">'
+            + '<button onclick="MemoryManagerUI._goToLogPage(\'npcPage\')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);">👥 人际（角色编辑）</button>'
+            + '<button onclick="MemoryManagerUI._goToLogPage(\'items\')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);">📦 物品（物品编辑）</button>'
+            + '<button onclick="MemoryManagerUI._goToLogPage(\'quests\')" style="padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid var(--border);background:var(--bg);color:var(--text);">📋 任务（约定编辑）</button>'
+            + '</div></div>'
+            + '<div class="memory-card"><div class="memory-card-title">引擎状态</div><div style="display:flex;gap:16px;flex-wrap:wrap;">'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">场景状态</div><div style="font-size:14px;font-weight:600;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点有场景锁定</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
@@ -3584,6 +3589,18 @@ var MemoryManagerUI = {
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
             + (gm._lastInjectionStats ? '总字符: ' + gm._lastInjectionStats.totalChars + ' / 预算: ' + gm._lastInjectionStats.budget : '尚未生成注入内容')
             + '</div></div></div>';
+    },
+
+    _goToLogPage: function(type) {
+        // 关闭记忆面板，跳转到日志页面
+        if (typeof UI !== 'undefined' && UI.hideModal) {
+            try { UI.hideModal('memoryManagerModal'); } catch(e) {}
+        }
+        if (typeof switchToLogPage === 'function') {
+            switchToLogPage(type);
+        } else if (typeof renderLogPage === 'function') {
+            renderLogPage(type);
+        }
     },
 
     // ===== 合并标签页：世界观（永久事实 + 世界设定 + 剧情大纲） =====

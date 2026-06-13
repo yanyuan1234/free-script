@@ -1660,9 +1660,7 @@
                         <button class="memory-tab active" data-tab="overview" onclick="MemoryManagerUI.switchTab('overview')">总览</button>
                         <button class="memory-tab" data-tab="worldview" onclick="MemoryManagerUI.switchTab('worldview')">世界观</button>
                         <button class="memory-tab" data-tab="recentMemory" onclick="MemoryManagerUI.switchTab('recentMemory')">近期记忆</button>
-                        <button class="memory-tab" data-tab="dataTables" onclick="MemoryManagerUI.switchTab('dataTables')">数据表</button>
                         <button class="memory-tab" data-tab="eventLine" onclick="MemoryManagerUI.switchTab('eventLine')">事件线</button>
-                        <button class="memory-tab" data-tab="quests" onclick="MemoryManagerUI.switchTab('quests')">约定任务</button>
                         <button class="memory-tab" data-tab="debug" onclick="MemoryManagerUI.switchTab('debug')">调试</button>
                     </div>
                     
@@ -2249,6 +2247,28 @@
                                 <use href="#icon-edit" />
                             </svg> 编辑</button>
                         <button class="crystal-btn flex-1 danger" id="btnNpcDelete"><svg class="icon icon-sm">
+                                <use href="#icon-trash" />
+                            </svg> 删除</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 物品详情编辑模态框 ==================== -->
+            <div class="modal-overlay" id="itemDetailModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 class="modal-title">物品详情</h3>
+                        <button class="circle-btn" data-close="itemDetailModal" aria-label="关闭"><svg
+                                class="icon icon-sm">
+                                <use href="#icon-close" />
+                            </svg></button>
+                    </div>
+                    <div class="modal-body" id="itemDetailBody"></div>
+                    <div class="modal-footer" style="flex-wrap:wrap;gap:8px;">
+                        <button class="crystal-btn flex-1" id="btnItemSave"><svg class="icon icon-sm">
+                                <use href="#icon-save" />
+                            </svg> 保存</button>
+                        <button class="crystal-btn flex-1 danger" id="btnItemDelete"><svg class="icon icon-sm">
                                 <use href="#icon-trash" />
                             </svg> 删除</button>
                     </div>
