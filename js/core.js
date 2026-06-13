@@ -1605,14 +1605,6 @@ squelchRules: {
 npcDescriptionRules: true,   // 男帅女美、禁止脸谱化、禁用丑相关形容
 // === 推荐参数档位（一键切换 4 档叙事参数） ===
 presetArchetype: 'free',     // conservative / natural / passionate / delicate / free
-// === 标签美化库（来自象牙塔预设的HTML/CSS美化） ===
-beautifyLibrary: {
-    phone: false,            // <手机> 标签 → iPhone 风格
-    status: false,           // <状态> 标签 → 像素/古风/现代风
-    gossip: false,           // <gossip> 标签 → 群聊风格
-    theater: false,          // <小剧场> 标签 → 博客/微博风格
-    summary: false           // <meow_FM> 标签 → 课堂笔记风格
-},
 // === 预设助手大总结书签（来自象牙塔预设的summarize功能） ===
 summaryBookmarks: []         // [{ id, label, timestamp, hidden }]
 };

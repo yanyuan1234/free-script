@@ -31,10 +31,6 @@
             .archetype-card-title{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)}
             .archetype-card-desc{font-size:11px;color:var(--text-secondary);line-height:1.4}
             .archetype-card-params{font-size:10px;color:var(--text-tertiary);margin-top:6px;font-family:monospace}
-            .beautify-card{cursor:pointer;padding:10px 12px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;transition:all .2s;display:flex;align-items:center;gap:8px;font-size:12px}
-            .beautify-card:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08))}
-            .beautify-card.active{border-color:var(--accent,var(--primary,#6366f1));background:var(--accent-soft,rgba(99,102,241,0.1))}
-            .beautify-card input{margin:0}
         </style>
         </head>
     <body>
@@ -2445,26 +2441,6 @@
                                             <div class="archetype-card-desc">克制含蓄，适合日常情感</div>
                                             <div class="archetype-card-params">创意 0.88 · 稳定 0.88</div>
                                         </div>
-                                    </div>
-                                </div>
-                            </div>
-                            <!-- 美化标签（让 AI 输出的特定标签变成漂亮卡片） -->
-                            <div class="setting-group">
-                                <div class="setting-header" onclick="toggleSettingGroup(this)">
-                                    <h3 class="setting-title">美化标签</h3>
-                                    <span class="toggle-icon">▼</span>
-                                </div>
-                                <div class="setting-body" style="display:none;">
-                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
-                                        开启后，AI 在指定标签内的内容会自动渲染为漂亮卡片（如手机/状态/群聊风格）<br>
-                                        <span style="color:var(--text-tertiary);">不影响 AI 输出，只改变页面显示效果</span>
-                                    </div>
-                                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
-                                        <label class="beautify-card"><input type="checkbox" data-beautify="phone"><span>手机界面</span></label>
-                                        <label class="beautify-card"><input type="checkbox" data-beautify="status"><span>状态卡</span></label>
-                                        <label class="beautify-card"><input type="checkbox" data-beautify="gossip"><span>群聊风格</span></label>
-                                        <label class="beautify-card"><input type="checkbox" data-beautify="theater"><span>小剧场</span></label>
-                                        <label class="beautify-card"><input type="checkbox" data-beautify="summary"><span>笔记风格</span></label>
                                     </div>
                                 </div>
                             </div>

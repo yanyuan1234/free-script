@@ -5598,12 +5598,6 @@ function saveGameSettings() {
     // NSFW 解剖名词开关
     var anatomyEl = document.getElementById('settingAnatomyTerms');
     if (anatomyEl) gameState.squelchRules.anatomyTerms = anatomyEl.checked;
-    // 标签美化库
-    if (!gameState.beautifyLibrary) gameState.beautifyLibrary = {};
-    document.querySelectorAll('[data-beautify]').forEach(function(el) {
-        var k = el.getAttribute('data-beautify');
-        gameState.beautifyLibrary[k] = el.checked;
-    });
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
     safeSetItem('freeScript_settings', JSON.stringify({
@@ -5625,7 +5619,6 @@ function saveGameSettings() {
         npcDescriptionRules: gameState.npcDescriptionRules,
         narrativeEyes: gameState.narrativeEyes,
         squelchRules: gameState.squelchRules,
-        beautifyLibrary: gameState.beautifyLibrary,
         presetArchetype: gameState.presetArchetype
     }));
     applyFontSize();
@@ -5920,9 +5913,6 @@ function loadGameSettings() {
             if (d.squelchRules && typeof d.squelchRules === 'object') {
                 gameState.squelchRules = d.squelchRules;
             }
-            if (d.beautifyLibrary && typeof d.beautifyLibrary === 'object') {
-                gameState.beautifyLibrary = d.beautifyLibrary;
-            }
             if (d.presetArchetype !== undefined) gameState.presetArchetype = d.presetArchetype;
             // 恢复 UI 控件
             var chModeEl = document.getElementById('settingChapterMode');
@@ -5931,11 +5921,6 @@ function loadGameSettings() {
             var anatomyEl = document.getElementById('settingAnatomyTerms');
             if (anatomyEl) anatomyEl.checked = gameState.squelchRules && gameState.squelchRules.anatomyTerms === true;
             // 叙事基调/干练文风 9 项已固定为默认开启，不再暴露 UI 开关
-            // 美化标签、写法档位（玩家可选）
-            document.querySelectorAll('[data-beautify]').forEach(function(el) {
-                var k = el.getAttribute('data-beautify');
-                el.checked = gameState.beautifyLibrary && gameState.beautifyLibrary[k] === true;
-            });
             document.querySelectorAll('.archetype-card').forEach(function(el) {
                 el.classList.toggle('active', el.getAttribute('data-archetype') === gameState.presetArchetype);
             });
