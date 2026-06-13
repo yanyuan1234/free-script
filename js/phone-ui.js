@@ -6132,6 +6132,131 @@ async function deleteSaveSlot(slot) {
     return deleteFromSlot(slot);
 }
 
+// 存档常量（从 game.js 收拢）
+const SAVE_GAME_ID = 'freeScript';
+const LOCAL_SAVE_KEY = 'freeScript_localSaves';
+const LOCAL_MANUAL_COUNT = 5;
+const LOCAL_EXT_START = 6;
+const LOCAL_EXT_END = 10;
+
+async function renderSaveUI() {
+    var ct = document.getElementById('saveLoadBody');
+    if (!ct) return;
+    var html = '';
+    // 生成存档行的通用函数
+    function slotRow(label, icon, data, slot, showSave) {
+        var info = _formatSaveSlotData(data);
+        var displayName = '';
+        if (info) {
+            displayName = icon + ' ' + label + ' - <strong>' + escapeHtml(info.name) +
+                '</strong> <span style="font-size:11px;color:var(--text-tertiary)">(' + escapeHtml(info.time) + ')</span>';
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8;flex-wrap:wrap;gap:4px">' +
+                '<span style="font-size:13px;color:var(--text-tertiary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' +
+                displayName + '</span>' + '<div style="display:flex;gap:4px;flex-shrink:0">' +
+                '<button class="save-action-btn" onclick="renameSave(' + slot + ')">改名</button>' +
+                '<button class="save-action-btn" onclick="loadFromSlot(' + slot + ')">读取</button>' + (
+                    showSave ? '<button class="save-action-btn" onclick="safeSaveSlot(' + slot +
+                    ')">覆盖</button>' : '') +
+                '<button class="save-action-btn" onclick="deleteFromSlot(' + slot +
+                ')" style="color:#ff6b6b">删除</button>' + '</div></div>';
+        } else {
+            displayName = icon + ' ' + label + ' - 空';
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8">' +
+                '<span style="font-size:13px;color:var(--text-tertiary)">' + displayName + '</span>' + (showSave ?
+                    '<button class="save-action-btn" onclick="safeSaveSlot(' + slot + ')">保存</button>' :
+                    '') + '</div>';
+        }
+    }
+    // 自动存档
+    var auto = await SaveDB.get(0);
+    html += slotRow('自动存档', '电', auto, 0, false);
+    // 手动存档 1~5
+    for (var mi = 1; mi <= LOCAL_MANUAL_COUNT; mi++) {
+        var manual = await SaveDB.get(mi);
+        html += slotRow('手动存档' + mi, '', manual, mi, true);
+    }
+    // 扩展存档 6~10
+    html += '<div style="font-size:12px;color:var(--text-tertiary);margin-top:12px;margin-bottom:6px">扩展存档</div>';
+    for (var ei = LOCAL_EXT_START; ei <= LOCAL_EXT_END; ei++) {
+        var ext = await SaveDB.get(ei);
+        html += slotRow('存档' + ei, '', ext, ei, true);
+    }
+    // 迁移按钮已移除（自由版无云存档）
+    // 导入导出
+    html += '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border)">' +
+        '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;text-align:center">包 存档导入 / 导出</div>' +
+        '<div style="display:flex;gap:8px">' +
+        '<button class="pixel-btn blue big" onclick="exportSaves()" style="flex:1">导出全部存档</button>' +
+        '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:6px">导出为JSON文件，可在其他设备导入恢复</div>' +
+        '</div>';
+    ct.innerHTML = html;
+}
+// 云迁移功能已移除（自由版无云存档）
+// ── 首页读档弹窗 ──
+async function openLoadModal() {
+    try {
+        var html = '';
+
+        function loadRow(label, icon, data, slot) {
+            if (!data) return '';
+            var info = _formatSaveSlotData(data);
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);margin-bottom:6px;border:2px solid #a2d2ff;cursor:pointer" onclick="safeLoadSlot(' +
+                slot + ')">' + '<div style="flex:1;min-width:0;overflow:hidden">' +
+                '<div style="font-size:14px;color:var(--text-tertiary);font-weight:600">' + icon + ' ' + escapeHtml(info.name) +
+                '</div>' + '<div style="font-size:11px;color:var(--text-tertiary)">' + label + ' · ' + escapeHtml(info.time) +
+                '</div>' + '</div>' +
+                '<span style="color:#a2d2ff;font-size:18px;padding-left:10px">&#9654;</span></div>';
+        }
+        // 统一读取所有存档槽位
+        var allSaves = {};
+        try {
+            allSaves[0] = await SaveDB.get(0);
+            for (var si = 1; si <= LOCAL_EXT_END; si++) {
+                allSaves[si] = await SaveDB.get(si);
+            }
+        } catch (e) {
+            console.warn('读取存档列表失败:', e);
+        }
+        if (allSaves[0]) html += loadRow('自动存档', '', allSaves[0], 0);
+        for (var mi = 1; mi <= LOCAL_MANUAL_COUNT; mi++) {
+            if (allSaves[mi]) html += loadRow('手动存档' + mi, '', allSaves[mi], mi);
+        }
+        for (var ei = LOCAL_EXT_START; ei <= LOCAL_EXT_END; ei++) {
+            if (allSaves[ei]) html += loadRow('存档' + ei, '', allSaves[ei], ei);
+        }
+        if (!html) {
+            html = '<div style="text-align:center;padding:30px;color:var(--text-tertiary)">没有找到任何存档</div>';
+        }
+        html +=
+            '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border);display:flex;gap:8px">' +
+            '<button class="pixel-btn blue big" onclick="UI.hideModal(\'loadModal\');exportSaves()" style="flex:1">导出存档</button>' +
+            '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+            '</div>';
+        // 移除旧弹窗（如果有）
+        var old = document.getElementById('loadModal');
+        if (old) old.remove();
+        var overlay = document.createElement('div');
+        overlay.className = 'modal-overlay active';
+        overlay.id = 'loadModal';
+        overlay.innerHTML =
+            '<div class="pixel-modal"><div class="modal-titlebar"><span class="modal-titlebar-text">读取存档</span><div class="modal-close-btn" onclick="UI.hideModal(\'loadModal\')">×</div></div><div class="modal-body">' +
+            html + '</div></div>';
+        document.body.appendChild(overlay);
+    } catch (e) {
+        console.error('打开存档列表失败:', e);
+        UI.toast('读取存档列表时出错: ' + translateError(e.message));
+    }
+}
+// 安全读档包装（解决async onclick静默失败问题）
+function safeLoadSlot(slot) {
+    loadFromSlot(slot).catch(function(e) {
+        console.error('读档失败:', e);
+        UI.toast('读档失败: ' + translateError(e.message));
+    });
+}
+
 // ========================================
 // NPC聊天系统 - UI操作（从 game.js 收拢）
 // ========================================
