@@ -2216,6 +2216,17 @@ return ok ? r : null;
 function parseAIResponse(reply) {
     let data = null;
     let storyText = '';
+    // 0. 【修复】剥离AI的"思考链前缀"（"让我开始..." "title: ..." "story: ..." 等）
+    // 这些是AI在输出JSON前的内部计划过程，不应展示给玩家
+    if (reply && typeof reply === 'string') {
+        // 匹配 "让我开始写story:" "让我开始" "title:" "story:" "好的" "首先" "我将" 等思考前缀
+        var thinkPrefixPattern = /^(?:(?:让我|让我开始|好的|首先|现在|好的,?我|好,?我|我会|我要|我将|继续|接下来|于是)(?:开始)?(?:写|创作|生成|进行|继续|讲述|输出|推进)?[^:{\n]*[:：]?\s*\n*\s*)+/;
+        reply = reply.replace(thinkPrefixPattern, '').trim();
+        // 单独匹配以 "title:" "story:" 开头的纯文本标签
+        reply = reply.replace(/^(title|story|choices|player|characters|world|bag|quests|gameTime|key|narrative|scene)\s*[:：][^\n]*\n+/gi, '').trim();
+        // 匹配AI的"元思考"（"我将使用JSON格式..." "让我构思..." 等）
+        reply = reply.replace(/^(我将使用|我使用|让我构思|让我想想|让我来写|下面是|以下是我的|我的输出格式|按要求)[^\n{]*\n+/g, '').trim();
+    }
     // 1. 先尝试直接解析纯JSON（新格式）
     data = safeJSONParse(reply);
     // 2. 如果失败，兼容旧的```json格式
@@ -2331,6 +2342,21 @@ if (Object.keys(theaterContent).length > 0) {
 
     // 【深度融合】将预设<branches>选项桥接到游戏原生选项系统
     _bridgeBranchesToChoices(theaterContent);
+}
+
+// 【修复】检测JSON是否被截断（不完整）
+// 症状：AI输出到一半被maxTokens截断，JSON的{ }不配对，前端把残余`\n\n`当纯文本渲染
+// 检测方法：数 { 和 } 数量是否相等
+if (reply && typeof reply === 'string') {
+    var openBraces = (reply.match(/\{/g) || []).length;
+    var closeBraces = (reply.match(/\}/g) || []).length;
+    if (openBraces > 0 && openBraces > closeBraces) {
+        console.warn('[parseAIResponse] 检测到JSON被截断：{=' + openBraces + ', }=' + closeBraces);
+        if (!data) {
+            // 解析完全失败的情况下，把残余内容标识为截断
+            storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n' + (storyText || '').trim() + '\n\n💡 建议点击 🔄 重新生成';
+        }
+    }
 }
 
 return {

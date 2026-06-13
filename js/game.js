@@ -450,7 +450,8 @@ function buildSystemPrompt(includeFormatRules) {
         // 非内置预设（酒馆导入的或无预设）：注入格式引导
         // 【说明】JSON 格式不是「不可覆盖的硬规定」，而是「让前端能正常渲染的最稳妥选择」。
         // 如果酒馆预设本身有更具体的格式要求，AI 应该遵循预设；但默认情况下，可解析的 JSON 是最省心的。
-        _formatAnchor = '\n\n【输出要求】JSON格式，story放首字段，空字段省略不输出。' +
+        // 【关键】明确禁止"思考过程"前缀（"让我开始..." "title:" "story:"），直接输出 { 开头
+        _formatAnchor = '\n\n【输出要求】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。' +
             '字段：{ "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"","time":"","period":""} }\n' +
             '<giggle>心声(2-5个) <mem>标记变化 约' + _maxTokensForAnchor + 'tokens输出空间';
     }
@@ -468,6 +469,8 @@ ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCus
     var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
     _prompt = `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
+【关键】你的回复将直接被前端JSON解析器读取。**不要输出任何思考过程、计划、解释、前缀**。每次回复都以 { 开头，以 } 结尾，中间是合法的JSON。
+
 ${_setupText}
 ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
 
@@ -480,7 +483,8 @@ ${_termsPrompt}
 - 关系自然：角色保留各自的生活重心，不因主角出现就变成围绕其旋转的情绪体
 
 【你的工作方式】
-JSON格式输出，story放第一个字段，用\\n换行，对话用「」。你大约有 ${_maxTokens} tokens输出空间。
+**直接输出JSON**（以 { 开头），不要任何前缀（不要"让我开始"、不要"title:"、不要"story:"等思考过程）。
+story放第一个字段，用\\n换行，对话用「」。你大约有 ${_maxTokens} tokens输出空间。
 - story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾
 
 ${turn <= 3 ?
@@ -514,7 +518,7 @@ function _buildFormatRules(gs, _t) {
 
     if (turn <= 3) {
         // 前3轮：精简JSON模板（只保留必填字段，可选字段用...省略）
-        return '【输出格式】JSON输出，story放第一个字段，用\\n换行，对话用「」。\n'
+        return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
             + '{ "title": "", "story": "", '
             + (hasChoices ? '"choices": [{"id":"A","text":""}],' : '')
             + ' "player": {"name":"","identity":"","stats":[]}, '
@@ -526,7 +530,7 @@ function _buildFormatRules(gs, _t) {
             + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
     } else {
         // 第4轮起：极简格式提醒
-        return '【格式】JSON输出，story放首字段，空字段省略。<giggle>心声 <mem>标记变化';
+        return '【格式】直接输出JSON（以{开头），不要前缀，空字段省略。<giggle>心声 <mem>标记变化';
     }
 }
 
@@ -1466,9 +1470,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         var contextSize = (gameState && gameState.contextSize) || 8000;
         var maxTokens = (gameState && gameState.maxTokens) || 4096;
         // 酒馆公式：输入预算 = 上下文大小 - 输出预留
-        // 但AI实际输出通常只有2000-3000 tokens（不是4096上限）
-        // 所以预留实际输出空间+安全余量，而非maxTokens全量
-        var reservedForOutput = Math.min(maxTokens, Math.max(1500, Math.floor(contextSize * 0.25)));
+        // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
+        // 预留不足会导致AI输出到一半被截断，JSON解析失败，残余`\n\n`被当纯文本渲染
+        // 策略：宁可输入端紧凑一点，也要保证AI能输出完整JSON
+        var reservedForOutput = Math.min(maxTokens, Math.max(3000, Math.floor(contextSize * 0.45)));
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessages(messages);
         if (currentTokens > maxInputTokens) {
