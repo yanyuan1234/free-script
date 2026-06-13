@@ -3551,7 +3551,7 @@ var MemoryManagerUI = {
         if (!content) return;
         var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
         if (!gm) { content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">记忆系统未初始化</div>'; return; }
-        var tabMap = { overview: 'renderOverview', anchors: 'renderPermanentFacts', permanentFacts: 'renderPermanentFacts', recentMemory: 'renderRecentMemory', characters: 'renderCharacters', items: 'renderItems', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', quests: 'renderQuests', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState', world: 'renderLocations' };
+        var tabMap = { overview: 'renderOverview', worldview: 'renderWorldview', anchors: 'renderWorldview', permanentFacts: 'renderWorldview', world: 'renderWorldview', recentMemory: 'renderRecentMemory', dataTables: 'renderDataTables', characters: 'renderDataTables', items: 'renderDataTables', locations: 'renderDataTables', eventLine: 'renderEventLine', events: 'renderEventLine', timeline: 'renderEventLine', quests: 'renderQuests', debug: 'renderDebug', injection: 'renderDebug', search: 'renderDebug', relationships: 'renderDataTables', plot: 'renderWorldview', summaryLayers: 'renderDebug', sceneState: 'renderDataTables' };
         var method = tabMap[this.currentTab];
         content.innerHTML = (method && this[method]) ? this[method](gm) : this.renderOverview(gm);
     },
@@ -3580,10 +3580,119 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? (gm._setupLayers.compressed ? '精简版（规则在永久事实）' : '完整注入（每轮）') : '未初始化') + '</div></div>'
             + '</div></div>'
-            + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span>' + this._btn('detail', 'switchTab', 'injection') + '</div>'
+            + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span>' + this._btn('detail', 'switchTab', 'debug') + '</div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'
             + (gm._lastInjectionStats ? '总字符: ' + gm._lastInjectionStats.totalChars + ' / 预算: ' + gm._lastInjectionStats.budget : '尚未生成注入内容')
             + '</div></div></div>';
+    },
+
+    // ===== 合并标签页：世界观（永久事实 + 世界设定 + 剧情大纲） =====
+    renderWorldview: function(gm) {
+        var self = this;
+        var html = '';
+        // 永久事实
+        var typeLabels = { pcIdentity: '◇ 主角身份', settings: '◇ 世界设定', worldRules: '◇ 设定规则', npcProfiles: '◇ 关键角色', promises: '◇ 玩家承诺' };
+        var typeOrder = ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'];
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到</div>' + this._btn('add', 'addPermanentFact', undefined) + '</div>';
+        var total = 0; Object.keys(gm.permanentFacts).forEach(function(k) { total += gm.permanentFacts[k].length; });
+        if (total === 0) html += '<div style="text-align:center;padding:20px;color:var(--text-tertiary);">还没有永久事实</div>';
+        typeOrder.forEach(function(t) {
+            var list = gm.permanentFacts[t]; if (!list || list.length === 0) return;
+            html += '<div class="memory-card"><div class="memory-card-title">' + (typeLabels[t] || t) + ' <span style="font-weight:normal;font-size:11px;color:var(--text-tertiary);">' + list.length + ' 条</span></div>';
+            list.forEach(function(a, i) {
+                var sourceTag = a.source === 'manual' ? '<span style="font-size:10px;background:#4a4;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">手动</span>' : a.source === 'auto' ? '<span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">自动</span>' : '';
+                var escType = self._escAttr(t);
+                var editBtn = '<button onclick="MemoryManagerUI.editPermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
+                var delBtn  = '<button onclick="MemoryManagerUI.deletePermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
+                html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div><div style="display:flex;gap:6px;flex-shrink:0;">' + editBtn + delBtn + '</div></div>';
+            });
+            html += '</div>';
+        });
+        // 剧情大纲
+        if (gm.plot && gm.plot.outline) {
+            html += '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>剧情大纲</span>' + this._btn('editOutline', 'editPlot', undefined) + '</div>';
+            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;font-size:14px;line-height:1.7;white-space:pre-wrap;">' + self._esc(gm.plot.outline) + '</div></div>';
+        }
+        return html;
+    },
+
+    // ===== 合并标签页：数据表（角色 + 物品 + 地点 + 关系 + 场景状态） =====
+    renderDataTables: function(gm) {
+        var self = this;
+        // 子标签页切换
+        var subTab = self._dataTablesSubTab || 'characters';
+        var tabs = [
+            { key: 'characters', label: '角色', count: Object.keys(gm.tables.characters).length },
+            { key: 'items', label: '物品', count: Object.keys(gm.tables.items).length },
+            { key: 'locations', label: '地点', count: Object.keys(gm.tables.locations).length },
+            { key: 'relationships', label: '关系', count: Object.keys(gm.tables.relationships || {}).length }
+        ];
+        var html = '<div style="display:flex;gap:6px;margin-bottom:12px;overflow-x:auto;">';
+        tabs.forEach(function(t) {
+            var isActive = subTab === t.key;
+            html += '<button onclick="MemoryManagerUI._switchDataTab(\'' + t.key + '\')" style="padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';background:' + (isActive ? 'var(--accent)' : 'var(--bg)') + ';color:' + (isActive ? '#fff' : 'var(--text)') + ';white-space:nowrap;">' + t.label + ' <span style="font-size:11px;opacity:0.7;">' + t.count + '</span></button>';
+        });
+        html += '</div>';
+        // 渲染子内容
+        if (subTab === 'characters') html += self.renderCharacters(gm);
+        else if (subTab === 'items') html += self.renderItems(gm);
+        else if (subTab === 'locations') html += self.renderLocations(gm);
+        else if (subTab === 'relationships') html += self.renderRelationships(gm);
+        return html;
+    },
+
+    _switchDataTab: function(tab) {
+        this._dataTablesSubTab = tab;
+        this.renderContent();
+    },
+
+    // ===== 合并标签页：事件线（事件 + 时间线） =====
+    renderEventLine: function(gm) {
+        var self = this;
+        var html = '';
+        // 重要事件
+        var events = gm.events.slice(-20).reverse();
+        html += '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>重要事件</span>' + this._btn('addOutline', 'addEvent', undefined) + '</div>';
+        if (events.length === 0) html += '<div class="memory-empty-state"><div>暂无重要事件</div></div>';
+        else events.forEach(function(event, idx) {
+            var realIdx = gm.events.length - 1 - idx; var imp = event.importance || 5;
+            var icon = imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○');
+            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + (event.gameTime ? ' (' + self._esc(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + self._esc(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div>' + self._btn('delete', 'deleteEvent', realIdx) + '</div>';
+        });
+        html += '</div>';
+        // 时间线
+        var tl = gm.timeline.slice(-20).reverse();
+        html += '<div class="memory-card"><div class="memory-card-title">时间线</div>';
+        if (tl.length === 0) html += '<div class="memory-empty-state"><div>暂无时间线数据</div></div>';
+        else tl.forEach(function(t) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;display:flex;gap:10px;align-items:center;"><div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;">第' + self._esc(t.turn) + '回合</div><div style="font-size:11px;color:var(--accent);white-space:nowrap;">' + self._esc(t.gameTime || '') + '</div><div style="font-size:13px;flex:1;">' + self._esc(t.summary || '') + '</div></div>'; });
+        html += '</div>';
+        return html;
+    },
+
+    // ===== 合并标签页：调试（搜索 + 注入预览 + 逐层摘要） =====
+    renderDebug: function(gm) {
+        var self = this;
+        var subTab = self._debugSubTab || 'injection';
+        var tabs = [
+            { key: 'injection', label: '注入预览' },
+            { key: 'search', label: '搜索' },
+            { key: 'summaryLayers', label: '逐层摘要' }
+        ];
+        var html = '<div style="display:flex;gap:6px;margin-bottom:12px;">';
+        tabs.forEach(function(t) {
+            var isActive = subTab === t.key;
+            html += '<button onclick="MemoryManagerUI._switchDebugTab(\'' + t.key + '\')" style="padding:6px 14px;border-radius:8px;font-size:13px;cursor:pointer;border:1px solid ' + (isActive ? 'var(--accent)' : 'var(--border)') + ';background:' + (isActive ? 'var(--accent)' : 'var(--bg)') + ';color:' + (isActive ? '#fff' : 'var(--text)') + ';white-space:nowrap;">' + t.label + '</button>';
+        });
+        html += '</div>';
+        if (subTab === 'injection') html += self.renderInjectionPreview(gm);
+        else if (subTab === 'search') html += self.renderSearch(gm);
+        else if (subTab === 'summaryLayers') html += self.renderSummaryLayers(gm);
+        return html;
+    },
+
+    _switchDebugTab: function(tab) {
+        this._debugSubTab = tab;
+        this.renderContent();
     },
 
     renderSummaryLayers: function(gm) {
@@ -3770,7 +3879,7 @@ var MemoryManagerUI = {
         var oldTypeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise' };
         var result = gm.addWorldAnchor(oldTypeMap[type] || type, content, 'manual', gm.currentTurn);
         if (result) { gm.saveToStorage(); UI.toast && UI.toast('已添加'); } else UI.toast && UI.toast('已存在（重复内容）');
-        this.switchTab('permanentFacts');
+        this.switchTab('worldview');
     },
 
     editPermanentFact: function(type, idx) {
@@ -4149,7 +4258,7 @@ var MemoryManagerUI = {
         return html;
     },
 
-    refreshInjection: function() { this.switchTab('injection'); },
+    refreshInjection: function() { this.switchTab('debug'); },
 
     renderSearch: function(gm) {
         var self = this;
