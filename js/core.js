@@ -415,6 +415,10 @@ var UI = {
             var zIndex = 100 + this._modalStack.length * 10;
             el.style.zIndex = zIndex;
             el.classList.add('active');
+            // 兼容动态创建的弹窗（使用 display 控制）
+            if (el.classList.contains('modal-overlay')) {
+                el.style.display = 'flex';
+            }
             // 点击遮罩区域关闭模态框
             if (!el._maskClickBound) {
                 el._maskClickBound = true;
@@ -426,10 +430,55 @@ var UI = {
             }
         }
     },
+    // ========================================
+    // 【统一弹窗管理】动态创建模态框，走统一调度
+    // 用法：UI.createModal({ id, html, onClose?, persistent? })
+    // - id: 唯一标识，用于 showModal/hideModal 管理
+    // - html: 弹窗内容 HTML
+    // - onClose: 关闭回调（可选）
+    // - persistent: true 时不自动移除 DOM，仅隐藏（可选）
+    // ========================================
+    createModal: function(opts) {
+        var id = opts.id || ('dynamicModal_' + Date.now());
+        // 如果已存在同 id 的弹窗，先移除
+        var existing = document.getElementById(id);
+        if (existing) existing.remove();
+        // 创建遮罩层
+        var overlay = document.createElement('div');
+        overlay.id = id;
+        overlay.className = 'modal-overlay';
+        overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;display:none;align-items:center;justify-content:center;';
+        // 创建内容容器
+        var content = document.createElement('div');
+        content.className = 'modal-content';
+        content.innerHTML = opts.html || '';
+        content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
+        overlay.appendChild(content);
+        // 点击遮罩关闭
+        overlay.addEventListener('click', function(e) {
+            if (e.target === overlay) {
+                UI.hideModal(id);
+                if (!opts.persistent) {
+                    overlay.remove();
+                }
+                if (typeof opts.onClose === 'function') opts.onClose();
+            }
+        });
+        document.body.appendChild(overlay);
+        // 注册关闭回调
+        if (opts.onClose) {
+            overlay._onClose = opts.onClose;
+            overlay._persistent = opts.persistent;
+        }
+        // 自动显示
+        UI.showModal(id);
+        return overlay;
+    },
     hideModal: function(id) {
         var el = document.getElementById(id);
         if (el) {
             el.classList.remove('active');
+            el.style.display = 'none';
             el.style.zIndex = '';
             // 从栈中移除
             var idx = this._modalStack.indexOf(id);
@@ -440,6 +489,12 @@ var UI = {
                     this._navStack.splice(i, 1);
                     break;
                 }
+            }
+            // 触发关闭回调
+            if (el._onClose) el._onClose();
+            // 非持久化弹窗自动清理 DOM
+            if (!el._persistent && el.classList.contains('modal-overlay') && el.id.indexOf('dynamicModal_') === 0) {
+                el.remove();
             }
         }
     },

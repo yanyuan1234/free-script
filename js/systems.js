@@ -645,12 +645,8 @@ var AchievementSystem = {
             return u.id === id;
             });
         var rar = this.RARITY[ach.rarity.toUpperCase()] || this.RARITY.COMMON;
-        var m = document.createElement('div');
-        m.className = 'modal-overlay';
-        m.style.cssText =
-        'position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:999999;display:flex;align-items:center;justify-content:center;';
-        m.innerHTML =
-        '<div style="background:var(--card);border-radius:var(--radius-lg);max-width:320px;width:90%;max-height:80vh;overflow-y:auto;padding:24px;text-align:center;">' +
+        var html =
+        '<div style="text-align:center;">' +
         '<div class="achieve-icon-wrap ' + ach.rarity +
         '" style="margin:0 auto 16px;width:80px;height:80px;font-size:40px;">' + escapeHtml(String(ach.icon || '')) +
         '<div class="achieve-rarity-badge ' + ach.rarity + '"></div></div>' +
@@ -667,10 +663,237 @@ var AchievementSystem = {
         (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✓ 已获得</div>' :
         '<div style="color:var(--text-tertiary);font-size:13px;">锁 未解锁 · 进度: ' + (pd.progress[
         id] || 0) + '/' + (ach.maxProgress || 1) + '</div>') +
-        '<button class="crystal-btn" style="margin-top:16px;width:100%;" onclick="this.closest(\'.modal-overlay\').remove()">关闭</button></div>';
-        document.body.appendChild(m);
-        m.addEventListener('click', function(e) {
-            if (e.target === m) m.remove();
-            });
+        '<button class="crystal-btn" style="margin-top:16px;width:100%;" onclick="UI.hideModal(\'achieveDetailModal\')">关闭</button></div>';
+        // 使用统一弹窗管理器
+        if (typeof UI !== 'undefined' && UI.createModal) {
+            UI.createModal({ id: 'achieveDetailModal', html: html });
+        }
     }
 };
+
+// ========================================
+// 任务系统 - 数据合并与渲染（从 game.js 收拢）
+// ========================================
+
+function mergeQuests(newQuests) {
+    if (!newQuests || !Array.isArray(newQuests)) return;
+    if (!gameState.currentQuests) gameState.currentQuests = [];
+    newQuests.forEach(function(nq) {
+        if (!nq || !nq.title) return;
+        var existIdx = -1;
+        for (var i = 0; i < gameState.currentQuests.length; i++) {
+            if (gameState.currentQuests[i].title === nq.title) {
+                existIdx = i;
+                break;
+            }
+        }
+        if (existIdx !== -1) {
+            gameState.currentQuests[existIdx] = nq;
+        } else {
+            gameState.currentQuests.push(nq);
+        }
+    });
+    // 修复：先分离，再合并，避免闭包变量污染
+    var active = gameState.currentQuests.filter(function(q) {
+        return q.status !== '已完成' && q.status !== '失败';
+    });
+    var done = gameState.currentQuests.filter(function(q) {
+        return q.status === '已完成' || q.status === '失败';
+    });
+    // 最多保留3个已完成的
+    if (done.length > 3) done = done.slice(-3);
+    gameState.currentQuests = active.concat(done);
+    // 【数据联通】推送到权威源 gm.quests，再触发同步 + UI 刷新
+    _pushCurrentQuestsToGM();
+    if (typeof _syncQuestsToGameState === 'function') _syncQuestsToGameState();
+    if (window.GameLinker) {
+        GameLinker.refreshByDataChange('currentQuests');
+    }
+}
+
+function toggleQuestList() {
+    var list = document.getElementById('questListInner');
+    var arrow = document.getElementById('questToggleArrow');
+    if (!list) return;
+    if (list.style.display === 'none') {
+        list.style.display = 'block';
+        if (arrow) arrow.style.transform = 'rotate(0deg)';
+    } else {
+        list.style.display = 'none';
+        if (arrow) arrow.style.transform = 'rotate(-90deg)';
+    }
+}
+
+function renderQuests() {
+    var container = document.getElementById('questModule');
+    // 如果世界Tab里还没有任务模块容器，创建一个
+    if (!container) {
+        var worldModules = document.getElementById('worldModules');
+        if (!worldModules) return;
+        var div = document.createElement('div');
+        div.id = 'questModule';
+        div.className = 'quest-module';
+        worldModules.parentNode.insertBefore(div, worldModules);
+        container = div;
+    }
+    var quests = gameState.currentQuests || [];
+    if (quests.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'block';
+    // 排序：进行中在前，已完成/失败在后
+    var sorted = quests.slice().sort(function(a, b) {
+        var order = {
+            '进行中': 0,
+            '失败': 1,
+            '已完成': 2
+        };
+        return (order[a.status] || 0) - (order[b.status] || 0);
+    });
+    var html =
+        '<div class="module-header" onclick="toggleQuestList()" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:#a2d2ff;transition:transform .2s">▼</span></div>';
+    html += '<div class="quest-list" id="questListInner">';
+    sorted.forEach(function(q) {
+        var isDone = q.status === '已完成' || q.status === '失败';
+        var itemClass = isDone ? 'quest-item quest-done' : 'quest-item';
+        // 类型标签
+        var typeClass = 'quest-type ';
+        if (q.type === '主线') typeClass += 'quest-type-main';
+        else if (q.type === '隐藏') typeClass += 'quest-type-hidden';
+        else typeClass += 'quest-type-side';
+        // 状态标签
+        var statusClass = 'quest-status ';
+        if (q.status === '已完成') statusClass += 'quest-status-done';
+        else if (q.status === '失败') statusClass += 'quest-status-failed';
+        else statusClass += 'quest-status-active';
+        html += '<div class="' + itemClass + '">';
+        html += '<div class="quest-header">';
+        html += '<span class="' + typeClass + '">' + escapeHtml(q.type || '支线') + '</span>';
+        html += '<span class="quest-title">' + escapeHtml(q.title || '') + '</span>';
+        html += '<span class="' + statusClass + '">' + escapeHtml(q.status || '进行中') + '</span>';
+        html += '</div>';
+        // 进度条（只有进行中且有progress时显示）
+        if (q.progress && !isDone) {
+            var parts = q.progress.split('/');
+            var percent = 0;
+            if (parts.length === 2) {
+                var cur = parseInt(parts[0]) || 0;
+                var total = parseInt(parts[1]) || 1;
+                percent = Math.min(100, Math.round(cur / total * 100));
+            }
+            html += '<div class="quest-progress-row">';
+            html +=
+                '<div class="quest-progress-bar"><div class="quest-progress-fill" style="width:' +
+                percent + '%"></div></div>';
+            html += '<span class="quest-progress-text">' + q.progress + '</span>';
+            html += '</div>';
+        }
+        // 提示
+        if (q.hint && !isDone) {
+            html += '<div class="quest-hint">' + escapeHtml(q.hint) + '</div>';
+        }
+        html += '</div>';
+    });
+    html += '</div>';
+    container.innerHTML = html;
+}
+
+// ========================================
+// 关系系统 - 数据合并与渲染（从 game.js 收拢）
+// ========================================
+
+function mergeRelationships(newRels) {
+    if (!newRels || !Array.isArray(newRels)) return;
+    if (!gameState.relationships) gameState.relationships = [];
+    newRels.forEach(function(nr) {
+        if (!nr || !nr.from || !nr.to) return;
+        // 找已有的相同关系对（A→B 或 B→A 算同一对）
+        var existIdx = -1;
+        for (var i = 0; i < gameState.relationships.length; i++) {
+            var r = gameState.relationships[i];
+            if ((r.from === nr.from && r.to === nr.to) || (r.from === nr.to && r.to === nr.from)) {
+                existIdx = i;
+                break;
+            }
+        }
+        if (existIdx !== -1) {
+            // 更新已有关系
+            gameState.relationships[existIdx] = nr;
+        } else {
+            // 新关系
+            gameState.relationships.push(nr);
+        }
+    });
+    // 上限10条
+    if (gameState.relationships.length > 10) {
+        gameState.relationships = gameState.relationships.slice(-10);
+    }
+    // 【数据联通】推送到权威源 gm.tables.relationships，再触发同步 + UI 刷新
+    if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
+    if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
+    // 联动：广播关系数据变更
+    if (window.GameLinker) {
+        GameLinker.refreshByDataChange('relationships');
+    }
+}
+
+function renderRelationships() {
+    var container = document.getElementById('relationModule');
+    var list = document.getElementById('relationList');
+    if (!container || !list) return;
+    var rels = gameState.relationships || [];
+    if (rels.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+    container.style.display = 'block';
+    var html = '';
+    rels.forEach(function(r) {
+        var tagClass = getRelationTagClass(r.type || '中立');
+        html += '<div class="relation-item">';
+        html += '<span class="relation-name">' + escapeHtml(r.from) + '</span>';
+        html += '<span class="relation-arrow">&mdash;</span>';
+        html += '<span class="relation-tag ' + tagClass + '">' + escapeHtml(r.type || '中立') + '</span>';
+        html += '<span class="relation-arrow">&mdash;</span>';
+        html += '<span class="relation-name">' + escapeHtml(r.to) + '</span>';
+        if (r.desc) {
+            html += '<div class="relation-desc">' + escapeHtml(r.desc) + '</div>';
+        }
+        html += '</div>';
+    });
+    list.innerHTML = html;
+}
+
+function getRelationTagClass(type) {
+    // 【修改】不再硬编码，根据关键词智能判断
+    if (!type) return 'relation-tag-neutral';
+    var t = type.toLowerCase();
+
+    // 爱情/暧昧类关键词
+    if (/爱|恋|心动|暧昧|暗恋|喜欢|钟情|倾心|爱慕|迷恋|痴迷| sweetheart|crush|beloved/.test(t)) {
+        return 'relation-tag-love';
+    }
+    // 敌对/仇恨类关键词
+    if (/敌|仇|恨|厌恶|讨厌|死对头|心魔|势不两立|不共戴天|hostile|enemy|hate/.test(t)) {
+        return 'relation-tag-enemy';
+    }
+    // 友好/朋友类关键词
+    if (/友|好|亲密|知己|至交|闺蜜|死党|伙伴|ally|friend|close/.test(t)) {
+        return 'relation-tag-friend';
+    }
+    // 亲人/家族类关键词
+    if (/亲|家|兄|弟|姐|妹|父|母|子|女|祖|孙|family|kin|sibling|parent/.test(t)) {
+        return 'relation-tag-family';
+    }
+    // 师徒/上下级类关键词
+    if (/师|徒|主|仆|君|臣|上司|下属|领导|master|servant|mentor/.test(t)) {
+        return 'relation-tag-master';
+    }
+    // 竞争/对手类关键词
+    if (/对手|竞争|情敌|rival|competitor|opponent/.test(t)) {
+        return 'relation-tag-rival';
+    }
+
+    return 'relation-tag-neutral';
+}

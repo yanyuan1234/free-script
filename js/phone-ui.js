@@ -5953,3 +5953,1058 @@ function loadGameSettings() {
 // 渲染任务页面（返回null让QuestSystem处理）
 // 渲染成就页面（返回null让AchievementSystem处理）
 // ========================================
+
+// ========================================
+// 存档系统 - UI操作（从 game.js 收拢）
+// ========================================
+
+// 显示游戏统计面板
+function showGameStats() {
+    var stats = (gameState && gameState._stats) || {};
+
+    // 格式化时间
+    function formatTime(ms) {
+        if (!ms || ms < 1000) return '0秒';
+        var seconds = Math.floor(ms / 1000);
+        var minutes = Math.floor(seconds / 60);
+        var hours = Math.floor(minutes / 60);
+        var days = Math.floor(hours / 24);
+        if (days > 0) return days + '天' + (hours % 24) + '小时';
+        if (hours > 0) return hours + '小时' + (minutes % 60) + '分';
+        if (minutes > 0) return minutes + '分' + (seconds % 60) + '秒';
+        return seconds + '秒';
+    }
+
+    // 格式化数字
+    function formatNum(n) {
+        if (!n) return '0';
+        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+        return n.toString();
+    }
+
+    // 计算当前游戏时长
+    var currentPlayTime = stats.totalPlayTime || 0;
+    if (stats.startTime) {
+        currentPlayTime += Date.now() - stats.startTime;
+    }
+
+    // 更新显示
+    var playTimeEl = document.getElementById('statPlayTime');
+    if (playTimeEl) playTimeEl.textContent = formatTime(currentPlayTime);
+
+    var totalTurnsEl = document.getElementById('statTotalTurns');
+    if (totalTurnsEl) totalTurnsEl.textContent = formatNum(stats.totalTurns || ((gameState && gameState.conversationHistory) || []).filter(m => m.role === 'assistant').length || 0);
+
+    var totalTokensEl = document.getElementById('statTotalTokens');
+    if (totalTokensEl) totalTokensEl.textContent = formatNum(stats.totalTokens || (gameState && gameState.tokenCount) || 0);
+
+    var maxTokensEl = document.getElementById('statMaxTokens');
+    if (maxTokensEl) maxTokensEl.textContent = formatNum(stats.maxTokensInTurn || 0);
+
+    var totalCharsEl = document.getElementById('statTotalCharacters');
+    if (totalCharsEl) totalCharsEl.textContent = formatNum(stats.totalCharacters || 0);
+
+    var currentCharsEl = document.getElementById('statCurrentCharacters');
+    if (currentCharsEl) currentCharsEl.textContent = formatNum(Object.keys((gameState && gameState.allCharacters) || {}).length);
+
+    var completedQuestsEl = document.getElementById('statCompletedQuests');
+    if (completedQuestsEl) completedQuestsEl.textContent = formatNum(stats.completedQuests || 0);
+
+    var currentQuestsEl = document.getElementById('statCurrentQuests');
+    if (currentQuestsEl) currentQuestsEl.textContent = formatNum(((gameState && gameState.currentQuests) || []).length);
+
+    var keyEventsEl = document.getElementById('statKeyEvents');
+    if (keyEventsEl) keyEventsEl.textContent = formatNum(((gameState && gameState.keyEvents) || []).length);
+
+    var versionEl = document.getElementById('statGameVersion');
+    if (versionEl) versionEl.textContent = GAME_VERSION;
+
+    var saveEl = document.getElementById('statCurrentSave');
+    if (saveEl) saveEl.textContent = ((gameState && gameState.userPrompt) || '').substring(0, 15) || '-';
+    
+    UI.showModal('statsModal');
+}
+
+// ========================================
+// 旧手动存档兼容（从早期版本迁移）
+// ========================================
+function safeLoadOldManual(idx) {
+    try {
+        var oldManual = localStorage.getItem('freeScript_saves');
+        if (!oldManual) {
+            UI.toast('没有找到旧存档');
+            return;
+        }
+        var arr = JSON.parse(oldManual);
+        if (!arr[idx]) {
+            UI.toast('旧存档不存在');
+            return;
+        }
+        var saveData = arr[idx];
+        if (saveData && saveData.state) {
+            var state = JSON.parse(saveData.state);
+            Object.assign(gameState, state);
+            UI.goHome();
+            UI.toast('旧存档已加载');
+        } else {
+            UI.toast('旧存档格式不兼容');
+        }
+    } catch (e) {
+        console.error('读取旧存档失败:', e);
+        UI.toast('读取旧存档失败: ' + e.message);
+    }
+}
+
+async function renameSave(slot) {
+    try {
+        var data = await SaveDB.get(slot);
+        if (!data) return;
+        var oldName = data.name || data.prompt || '';
+        var newName = await UI.prompt('修改存档名：', oldName);
+        if (newName === null) return;
+        data.name = newName;
+        await SaveDB.set(slot, data);
+        renderSaveUI();
+    } catch (e) {
+        console.error('renameSave出错:', e);
+        UI.toast('改名失败');
+    }
+}
+
+// 自动存档函数（简化版）
+async function openSaveLoadModal() {
+    var body = document.getElementById('saveLoadBody');
+    if (!body) return;
+    body.innerHTML =
+        '<div style="text-align:center;padding:20px;color:var(--text-secondary)">加载中...</div>';
+    UI.showModal('saveLoadModal');
+    try {
+        var autoData = await SaveDB.get(0);
+        var slots = [];
+        for (var i = 1; i <= 5; i++) {
+            slots.push({
+                slot: i,
+                data: await SaveDB.get(i)
+            });
+        }
+        var html = '';
+        html += '<div class="sl-section-title">自动存档</div>';
+        if (autoData) {
+            html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
+                escapeHtml(autoData.name || '自动存档') + '</div><div class="sl-slot-meta">' + escapeHtml(
+                    autoData.time || '') +
+                '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(0)">读取</button></div></div>';
+        } else {
+            html +=
+                '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">暂无自动存档</div></div></div>';
+        }
+        html += '<hr class="sl-divider">';
+        html += '<div class="sl-section-title">手动存档</div>';
+        for (var j = 0; j < slots.length; j++) {
+            var s = slots[j];
+            if (s.data) {
+                html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
+                    escapeHtml(s.data.name || ('存档 ' + s.slot)) + '</div><div class="sl-slot-meta">' +
+                    escapeHtml(s.data.time || '') +
+                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(' +
+                    s.slot + ')">读取</button><button class="sl-btn" onclick="saveToSlot(' + s.slot +
+                    ')">覆盖</button><button class="sl-btn danger" onclick="deleteSaveSlot(' + s.slot +
+                    ')">删除</button></div></div>';
+            } else {
+                html +=
+                    '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">存档位 ' +
+                    s.slot +
+                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" onclick="saveToSlot(' +
+                    s.slot + ')">保存</button></div></div>';
+            }
+        }
+        html +=
+            '<div class="sl-bottom-actions"><button class="sl-btn" onclick="UI.hideModal(\'saveLoadModal\')">关闭</button></div>';
+        body.innerHTML = html;
+    } catch (e) {
+        console.error('openSaveLoadModal出错:', e);
+        body.innerHTML =
+            '<div style="text-align:center;padding:20px;color:var(--danger)">加载存档列表失败</div>';
+    }
+}
+async function deleteSaveSlot(slot) {
+    return deleteFromSlot(slot);
+}
+
+// ========================================
+// NPC聊天系统 - UI操作（从 game.js 收拢）
+// ========================================
+function openNpcChat(name) {
+    try {
+        UI.hideModal('npcDetailModal');
+    } catch (e) {}
+    npcChatState.npcName = name;
+    if (gameState && (!gameState._chatLogs || Array.isArray(gameState._chatLogs))) gameState._chatLogs = {};
+    npcChatState.chatHistory = (gameState && gameState._chatLogs && gameState._chatLogs[name]) ? gameState._chatLogs[name].slice() : [];
+    npcChatState.isSending = false;
+        npcChatState.abortController = null; // 重置NPC聊天的AbortController
+    if (gameState) {
+        if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
+        gameState._chattedNpcs[name] = true;
+    }
+    // 【优化】打开聊天时标记该 NPC 的消息为已读
+    if (gameState && gameState._notifSeenSnapshot) {
+        if (!gameState._notifSeenSnapshot.chat) gameState._notifSeenSnapshot.chat = {};
+        var npcSent = ((gameState._chatLogs && gameState._chatLogs[name]) || []).filter(function(m) {
+            if (!m) return false;
+            if (m.role === 'player' || m.from === 'player' || m.from === 'me') return false;
+            return (m.text || '').trim();
+        });
+        gameState._notifSeenSnapshot.chat[name] = npcSent.length;
+    }
+    var titleEl = document.getElementById('npcChatTitle');
+    var msgsEl = document.getElementById('npcChatMessages');
+    var choicesEl = document.getElementById('npcChatChoices');
+    var inputEl = document.getElementById('npcChatInput');
+    var sendEl = document.getElementById('npcChatSend');
+    if (!titleEl || !msgsEl || !choicesEl || !inputEl || !sendEl) {
+        console.warn('npcChatModal not found');
+        return;
+    }
+    var remark = (gameState && gameState._chatRemarks && gameState._chatRemarks[name]) || name;
+    titleEl.textContent = '与「' + remark + '」对话';
+    msgsEl.innerHTML = '';
+    choicesEl.innerHTML = '';
+    inputEl.value = '';
+    inputEl.placeholder = '对' + name + '说...';
+    sendEl.disabled = false; // 重新渲染历史气泡
+    npcChatState.chatHistory.forEach(function(msg) {
+        addNpcChatBubble(msg.role, msg.text, true);
+    });
+    UI.showModal('npcChatModal');
+    // 绑定回车（使用事件委托避免重复绑定）
+    var input = document.getElementById('npcChatInput');
+    if (input && !input._hasEnterBinding) {
+        input._hasEnterBinding = true;
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
+                if (!e.shiftKey) {
+                    e.preventDefault();
+                    sendNpcChat();
+                }
+            }
+        });
+    }
+}
+function closeNpcChat() {
+    UI.hideModal('npcChatModal');
+    npcChatState.npcName = '';
+    npcChatState.chatHistory = [];
+    npcChatState.isSending = false;
+    var ep = document.getElementById('emojiPanel');
+    if (ep) ep.classList.remove('open');
+}
+function toggleChatMenu() {
+    var existing = document.getElementById('chatMenuPanel');
+    if (existing) {
+        existing.remove();
+        return;
+    }
+    var menu = document.createElement('div');
+    menu.id = 'chatMenuPanel';
+    menu.style.cssText =
+        'position:absolute;top:44px;right:8px;background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:4px 0;z-index:200;min-width:130px;overflow:hidden';
+    var items = [{
+            text: '编辑备注',
+            action: 'editChatRemark'
+        },
+        {
+            text: '修改头像',
+            action: 'changeNpcAvatar'
+        },
+        {
+            text: '拉黑好友',
+            action: 'blockNpc'
+        },
+        {
+            text: '删除好友',
+            action: 'deleteNpcChat'
+        }
+    ];
+    items.forEach(function(item) {
+        var row = document.createElement('div');
+        row.style.cssText =
+            'padding:12px 16px;font-size:14px;color:var(--text);cursor:pointer;transition:background .15s';
+        row.textContent = item.text;
+        row.onmouseenter = function() {
+            this.style.background = '#f5f5f5';
+        };
+        row.onmouseleave = function() {
+            this.style.background = '';
+        };
+        row.onclick = function() {
+            menu.remove();
+            var fn = window[item.action];
+            if (typeof fn === 'function') fn();
+            else console.warn('[聊天菜单] 函数未定义:', item.action);
+        };
+        menu.appendChild(row);
+    });
+    var header = document.querySelector('.chat-detail-header');
+    if (header) header.appendChild(menu);
+    // 【性能优化】用 once 选项监听器自动清理，防止重复打开菜单导致监听器累积
+    var closeMenu = function(e) {
+        if (!menu.contains(e.target) && e.target.id !== 'chatDetailMore') {
+            menu.remove();
+        }
+    };
+    TimerManager.setTimeout('chatMenuClick', function() {
+        document.addEventListener('click', closeMenu, { once: true });
+    }, 10);
+}
+function editChatRemark() {
+    var name = npcChatState.npcName;
+    var currentRemark = (gameState && gameState._chatRemarks && gameState._chatRemarks[name]) || '';
+    var menu = document.getElementById('chatMenuPanel');
+    if (menu) menu.remove();
+    var header = document.querySelector('.chat-detail-header');
+    if (!header) return;
+    var panel = document.createElement('div');
+    panel.id = 'chatRemarkPanel';
+    panel.style.cssText =
+        'position:absolute;top:44px;left:8px;right:8px;background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:12px 16px;z-index:200';
+    var safeRemark = (currentRemark || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    panel.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">备注名</div>' +
+        '<input type="text" id="remarkInput" value="' + safeRemark +
+        '" placeholder="输入备注名" style="width:100%;height:36px;border:1px solid #e5e5e5;border-radius:8px;padding:0 12px;font-size:14px;outline:none;box-sizing:border-box">' +
+        '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">' +
+        '<span id="remarkCancel" style="padding:6px 16px;font-size:14px;color:#999;cursor:pointer">取消</span>' +
+        '<span id="remarkSave" style="padding:6px 16px;font-size:14px;color:#07C160;cursor:pointer;font-weight:500">保存</span></div>';
+    header.appendChild(panel);
+    var inp = document.getElementById('remarkInput');
+    var cancelBtn = document.getElementById('remarkCancel');
+    var saveBtn = document.getElementById('remarkSave');
+    if (!inp || !cancelBtn || !saveBtn) { panel.remove(); return; }
+    TimerManager.setTimeout('remarkFocus', function() {
+        if (inp) { inp.focus(); inp.select(); }
+    }, 50);
+    cancelBtn.onclick = function() {
+        panel.remove();
+    };
+    saveBtn.onclick = function() {
+        var val = inp.value.trim();
+        if (gameState) {
+            if (!gameState._chatRemarks) gameState._chatRemarks = {};
+            if (val) {
+                gameState._chatRemarks[name] = val;
+            } else {
+                delete gameState._chatRemarks[name];
+            }
+        }
+        autoSave();
+        var titleEl = document.getElementById('npcChatTitle');
+        if (titleEl) titleEl.textContent = val ? '与「' + val + '」对话' : '与「' + name + '」对话';
+        panel.remove();
+    };
+    inp.onkeypress = function(e) {
+        if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
+            e.preventDefault();
+            document.getElementById('remarkSave').click();
+        }
+    };
+}
+function changeNpcAvatar() {
+    var name = npcChatState.npcName;
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = function(e) {
+        var file = e.target.files[0];
+        if (!file) return;
+        // 图片大小限制：最大2MB
+        var maxSize = 2 * 1024 * 1024; // 2MB
+        if (file.size > maxSize) {
+            UI.toast('图片太大，请选择小于2MB的图片');
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function(ev) {
+            // 压缩大图片
+            var img = new Image();
+            img.onload = function() {
+                var canvas = document.createElement('canvas');
+                var ctx = canvas.getContext('2d');
+                var maxDim = 512; // 最大宽高
+                var w = img.width;
+                var h = img.height;
+                if (w > maxDim || h > maxDim) {
+                    if (w > h) {
+                        h = Math.round(h * maxDim / w);
+                        w = maxDim;
+                    } else {
+                        w = Math.round(w * maxDim / h);
+                        h = maxDim;
+                    }
+                }
+                canvas.width = w;
+                canvas.height = h;
+                ctx.drawImage(img, 0, 0, w, h);
+                var compressedData = canvas.toDataURL('image/jpeg', 0.8);
+
+                if (gameState) {
+                    if (!gameState._npcAvatars) gameState._npcAvatars = {};
+                    gameState._npcAvatars[name] = compressedData;
+                }
+                autoSave();
+                var avatars = document.querySelectorAll(
+                '.chat-message:not(.self) .chat-message-avatar');
+                avatars.forEach(function(a) {
+                    a.style.backgroundImage = 'url(' + compressedData + ')';
+                    a.style.backgroundSize = 'cover';
+                    a.style.backgroundPosition = 'center';
+                    a.textContent = '';
+                });
+            };
+            img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+    };
+    input.click();
+}
+function blockNpc() {
+    var name = npcChatState.npcName;
+    if (gameState) {
+        if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
+        if (gameState._blockedNpcs[name]) {
+            gameState._blockedNpcs[name] = false;
+            autoSave();
+            UI.toast('已取消拉黑「' + name + '」');
+            return;
+        }
+    }
+    var menu = document.getElementById('chatMenuPanel');
+    if (menu) menu.remove();
+    var header = document.querySelector('.chat-detail-header');
+    if (!header) return;
+    var panel = document.createElement('div');
+    panel.style.cssText =
+        'position:absolute;top:44px;left:50%;transform:translateX(-50%);background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:16px;z-index:200;text-align:center;min-width:200px';
+    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">确定拉黑「' + escapeHtml(name) +
+        '」？</div>' +
+        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">拉黑后将不再收到消息</div>' +
+        '<div style="display:flex;gap:12px;justify-content:center">' +
+        '<span id="blockCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
+        '<span id="blockConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">拉黑</span></div>';
+    header.appendChild(panel);
+    document.getElementById('blockCancel').onclick = function() {
+        panel.remove();
+    };
+    document.getElementById('blockConfirm').onclick = function() {
+        if (gameState) {
+            if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
+            gameState._blockedNpcs[name] = true;
+        }
+        autoSave();
+        panel.remove();
+        closeNpcChat();
+    };
+}
+function deleteNpcChat() {
+    var name = npcChatState.npcName;
+    var menu = document.getElementById('chatMenuPanel');
+    if (menu) menu.remove();
+    var header = document.querySelector('.chat-detail-header');
+    if (!header) return;
+    var panel = document.createElement('div');
+    panel.style.cssText =
+        'position:absolute;top:44px;left:50%;transform:translateX(-50%);background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:16px;z-index:200;text-align:center;min-width:200px';
+    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">删除与「' + escapeHtml(name) +
+        '」的聊天？</div>' +
+        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">聊天记录将被清除，不可恢复</div>' +
+        '<div style="display:flex;gap:12px;justify-content:center">' +
+        '<span id="delCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
+        '<span id="delConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">删除</span></div>';
+    header.appendChild(panel);
+    document.getElementById('delCancel').onclick = function() {
+        panel.remove();
+    };
+    document.getElementById('delConfirm').onclick = function() {
+        if (gameState) {
+            if (gameState._chatLogs) delete gameState._chatLogs[name];
+            if (gameState._chattedNpcs) delete gameState._chattedNpcs[name];
+        }
+        autoSave();
+        panel.remove();
+        closeNpcChat();
+    };
+}
+function toggleEmojiPanel() {
+    var panel = document.getElementById('emojiPanel');
+    if (!panel) return;
+    if (panel.classList.contains('open')) {
+        panel.classList.remove('open');
+        return;
+    }
+    renderEmojiPanel();
+    panel.classList.add('open');
+}
+function renderEmojiPanel() {
+    var panel = document.getElementById('emojiPanel');
+    if (!panel) return;
+    panel.innerHTML = '';
+    if (gameState && !gameState._customEmojis) gameState._customEmojis = ['[笑脸]', '[大哭]', '[怒]', '[晕]', '[偷笑]', '[吃瓜]',
+        '[暗中观察]', '[狗头]', '[抱抱]', '[白眼]'
+    ];
+    if (gameState && gameState._customEmojis && gameState._customEmojis.length === 0) {
+        var hint = document.createElement('div');
+        hint.className = 'empty-state';
+        hint.style.cssText = 'width:100%;padding:16px 0';
+        hint.textContent = '还没有表情，点击 + 添加';
+        panel.appendChild(hint);
+    } else {
+        (gameState._customEmojis || []).forEach(function(e, i) {
+            var item = document.createElement('span');
+            item.className = 'emoji-item';
+            item.style.position = 'relative';
+            item.textContent = e;
+            item.onclick = function(ev) {
+                if (ev.target.classList.contains('emoji-del')) return;
+                insertEmoji(e);
+            };
+            var del = document.createElement('span');
+            del.className = 'emoji-del';
+            del.textContent = '×';
+            del.style.cssText =
+                'position:absolute;top:-6px;right:-6px;width:16px;height:16px;background:#ff3b30;color:#fff;border-radius:50%;font-size:10px;display:none;align-items:center;justify-content:center;cursor:pointer;line-height:16px;text-align:center';
+            del.onclick = function(ev) {
+                ev.stopPropagation();
+                gameState._customEmojis.splice(i, 1);
+                autoSave();
+                renderEmojiPanel();
+            };
+            item.onmouseenter = function() {
+                del.style.display = 'flex';
+            };
+            item.onmouseleave = function() {
+                del.style.display = 'none';
+            };
+            item.appendChild(del);
+            panel.appendChild(item);
+        });
+    }
+    var addBtn = document.createElement('span');
+    addBtn.className = 'emoji-item';
+    addBtn.style.cssText = 'background:#07C160;color:#fff;font-weight:600';
+    addBtn.textContent = '+ 添加';
+    addBtn.onclick = function() {
+        panel.innerHTML = '';
+        var row = document.createElement('div');
+        row.style.cssText = 'display:flex;gap:6px;width:100%;align-items:center';
+        var inp = document.createElement('input');
+        inp.type = 'text';
+        inp.placeholder = '输入表情名，如：吃瓜';
+        inp.style.cssText =
+            'flex:1;height:32px;border:1px solid #ddd;border-radius:8px;padding:0 10px;font-size:13px;outline:none';
+        inp.id = 'emojiNewInput';
+        var confirmBtn = document.createElement('span');
+        confirmBtn.className = 'emoji-item';
+        confirmBtn.style.cssText = 'background:#07C160;color:#fff;font-weight:600;flex-shrink:0';
+        confirmBtn.textContent = '确定';
+        confirmBtn.onclick = function() {
+            var val = inp.value.trim();
+            if (!val) return;
+            var emoji = '[' + val + ']';
+            if (gameState && gameState._customEmojis && gameState._customEmojis.indexOf(emoji) === -1) {
+                gameState._customEmojis.push(emoji);
+                autoSave();
+            }
+            renderEmojiPanel();
+        };
+        var cancelBtn = document.createElement('span');
+        cancelBtn.className = 'emoji-item';
+        cancelBtn.style.cssText = 'flex-shrink:0';
+        cancelBtn.textContent = '取消';
+        cancelBtn.onclick = function() {
+            renderEmojiPanel();
+        };
+        row.appendChild(inp);
+        row.appendChild(confirmBtn);
+        row.appendChild(cancelBtn);
+        panel.appendChild(row);
+        TimerManager.setTimeout('emojiFocus', function() {
+            if (inp) inp.focus();
+        }, 50);
+        inp.onkeypress = function(e) {
+            if (e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) {
+            e.preventDefault();
+            confirmBtn.click();
+        }
+        };
+    };
+    panel.appendChild(addBtn);
+}
+function insertEmoji(emoji) {
+    var input = document.getElementById('npcChatInput');
+    if (!input) return;
+    var start = input.selectionStart;
+    var end = input.selectionEnd;
+    var val = input.value;
+    input.value = val.substring(0, start) + emoji + val.substring(end);
+    input.focus();
+    input.selectionStart = input.selectionEnd = start + emoji.length;
+}
+function showNpcMessageNotification(name, text) {
+    var container = document.getElementById('npcNotifContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'npcNotifContainer';
+        container.style.cssText =
+            'position:fixed;top:0;left:0;right:0;z-index:999999;display:flex;flex-direction:column;align-items:center;pointer-events:none;padding-top:8px;gap:6px';
+        document.body.appendChild(container);
+    }
+    var notif = document.createElement('div');
+    notif.style.cssText =
+        'background:rgba(0,0,0,0.8);color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;max-width:300px;pointer-events:auto;cursor:pointer;opacity:0;transform:translateY(-20px);transition:opacity .3s,transform .3s;display:flex;align-items:center;gap:8px';
+    var avatar = document.createElement('span');
+    avatar.style.cssText =
+        'width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#667eea,#764ba2);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;flex-shrink:0';
+    avatar.textContent = name.charAt(0);
+    var content = document.createElement('div');
+    content.innerHTML = '<div style="font-weight:600;font-size:12px;opacity:0.9">' + escapeHtml(name) +
+        '</div><div style="font-size:12px;opacity:0.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">' +
+        escapeHtml(text) + '</div>';
+    notif.appendChild(avatar);
+    notif.appendChild(content);
+    container.appendChild(notif);
+    notif.onclick = function() {
+        notif.remove();
+        openNpcChat(name);
+    };
+    requestAnimationFrame(function() {
+        notif.style.opacity = '1';
+        notif.style.transform = 'translateY(0)';
+    });
+    TimerManager.setTimeout('npcNotifHide', function() {
+        notif.style.opacity = '0';
+        notif.style.transform = 'translateY(-20px)';
+        TimerManager.setTimeout('npcNotifRemove', function() {
+            if (notif.parentNode) notif.remove();
+        }, 300);
+        // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）
+    }, typeof POPUP_DURATION_MS !== 'undefined' ? POPUP_DURATION_MS : 3000);
+}
+function sendNpcChat() {
+    if (npcChatState.isSending) return;
+    var input = document.getElementById('npcChatInput');
+    var text = input.value.trim();
+    if (!text) return;
+    input.value = '';
+    // 显示玩家气泡
+    addNpcChatBubble('player', text);
+    // 请求NPC回复（防 unhandledrejection：捕获异步错误）
+    try {
+        var p = requestNpcReply(text);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[NPC聊天] 异步操作失败:', e);
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+                }
+            });
+        }
+    } catch (e) {
+        console.error('[NPC聊天] 同步错误:', e);
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+        }
+    }
+}
+function selectNpcChatChoice(text) {
+    if (npcChatState.isSending) return;
+    // 清掉选项
+    document.getElementById('npcChatChoices').innerHTML = '';
+    // 显示玩家气泡
+    addNpcChatBubble('player', text);
+    // 请求NPC回复（防 unhandledrejection）
+    try {
+        var p = requestNpcReply(text);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[NPC聊天] 异步操作失败:', e);
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+                }
+            });
+        }
+    } catch (e) {
+        console.error('[NPC聊天] 同步错误:', e);
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast('发送失败: ' + (e && e.message ? e.message : '未知错误'));
+        }
+    }
+}
+function renderRichMessage(text) {
+    if (!text) return '';
+    text = text.replace(/\[照片[：:]([^\]]+)\]/g, function(m, desc) {
+        return '<div class="rich-photo"><div class="rich-photo-desc">' + escapeHtml(desc) +
+            '</div></div>';
+    });
+    text = text.replace(/\[定位[：:]([^\]]+)\]/g, function(m, loc) {
+        return '<div class="rich-location"><div class="rich-location-name">' + escapeHtml(loc) +
+            '</div></div>';
+    });
+    // 【修复C P2-2】对NPC聊天消息进行HTML净化，防止XSS
+    return sanitizeHtml(text);
+}
+function addNpcChatBubble(role, text, skipPush) {
+    var messages = document.getElementById('npcChatMessages');
+    if (!messages) return;
+    var isPlayer = role === 'player';
+    var avatarChar = isPlayer ? '我' : (npcChatState.npcName ? npcChatState.npcName.charAt(0) : '?');
+    var now = new Date();
+    var timeStr = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    var bubble = document.createElement('div');
+    bubble.className = 'chat-message' + (isPlayer ? ' self' : '');
+    bubble.innerHTML = '<div class="chat-message-avatar">' + escapeHtml(avatarChar) + '</div>' +
+        '<div><div class="chat-message-content">' + renderRichMessage(text) +
+        '</div><div class="chat-message-meta"><span>' + timeStr + '</span></div></div>';
+    messages.appendChild(bubble);
+    messages.scrollTop = messages.scrollHeight;
+    if (!skipPush) {
+        npcChatState.chatHistory.push({
+            role: role,
+            text: text
+        });
+        // 限制聊天历史长度，防止内存泄漏
+        if (npcChatState.chatHistory.length > 100) {
+            npcChatState.chatHistory = npcChatState.chatHistory.slice(-50);
+        }
+        if (gameState) {
+            if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
+            gameState._chatLogs[npcChatState.npcName] = npcChatState.chatHistory.slice();
+        }
+        // 自动保存聊天记录
+        safeAutoSave();
+    }
+}
+function openEditNpcModal(name) {
+    UI.hideModal('npcDetailModal');
+    npcEditingName = name;
+    var c = gameState.allCharacters[name];
+    if (!c) return;
+    var el;
+    el = document.getElementById('npcEditModalTitle'); if (el) el.textContent = '编辑「' + name + '」';
+    el = document.getElementById('npcEditName'); if (el) { el.value = c.name || ''; el.disabled = true; }
+    el = document.getElementById('npcEditTitle2'); if (el) el.value = c.title || '';
+    el = document.getElementById('npcEditRelation'); if (el) el.value = c.relation || '';
+    el = document.getElementById('npcEditFavor'); if (el) el.value = c.favorability !== undefined ? c.favorability : 50;
+    el = document.getElementById('npcEditDesc'); if (el) el.value = c.desc || '';
+    var extra = '';
+    if (c.details && c.details.length > 0) {
+        extra = c.details.map(function(d) {
+            return d.key + ': ' + d.value;
+        }).join('\n');
+    }
+    el = document.getElementById('npcEditExtra'); if (el) el.value = extra;
+    UI.showModal('npcEditModal');
+}
+function saveNpcEdit() {
+    // 修复：每个 input 都做 nullish 检查，缺一不崩溃
+    var nameEl = document.getElementById('npcEditName');
+    if (!nameEl) { UI.toast('页面未加载完整'); return; }
+    var name = nameEl.value.trim();
+    if (!name) {
+        UI.toast('请填写角色名字');
+        return;
+    }
+    var titleEl = document.getElementById('npcEditTitle2');
+    var relationEl = document.getElementById('npcEditRelation');
+    var favorEl = document.getElementById('npcEditFavor');
+    var descEl = document.getElementById('npcEditDesc');
+    var extraEl = document.getElementById('npcEditExtra');
+    var title = titleEl ? titleEl.value.trim() : '';
+    var relation = relationEl ? relationEl.value.trim() : '';
+    var favor = favorEl ? (parseInt(favorEl.value) || 50) : 50;
+    var desc = descEl ? descEl.value.trim() : '';
+    var extra = extraEl ? extraEl.value.trim() : '';
+    favor = Math.max(0, Math.min(100, favor));
+    var details = [];
+    if (extra) {
+        extra.split('\n').forEach(function(line) {
+            line = line.trim();
+            if (!line) return;
+            var idx = line.indexOf(':');
+            if (idx === -1) idx = line.indexOf('：');
+            if (idx !== -1) {
+                details.push({
+                    key: line.substring(0, idx).trim(),
+                    value: line.substring(idx + 1).trim()
+                });
+            } else {
+                details.push({
+                    key: '设定',
+                    value: line
+                });
+            }
+        });
+    }
+    if (npcEditingName && npcEditingName !== name) {
+        if (gameState && gameState.allCharacters) delete gameState.allCharacters[npcEditingName];
+    }
+    if (gameState && gameState.allCharacters) {
+        gameState.allCharacters[name] = {
+            name: name,
+            title: title,
+            relation: relation,
+            favorability: favor,
+            desc: desc,
+            details: details
+        };
+    }
+    // 注入到对话历史让AI记住
+    var injectText = '【系统提示：玩家更新了角色「' + name + '」的设定】\n' + '姓名: ' + name + '\n' + (title ? '身份: ' + title +
+        '\n' : '') + (relation ? '关系: ' + relation + '\n' : '') + '好感度: ' + favor + '\n' + (desc ?
+        '状态: ' + desc + '\n' : '');
+    if (details.length > 0) {
+        injectText += details.map(function(d) {
+            return d.key + ': ' + d.value;
+        }).join('\n') + '\n';
+    }
+    injectText += '请在后续剧情中按照以上设定来描写该角色。';
+    if (gameState && gameState.conversationHistory && gameState.conversationHistory.length > 0) {
+        gameState.conversationHistory.push({
+            role: 'user',
+            content: injectText
+        }, {
+            role: 'assistant',
+            content: '明白，已更新「' + name + '」的角色设定，后续会保持一致。'
+        });
+    }
+    renderNpcList();
+    UI.hideModal('npcEditModal');
+    autoSave();
+    UI.toast('角色「' + name + '」已保存');
+}
+function renderNpcList() {
+    renderNpcPage();
+}
+function renderNpcPage() {
+    // 确保 allCharacters 已初始化
+    if (gameState && !gameState.allCharacters) gameState.allCharacters = {};
+    var chars = Object.values((gameState && gameState.allCharacters) || {});
+    // 【性能优化】数据未变时跳过整页重绘（每次点击导航栏都会触发此函数）
+    try {
+        var totalFav = 0, lastName = '';
+        for (var _ci = 0; _ci < chars.length; _ci++) {
+            totalFav += Number(chars[_ci].favorability) || 0;
+            lastName = chars[_ci].name;
+        }
+        var _key = chars.length + '|' + totalFav + '|' + lastName;
+        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderNpcPage', _key)) return;
+        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderNpcPage', _key);
+    } catch (e) { /* 缓存失败不阻塞渲染 */ }
+    var container = document.getElementById('characterList');
+    if (!container) return;
+    if (chars.length === 0) {
+        container.innerHTML =
+            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无角色</p><p style="font-size:12px;margin-top:4px;">AI会在剧情中自动创造角色</p></div>';
+    } else {
+        container.innerHTML = chars.map(function(c) {
+            var fav = Number(c.favorability) || 0;
+            fav = Math.max(-100, Math.min(100, fav));
+            var sn = c.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+            // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
+            var favLevel = c.relation || '中立';
+            // 根据好感度数值选择颜色（-100到100，0为中立）
+            var favColor = '#b8c5d0'; // 默认灰蓝（中立）
+            if (fav >= 80) favColor = '#ff6b9d'; // 粉色（极度亲密）
+            else if (fav >= 60) favColor = '#ff8fab'; // 浅粉
+            else if (fav >= 40) favColor = '#ffb3c6'; // 更浅粉
+            else if (fav >= 15) favColor = '#a8dadc'; // 青色（友好）
+            else if (fav >= -15) favColor = '#b8c5d0'; // 灰蓝（中立）
+            else if (fav >= -40) favColor = '#9a8c98'; // 灰紫（疏远）
+            else favColor = '#6c757d'; // 深灰（敌意）
+
+            var tagsHtml = '';
+            if (c.relation) tagsHtml += '<span class="char-tag">' + escapeHtml(c.relation) + '</span>';
+            if (c.title) tagsHtml += '<span class="char-tag">' + escapeHtml(c.title) + '</span>';
+            // 添加好感度等级标签
+            tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
+
+            return '<div class="character-card pearl-card" onclick="openNpcDetail(\'' + sn +
+                '\')">' +
+                '<div class="avatar avatar-md"><span>' + c.name.charAt(0) + '</span></div>' +
+                '<div class="char-info">' +
+                '<div class="char-name">' + escapeHtml(c.name) + '</div>' +
+                (c.title ? '<div class="char-meta">' + escapeHtml(c.title) + '</div>' : '') +
+                '<div class="char-tags">' + tagsHtml + '</div>' +
+                '<div class="char-stats">' +
+                '<div class="char-stat-row"><span>好感</span><div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' +
+                fav + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
+                '</div>' +
+                (c.desc ?
+                    '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
+                    escapeHtml(c.desc) + '</div></div></div>' : '') +
+                '</div></div>';
+        }).join('');
+    }
+    // 仅在导航栏未渲染过时才重建
+    var npcNav = document.getElementById('npcNav');
+    if (npcNav && !npcNav._rendered) {
+        renderNavBar('npcNav', [{
+                page: 'storyPage',
+                icon: 'icon-book',
+                label: '剧情'
+            },
+            {
+                page: 'playerPage',
+                icon: 'icon-user',
+                label: '个人'
+            },
+            {
+                page: 'npcPage',
+                icon: 'icon-users',
+                label: '人际'
+            },
+            {
+                page: 'logPage',
+                icon: 'icon-grid',
+                label: '日志'
+            },
+            {
+                page: 'memoryPage',
+                icon: 'icon-sparkles',
+                label: '记忆'
+            },
+            {
+                page: 'recapPage',
+                icon: 'icon-clock',
+                label: '回顾'
+            }
+        ], 2);
+        npcNav._rendered = true;
+    }
+}
+function openNpcDetail(name) {
+    if (!gameState || !gameState.allCharacters) return;
+    var c = gameState.allCharacters[name];
+    if (!c) return;
+
+    // 构建详情内容
+    var html = '';
+    // 头像和名称
+    html += '<div style="text-align:center;margin-bottom:16px;">' +
+        '<div class="avatar avatar-lg" style="margin:0 auto;"><span>' + escapeHtml(c.name.charAt(0)) + '</span></div>' +
+        '<h3 style="font-size:20px;font-weight:600;margin-top:10px;">' + escapeHtml(c.name) + '</h3>' +
+        (c.title ? '<p class="text-soft">' + escapeHtml(c.title) + '</p>' : '') +
+        '</div>';
+
+    // 基本信息字段（key-value 行）
+    var baseFields = [{
+            key: '身份',
+            value: c.title || '-'
+        },
+        {
+            key: '关系',
+            value: c.relation || '-'
+        }
+    ];
+    if (c.desc) baseFields.push({
+        key: '状态',
+        value: c.desc
+    });
+
+    html += '<div class="pearl-card" style="padding:12px;margin-bottom:12px;">';
+    html += baseFields.map(function(f) {
+        return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">' +
+            '<span style="color:var(--text-secondary);">' + f.key + '</span>' +
+            '<span style="color:var(--text);font-weight:500;">' + escapeHtml(f.value) + '</span></div>';
+    }).join('');
+
+    // 动态 details 字段
+    if (c.details && c.details.length > 0) {
+        html += c.details.map(function(d) {
+            return '<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;">' +
+                '<span style="color:var(--text-secondary);">' + escapeHtml(d.key) + '</span>' +
+                '<span style="color:var(--text);font-weight:500;">' + escapeHtml(d.value) + '</span></div>';
+        }).join('');
+    }
+    html += '</div>';
+
+    // 好感度进度条（数值+等级）
+    if (c.favorability !== undefined) {
+        var fav = Number(c.favorability) || 0;
+        // 范围 -100 到 100，0 为中立
+        fav = Math.max(-100, Math.min(100, fav));
+        // 使用AI动态生成的关系描述，不再硬编码等级名称
+        var favLevel = c.relation || '中立';
+        var favColor = '';
+        if (fav >= 80) favColor = '#ff6b9d';
+        else if (fav >= 60) favColor = '#ff8fab';
+        else if (fav >= 40) favColor = '#ffb3c6';
+        else if (fav >= 15) favColor = '#a8dadc';
+        else if (fav >= -15) favColor = '#b8c5d0';
+        else if (fav >= -40) favColor = '#9a8c98';
+        else favColor = '#6c757d';
+
+        html += '<div class="pearl-card" style="padding:12px;margin-bottom:12px;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +
+            '<span style="font-size:13px;color:var(--text-secondary);font-weight:500;">好感度</span>' +
+            '<span style="display:flex;align-items:center;gap:8px;">' +
+            '<span style="font-size:12px;color:#fff;background:' + favColor + ';padding:2px 8px;border-radius:10px;font-weight:500;">' + favLevel + '</span>' +
+            '<span style="font-size:14px;color:var(--text);font-weight:600;">' + fav + '</span></span></div>' +
+            '<div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' + fav + '%;background:' + favColor + ';"></div></div></div>';
+    }
+
+    document.getElementById('npcDetailBody').innerHTML = html;
+    UI.showModal('npcDetailModal');
+
+    // 绑定聊天按钮
+    var chatBtn = document.getElementById('btnNpcChat');
+    if (chatBtn) {
+        var newChatBtn = chatBtn.cloneNode(true);
+        chatBtn.parentNode.replaceChild(newChatBtn, chatBtn);
+        var safeName = name.replace(/'/g, "\'");
+        newChatBtn.addEventListener('click', function() {
+            UI.hideModal('npcDetailModal');
+            openNpcChat(name);
+        });
+    }
+    // 绑定日记按钮
+    var diaryBtn = document.getElementById('btnNpcDiary');
+    if (diaryBtn) {
+        var newDiaryBtn = diaryBtn.cloneNode(true);
+        diaryBtn.parentNode.replaceChild(newDiaryBtn, diaryBtn);
+        newDiaryBtn.addEventListener('click', function() {
+            UI.hideModal('npcDetailModal');
+            viewNpcDiary(name);
+        });
+    }
+    // 绑定编辑按钮
+    var editBtn = document.getElementById('btnNpcEdit');
+    if (editBtn) {
+        var newEditBtn = editBtn.cloneNode(true);
+        editBtn.parentNode.replaceChild(newEditBtn, editBtn);
+        newEditBtn.addEventListener('click', function() {
+            UI.hideModal('npcDetailModal');
+            openEditNpcModal(name);
+        });
+    }
+    // 绑定删除按钮
+    var deleteBtn = document.getElementById('btnNpcDelete');
+    if (deleteBtn) {
+        var newDeleteBtn = deleteBtn.cloneNode(true);
+        deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+        newDeleteBtn.addEventListener('click', function() {
+            UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？').then(function(ok) { if (ok) {
+            // 添加防抖检查
+            if (newDeleteBtn.disabled) return;
+            newDeleteBtn.disabled = true;
+                delete gameState.allCharacters[name];
+                renderNpcList();
+                UI.hideModal('npcDetailModal');
+                UI.toast('已删除角色');
+                newDeleteBtn.disabled = false;
+            }
+            }).catch(function(err) { console.error('[NPC系统] 操作失败:', err); });
+        });
+    }
+}
