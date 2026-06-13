@@ -51,13 +51,8 @@ _evictIfNeeded() {
 }
 };
 
-var Logger = {
-    DEBUG: false, INFO: false, WARN: true, ERROR: true,
-    debug: function() { if (this.DEBUG && console && console.log) console.log.apply(console, ['[DEBUG]'].concat(Array.from(arguments))); },
-    info: function() { if (this.INFO && console && console.info) console.info.apply(console, ['[INFO]'].concat(Array.from(arguments))); },
-    warn: function() { if (this.WARN && console && console.warn) console.warn.apply(console, ['[WARN]'].concat(Array.from(arguments))); },
-    error: function() { if (this.ERROR && console && console.error) console.error.apply(console, ['[ERROR]'].concat(Array.from(arguments))); }
-};
+// 【P0 修复】删除文件开头的重复 Logger 定义（仅保留文件末尾的 IIFE 增强版）
+// var Logger = { ... 简单版 ... };  // 已删除，详见文件末尾 IIFE 版
 
 var TimerManager = {
     _intervals: {}, _timeouts: {},
@@ -502,4 +497,157 @@ function shouldSkipPageRender(pageName, dataKey) {
     if (RenderCache.same(pageName, dataKey)) return true;
     RenderCache.mark(pageName, dataKey);
     return false;
+}
+
+// ========================================
+// 【P0 修复】UIKit 三件套：el / delegate / bindActions
+// 目的：替代散落的内联 onclick="..." 字符串拼接 + XSS 隐患
+// 用法：
+//   1. 渲染容器 innerHTML 后调一次 bindActions(container, handlers)
+//   2. HTML 模板里用 data-action="name" data-arg="..." 标记
+//   3. handlers 的签名是 function(args, e){}，args 是 data-* 的键值对
+// 优势：
+//   - 自动避免 XSS（dataset 写入走 HTML 实体编码）
+//   - 容器只挂 1 个 listener，性能优于逐元素绑定
+//   - 模板与事件分离，可读性极大提升
+// ========================================
+
+// 危险属性黑名单：el() 拒绝写入这些属性
+var UIKIT_DANGEROUS_ATTRS = {
+    onclick:1, ondblclick:1, onmousedown:1, onmouseup:1, onmouseover:1, onmouseout:1,
+    onmousemove:1, onkeydown:1, onkeyup:1, onkeypress:1, onfocus:1, onblur:1,
+    onload:1, onerror:1, onsubmit:1, onreset:1, onchange:1, oninput:1,
+    onanimationstart:1, onanimationend:1, onanimationiteration:1,
+    ontransitionend:1, oncontextmenu:1, oncopy:1, oncut:1, onpaste:1
+};
+
+function el(tag, props, children) {
+    var node = document.createElement(tag);
+    if (props) {
+        for (var k in props) {
+            if (!Object.prototype.hasOwnProperty.call(props, k)) continue;
+            var v = props[k];
+            if (v == null) continue;
+            if (k === 'class' || k === 'className') {
+                node.className = v;
+            } else if (k === 'style' && typeof v === 'object') {
+                for (var s in v) {
+                    if (Object.prototype.hasOwnProperty.call(v, s)) node.style[s] = v[s];
+                }
+            } else if (k === 'dataset' && typeof v === 'object') {
+                for (var d in v) {
+                    if (Object.prototype.hasOwnProperty.call(v, d)) {
+                        node.dataset[d] = v[d];
+                        // 同步写入 attribute（让 el.attributes 能枚举到 data-*）
+                        var dataAttrName = 'data-' + d.replace(/[A-Z]/g, function(m){ return '-' + m.toLowerCase(); });
+                        node.setAttribute(dataAttrName, v[d]);
+                    }
+                }
+            } else if (k === 'text') {
+                node.textContent = v;
+            } else if (k === 'html') {
+                node.innerHTML = v;
+            } else if (k.indexOf('on') === 0 && typeof v === 'function') {
+                // 显式事件属性（如 onclick: fn）通过 addEventListener 注册
+                node.addEventListener(k.substring(2).toLowerCase(), v);
+            } else if (UIKIT_DANGEROUS_ATTRS[k]) {
+                // 拒绝以字符串形式写入危险事件属性（防 XSS）
+                Logger.warn('[UIKit] 拒绝写入危险属性: ' + k);
+            } else if (k === 'checked' || k === 'disabled' || k === 'selected' || k === 'hidden' || k === 'readOnly') {
+                // 布尔属性：传 true 才设置
+                if (v) node.setAttribute(k, k);
+            } else if (k === 'value' || k === 'id' || k === 'href' || k === 'src' || k === 'placeholder' || k === 'title' || k === 'alt' || k === 'type' || k === 'role' || k === 'tabIndex' || k === 'maxLength' || k === 'min' || k === 'max') {
+                node.setAttribute(k, v);
+            } else {
+                node.setAttribute(k, v);
+            }
+        }
+    }
+    if (children != null) {
+        var arr = Array.isArray(children) ? children : [children];
+        for (var i = 0; i < arr.length; i++) {
+            var c = arr[i];
+            if (c == null || c === false) continue;
+            if (typeof c === 'string' || typeof c === 'number') {
+                node.appendChild(document.createTextNode(String(c)));
+            } else if (c instanceof Node) {
+                node.appendChild(c);
+            } else if (Array.isArray(c)) {
+                for (var j = 0; j < c.length; j++) {
+                    if (c[j] != null) node.appendChild(c[j] instanceof Node ? c[j] : document.createTextNode(String(c[j])));
+                }
+            }
+        }
+    }
+    return node;
+}
+
+// 容器级一次性事件委托
+function delegate(root, handlers, opts) {
+    if (!root) return function() {};
+    opts = opts || {};
+    var eventName = opts.event || 'click';
+    var attrName = opts.attr || 'data-action';
+    var dataPrefix = opts.dataPrefix || 'data-';
+    var listener = function(e) {
+        // 向上找带 [data-action] 的最近祖先
+        var el = e.target;
+        var target = null;
+        while (el && el !== root) {
+            if (el.nodeType === 1 && el.hasAttribute && el.hasAttribute(attrName)) {
+                target = el;
+                break;
+            }
+            el = el.parentNode;
+        }
+        if (!target) return;
+        var action = target.getAttribute(attrName);
+        var fn = handlers[action];
+        if (!fn) {
+            Logger.warn('[UIKit] 未找到 action handler: ' + action);
+            return;
+        }
+        // 收集所有 data-* 属性（驼峰转回短横线小写）
+        var args = {};
+        var attrs = target.attributes;
+        for (var i = 0; i < attrs.length; i++) {
+            var a = attrs[i];
+            if (a.name.indexOf(dataPrefix) === 0 && a.name !== attrName) {
+                // data-foo-bar → fooBar
+                var key = a.name.substring(dataPrefix.length);
+                var camel = key.replace(/-([a-z])/g, function(m, c) { return c.toUpperCase(); });
+                args[camel] = a.value;
+            }
+        }
+        // 当前元素本身作为第二参数（用于 e.currentTarget 替代）
+        fn.call(target, args, e);
+    };
+    root.addEventListener(eventName, listener);
+    // 返回解绑函数（便于清理）
+    return function unbind() {
+        root.removeEventListener(eventName, listener);
+    };
+}
+
+// 一行绑定：在容器上挂委托，传入 handlers 表
+// 推荐用法：bindActions(root, { openMail: fn, deleteMail: fn })
+// 【幂等】同一 root 多次调用会先解绑旧的委托，避免 listener 累积
+function bindActions(root, handlers) {
+    if (!root) return function() {};
+    if (root.__bindActionsUnbind) {
+        try { root.__bindActionsUnbind(); } catch (e) {}
+    }
+    var unbind = delegate(root, handlers, { event: 'click', attr: 'data-action' });
+    root.__bindActionsUnbind = unbind;
+    return unbind;
+}
+
+// 一行绑定变更事件
+function bindChangeActions(root, handlers) {
+    return delegate(root, handlers, { event: 'change', attr: 'data-action' });
+}
+
+// 一行绑定 submit 事件
+function bindSubmitActions(root, handlers) {
+    return delegate(root, handlers, { event: 'submit', attr: 'data-action' });
 }

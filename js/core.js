@@ -346,6 +346,12 @@ var TOAST_DURATION_MS = POPUP_DURATION_MS;
 var UI = {
     // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
     TOAST_DURATION: POPUP_DURATION_MS,
+    // 【P0 修复】UIKit 别名：让调用者用 UI.bindActions / UI.el 即可，无需引入新全局
+    el: function(tag, props, children) { return el(tag, props, children); },
+    delegate: function(root, handlers, opts) { return delegate(root, handlers, opts); },
+    bindActions: function(root, handlers) { return bindActions(root, handlers); },
+    bindChangeActions: function(root, handlers) { return bindChangeActions(root, handlers); },
+    bindSubmitActions: function(root, handlers) { return bindSubmitActions(root, handlers); },
     // 【导航栈】支持返回上一级
     _navStack: [],
     pushNav: function(type, id) {

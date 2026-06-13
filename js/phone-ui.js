@@ -118,16 +118,7 @@ function replyToForumComment(postIdx, commentIdx) {
     input.focus();
     input.textContent = '@' + targetName + ' ';
     input.setAttribute('data-reply-to', targetName);
-    // 使用统一的keydown处理，避免事件覆盖问题
-    input.onkeydown = function(e) {
-        if ((e.key === 'Enter' || e.code === 'Enter' || e.keyCode === 13) && !e.shiftKey) {
-            e.preventDefault();
-            var replyTo = input.getAttribute('data-reply-to') || '';
-            sendForumComment(postIdx, replyTo);
-            // 发送后清除replyTo状态
-            input.removeAttribute('data-reply-to');
-        }
-    };
+    // Enter 提交由 _applyLogPageStyle 中的 content 级别 keydown 委托统一处理
 }
 function appendForumReply(postIdx, comment) {
     var detail = document.getElementById('forumPostDetail' + postIdx);
@@ -145,8 +136,8 @@ function appendForumReply(postIdx, comment) {
         '<div class="forum-reply-main"><div class="forum-reply-name">' + escapeHtml(comment.name || '匿名') + '</div>' +
         '<div class="forum-reply-content">' + replyPrefix + escapeHtml(comment.text || '') + '</div>' +
         '<div class="forum-reply-meta">' + escapeHtml(comment.time || '刚刚') +
-        '　<span style="cursor:pointer" onclick="replyToForumComment(' + postIdx + ',' + ((detail
-            .querySelectorAll('.forum-reply-item').length)) + ')">回复</span></div></div>';
+        '　<span style="cursor:pointer" data-action="replyToForumComment" data-post="' + postIdx + '" data-comment="' + ((detail
+            .querySelectorAll('.forum-reply-item').length)) + '">回复</span></div></div>';
     list.appendChild(item);
     requestAnimationFrame(function() {
         item.style.opacity = '1';
@@ -419,12 +410,12 @@ function openDiaryDatePicker() {
         }
     });
     dateList.sort(function(a, b) { return a < b ? 1 : (a > b ? -1 : 0); });
-    var html = '<div id="diaryDatePicker" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeDiaryDatePicker()">' +
+    var html = '<div id="diaryDatePicker" data-action="closeDiaryDatePicker" data-bg="1" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;cursor:pointer;">' +
         '<div style="background:var(--bg);border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
-        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="closeDiaryDatePicker()">×</span></div>' +
+        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" data-action="closeDiaryDatePicker">×</span></div>' +
         dateList.map(function(d) {
-            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="closeDiaryDatePicker();diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" data-action="diaryJumpToDate" data-date="' + escapeHtml(d) + '">' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div></div>';
     var container = document.querySelector('.diary-page') || document.getElementById('logSubContent');
@@ -433,7 +424,19 @@ function openDiaryDatePicker() {
         if (old) old.remove();
         var wrap = document.createElement('div');
         wrap.innerHTML = html;
-        container.appendChild(wrap.firstElementChild);
+        var picker = wrap.firstElementChild;
+        container.appendChild(picker);
+        // 【P0 修复】事件委托：替代内联 onclick
+        if (typeof bindActions === 'function') {
+            bindActions(picker, {
+                closeDiaryDatePicker: function(a, e) {
+                    // data-bg=1 时只在点击背景（不是子元素）时关闭
+                    if (a && a.bg === '1' && e && e.target !== e.currentTarget) return;
+                    if (typeof closeDiaryDatePicker === 'function') closeDiaryDatePicker();
+                },
+                diaryJumpToDate: function(a) { if (typeof diaryJumpToDate === 'function') diaryJumpToDate(a.date); }
+            });
+        }
     }
 }
 function closeDiaryDatePicker() {
@@ -488,7 +491,7 @@ function openMailDetail(index) {
     body = sanitizeHtml(body);
     var detailHtml =
         '<div style="display:flex;flex-direction:column;flex:1;background:var(--bg);overflow:hidden;">' +
-        '<div class="mail-detail-nav"><div class="mail-detail-back" onclick="backToMailList()">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" onclick="deleteMail(' + index + ')"></div></div></div>' +
+        '<div class="mail-detail-nav"><div class="mail-detail-back" data-action="backToMailList" style="cursor:pointer;">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" data-action="deleteMail" data-index="' + index + '" style="cursor:pointer;"></div></div></div>' +
         '<div class="mail-detail-scroll">' +
         '<div class="mail-detail-subject">' + escapeHtml(subject) + '</div>' +
         '<div class="mail-detail-meta"><div class="mail-detail-avatar">' + escapeHtml(avatar) +
@@ -506,6 +509,13 @@ function openMailDetail(index) {
         if (child) {
             child.style.flex = '1';
             child.style.minHeight = '0';
+        }
+        // 【P0 修复】事件委托：替代内联 onclick
+        if (typeof bindActions === 'function') {
+            bindActions(content, {
+                backToMailList: function() { backToMailList(); },
+                deleteMail: function(a) { deleteMail(parseInt(a.index, 10)); }
+            });
         }
     }
 }
@@ -1369,6 +1379,88 @@ function _applyLogPageStyle(content, type, html) {
         }
     }
 
+    // 【P0 修复】通用事件委托：替代各页面内联 onclick
+    if (typeof bindActions === 'function') {
+        if (type === 'mail') {
+            bindActions(content, {
+                openMailDetail: function(a) { if (typeof openMailDetail === 'function') openMailDetail(parseInt(a.index, 10)); }
+            });
+        }
+        if (type === 'moments') {
+            bindActions(content, {
+                toggleMomentLike: function(a) { if (typeof toggleMomentLike === 'function') toggleMomentLike(parseInt(a.index, 10)); },
+                showMomentCommentInput: function(a) { if (typeof showMomentCommentInput === 'function') showMomentCommentInput(parseInt(a.index, 10), null); },
+                sendMomentComment: function(a) { if (typeof sendMomentComment === 'function') sendMomentComment(parseInt(a.index, 10)); }
+            });
+            // Enter 键提交：keydown 委托
+            content.addEventListener('keydown', function(e) {
+                if (e.key !== 'Enter') return;
+                var target = e.target.closest('[data-action="sendMomentComment"][data-enter="1"]');
+                if (!target) return;
+                e.preventDefault();
+                if (typeof sendMomentComment === 'function') sendMomentComment(parseInt(target.dataset.index, 10));
+            });
+        }
+        if (type === 'forum') {
+            bindActions(content, {
+                openForumPost: function(a) { if (typeof openForumPost === 'function') openForumPost(parseInt(a.index, 10)); },
+                closeForumPost: function(a) { if (typeof closeForumPost === 'function') closeForumPost(parseInt(a.index, 10)); },
+                replyToForumComment: function(a) {
+                    if (typeof replyToForumComment !== 'function') return;
+                    // 兼容 data-post/data-index 两种命名
+                    var p = a.post != null ? a.post : a.index;
+                    replyToForumComment(parseInt(p, 10), parseInt(a.comment, 10));
+                },
+                sendForumComment: function(a) {
+                    if (typeof sendForumComment !== 'function') return;
+                    var idx = parseInt(a.index, 10);
+                    var replyTo = a['reply-to'] || a.replyTo || '';
+                    // 如果 input 上有 data-reply-to 标记（replyToForumComment 设置的），用之
+                    var input = content.querySelector('#forumPostDetail' + idx + ' .forum-comment-input');
+                    if (!replyTo && input) replyTo = input.getAttribute('data-reply-to') || '';
+                    sendForumComment(idx, replyTo);
+                    if (input) input.removeAttribute('data-reply-to');
+                },
+                showForumHot: function() { if (typeof showForumHot === 'function') showForumHot(); },
+                showForumTopic: function() { if (typeof showForumTopic === 'function') showForumTopic(); },
+                showForumMine: function() { if (typeof showForumMine === 'function') showForumMine(); }
+            });
+            // Enter 键提交：keydown 委托
+            content.addEventListener('keydown', function(e) {
+                if (e.key !== 'Enter') return;
+                var target = e.target.closest('[data-action="sendForumComment"][data-enter="1"]');
+                if (!target) return;
+                e.preventDefault();
+                var idx = parseInt(target.dataset.index, 10);
+                if (typeof sendForumComment === 'function') {
+                    var input = target;
+                    var replyTo = input.getAttribute('data-reply-to') || '';
+                    sendForumComment(idx, replyTo);
+                    input.removeAttribute('data-reply-to');
+                }
+            });
+        }
+        if (type === 'items') {
+            bindActions(content, {
+                switchItemsTab: function(a, e) {
+                    if (typeof switchItemsTab !== 'function') return;
+                    var btn = e.target.closest('[data-action="switchItemsTab"]');
+                    switchItemsTab(a.tab, btn);
+                },
+                filterBagItems: function(a, e) {
+                    if (typeof filterBagItems !== 'function') return;
+                    var btn = e.target.closest('[data-action="filterBagItems"]');
+                    filterBagItems(a.cat, btn);
+                }
+            });
+        }
+        if (type === 'shop') {
+            bindActions(content, {
+                buyShopItem: function(a) { if (typeof buyShopItem === 'function') buyShopItem(parseInt(a.index, 10)); }
+            });
+        }
+    }
+
     // 修复：聊天页面用事件委托，data-chat-name → openNpcChat，避免内联 onclick 的 XSS
     if (type === 'chat' && !content._chatClickBound) {
         content._chatClickBound = true;
@@ -1694,11 +1786,11 @@ function renderMomentsPage() {
             // 互动栏：点赞 + 评论
             html += '<div class="moment-actions" style="display:flex;border-top:1px solid #f0f0f0;margin-top:8px;padding-top:8px;gap:20px;">';
             var isLiked = post.likes && Array.isArray(post.likes) && post.likes.indexOf(playerName) !== -1;
-            html += '<span style="font-size:13px;color:' + (isLiked ? '#ff3b30' : '#999') + ';cursor:pointer;" onclick="toggleMomentLike(' + idx + ')">' + (isLiked ? '已赞' : '赞') + '</span>';
-            html += '<span style="font-size:13px;color:#576b95;cursor:pointer;" onclick="showMomentCommentInput(' + idx + ',this)">评论</span>';
+            html += '<span style="font-size:13px;color:' + (isLiked ? '#ff3b30' : '#999') + ';cursor:pointer;" data-action="toggleMomentLike" data-index="' + idx + '">' + (isLiked ? '已赞' : '赞') + '</span>';
+            html += '<span style="font-size:13px;color:#576b95;cursor:pointer;" data-action="showMomentCommentInput" data-index="' + idx + '">评论</span>';
             html += '</div>';
             html += '<div id="momentCommentBox_' + idx + '" style="display:none;margin-top:8px;">';
-            html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" placeholder="写评论..." style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;" onkeydown="if(event.key===\'Enter\')sendMomentComment(' + idx + ')"><span style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" onclick="sendMomentComment(' + idx + ')">发送</span></div>';
+            html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" placeholder="写评论..." data-action="sendMomentComment" data-index="' + idx + '" data-enter="1" style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;"><span style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" data-action="sendMomentComment" data-index="' + idx + '">发送</span></div>';
             html += '</div>';
             html += '</div>';
         });
@@ -1814,8 +1906,7 @@ function renderForumPage() {
         for (var si = 0; si < titleStr.length; si++) seed = ((seed << 5) - seed + titleStr
             .charCodeAt(si)) | 0;
         var count = (Math.abs(seed) % 450 + 50) + '.' + (Math.abs(seed >> 8) % 9) + '万';
-        return '<div class="forum-hot-item" role="button" tabindex="0" onclick="openForumPost(' +
-            idx + ')">' +
+        return '<div class="forum-hot-item" role="button" tabindex="0" data-action="openForumPost" data-index="' + idx + '">' +
             '<div class="forum-hot-rank ' + rankClass + '">' + (idx + 1) + '</div>' +
             '<div class="forum-hot-info"><div class="forum-hot-title">' + escapeHtml(mod.title ||
                 '帖子') + '</div><div class="forum-hot-count">' + count + '</div></div>' +
@@ -1837,8 +1928,7 @@ function renderForumPage() {
         var shares = Math.abs(seed >> 8) % 950 + 50;
         var bodyText = mod.main || mod.content || '';
         var tagText = mod.title || '';
-        return '<div class="forum-feed-item" role="button" tabindex="0" onclick="openForumPost(' +
-            idx + ')">' +
+        return '<div class="forum-feed-item" role="button" tabindex="0" data-action="openForumPost" data-index="' + idx + '">' +
             '<div class="forum-feed-header">' +
             '<div class="forum-feed-avatar" style="background:' + avatarColor + ';">' + avatarChar +
             '</div>' +
@@ -1875,16 +1965,13 @@ function renderForumPage() {
                 '</div>' +
                 '<div class="forum-reply-meta"><span>' + timeLabels[(idx + ci) % timeLabels
                     .length] +
-                '</span><span style="cursor:pointer" onclick="replyToForumComment(' + idx +
-                ',' + ci + ')">回复</span></div>' +
+                '</span><span style="cursor:pointer" data-action="replyToForumComment" data-index="' + idx + '" data-comment="' + ci + '">回复</span></div>' +
                 '</div></div>';
         }).join('');
 
         return '<div class="forum-post-detail" id="forumPostDetail' + idx +
             '" style="display:none;flex-direction:column;">' +
-            '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="closeForumPost(' +
-            idx +
-            ')">←</div><div class="forum-nav-title">帖子详情</div><div class="forum-nav-right">↻</div></div>' +
+            '<div class="forum-nav-bar"><div class="forum-nav-back" data-action="closeForumPost" data-index="' + idx + '">←</div><div class="forum-nav-title">帖子详情</div><div class="forum-nav-right">↻</div></div>' +
             '<div class="forum-post-scroll">' +
             '<div class="forum-post-main"><div class="forum-post-title">' + (mod.title || '帖子') +
             '</div><div class="forum-post-sub">1分钟前　回复</div></div>' +
@@ -1894,10 +1981,8 @@ function renderForumPage() {
             '<div class="forum-post-footer">' +
             '<div class="forum-my-avatar" style="background:#333;">' + playerName.charAt(0) +
             '</div>' +
-            '<div class="forum-comment-input" contenteditable="true" data-post-idx="' + idx +
-            '" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendForumComment(' +
-            idx + ')}"></div>' +
-            '<div class="forum-send-btn" onclick="sendForumComment(' + idx + ')">></div>' +
+            '<div class="forum-comment-input" contenteditable="true" data-action="sendForumComment" data-index="' + idx + '" data-enter="1" data-post-idx="' + idx + '"></div>' +
+            '<div class="forum-send-btn" data-action="sendForumComment" data-index="' + idx + '">></div>' +
             '</div>' +
             '</div>';
     }).join('');
@@ -1912,11 +1997,11 @@ function renderForumPage() {
         '</div>' +
         '</div>' +
         '<div id="forumTopicView" style="display:none;">' +
-        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" data-action="showForumHot">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
         '<div class="forum-topic-body">' + feedItems + '</div>' +
         '</div>' +
         '<div id="forumMineView" style="display:none;">' +
-        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" data-action="showForumHot">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
         '<div class="forum-mine-body">' + (function() {
             var mineHtml = '';
             var myCommented = [];
@@ -1934,7 +2019,7 @@ function renderForumPage() {
                 return '<div style="padding:60px 20px;text-align:center;color:var(--text-secondary);">还没发表过评论<br><span style="font-size:12px;">去点击话题发表你的观点吧</span></div>';
             }
             return myCommented.map(function(item) {
-                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
+                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" data-action="openForumPost" data-index="' + item.idx + '">' +
                     '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">◇</div>' +
                     '<div style="flex:1;min-width:0;">' +
                     '<div style="font-size:14px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
@@ -1947,9 +2032,9 @@ function renderForumPage() {
         '</div>' +
         postDetails +
         '<div class="forum-tab-bar" id="forumTabBar">' +
-        '<div class="forum-tab-item active" onclick="showForumHot()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
-        '<div class="forum-tab-item" onclick="showForumTopic()"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
-        '<div class="forum-tab-item" onclick="showForumMine()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
+        '<div class="forum-tab-item active" data-action="showForumHot"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
+        '<div class="forum-tab-item" data-action="showForumTopic"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
+        '<div class="forum-tab-item" data-action="showForumMine"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
         '</div>' +
         '</div>';
 }
@@ -2124,11 +2209,11 @@ function renderItemsPage() {
         '<div class="items-card-circles"><div class="items-card-circle red"></div><div class="items-card-circle orange"></div></div>' +
         '</div>' +
         '<div class="items-tab-switch">' +
-        '<div class="items-tab-btn active" onclick="switchItemsTab(\'items\',this)">物品</div>' +
-        '<div class="items-tab-btn" onclick="switchItemsTab(\'bill\',this)">账单</div>' +
+        '<div class="items-tab-btn active" data-action="switchItemsTab" data-tab="items">物品</div>' +
+        '<div class="items-tab-btn" data-action="switchItemsTab" data-tab="bill">账单</div>' +
         '</div>' +
         '<div id="itemsSection">' +
-        '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" onclick="filterBagItems(\'all\',this)">全部</div><div class="items-sub-tab" onclick="filterBagItems(\'装备\',this)">装备</div><div class="items-sub-tab" onclick="filterBagItems(\'消耗品\',this)">消耗品</div><div class="items-sub-tab" onclick="filterBagItems(\'材料\',this)">材料</div></div>' +
+        '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" data-action="filterBagItems" data-cat="all">全部</div><div class="items-sub-tab" data-action="filterBagItems" data-cat="装备">装备</div><div class="items-sub-tab" data-action="filterBagItems" data-cat="消耗品">消耗品</div><div class="items-sub-tab" data-action="filterBagItems" data-cat="材料">材料</div></div>' +
         '<div class="items-grid" id="itemsGrid" style="justify-items:center;">' + itemsHtml + '</div>' +
         '</div>' +
         '<div id="billSection" style="display:none;">' +
@@ -2210,8 +2295,7 @@ function renderDiaryPage() {
                 }
                 var mentionTag = mentionCount > 0 ?
                     '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
-                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" onclick="viewNpcDiary(\'' +
-                    escapeHtml(npcName).replace(/'/g, "\\'") + '\')">' +
+                return '<div class="character-card pearl-card" data-action="viewNpcDiary" data-name="' + escapeHtml(npcName) + '" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '">' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
                     '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
@@ -2358,8 +2442,8 @@ function renderMailPage() {
             preview = preview.replace(/<[^>]*>/g, '');
             var subjectStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
             var senderStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
-            return '<div class="mail-list-item' + unread + '" onclick="openMailDetail(' + i +
-                ')" style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
+            return '<div class="mail-list-item' + unread + '" data-action="openMailDetail" data-index="' + i +
+                '" style="cursor:pointer;' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
                 '<div class="mail-list-header">' + unreadDot + '<div class="mail-list-sender" style="' + senderStyle + '">' + escapeHtml(sender) +
                 '</div><div class="mail-list-date">' + escapeHtml(date) + '</div></div>' +
                 '<div class="mail-list-subject" style="' + subjectStyle + '">' + escapeHtml(subject) + '</div>' +
@@ -2456,8 +2540,8 @@ function renderShopPage() {
                 '<span style="font-size:11px;padding:2px 8px;background:#ccc;color:#fff;border-radius:10px;cursor:not-allowed;white-space:nowrap;">已售稀</span>' :
                 '<span style="font-size:11px;padding:2px 8px;background:var(--accent,#333);color:#fff;border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span>';
             var itemStyle = isSoldOut ? 'opacity:0.6;cursor:not-allowed;' : 'cursor:pointer;';
-            var itemClick = isSoldOut ? '' : ' onclick="buyShopItem(' + gi + ')"';
-            return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemClick + '><div class="shop-goods-icon">' + escapeHtml(icon) +
+            var itemAttrs = isSoldOut ? '' : ' data-action="buyShopItem" data-index="' + gi + '"';
+            return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemAttrs + '><div class="shop-goods-icon">' + escapeHtml(icon) +
                 '</div><div class="shop-goods-info"><div class="shop-goods-name">' + escapeHtml(name) +
                 '</div><div class="shop-goods-desc">' + escapeHtml(desc) + '</div>' +
                 ownedDisplay + stockTag + soldOutTag +
@@ -3165,11 +3249,16 @@ function renderRecapPage() {
             var isCurrent = i === stories.length - 1;
             var summary = (s.text || '').substring(0, 80);
             return '<div class="timeline-item ' + (isCurrent ? 'current' : '') +
-                '" onclick="showRecapDetail(' + i + ')">' +
+                '" data-action="showRecapDetail" data-index="' + i + '">' +
                 '<div class="timeline-item-head"><span class="timeline-item-title">第' + (i + 1) +
                 '段</span></div>' +
                 '<div class="timeline-item-summary">' + escapeHtml(summary) + '...</div></div>';
         }).join('') + '</div>';
+        if (typeof bindActions === 'function') {
+            bindActions(container, {
+                showRecapDetail: function(a) { if (typeof showRecapDetail === 'function') showRecapDetail(parseInt(a.index, 10)); }
+            });
+        }
     }
     renderNavBar('recapNav', [{
             page: 'storyPage',
@@ -4846,7 +4935,7 @@ function renderAPISettings() {
 
         return '<div class="pearl-card api-card" role="button" tabindex="0" style="padding:14px;margin-bottom:10px;cursor:pointer;' +
             (isCurrent ? 'border-color:var(--text);' : '') + (isFailed ? 'border-color:#ff3b30;' :
-                '') + '" onclick="showApiDetail(' + i + ')" data-api-index="' + i + '">' +
+                '') + '" data-action="showApiDetail" data-index="' + i + '" data-api-index="' + i + '">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div><div style="font-size:14px;font-weight:500;display:flex;align-items:center;">' +
             apiName + errorIcon + '</div>' +
@@ -4898,6 +4987,12 @@ function renderAPISettings() {
                     UI.toast('分组已删除');
                 }
             });
+        });
+    }
+    // 事件委托：API 卡片点击 → showApiDetail
+    if (typeof bindActions === 'function') {
+        bindActions(container, {
+            showApiDetail: function(a) { if (typeof showApiDetail === 'function') showApiDetail(parseInt(a.index, 10)); }
         });
     }
 }
@@ -6109,21 +6204,29 @@ async function openSaveLoadModal() {
                 html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
                     escapeHtml(s.data.name || ('存档 ' + s.slot)) + '</div><div class="sl-slot-meta">' +
                     escapeHtml(s.data.time || '') +
-                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(' +
-                    s.slot + ')">读取</button><button class="sl-btn" onclick="saveToSlot(' + s.slot +
-                    ')">覆盖</button><button class="sl-btn danger" onclick="deleteSaveSlot(' + s.slot +
-                    ')">删除</button></div></div>';
+                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" data-action="loadFromSlot" data-slot="' +
+                    s.slot + '">读取</button><button class="sl-btn" data-action="saveToSlot" data-slot="' + s.slot +
+                    '">覆盖</button><button class="sl-btn danger" data-action="deleteSaveSlot" data-slot="' + s.slot +
+                    '">删除</button></div></div>';
             } else {
                 html +=
                     '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">存档位 ' +
                     s.slot +
-                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" onclick="saveToSlot(' +
-                    s.slot + ')">保存</button></div></div>';
+                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" data-action="saveToSlot" data-slot="' +
+                    s.slot + '">保存</button></div></div>';
             }
         }
         html +=
-            '<div class="sl-bottom-actions"><button class="sl-btn" onclick="UI.hideModal(\'saveLoadModal\')">关闭</button></div>';
+            '<div class="sl-bottom-actions"><button class="sl-btn" data-action="closeSaveLoadModal">关闭</button></div>';
         body.innerHTML = html;
+        if (typeof bindActions === 'function') {
+            bindActions(body, {
+                loadFromSlot: function(a) { if (typeof loadFromSlot === 'function') loadFromSlot(parseInt(a.slot, 10)); },
+                saveToSlot: function(a) { if (typeof saveToSlot === 'function') saveToSlot(parseInt(a.slot, 10)); },
+                deleteSaveSlot: function(a) { if (typeof deleteSaveSlot === 'function') deleteSaveSlot(parseInt(a.slot, 10)); },
+                closeSaveLoadModal: function() { if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal('saveLoadModal'); }
+            });
+        }
     } catch (e) {
         console.error('openSaveLoadModal出错:', e);
         body.innerHTML =
@@ -6148,17 +6251,17 @@ async function renderSaveUI() {
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8;flex-wrap:wrap;gap:4px">' +
                 '<span style="font-size:13px;color:var(--text-tertiary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' +
                 displayName + '</span>' + '<div style="display:flex;gap:4px;flex-shrink:0">' +
-                '<button class="save-action-btn" onclick="renameSave(' + slot + ')">改名</button>' +
-                '<button class="save-action-btn" onclick="loadFromSlot(' + slot + ')">读取</button>' + (
-                    showSave ? '<button class="save-action-btn" onclick="safeSaveSlot(' + slot +
-                    ')">覆盖</button>' : '') +
-                '<button class="save-action-btn" onclick="deleteFromSlot(' + slot +
-                ')" style="color:#ff6b6b">删除</button>' + '</div></div>';
+                '<button class="save-action-btn" data-action="renameSave" data-slot="' + slot + '">改名</button>' +
+                '<button class="save-action-btn" data-action="loadFromSlot" data-slot="' + slot + '">读取</button>' + (
+                    showSave ? '<button class="save-action-btn" data-action="safeSaveSlot" data-slot="' + slot +
+                    '">覆盖</button>' : '') +
+                '<button class="save-action-btn" data-action="deleteFromSlot" data-slot="' + slot +
+                '" style="color:#ff6b6b">删除</button>' + '</div></div>';
         } else {
             displayName = icon + ' ' + label + ' - 空';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8">' +
                 '<span style="font-size:13px;color:var(--text-tertiary)">' + displayName + '</span>' + (showSave ?
-                    '<button class="save-action-btn" onclick="safeSaveSlot(' + slot + ')">保存</button>' :
+                    '<button class="save-action-btn" data-action="safeSaveSlot" data-slot="' + slot + '">保存</button>' :
                     '') + '</div>';
         }
     }
@@ -6181,12 +6284,25 @@ async function renderSaveUI() {
     html += '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border)">' +
         '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;text-align:center">包 存档导入 / 导出</div>' +
         '<div style="display:flex;gap:8px">' +
-        '<button class="pixel-btn blue big" onclick="exportSaves()" style="flex:1">导出全部存档</button>' +
-        '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+        '<button class="pixel-btn blue big" data-action="exportSaves" style="flex:1">导出全部存档</button>' +
+        '<button class="pixel-btn big" data-action="triggerImportFile" style="flex:1">导入存档</button>' +
         '</div>' +
         '<div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:6px">导出为JSON文件，可在其他设备导入恢复</div>' +
         '</div>';
     ct.innerHTML = html;
+    if (typeof bindActions === 'function') {
+        bindActions(ct, {
+            renameSave: function(a) { if (typeof renameSave === 'function') renameSave(parseInt(a.slot, 10)); },
+            loadFromSlot: function(a) { if (typeof loadFromSlot === 'function') loadFromSlot(parseInt(a.slot, 10)); },
+            safeSaveSlot: function(a) { if (typeof safeSaveSlot === 'function') safeSaveSlot(parseInt(a.slot, 10)); },
+            deleteFromSlot: function(a) { if (typeof deleteFromSlot === 'function') deleteFromSlot(parseInt(a.slot, 10)); },
+            exportSaves: function() { if (typeof exportSaves === 'function') exportSaves(); },
+            triggerImportFile: function() {
+                var inp = document.getElementById('importFileInput');
+                if (inp) inp.click();
+            }
+        });
+    }
 }
 // 云迁移功能已移除（自由版无云存档）
 // ── 首页读档弹窗 ──
@@ -6197,8 +6313,8 @@ async function openLoadModal() {
         function loadRow(label, icon, data, slot) {
             if (!data) return '';
             var info = _formatSaveSlotData(data);
-            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);margin-bottom:6px;border:2px solid #a2d2ff;cursor:pointer" onclick="safeLoadSlot(' +
-                slot + ')">' + '<div style="flex:1;min-width:0;overflow:hidden">' +
+            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);margin-bottom:6px;border:2px solid #a2d2ff;cursor:pointer" data-action="safeLoadSlot" data-slot="' +
+                slot + '">' + '<div style="flex:1;min-width:0;overflow:hidden">' +
                 '<div style="font-size:14px;color:var(--text-tertiary);font-weight:600">' + icon + ' ' + escapeHtml(info.name) +
                 '</div>' + '<div style="font-size:11px;color:var(--text-tertiary)">' + label + ' · ' + escapeHtml(info.time) +
                 '</div>' + '</div>' +
@@ -6226,8 +6342,8 @@ async function openLoadModal() {
         }
         html +=
             '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border);display:flex;gap:8px">' +
-            '<button class="pixel-btn blue big" onclick="UI.hideModal(\'loadModal\');exportSaves()" style="flex:1">导出存档</button>' +
-            '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+            '<button class="pixel-btn blue big" data-action="loadModalExportSaves" style="flex:1">导出存档</button>' +
+            '<button class="pixel-btn big" data-action="triggerImportFile" style="flex:1">导入存档</button>' +
             '</div>';
         // 使用统一弹窗管理器
         UI.createModal({
@@ -6235,6 +6351,26 @@ async function openLoadModal() {
             html: '<div class="modal-titlebar"><span class="modal-titlebar-text">读取存档</span></div><div class="modal-body">' + html + '</div>',
             persistent: true
         });
+        // 事件委托：在 modal-content 上挂 click 委托
+        if (typeof bindActions === 'function') {
+            var overlay = document.getElementById('loadModal');
+            if (overlay) {
+                var mc = overlay.querySelector('.modal-content');
+                if (mc) {
+                    bindActions(mc, {
+                        safeLoadSlot: function(a) { if (typeof safeLoadSlot === 'function') safeLoadSlot(parseInt(a.slot, 10)); },
+                        loadModalExportSaves: function() {
+                            if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal('loadModal');
+                            if (typeof exportSaves === 'function') exportSaves();
+                        },
+                        triggerImportFile: function() {
+                            var inp = document.getElementById('importFileInput');
+                            if (inp) inp.click();
+                        }
+                    });
+                }
+            }
+        }
     } catch (e) {
         console.error('打开存档列表失败:', e);
         UI.toast('读取存档列表时出错: ' + translateError(e.message));
@@ -6926,7 +7062,7 @@ function renderNpcPage() {
         container.innerHTML = chars.map(function(c) {
             var fav = Number(c.favorability) || 0;
             fav = Math.max(-100, Math.min(100, fav));
-            var sn = c.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+            // 【P0 修复】原 onclick 拼接用 sn 转义，已被 data-name + escapeHtml 取代，此行删除
             // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
             var favLevel = c.relation || '中立';
             // 根据好感度数值选择颜色（-100到100，0为中立）
@@ -6945,9 +7081,8 @@ function renderNpcPage() {
             // 添加好感度等级标签
             tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
 
-            return '<div class="character-card pearl-card" onclick="openNpcDetail(\'' + sn +
-                '\')">' +
-                '<div class="avatar avatar-md"><span>' + c.name.charAt(0) + '</span></div>' +
+            return '<div class="character-card pearl-card" data-action="openNpcDetail" data-name="' + escapeHtml(c.name) + '">' +
+                '<div class="avatar avatar-md"><span>' + escapeHtml(c.name.charAt(0)) + '</span></div>' +
                 '<div class="char-info">' +
                 '<div class="char-name">' + escapeHtml(c.name) + '</div>' +
                 (c.title ? '<div class="char-meta">' + escapeHtml(c.title) + '</div>' : '') +
@@ -6957,10 +7092,22 @@ function renderNpcPage() {
                 fav + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
                 (c.desc ?
-                    '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
+                    '<div class="npc-thought-bubble" data-action="toggleThought" data-stop="1"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
                     escapeHtml(c.desc) + '</div></div></div>' : '') +
                 '</div></div>';
         }).join('');
+    }
+    // 【P0 修复】事件委托：替代内联 onclick
+    if (typeof bindActions === 'function') {
+        bindActions(container, {
+            openNpcDetail: function(a) { if (typeof openNpcDetail === 'function') openNpcDetail(a.name); },
+            viewNpcDiary: function(a) { if (typeof viewNpcDiary === 'function') viewNpcDiary(a.name); },
+            toggleThought: function(a, e) {
+                if (a.stop === '1' && e && e.stopPropagation) e.stopPropagation();
+                var bubble = e && e.currentTarget;
+                if (bubble && bubble.classList) bubble.classList.toggle('expanded');
+            }
+        });
     }
     // 仅在导航栏未渲染过时才重建
     var npcNav = document.getElementById('npcNav');

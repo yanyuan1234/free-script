@@ -252,6 +252,11 @@ var QuestSystem = {
         p + '%;"></div></div></div>';
         });
     tracker.innerHTML = html;
+        if (typeof bindActions === 'function') {
+            bindActions(tracker, {
+                questTrackerToggle: function() { if (typeof QuestSystem !== 'undefined' && QuestSystem.toggleTracker) QuestSystem.toggleTracker(); }
+            });
+        }
     },
     toggleTracker() {
         var t = document.getElementById('questTracker');
@@ -663,10 +668,22 @@ var AchievementSystem = {
         (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✓ 已获得</div>' :
         '<div style="color:var(--text-tertiary);font-size:13px;">锁 未解锁 · 进度: ' + (pd.progress[
         id] || 0) + '/' + (ach.maxProgress || 1) + '</div>') +
-        '<button class="crystal-btn" style="margin-top:16px;width:100%;" onclick="UI.hideModal(\'achieveDetailModal\')">关闭</button></div>';
+        '<button class="crystal-btn" style="margin-top:16px;width:100%;" data-action="closeAchieveDetailModal">关闭</button></div>';
         // 使用统一弹窗管理器
         if (typeof UI !== 'undefined' && UI.createModal) {
             UI.createModal({ id: 'achieveDetailModal', html: html });
+            // 事件委托：挂到弹窗内容上
+            if (typeof bindActions === 'function') {
+                var overlay = document.getElementById('achieveDetailModal');
+                if (overlay) {
+                    var mc = overlay.querySelector('.modal-content');
+                    if (mc) {
+                        bindActions(mc, {
+                            closeAchieveDetailModal: function() { if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal('achieveDetailModal'); }
+                        });
+                    }
+                }
+            }
         }
     }
 };
@@ -752,7 +769,7 @@ function renderQuests() {
         return (order[a.status] || 0) - (order[b.status] || 0);
     });
     var html =
-        '<div class="module-header" onclick="toggleQuestList()" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:#a2d2ff;transition:transform .2s">▼</span></div>';
+        '<div class="module-header" data-action="toggleQuestList" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:#a2d2ff;transition:transform .2s">▼</span></div>';
     html += '<div class="quest-list" id="questListInner">';
     sorted.forEach(function(q) {
         var isDone = q.status === '已完成' || q.status === '失败';
@@ -797,6 +814,11 @@ function renderQuests() {
     });
     html += '</div>';
     container.innerHTML = html;
+    if (typeof bindActions === 'function') {
+        bindActions(container, {
+            toggleQuestList: function() { if (typeof toggleQuestList === 'function') toggleQuestList(); }
+        });
+    }
 }
 
 // ========================================

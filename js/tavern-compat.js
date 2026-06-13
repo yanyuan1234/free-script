@@ -3377,25 +3377,54 @@ var MemoryManagerUI = {
     isVisible: false,
     currentTab: 'overview',
 
+    // 【P0】统一渲染入口：所有 memoryManagerContent 的 setInnerHTML 都走这里
+    //       内置事件委托：处理 mmBtn/mmBtnMulti/mmEditPermanentFact/mmDeletePermanentFact
+    _render: function(html) {
+        var c = document.getElementById('memoryManagerContent');
+        if (!c) return;
+        c.innerHTML = html + '</div></div>';
+        if (typeof bindActions !== 'function') return;
+        var self = this;
+        bindActions(c, {
+            mmBtn: function(a) {
+                var fn = self[a.fn];
+                if (typeof fn !== 'function') return;
+                if (a.arg === undefined) fn.call(self);
+                else fn.call(self, a.arg);
+            },
+            mmBtnMulti: function(a) {
+                var fn = self[a.fn];
+                if (typeof fn !== 'function') return;
+                var args;
+                try { args = JSON.parse(a.args || '[]'); } catch (e) { args = []; }
+                fn.apply(self, args);
+            },
+            mmEditPermanentFact: function(a) {
+                if (typeof self.editPermanentFact === 'function') self.editPermanentFact(a.type, parseInt(a.idx, 10));
+            },
+            mmDeletePermanentFact: function(a) {
+                if (typeof self.deletePermanentFact === 'function') self.deletePermanentFact(a.type, parseInt(a.idx, 10));
+            }
+        });
+    },
+
     _esc: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); },
     _escAttr: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n').replace(/\r/g, '\\r'); },
 
     // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline/editOutline/refresh/detail/search/resolve
     // arg 支持 string / number（数字不加引号，字符串加引号并转义）
     // borderRadius: 可选，默认 6px（与原版小按钮一致；大表单按钮传 8px）
+    // 【P0】改用 data-action 事件委托，避免内联 onclick 的 XSS 风险
     _btn: function(action, fnName, arg, borderRadius) {
         var s = MemoryManagerUI._btnPresets._getPreset(action);
-        var argStr;
-        if (arg === undefined || arg === null) {
-            argStr = '';
-        } else if (typeof arg === 'number') {
-            argStr = String(arg);
-        } else {
-            argStr = '\'' + this._escAttr(arg) + '\'';
-        }
-        var onclick = 'MemoryManagerUI.' + fnName + (argStr ? '(' + argStr + ')' : '()');
         var radius = borderRadius || '6px';
-        return '<button onclick="' + onclick + '" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:' + radius + ';cursor:pointer;">' + s.text + '</button>';
+        var argAttr = '';
+        if (arg !== undefined && arg !== null) {
+            var v = typeof arg === 'string' ? escapeHtml(arg) : String(arg);
+            argAttr = ' data-arg="' + v + '"';
+        }
+        return '<button data-action="mmBtn" data-fn="' + fnName + '"' + argAttr +
+            ' style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:1px solid ' + s.border + ';padding:' + s.padding + ';border-radius:' + radius + ';cursor:pointer;">' + s.text + '</button>';
     },
 
     // 获取按钮预设样式（供 _formFooter 等复用）
@@ -3456,11 +3485,11 @@ var MemoryManagerUI = {
         if (saveArgs === undefined || saveArgs === null) {
             saveBtn = this._btn(action, saveFn, undefined, '8px');
         } else if (Array.isArray(saveArgs)) {
-            var parts = saveArgs.map(function(a) {
-                return typeof a === 'string' ? "'" + this._escAttr(a) + "'" : a;
-            }, this);
             var s = MemoryManagerUI._btnPresets._getPreset(action);
-            saveBtn = '<button onclick="MemoryManagerUI.' + saveFn + '(' + parts.join(',') + ')" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:8px;cursor:pointer;">' + s.text + '</button>';
+            // 【P0】改用 data-action 事件委托，参数以 JSON 形式编码到 data-args
+            var argsJson = escapeHtml(JSON.stringify(saveArgs));
+            saveBtn = '<button data-action="mmBtnMulti" data-fn="' + saveFn + '" data-args=\'' + argsJson + '\'' +
+                ' style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:8px;cursor:pointer;">' + s.text + '</button>';
         } else {
             saveBtn = this._btn(action, saveFn, saveArgs, '8px');
         }
@@ -3515,7 +3544,8 @@ var MemoryManagerUI = {
         if (!gm) { content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">记忆系统未初始化</div>'; return; }
         var tabMap = { overview: 'renderOverview', anchors: 'renderPermanentFacts', permanentFacts: 'renderPermanentFacts', recentMemory: 'renderRecentMemory', characters: 'renderCharacters', items: 'renderItems', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', quests: 'renderQuests', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState', world: 'renderLocations' };
         var method = tabMap[this.currentTab];
-        content.innerHTML = (method && this[method]) ? this[method](gm) : this.renderOverview(gm);
+        var innerHtml = (method && this[method]) ? this[method](gm) : this.renderOverview(gm);
+        this._render(innerHtml);
     },
 
     renderOverview: function(gm) {
@@ -3618,7 +3648,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('sceneState', 'saveSceneState', name);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveSceneState: function(name) {
@@ -3697,8 +3727,8 @@ var MemoryManagerUI = {
             list.forEach(function(a, i) {
                 var sourceTag = a.source === 'manual' ? '<span style="font-size:10px;background:#4a4;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">手动</span>' : a.source === 'auto' ? '<span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">自动</span>' : '';
                 var escType = self._escAttr(t);
-                var editBtn = '<button onclick="MemoryManagerUI.editPermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
-                var delBtn  = '<button onclick="MemoryManagerUI.deletePermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
+                var editBtn = '<button data-action="mmEditPermanentFact" data-type="' + escType + '" data-idx="' + i + '" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
+                var delBtn  = '<button data-action="mmDeletePermanentFact" data-type="' + escType + '" data-idx="' + i + '" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
                 var btns = '<div style="display:flex;gap:6px;flex-shrink:0;">' + editBtn + delBtn + '</div>';
                 html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div>' + btns + '</div>';
             });
@@ -3721,7 +3751,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">添加永久事实</div><div style="margin-bottom:10px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('permanentFacts', 'saveNewPermanentFact', undefined, 'add');
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveNewPermanentFact: function() {
@@ -3741,7 +3771,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">编辑永久事实</div><div style="margin-bottom:10px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], gm.permanentFacts[type][idx].content);
         html += this._formFooter('permanentFacts', 'savePermanentFact', [type, idx]);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     savePermanentFact: function(type, idx) {
@@ -3785,7 +3815,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">编辑角色: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('characters', 'saveCharacter', name);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveCharacter: function(oldName) {
@@ -3820,7 +3850,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('characters', 'saveNewCharacter', undefined);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveNewCharacter: function() {
@@ -3859,7 +3889,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">编辑物品: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('items', 'saveItem', name);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveItem: function(oldName) {
@@ -3900,7 +3930,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('items', 'saveNewItem', undefined, 'add');
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveNewItem: function() {
@@ -3938,7 +3968,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">编辑地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('locations', 'saveLocation', name);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveLocation: function(oldName) {
@@ -3962,7 +3992,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('locations', 'saveNewLocation', undefined);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveNewLocation: function() {
@@ -3999,7 +4029,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">编辑剧情大纲</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('plot', 'savePlot', undefined);
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     savePlot: function() {
@@ -4028,7 +4058,7 @@ var MemoryManagerUI = {
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('events', 'saveNewEvent', undefined, 'add');
-        document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
+        this._render(html);
     },
 
     saveNewEvent: function() {
