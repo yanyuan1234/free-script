@@ -441,6 +441,13 @@ var UI = {
                         var cb = document.getElementById('promptCancel');
                         if (ob && ob._promptResolve) { ob._promptResolve(null); ob._promptResolve = null; }
                         if (cb) cb._promptResolve = null;
+                    } else if (el.id === 'generatingModal') {
+                        // 【缺陷修复】遮罩点击触发 onCancel，避免 AI 请求在后台继续运行
+                        if (typeof el._generatingOnCancel === 'function') {
+                            var cb2 = el._generatingOnCancel;
+                            el._generatingOnCancel = null;
+                            try { cb2(); } catch (e2) { console.warn('[Generating] mask onCancel:', e2); }
+                        }
                     }
                     UI.hideModal(el.id);
                 });
@@ -682,6 +689,8 @@ var UI = {
         if (msgEl) msgEl.textContent = 'AI 思考中，请稍候';
         if (featEl) featEl.textContent = opts && opts.hint ? opts.hint : '（视网络与上下文长度，可能需要十几秒到几十秒）';
         opts = opts || {};
+        // 【缺陷修复】记录 onCancel 到 modal 上，遮罩点击关闭时触发，避免 AI 请求在后台继续运行
+        modal._generatingOnCancel = opts.onCancel;
         // 绑定取消
         if (cancelBtn) {
             var self = this;
@@ -713,7 +722,16 @@ var UI = {
     },
     hideGenerating: function() {
         var modal = document.getElementById('generatingModal');
-        if (modal) this.hideModal('generatingModal');
+        if (modal) {
+            // 【缺陷修复】清理 keydown 监听，避免残留
+            var cancelBtn = document.getElementById('generatingCancelBtn');
+            if (cancelBtn && cancelBtn._generatingKeyHandler) {
+                document.removeEventListener('keydown', cancelBtn._generatingKeyHandler);
+            }
+            // 清理 onCancel 引用，防止遮罩点击二次触发
+            modal._generatingOnCancel = null;
+            this.hideModal('generatingModal');
+        }
     }
 };
 // ==================== API配置管理 ====================
@@ -3729,11 +3747,15 @@ function showError(msg, errObj) {
             '</div>';
     }
     // 3秒后自动淡出并移除错误banner（与其它弹窗保持一致）
-    TimerManager.setTimeout('errorBannerFade', function() {
+    // 【缺陷修复】使用唯一 key + 走 TimerManager，避免连续生成失败时旧 banner 永久残留
+    var errKey = 'errorBanner_' + Date.now() + '_' + Math.random();
+    TimerManager.setTimeout(errKey, function() {
         var banner = document.querySelector('.api-error-banner[data-error-ts]');
         if (banner) {
             banner.style.opacity = '0';
-            setTimeout(function() { if (banner.parentNode) banner.remove(); }, 500);
+            TimerManager.setTimeout(errKey + '_remove', function() {
+                if (banner.parentNode) banner.remove();
+            }, 500);
         }
     }, POPUP_DURATION_MS);
     // 同步记录到 localStorage 方便排查

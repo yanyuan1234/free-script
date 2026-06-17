@@ -464,9 +464,11 @@ var AchievementSystem = {
         requestAnimationFrame(function() {
             t.classList.add('show');
             });
-        TimerManager.setTimeout('achieveToastHide', function() {
+        // 【缺陷修复】使用唯一 key，避免多个成就 toast 同时显示时定时器互相覆盖导致永不消失
+        var keyPrefix = 'achieveToast_' + Date.now() + '_' + Math.random();
+        TimerManager.setTimeout(keyPrefix + '_hide', function() {
             t.classList.remove('show');
-            TimerManager.setTimeout('achieveToastRemove', function() {
+            TimerManager.setTimeout(keyPrefix + '_remove', function() {
                 t.remove();
                 }, 500);
             // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）

@@ -419,26 +419,19 @@ function openDiaryDatePicker() {
         }
     });
     dateList.sort(function(a, b) { return a < b ? 1 : (a > b ? -1 : 0); });
-    var html = '<div id="diaryDatePicker" style="position:absolute;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.4);z-index:999999;display:flex;align-items:flex-start;justify-content:center;padding-top:80px;" onclick="if(event.target===this)closeDiaryDatePicker()">' +
-        '<div style="background:var(--bg);border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
+    // 【缺陷修复】改用 UI.createModal 走统一弹窗管理，避免 z-index:999999 与 modal 栈冲突
+    var listHtml = '<div style="background:var(--bg);border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
-        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="closeDiaryDatePicker()">×</span></div>' +
+        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="UI.hideModal(\'diaryDatePicker\')">×</span></div>' +
         dateList.map(function(d) {
-            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="closeDiaryDatePicker();diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="UI.hideModal(\'diaryDatePicker\');diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
         }).join('') +
-        '</div></div>';
-    var container = document.querySelector('.diary-page') || document.getElementById('logSubContent');
-    if (container) {
-        var old = document.getElementById('diaryDatePicker');
-        if (old) old.remove();
-        var wrap = document.createElement('div');
-        wrap.innerHTML = html;
-        container.appendChild(wrap.firstElementChild);
-    }
+        '</div>';
+    UI.createModal({ id: 'diaryDatePicker', html: listHtml, persistent: false });
 }
 function closeDiaryDatePicker() {
-    var el = document.getElementById('diaryDatePicker');
-    if (el) el.remove();
+    // 【兼容旧调用】统一走 UI.hideModal
+    UI.hideModal('diaryDatePicker');
 }
 function diaryJumpToDate(dateStr) {
     var npcName = gameState._currentDiaryNpc;
@@ -4076,10 +4069,12 @@ function bindEvents() {
     });
 
     // 关闭弹窗按钮
-    document.querySelectorAll('[data-close]').forEach(function(btn) {
-        btn.addEventListener('click', function() {
-            UI.hideModal(this.dataset.close);
-        });
+    // 【缺陷修复】改用事件委托，让动态插入的 data-close 按钮也能生效
+    document.addEventListener('click', function(e) {
+        var target = e.target.closest('[data-close]');
+        if (target) {
+            UI.hideModal(target.dataset.close);
+        }
     });
 
     // NPC编辑保存
@@ -4892,11 +4887,14 @@ function renderAPISettings() {
         groupTabs.querySelectorAll('.api-group-tab').forEach(function(btn) {
             btn.addEventListener('dblclick', function() {
                 var groupName = this.dataset.groupName;
-                if (groupName && confirm('确定要删除分组"' + groupName + '"吗？该分组下的API将变为未分组。')) {
+                if (!groupName) return;
+                // 【缺陷修复】改用 UI.confirm 替代原生 confirm，与游戏 UI 风格一致
+                UI.confirm('删除分组', '确定要删除分组"' + groupName + '"吗？该分组下的API将变为未分组。').then(function(ok) {
+                    if (!ok) return;
                     LocalGameAPI.deleteGroup(groupName);
                     renderAPISettings();
                     UI.toast('分组已删除');
-                }
+                });
             });
         });
     }
@@ -6496,59 +6494,31 @@ function blockNpc() {
     }
     var menu = document.getElementById('chatMenuPanel');
     if (menu) menu.remove();
-    var header = document.querySelector('.chat-detail-header');
-    if (!header) return;
-    var panel = document.createElement('div');
-    panel.style.cssText =
-        'position:absolute;top:44px;left:50%;transform:translateX(-50%);background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:16px;z-index:200;text-align:center;min-width:200px';
-    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">确定拉黑「' + escapeHtml(name) +
-        '」？</div>' +
-        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">拉黑后将不再收到消息</div>' +
-        '<div style="display:flex;gap:12px;justify-content:center">' +
-        '<span id="blockCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
-        '<span id="blockConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">拉黑</span></div>';
-    header.appendChild(panel);
-    document.getElementById('blockCancel').onclick = function() {
-        panel.remove();
-    };
-    document.getElementById('blockConfirm').onclick = function() {
+    // 【缺陷修复】改用 UI.confirm 走统一弹窗管理，避免 z-index 冲突和无法 Esc 关闭
+    UI.confirm('拉黑好友', '确定拉黑「' + name + '」？拉黑后将不再收到消息。').then(function(ok) {
+        if (!ok) return;
         if (gameState) {
             if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
             gameState._blockedNpcs[name] = true;
         }
         autoSave();
-        panel.remove();
         closeNpcChat();
-    };
+    });
 }
 function deleteNpcChat() {
     var name = npcChatState.npcName;
     var menu = document.getElementById('chatMenuPanel');
     if (menu) menu.remove();
-    var header = document.querySelector('.chat-detail-header');
-    if (!header) return;
-    var panel = document.createElement('div');
-    panel.style.cssText =
-        'position:absolute;top:44px;left:50%;transform:translateX(-50%);background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:16px;z-index:200;text-align:center;min-width:200px';
-    panel.innerHTML = '<div style="font-size:15px;color:var(--text);margin-bottom:12px">删除与「' + escapeHtml(name) +
-        '」的聊天？</div>' +
-        '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px">聊天记录将被清除，不可恢复</div>' +
-        '<div style="display:flex;gap:12px;justify-content:center">' +
-        '<span id="delCancel" style="padding:8px 24px;background:#f5f5f5;border-radius:8px;font-size:14px;cursor:pointer">取消</span>' +
-        '<span id="delConfirm" style="padding:8px 24px;background:#ff3b30;color:#fff;border-radius:8px;font-size:14px;cursor:pointer">删除</span></div>';
-    header.appendChild(panel);
-    document.getElementById('delCancel').onclick = function() {
-        panel.remove();
-    };
-    document.getElementById('delConfirm').onclick = function() {
+    // 【缺陷修复】改用 UI.confirm 走统一弹窗管理，避免 z-index 冲突和无法 Esc 关闭
+    UI.confirm('删除聊天', '删除与「' + name + '」的聊天？聊天记录将被清除，不可恢复。').then(function(ok) {
+        if (!ok) return;
         if (gameState) {
             if (gameState._chatLogs) delete gameState._chatLogs[name];
             if (gameState._chattedNpcs) delete gameState._chattedNpcs[name];
         }
         autoSave();
-        panel.remove();
         closeNpcChat();
-    };
+    });
 }
 function toggleEmojiPanel() {
     var panel = document.getElementById('emojiPanel');
@@ -6696,10 +6666,12 @@ function showNpcMessageNotification(name, text) {
         notif.style.opacity = '1';
         notif.style.transform = 'translateY(0)';
     });
-    TimerManager.setTimeout('npcNotifHide', function() {
+    // 【缺陷修复】使用唯一 key，避免多个 NPC 通知同时显示时定时器互相覆盖导致永不消失
+    var keyPrefix = 'npcNotif_' + Date.now() + '_' + Math.random();
+    TimerManager.setTimeout(keyPrefix + '_hide', function() {
         notif.style.opacity = '0';
         notif.style.transform = 'translateY(-20px)';
-        TimerManager.setTimeout('npcNotifRemove', function() {
+        TimerManager.setTimeout(keyPrefix + '_remove', function() {
             if (notif.parentNode) notif.remove();
         }, 300);
         // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）

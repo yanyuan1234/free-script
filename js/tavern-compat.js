@@ -120,38 +120,16 @@ _getSettings: function() {
 },
 
 // 2. 通知系统
+// 【缺陷修复】toastr 合并到 UI.toast，移除独立容器，避免两套 toast 系统并存
+// 保留 toastr 接口供旧代码调用，内部统一委托给 UI.toast
 _initToastr: function() {
     if (window.toastr) return;
-    var container = document.createElement('div');
-    container.id = 'tavern-toastr-container';
-    container.style.cssText = 'position:fixed;top:20px;right:20px;z-index:999999;display:flex;flex-direction:column;gap:8px;pointer-events:none;';
-    document.body.appendChild(container);
-    var style = document.createElement('style');
-    style.id = 'tavern-toastr-style';
-    style.textContent = '@keyframes toastrSlideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}';
-    document.head.appendChild(style);
     window.toastr = {
-        info: function(msg) { TavernHelperCompat._showToast(msg, '#2196F3'); },
-        success: function(msg) { TavernHelperCompat._showToast(msg, '#4CAF50'); },
-        warning: function(msg) { TavernHelperCompat._showToast(msg, '#FF9800'); },
-        error: function(msg) { TavernHelperCompat._showToast(msg, '#F44336'); }
+        info: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); },
+        success: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); },
+        warning: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); },
+        error: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); }
     };
-},
-
-_showToast: function(msg, color) {
-    var container = document.getElementById('tavern-toastr-container');
-    if (!container) return;
-    var toast = document.createElement('div');
-    toast.style.cssText = 'background:' + color + ';color:white;padding:12px 20px;border-radius:8px;font-size:14px;box-shadow:0 4px 12px rgba(0,0,0,0.3);pointer-events:auto;animation:toastrSlideIn 0.3s ease;max-width:400px;word-break:break-word;';
-    toast.textContent = msg;
-    container.appendChild(toast);
-    // 【全游戏弹窗策略】3 秒——使用 POPUP_DURATION_MS 常量（core.js 定义）
-    var _popupMs = (typeof POPUP_DURATION_MS !== 'undefined') ? POPUP_DURATION_MS : 3000;
-    if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
-        TimerManager.setTimeout('toastrHide_' + Date.now(), function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) TimerManager.setTimeout('toastrRemove_' + Date.now(), function(){toast.remove();},300); }, _popupMs);
-    } else {
-        setTimeout(function() { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(function(){toast.remove();},300); }, _popupMs);
-    }
 },
 
 // 3. 斜杠命令系统
@@ -3754,9 +3732,12 @@ var MemoryManagerUI = {
 
     deletePermanentFact: function(type, idx) {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
-        if (!confirm('确定要删除这条永久事实吗？')) return;
-        gm.permanentFacts[type].splice(idx, 1);
-        UI.afterMemoryChange('permanentFacts', '_memory', '已删除');
+        // 【缺陷修复】改用 UI.confirm 替代原生 confirm，与游戏 UI 风格一致
+        UI.confirm('删除永久事实', '确定要删除这条永久事实吗？').then(function(ok) {
+            if (!ok) return;
+            gm.permanentFacts[type].splice(idx, 1);
+            UI.afterMemoryChange('permanentFacts', '_memory', '已删除');
+        });
     },
 
     renderCharacters: function(gm) {
@@ -3824,7 +3805,7 @@ var MemoryManagerUI = {
     },
 
     saveNewCharacter: function() {
-        var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { alert('请输入角色名称'); return; }
+        var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { UI.toast && UI.toast('请输入角色名称'); return; }
         gm.tables.characters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
         // 同步到gameState
         if (typeof gameState !== 'undefined') {
@@ -3904,7 +3885,7 @@ var MemoryManagerUI = {
     },
 
     saveNewItem: function() {
-        var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { alert('请输入物品名称'); return; }
+        var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { UI.toast && UI.toast('请输入物品名称'); return; }
         gm.tables.items[name] = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
         // 同步到gameState.currentBag
         if (typeof gameState !== 'undefined') {
@@ -3942,7 +3923,7 @@ var MemoryManagerUI = {
     },
 
     saveLocation: function(oldName) {
-        var gm = window.GameMemory; var newName = document.getElementById('editLocName').value.trim(); if (!newName) { alert('请输入地点名称'); return; }
+        var gm = window.GameMemory; var newName = document.getElementById('editLocName').value.trim(); if (!newName) { UI.toast && UI.toast('请输入地点名称'); return; }
         var loc = gm.tables.locations[oldName]; if (!loc) return; if (newName !== oldName) delete gm.tables.locations[oldName];
         gm.tables.locations[newName] = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
         UI.afterMemoryChange('locations', 'worldSnapshot', undefined);
@@ -3966,7 +3947,7 @@ var MemoryManagerUI = {
     },
 
     saveNewLocation: function() {
-        var gm = window.GameMemory; var name = document.getElementById('addLocName').value.trim(); if (!name) { alert('请输入地点名称'); return; }
+        var gm = window.GameMemory; var name = document.getElementById('addLocName').value.trim(); if (!name) { UI.toast && UI.toast('请输入地点名称'); return; }
         gm.tables.locations[name] = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
         UI.afterMemoryChange('locations', 'worldSnapshot', undefined);
     },
@@ -4032,7 +4013,7 @@ var MemoryManagerUI = {
     },
 
     saveNewEvent: function() {
-        var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { alert('请输入事件内容'); return; }
+        var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { UI.toast && UI.toast('请输入事件内容'); return; }
         gm.events.push({ content: content, turn: gm.currentTurn, gameTime: gm.getGameTimeStr(), importance: parseInt(document.getElementById('addEventImportance').value) || 5, decayScore: parseInt(document.getElementById('addEventImportance').value) || 5 });
         if (gm.events.length > 50) gm.events = gm.events.slice(-50);
         if (typeof gameState !== 'undefined') {
