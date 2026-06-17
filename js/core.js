@@ -380,10 +380,12 @@ var UI = {
         t.textContent = msg;
         ct.appendChild(t);
         // 【全游戏弹窗策略】3 秒自动消失——使用 POPUP_DURATION_MS 常量
-        TimerManager.setTimeout('uiToast', function() {
+        // 【缺陷修复】使用唯一 key，避免连续 toast 时旧定时器被清除导致 DOM 永久残留
+        var toastKey = 'uiToast_' + Date.now() + '_' + Math.random();
+        TimerManager.setTimeout(toastKey, function() {
             if (t.parentNode) t.remove();
-            }, POPUP_DURATION_MS);
-        },
+        }, POPUP_DURATION_MS);
+    },
     showPage: function(id) {
         var el = document.getElementById(id);
         if (el && el.classList.contains('active')) return;
@@ -408,6 +410,10 @@ var UI = {
     showModal: function(id) {
         var el = document.getElementById(id);
         if (el) {
+            // 【缺陷修复】已激活的 modal 不重复入栈，避免 z-index 虚高和导航栈残留
+            if (this._modalStack.indexOf(id) !== -1) {
+                return;
+            }
             // 【导航栈】模态框打开时入栈
             this.pushNav('modal', id);
             // 模态框栈管理：每次打开新模态框时提升z-index
@@ -423,9 +429,20 @@ var UI = {
             if (!el._maskClickBound) {
                 el._maskClickBound = true;
                 el.addEventListener('click', function(e) {
-                    if (e.target === el) {
-                        UI.hideModal(el.id);
+                    if (e.target !== el) return;
+                    // 【缺陷修复】confirm/prompt 遮罩点击时触发 resolve，避免 Promise 永久悬挂
+                    if (el.id === 'confirmModal') {
+                        var yb = document.getElementById('confirmYes');
+                        var nb = document.getElementById('confirmNo');
+                        if (yb && yb._confirmResolve) { yb._confirmResolve(false); yb._confirmResolve = null; }
+                        if (nb) nb._confirmResolve = null;
+                    } else if (el.id === 'promptModal') {
+                        var ob = document.getElementById('promptOk');
+                        var cb = document.getElementById('promptCancel');
+                        if (ob && ob._promptResolve) { ob._promptResolve(null); ob._promptResolve = null; }
+                        if (cb) cb._promptResolve = null;
                     }
+                    UI.hideModal(el.id);
                 });
             }
         }
