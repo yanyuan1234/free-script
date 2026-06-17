@@ -360,7 +360,7 @@ var PresetManager = {
     // 从localStorage加载预设列表
     load: function() {
         try {
-            var data = JSON.parse(localStorage.getItem('freeScript_apiPresets') || '[]');
+            var data = Storage.getJSON(Storage.KEYS.API_PRESETS, []);
             this.presets = Array.isArray(data) ? data : [];
             } catch(e) {
                 console.error('[APIPresetManager] 读取apiPresets失败:', e);
@@ -370,7 +370,7 @@ var PresetManager = {
 
     // 保存预设列表
     save: function() {
-        safeSetItem('freeScript_apiPresets', JSON.stringify(this.presets));
+        Storage.setJSON(Storage.KEYS.API_PRESETS, this.presets);
         },
 
     // 【内置预设】注入Free-Script原生预设
@@ -538,7 +538,7 @@ var PresetManager = {
     loadCurrentParams: function() {
         var params = {};
         try {
-            params = JSON.parse(localStorage.getItem('freeScript_currentParams') || '{}');
+            params = Storage.getJSON(Storage.KEYS.CURRENT_PARAMS, {});
             } catch(e) {
                 console.error('[APIPresetManager] 读取currentParams失败:', e);
                 params = {};
@@ -555,7 +555,7 @@ var PresetManager = {
 
     // 保存当前参数
     saveCurrentParams: function() {
-        safeSetItem('freeScript_currentParams', JSON.stringify(this.currentParams));
+        Storage.setJSON(Storage.KEYS.CURRENT_PARAMS, this.currentParams);
         },
 
     // 同步参数到UI
@@ -2514,7 +2514,7 @@ var RegexManager = {
     // 加载预设正则允许列表
     _loadAllowedList: function() {
         try {
-            var data = JSON.parse(localStorage.getItem('freeScript_presetAllowedRegex') || '{}');
+            var data = Storage.getJSON(Storage.KEYS.PRESET_ALLOWED_REGEX, {});
             this._presetAllowedRegex = data;
             } catch(e) {
                 console.error('[RegexManager] 读取presetAllowedRegex失败:', e);
@@ -2525,7 +2525,7 @@ var RegexManager = {
     // 保存预设正则允许列表
     _saveAllowedList: function() {
         try {
-            safeSetItem('freeScript_presetAllowedRegex', JSON.stringify(this._presetAllowedRegex));
+            Storage.setJSON(Storage.KEYS.PRESET_ALLOWED_REGEX, this._presetAllowedRegex);
             } catch(e) {
                 console.warn('[RegexManager] 保存允许列表失败:', e);
             }
@@ -2584,7 +2584,7 @@ var RegexManager = {
     // 从localStorage加载
     load: function() {
         try {
-            var data = JSON.parse(localStorage.getItem('freeScript_regexScripts') || '[]');
+            var data = Storage.getJSON(Storage.KEYS.REGEX_SCRIPTS, []);
             this.scripts = Array.isArray(data) ? data : [];
             } catch(e) {
                 console.error('[RegexManager] 读取regexScripts失败:', e);
@@ -2594,7 +2594,7 @@ var RegexManager = {
 
     // 保存到localStorage
     save: function() {
-        safeSetItem('freeScript_regexScripts', JSON.stringify(this.scripts));
+        Storage.setJSON(Storage.KEYS.REGEX_SCRIPTS, this.scripts);
         },
 
     // 绑定事件

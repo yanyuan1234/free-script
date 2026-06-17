@@ -702,7 +702,7 @@ var _origStartBtn = document.getElementById('btnCreateWorld');
 if (_origStartBtn) {
     _origStartBtn.addEventListener('click', function() {
         var gpEl = document.getElementById('worldDescription');
-        if (gpEl) safeSetItem('freeScript_lastPrompt', gpEl.value || '');
+        if (gpEl) Storage.set(Storage.KEYS.LAST_PROMPT, gpEl.value || '');
     }, true);
 }
 function buildProtagonistPrompt() {
@@ -2497,7 +2497,7 @@ async function manualCompress(btn) {
     }
 }
 (function() {
-    var lastPrompt = localStorage.getItem('freeScript_lastPrompt');
+    var lastPrompt = Storage.get(Storage.KEYS.LAST_PROMPT);
     if (lastPrompt) {
         var el = document.getElementById('worldDescription');
         if (el && !el.value) el.value = lastPrompt;

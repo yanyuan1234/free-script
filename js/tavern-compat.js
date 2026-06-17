@@ -960,7 +960,7 @@ var GameMemory = {
     _migrateFromOldFormat: function() {
         var self = this;
         var oldData = null;
-        try { oldData = JSON.parse(localStorage.getItem('freeScript_enhancedMemory') || 'null'); } catch(e) { oldData = null; }
+        try { oldData = Storage.getJSON(Storage.KEYS.ENHANCED_MEMORY, null); } catch(e) { oldData = null; }
         if (!oldData) return false;
         console.log('[GameMemory] 检测到旧版 EnhancedMemory 数据，开始迁移...');
         var old = oldData;
@@ -3138,7 +3138,7 @@ var GameMemory = {
             // 保存前清理 _changeLog，只保留最近20条
             if (self._changeLog && self._changeLog.length > 20) self._changeLog = self._changeLog.slice(-20);
             var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, savedAt: Date.now() };
-            var result = safeSetItem('freeScript_memory', JSON.stringify(data));
+            var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
         finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) { TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } else { setTimeout(function() { self.saveToStorage(); }, 50); } } }
@@ -3151,7 +3151,7 @@ var GameMemory = {
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
             var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, stats: this.stats, savedAt: Date.now() };
-            var r2 = safeSetItem('freeScript_memory', JSON.stringify(reduced));
+            var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
             if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
             else console.error('[GameMemory] 降级保存仍然失败：', r2);
         } catch(e2) { console.error('[GameMemory] 降级保存异常：', e2); }
@@ -3159,7 +3159,7 @@ var GameMemory = {
 
     loadFromStorage: function() {
         var self = this; var data = null;
-        try { data = JSON.parse(localStorage.getItem('freeScript_memory') || 'null'); } catch(e) { data = null; }
+        try { data = Storage.getJSON(Storage.KEYS.MEMORY, null); } catch(e) { data = null; }
         if (!data || data.version !== 3) return false;
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
         var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig'];
@@ -3198,7 +3198,7 @@ var GameMemory = {
         this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         this._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };
         this._storytellingConfig = { dormantWarningThreshold: 20, dormantUrgentThreshold: 30, foreshadowWarningThreshold: 15, maxForeshadowings: 20, aiGuidanceEnabled: true };
-        localStorage.removeItem('freeScript_memory'); localStorage.removeItem('freeScript_enhancedMemory');
+        Storage.remove(Storage.KEYS.MEMORY); Storage.remove(Storage.KEYS.ENHANCED_MEMORY);
     },
 
     saveSummaryHistory: function() {},
@@ -4192,12 +4192,12 @@ window.MemoryManagerUI = MemoryManagerUI;
         try {
             const d = {};
             this.global.forEach((v, k) => d[k] = v);
-            safeSetItem('fs_global_vars', JSON.stringify(d));
+            Storage.setJSON(Storage.KEYS.GLOBAL_VARS, d);
             } catch (e) { /* silent */ }
         },
     loadGlobal() {
         try {
-            const d = JSON.parse(localStorage.getItem('fs_global_vars') || '{}');
+            const d = Storage.getJSON(Storage.KEYS.GLOBAL_VARS, {});
             Object.entries(d).forEach(([k, v]) => this.global.set(k, v));
             } catch (e) { /* silent */ }
         },

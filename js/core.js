@@ -810,7 +810,7 @@ var LocalGameAPI = {
     _MAX_LOG: 50,
     init() {
         try {
-            const saved = localStorage.getItem('free_script_api_config');
+            const saved = Storage.get(Storage.KEYS.API_CONFIG);
             if (saved) {
                 const data = JSON.parse(saved);
                 // 正常加载保存的配置——不修改、不动玩家的 model
@@ -832,7 +832,7 @@ var LocalGameAPI = {
     save() {
         try {
             // 【安全】写入时混淆 API Key，避免明文存到 localStorage
-            safeSetItem('free_script_api_config', JSON.stringify({
+            Storage.setJSON(Storage.KEYS.API_CONFIG, {
                 configs: _obfuscateConfigs(this._configs),
                 currentSlot: this._currentSlot,
                 autoRotate: this._autoRotate,
@@ -840,7 +840,7 @@ var LocalGameAPI = {
                 currentGroup: this._currentGroup || 'all',
                 requestLog: this._requestLog.slice(-this._MAX_LOG),
                 failedModels: this._failedModels
-                }));
+                });
             } catch (e) {
             console.error('保存API配置失败:', e);
             }
@@ -1312,12 +1312,12 @@ var SaveDB = {
         await this.init();
         if (this._useFallback) return;
         // fallback模式不需要迁移
-        if (localStorage.getItem('_idb_migrated')) return;
+        if (Storage.get(Storage.KEYS.IDB_MIGRATED)) return;
         // 已迁移过
         var migrated = 0;
         // 迁移 freeScript_localSaves（新格式）
         try {
-            var raw = localStorage.getItem('freeScript_localSaves');
+            var raw = Storage.get(Storage.KEYS.LOCAL_SAVES);
             if (raw) {
                 var saves = JSON.parse(raw);
                 for (var slot in saves) {
@@ -1328,12 +1328,12 @@ var SaveDB = {
             }
         }
     } catch (e) {}
-    safeSetItem('_idb_migrated', '1');
+    Storage.set(Storage.KEYS.IDB_MIGRATED, '1');
     },
     // ── localStorage fallback 方法 ──
     _lsGetAll() {
         try {
-            return JSON.parse(localStorage.getItem('freeScript_localSaves') || '{}');
+            return Storage.getJSON(Storage.KEYS.LOCAL_SAVES, {});
             } catch (e) {
             console.error('[SaveManager] 读取localSaves失败:', e);
             return {};
@@ -1362,18 +1362,18 @@ var SaveDB = {
             var jsonStr = JSON.stringify(saves);
             // 检查容量
             if (jsonStr.length > 4.5 * 1024 * 1024) {
-                try { localStorage.removeItem('__autoSaveBackup'); } catch (e) {}
+                Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
             }
-            safeSetItem('freeScript_localSaves', jsonStr);
+            Storage.set(Storage.KEYS.LOCAL_SAVES, jsonStr);
             } catch (e) {
             // 尝试清理后重试一次
             try {
-                localStorage.removeItem('__autoSaveBackup');
-                localStorage.removeItem('_idb_migrated');
+                Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
+                Storage.remove(Storage.KEYS.IDB_MIGRATED);
                 var saves = this._lsGetAll();
                 if (data === null) delete saves[slot];
                 else saves[slot] = data;
-                safeSetItem('freeScript_localSaves', JSON.stringify(saves));
+                Storage.set(Storage.KEYS.LOCAL_SAVES, JSON.stringify(saves));
                 } catch (e2) {
                 console.error('❌ 清理后仍无法写入，存档可能丢失:', e2);
                 // 尝试提示用户
@@ -3552,10 +3552,11 @@ function sanitizeHtml(html) {
     return str;
 }
 // 页面关闭前保存
-window.addEventListener('beforeunload', function() {
+// 【统一管理】走 GlobalCleanup，页面卸载时统一移除
+GlobalCleanup.registerListener(window, 'beforeunload', function() {
     try {
         var data = buildSaveData('');
-        safeSetItem('__autoSaveBackup', JSON.stringify(data));
+        Storage.setJSON(Storage.KEYS.AUTO_SAVE_BACKUP, data);
     } catch(e) { console.warn('beforeunload save failed:', e); }
 try {
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.saveToStorage) {
@@ -3650,7 +3651,8 @@ function renderNavBar(containerId, tabs, activeIndex) {
 // ========================================
 // 页面加载时压入初始历史状态
 history.pushState(null, '', location.href);
-window.addEventListener('popstate', function(e) {
+// 【统一管理】走 GlobalCleanup，页面卸载时统一移除
+GlobalCleanup.registerListener(window, 'popstate', function(e) {
     e.preventDefault();
     // 有导航栈条目 → 返回上一级
     if (UI._navStack.length > 0) {
@@ -3760,10 +3762,10 @@ function showError(msg, errObj) {
     }, POPUP_DURATION_MS);
     // 同步记录到 localStorage 方便排查
     try {
-        var errs = JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');
+        var errs = Storage.getJSON(Storage.KEYS.API_ERRORS, []);
         errs.push({ msg: msg, fileLine: fileLine, stack: stack, time: Date.now() });
         if (errs.length > 20) errs = errs.slice(-20);
-        localStorage.setItem('free_script_api_errors', JSON.stringify(errs));
+        Storage.setJSON(Storage.KEYS.API_ERRORS, errs);
     } catch (e) {}
 }
 // --- 章节标题更新 ---
@@ -3860,13 +3862,11 @@ function setWaiting(w) {
 }
 // 获取最近 API 错误历史（用于调试面板）
 function getRecentApiErrors() {
-    try {
-        return JSON.parse(localStorage.getItem('free_script_api_errors') || '[]');
-    } catch (e) { return []; }
+    return Storage.getJSON(Storage.KEYS.API_ERRORS, []);
 }
 // 清空 API 错误历史
 function clearRecentApiErrors() {
-    try { localStorage.removeItem('free_script_api_errors'); } catch (e) {}
+    Storage.remove(Storage.KEYS.API_ERRORS);
 }
 
 

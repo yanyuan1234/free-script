@@ -87,7 +87,7 @@ var WorldInfo = {
     load: function() {
         var data = {};
         try {
-            data = JSON.parse(localStorage.getItem('worldInfo') || '{}');
+            data = Storage.getJSON(Storage.KEYS.WORLD_INFO, {});
             } catch (e) {
             console.error('[WorldInfoManager] 读取worldInfo失败:', e);
             data = {};
@@ -129,10 +129,10 @@ var WorldInfo = {
 
     // 保存到localStorage
     save: function() {
-        safeSetItem('worldInfo', JSON.stringify({
+        Storage.setJSON(Storage.KEYS.WORLD_INFO, {
             books: this.books,
             settings: this.settings
-            }));
+        });
         gameState._wiCachedResult = null;
         },
 

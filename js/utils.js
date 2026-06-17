@@ -179,6 +179,66 @@ return { success: false, error: 'write_error', message: e.message, key: key };
 }
 function safeGetItem(key, defaultValue) { try { var v = localStorage.getItem(key); return v !== null ? v : defaultValue; } catch(e) { return defaultValue; } }
 
+// ========================================
+// 【统一管理】Storage 命名空间：集中声明所有 localStorage key 常量
+// 所有读写 localStorage 的代码都应通过 Storage.KEYS.XXX 引用 key，
+// 避免拼写错误（之前 freeScript_ / free_script_ / fs_ 三种风格混用）
+// ========================================
+var Storage = {
+    KEYS: {
+        // —— API 配置与错误 ——
+        API_CONFIG: 'free_script_api_config',          // API 端点配置（多槽位）
+        API_ERRORS: 'free_script_api_errors',          // API 错误日志
+        API_PRESETS: 'freeScript_apiPresets',          // API 预设组
+        CURRENT_PARAMS: 'freeScript_currentParams',    // 当前生成参数
+        // —— 存档 ——
+        LOCAL_SAVES: 'freeScript_localSaves',          // IndexedDB 迁移后的存档索引
+        LEGACY_SAVES: 'freeScript_saves',              // 旧版存档（迁移源）
+        AUTO_SAVE_BACKUP: '__autoSaveBackup',          // beforeunload 备份
+        IDB_MIGRATED: '_idb_migrated',                 // IndexedDB 迁移标记
+        // —— 预设与设置 ——
+        PRESETS: 'freeScript_presets',                 // 预设列表
+        SETTINGS: 'freeScript_settings',               // 游戏设置
+        LAST_PROMPT: 'freeScript_lastPrompt',          // 上次输入的 prompt
+        THEME: 'freeScript_theme',                     // 主题
+        LOG_LEVEL: 'free_script_log_level',            // 日志级别
+        // —— 记忆与世界 ——
+        MEMORY: 'freeScript_memory',                   // GameMemory 持久化
+        ENHANCED_MEMORY: 'freeScript_enhancedMemory',  // 旧版 EnhancedMemory（迁移源）
+        GLOBAL_VARS: 'fs_global_vars',                 // 全局变量
+        WORLD_INFO: 'worldInfo',                       // 世界书
+        // —— 正则与宏 ——
+        PRESET_ALLOWED_REGEX: 'freeScript_presetAllowedRegex', // 预设允许的正则
+        REGEX_SCRIPTS: 'freeScript_regexScripts'       // 正则脚本
+    },
+    // 读取（带默认值，吞异常）
+    get: function(key, defaultValue) {
+        try {
+            var v = localStorage.getItem(key);
+            return v !== null ? v : defaultValue;
+        } catch (e) { return defaultValue; }
+    },
+    // 读取并 JSON.parse（带默认值，吞异常）
+    getJSON: function(key, defaultValue) {
+        try {
+            var v = localStorage.getItem(key);
+            return v !== null ? JSON.parse(v) : defaultValue;
+        } catch (e) { return defaultValue; }
+    },
+    // 写入（走 safeSetItem，带容量检查）
+    set: function(key, value) {
+        return safeSetItem(key, value);
+    },
+    // 写入 JSON（自动 stringify）
+    setJSON: function(key, value) {
+        return safeSetItem(key, JSON.stringify(value));
+    },
+    // 删除
+    remove: function(key) {
+        try { localStorage.removeItem(key); } catch (e) {}
+    }
+};
+
 var StorageMonitor = {
     DEFAULT_LIMIT: 5 * 1024 * 1024,
     MAX_LIMIT: 10 * 1024 * 1024,
@@ -290,7 +350,7 @@ var ThemeManager = {
     _current: 'light',
 
     init: function() {
-        var saved = localStorage.getItem('freeScript_theme');
+        var saved = Storage.get(Storage.KEYS.THEME);
         if (saved === 'dark' || saved === 'light') {
             this._current = saved;
         } else {
@@ -300,7 +360,7 @@ var ThemeManager = {
         this._updateStar();
         var self = this;
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function(e) {
-            if (!localStorage.getItem('freeScript_theme')) {
+            if (!Storage.get(Storage.KEYS.THEME)) {
                 self._current = e.matches ? 'dark' : 'light';
                 self.apply();
                 self._updateStar();
@@ -320,7 +380,7 @@ var ThemeManager = {
         this._current = this._current === 'dark' ? 'light' : 'dark';
         this.apply();
         this._updateStar();
-        localStorage.setItem('freeScript_theme', this._current);
+        Storage.set(Storage.KEYS.THEME, this._current);
     },
 
     _updateStar: function() {
@@ -341,7 +401,7 @@ function toggleTheme() {
 }
 
 (function() {
-    var saved = localStorage.getItem('freeScript_theme');
+    var saved = Storage.get(Storage.KEYS.THEME);
     var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
     if (isDark) {
         document.documentElement.setAttribute('data-theme', 'dark');
@@ -433,7 +493,7 @@ var Logger = (function() {
     var LEVELS = { debug: 0, info: 1, warn: 2, error: 3, silent: 4 };
     function currentLevel() {
         try {
-            var v = (typeof localStorage !== 'undefined') ? localStorage.getItem('free_script_log_level') : null;
+            var v = (typeof Storage !== 'undefined') ? Storage.get(Storage.KEYS.LOG_LEVEL) : null;
             if (v && LEVELS[v] !== undefined) return LEVELS[v];
         } catch (e) {}
         // 默认：线上静默 info，只保留 warn / error；用户手动改为 debug 即可看全部
@@ -455,7 +515,7 @@ var Logger = (function() {
         getLevel: currentLevel,
         setLevel: function(name) {
             if (LEVELS[name] === undefined) return;
-            try { localStorage.setItem('free_script_log_level', name); } catch (e) {}
+            Storage.set(Storage.KEYS.LOG_LEVEL, name);
         },
         debug: function() { if (currentLevel() <= LEVELS.debug) { try { console.debug.apply(console, ['[DBG]'].concat([].slice.call(arguments))); } catch(e) {} } },
         info:  function() { if (currentLevel() <= LEVELS.info)  { try { console.info.apply(console,  ['[INF]'].concat([].slice.call(arguments))); } catch(e) {} } },

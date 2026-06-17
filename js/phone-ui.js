@@ -3220,7 +3220,7 @@ function showRecapDetail(idx) {
 function getPresets() {
     var list = [];
     try {
-        list = JSON.parse(localStorage.getItem('freeScript_presets') || '[]');
+        list = Storage.getJSON(Storage.KEYS.PRESETS, []);
     } catch (e) {
         console.error('[PresetManager] 读取presets失败:', e);
         list = [];
@@ -3243,7 +3243,7 @@ function getPresets() {
     return list;
 }
 function savePresets(list) {
-    safeSetItem('freeScript_presets', JSON.stringify(list));
+    Storage.setJSON(Storage.KEYS.PRESETS, list);
 }
 function renderPresetPages() {
     var presets = getPresets();
@@ -3476,6 +3476,8 @@ function showPresetSaveList(preset) {
 // 第12层: 页面初始化和事件
 // ========================================
 // 通用事件绑定助手：元素不存在时安全跳过（避免 TypeError 连锁中断后续绑定）
+// 【统一管理】所有通过 bindEvent/bindEventQuery 绑定的监听都走 GlobalCleanup，
+// 页面卸载时统一移除，避免内存泄漏
 function bindEvent(id, event, handler, opts) {
     var el = typeof id === 'string' ? document.getElementById(id) : id;
     if (!el) {
@@ -3488,7 +3490,11 @@ function bindEvent(id, event, handler, opts) {
     var bindKey = '_bound_' + event;
     if (el[bindKey]) return true;
     el[bindKey] = true;
-    el.addEventListener(event, handler, opts);
+    if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+        GlobalCleanup.registerListener(el, event, handler, opts);
+    } else {
+        el.addEventListener(event, handler, opts);
+    }
     return true;
 }
 function bindEventQuery(selector, event, handler, opts) {
@@ -3503,7 +3509,11 @@ function bindEventQuery(selector, event, handler, opts) {
     var bindKey = '_bound_' + event;
     if (el[bindKey]) return true;
     el[bindKey] = true;
-    el.addEventListener(event, handler, opts);
+    if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+        GlobalCleanup.registerListener(el, event, handler, opts);
+    } else {
+        el.addEventListener(event, handler, opts);
+    }
     return true;
 }
 
@@ -4028,7 +4038,8 @@ function bindEvents() {
             var keysToRemove = [];
             for (var i = 0; i < localStorage.length; i++) {
                 var key = localStorage.key(i);
-                if (key && key !== 'freeScript_settings' && key !== 'free_script_api_config' && key !== 'free_script_api_provider') {
+                // 【统一管理】白名单引用 Storage.KEYS，避免拼写错误或遗漏
+                if (key && key !== Storage.KEYS.SETTINGS && key !== Storage.KEYS.API_CONFIG && key !== 'free_script_api_provider') {
                     keysToRemove.push(key);
                 }
             }
@@ -4048,7 +4059,7 @@ function bindEvents() {
             var keysToRemove2 = [];
             for (var j = 0; j < localStorage.length; j++) {
                 var key2 = localStorage.key(j);
-                if (key2 && key2 !== 'free_script_api_config' && key2 !== 'free_script_api_provider') {
+                if (key2 && key2 !== Storage.KEYS.API_CONFIG && key2 !== 'free_script_api_provider') {
                     keysToRemove2.push(key2);
                 }
             }
@@ -4070,7 +4081,8 @@ function bindEvents() {
 
     // 关闭弹窗按钮
     // 【缺陷修复】改用事件委托，让动态插入的 data-close 按钮也能生效
-    document.addEventListener('click', function(e) {
+    // 【统一管理】走 GlobalCleanup，页面卸载时统一移除
+    GlobalCleanup.registerListener(document, 'click', function(e) {
         var target = e.target.closest('[data-close]');
         if (target) {
             UI.hideModal(target.dataset.close);
@@ -4326,7 +4338,7 @@ function startNewGame() {
     }
 
     // 保存上次填写
-    safeSetItem('freeScript_lastPrompt', prompt);
+    Storage.set(Storage.KEYS.LAST_PROMPT, prompt);
 
     UI.goHome();
 
@@ -5596,7 +5608,7 @@ function saveGameSettings() {
     if (anatomyEl) gameState.squelchRules.anatomyTerms = anatomyEl.checked;
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
-    safeSetItem('freeScript_settings', JSON.stringify({
+    Storage.setJSON(Storage.KEYS.SETTINGS, {
         useStream: gameState.useStream,
         temperature: gameState.temperature,
         fontSize: gameState.fontSize,
@@ -5616,7 +5628,7 @@ function saveGameSettings() {
         narrativeEyes: gameState.narrativeEyes,
         squelchRules: gameState.squelchRules,
         presetArchetype: gameState.presetArchetype
-    }));
+    });
     applyFontSize();
     // 保存成功提示
     if (typeof UI !== 'undefined' && UI.toast) UI.toast('设置已保存');
@@ -5854,7 +5866,7 @@ function openSettingsModal() {
 
 // --- loadGameSettings 适配 ---
 function loadGameSettings() {
-    var s = localStorage.getItem('freeScript_settings');
+    var s = Storage.get(Storage.KEYS.SETTINGS);
     var defaultParams = null;
     if (s) {
         try {
@@ -6031,7 +6043,7 @@ function showGameStats() {
 // ========================================
 function safeLoadOldManual(idx) {
     try {
-        var oldManual = localStorage.getItem('freeScript_saves');
+        var oldManual = Storage.get(Storage.KEYS.LEGACY_SAVES);
         if (!oldManual) {
             UI.toast('没有找到旧存档');
             return;
