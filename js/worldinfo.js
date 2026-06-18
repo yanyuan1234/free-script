@@ -1407,6 +1407,11 @@ var WorldInfo = {
         }
         var scanDepth = this.settings.scanDepth;
 
+        // 【修复 P1-8】缓存时序修复：先递增轮次，再判断缓存是否对应当前轮次
+        // 旧代码：先判断缓存（基于旧 _currentTurn），再 _currentTurn++，导致缓存永远 miss
+        // 新代码：先递增，再判断；同一轮次内多次 scan 可命中缓存，避免重复 DOM 查询
+        this._currentTurn++;
+
         // 读取UI设置（缓存DOM查询，避免每次scan都getElementById）
         if (!this._settingsCache || this._settingsCache.turn !== this._currentTurn) {
             var depthEl = document.getElementById('wiScanDepth');
@@ -1417,9 +1422,6 @@ var WorldInfo = {
             if (recursiveEl) this.settings.recursive = recursiveEl.checked;
             this._settingsCache = { turn: this._currentTurn };
         }
-
-        // 递增轮次
-        this._currentTurn++;
 
         // 【修复4】构建扫描文本（最近N条消息）
         // 添加角色名前缀（使用 \x01 分隔，与酒馆兼容）
@@ -1605,7 +1607,9 @@ var WorldInfo = {
     activated.sort(function(a, b) { return (a.order || 100) - (b.order || 100); });
 
     // Token预算控制（传入实际上下文长度）
-    var contextLen = (typeof gameState !== 'undefined' && gameState.maxTokens) ? gameState.maxTokens : 8000;
+    // 【修复 P0-1】用 contextSize（输入上下文窗口）而非 maxTokens（输出上限）
+    // maxTokens 通常只有 4096，而 contextSize 可达 128000，用错会导致世界书预算被严重低估
+    var contextLen = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
     activated = this.applyBudget(activated, contextLen);
 
     return activated;
@@ -1859,7 +1863,8 @@ var WorldInfo = {
         for (var i = 0; i < activated.length; i++) {
             var entry = activated[i];
             var content = entry.content || '';
-            var tokens = Math.ceil(content.length * 1.5);
+            // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（旧代码 * 1.5 等价于 /0.67，严重高估）
+            var tokens = Math.ceil(content.length / 1.7);
 
             // ignoreBudget: 跳过预算限制，直接加入结果
             if (entry.ignoreBudget) {
@@ -1888,7 +1893,8 @@ var WorldInfo = {
 
         for (var j = 0; j < deferred.length; j++) {
             var deferredEntry = deferred[j];
-            var deferredTokens = Math.ceil((deferredEntry.content || '').length * 1.5);
+            // 【修复 P1-1】统一 token 估算系数为 1.7
+            var deferredTokens = Math.ceil((deferredEntry.content || '').length / 1.7);
             if (totalTokens + deferredTokens <= budget) {
                 totalTokens += deferredTokens;
                 result.push(deferredEntry);

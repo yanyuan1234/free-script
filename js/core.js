@@ -2116,10 +2116,13 @@ function extractCharaData(arrayBuffer) {
                     base64 += String.fromCharCode(textData[j]);
                 }
             var decoded = atob(base64);
-            var jsonStr = '';
+            // 【修复 P0-3】用 TextDecoder 正确解码 UTF-8，支持中文角色卡
+            // 旧代码逐字节 String.fromCharCode 会把 UTF-8 多字节中文拆散为 Latin-1 字符
+            var bytes = new Uint8Array(decoded.length);
             for (var k = 0; k < decoded.length; k++) {
-                jsonStr += String.fromCharCode(decoded.charCodeAt(k));
+                bytes[k] = decoded.charCodeAt(k);
             }
+            var jsonStr = new TextDecoder('utf-8').decode(bytes);
         return JSON.parse(jsonStr);
     }
 }
@@ -2410,17 +2413,11 @@ function _applyMemsToGameState(mems) {
 function parseAIResponse(reply) {
     let data = null;
     let storyText = '';
-    // 0. 【修复】剥离AI的"思考链前缀"（"让我开始..." "title: ..." "story: ..." 等）
-    // 这些是AI在输出JSON前的内部计划过程，不应展示给玩家
-    if (reply && typeof reply === 'string') {
-        // 匹配 "让我开始写story:" "让我开始" "title:" "story:" "好的" "首先" "我将" 等思考前缀
-        var thinkPrefixPattern = /^(?:(?:让我|让我开始|好的|首先|现在|好的,?我|好,?我|我会|我要|我将|继续|接下来|于是)(?:开始)?(?:写|创作|生成|进行|继续|讲述|输出|推进)?[^:{\n]*[:：]?\s*\n*\s*)+/;
-        reply = reply.replace(thinkPrefixPattern, '').trim();
-        // 单独匹配以 "title:" "story:" 开头的纯文本标签
-        reply = reply.replace(/^(title|story|choices|player|characters|world|bag|quests|gameTime|key|narrative|scene)\s*[:：][^\n]*\n+/gi, '').trim();
-        // 匹配AI的"元思考"（"我将使用JSON格式..." "让我构思..." 等）
-        reply = reply.replace(/^(我将使用|我使用|让我构思|让我想想|让我来写|下面是|以下是我的|我的输出格式|按要求)[^\n{]*\n+/g, '').trim();
-    }
+    // 【修复 P1-3 + 动态化】移除硬编码的"思考前缀剥离正则"——这是 API 游戏，AI 能理解输出格式
+    // 旧代码用 /^(?:让我|好的|首先|现在|继续|接下来|于是).../ 正则剥离前缀，
+    // 会误删以这些词开头的正文（如"让我带你看看..."、"好的，她说道"）
+    // 现在信任 AI 能正确输出，不再猜测和剥离"思考过程"
+    // 如果 AI 输出了思考前缀导致 JSON 解析失败，下方的 robustParse 状态机会处理
     // 【方案C】<mem>标签解析 - 在JSON解析前先提取
     var memParseResult = _parseMemTags(reply);
     if (memParseResult.mems.length > 0) {
@@ -3776,10 +3773,23 @@ function updateSceneTitle(title) {
     }
 }
 var _autoSaveTimer = null;
+// 【修复 P0-5】全局存档写入锁——所有写路径串行化，防止并发写入导致存档损坏
+// autoSave（写 slot 0）与 saveToSlot/loadFromSlot 可能同时执行，
+// buildSaveData 读改写 gameState 期间若发生 loadFromSlot 合并，会写入半合并状态的损坏快照
+var _saveLock = Promise.resolve();
+function withSaveLock(fn) {
+    var run = _saveLock.then(fn, fn);
+    // 无论成功失败都释放锁，避免一次失败永久卡死
+    _saveLock = run.then(function() {}, function() {});
+    return run;
+}
 async function autoSave() {
     if (_autoSaveTimer) return; // 防抖：已有待执行的保存，跳过
+    // 加载中不自动保存，避免读到半合并状态
+    if (typeof gameState !== 'undefined' && gameState && gameState._loading) return;
     _autoSaveTimer = TimerManager.setTimeout('autoSave', async function() {
         _autoSaveTimer = null;
+        await withSaveLock(async function() {
         try {
             // 存储空间预警
             if (typeof StorageMonitor !== 'undefined') {
@@ -3813,6 +3823,7 @@ async function autoSave() {
     var dot2 = document.getElementById('autoSaveDot');
     if (dot2) dot2.style.display = 'none';
 }
+        });
 }, 2000);
 }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
@@ -4043,17 +4054,19 @@ function buildAIRequestBody(messages, options, config) {
 
     var filtered = filterRequestParams(params);
     if (options.stream) filtered.stream = true;
-    // 【安全护栏】max_tokens 异常大值修正：历史 bug 误写为 80000，导致模型生成 8 万 token 才会停
-    // 模型只要设了 max_tokens=N，**会一直写到 N 为止**——所以 max_tokens 几乎 = "生成时长上限"
-    if (filtered.max_tokens && filtered.max_tokens > 4096) {
-        console.warn('[API] max_tokens 异常大值已修正:', filtered.max_tokens, '→ 4096');
-        filtered.max_tokens = 4096;
+    // 【修复 P0-2 + 动态化】移除 max_tokens 4096 硬上限——这是 API 游戏，AI 能理解输出长度
+    // 硬编码 4096 会让长篇叙事预设（如 30000 token 的 Gemini 预设）全部失效
+    // 现在只做"防止明显错误"的兜底：负数、0、非数字修正为模型默认（不传 max_tokens）
+    // 上限交给 contextSize 动态约束（在 buildAIRequestBody 调用方处理），不在这里硬编码
+    if (filtered.max_tokens != null) {
+        var mt = Number(filtered.max_tokens);
+        if (!isFinite(mt) || mt <= 0) {
+            // 负数/0/NaN/Infinity：删除字段，让 API 用模型默认值
+            console.warn('[API] max_tokens 异常值已移除，使用模型默认:', filtered.max_tokens);
+            delete filtered.max_tokens;
+        }
     }
-    // 【修复】确保 max_tokens 至少为 512，防止模型无输出空间
-    if (!filtered.max_tokens || filtered.max_tokens < 512) {
-        console.warn('[API] max_tokens 过小，已修正为 512');
-        filtered.max_tokens = 512;
-    }
+    // 注：不再强制下限 512——某些模型支持小 max_tokens 做摘要，应由调用方/预设决定
     return filtered;
 }
 

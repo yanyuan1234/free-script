@@ -1658,7 +1658,7 @@ function renderMomentsPage() {
                     html +=
                         '<div class="likes"><svg class="heart-icon" viewBox="0 0 24 24"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>';
                     html += likes.map(function(n) {
-                        return n;
+                        return escapeHtml(n);
                     }).join(', ');
                     html += '</div>';
                 }
@@ -4395,7 +4395,12 @@ async function _generateEndingRender(stories) {
         var allText = stories.map(function(it, idx) {
             return '【第' + (idx + 1) + '段】\n' + it.text;
         }).join('\n\n');
-        if (allText.length > 15000) allText = allText.substring(0, 15000) + '\n\n...（后续内容省略）';
+        // 【动态化】根据 contextSize 动态计算截断长度，不再硬编码 15000
+        // 旧代码截断到 15000 字，长游戏的后半段剧情 AI 看不到，结局生成质量差
+        // 新策略：按 contextSize 的 60% 估算（留 40% 给 prompt 和输出），最少 10000 字
+        var _ctxSize = (gameState && gameState.contextSize) || 8000;
+        var _maxEndingChars = Math.max(10000, Math.floor(_ctxSize * 0.6 * 1.7));
+        if (allText.length > _maxEndingChars) allText = allText.substring(0, _maxEndingChars) + '\n\n...（后续内容省略）';
 
         // 构建角色信息
         var charInfo = '';
@@ -4856,9 +4861,9 @@ function renderAPISettings() {
                 '') + '" onclick="showApiDetail(' + i + ')" data-api-index="' + i + '">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div><div style="font-size:14px;font-weight:500;display:flex;align-items:center;">' +
-            apiName + errorIcon + '</div>' +
+            escapeHtml(apiName) + errorIcon + '</div>' +
             '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' +
-            urlDisplay + ' · ' + modelDisplay + modelWarnTag + '</div></div>' +
+            escapeHtml(urlDisplay) + ' · ' + escapeHtml(modelDisplay) + modelWarnTag + '</div></div>' +
             (isCurrent ? '<span class="badge badge-primary">使用中</span>' : '') +
             '</div></div>';
     }).join('');
@@ -4870,7 +4875,8 @@ function renderAPISettings() {
         var tabsHtml = '<button class="tag-btn active" data-group="all">全部</button>' +
             '<button class="tag-btn" data-group="ungrouped">未分组</button>';
         groups.forEach(function(g) {
-            tabsHtml += '<button class="tag-btn api-group-tab" data-group="' + g + '" data-group-name="' + g.replace(/'/g, "\\'") + '">' + g + '</button>';
+            var gSafe = escapeHtml(g);
+            tabsHtml += '<button class="tag-btn api-group-tab" data-group="' + gSafe + '" data-group-name="' + gSafe + '">' + gSafe + '</button>';
         });
         groupTabs.innerHTML = tabsHtml;
         // 绑定分组tab点击事件
@@ -5546,12 +5552,17 @@ function saveGameSettings() {
         }
     }
     // 保存字数控制配置
+    // 【修复 P0-4】所有字段统一 null 检查，避免元素不存在时崩溃
+    var wcMinEl = document.getElementById('wcMin');
+    var wcMaxEl = document.getElementById('wcMax');
+    var wcParaMinEl = document.getElementById('wcParaMin');
+    var wcParaMaxEl = document.getElementById('wcParaMax');
     gameState.wordCountConfig = {
         enabled: document.getElementById('wcEnabled') ? document.getElementById('wcEnabled').checked : true,
-        min: parseInt(document.getElementById('wcMin').value) || 1500,
-        max: parseInt(document.getElementById('wcMax').value) || 3000,
-        paragraphMin: parseInt(document.getElementById('wcParaMin').value) || 15,
-        paragraphMax: parseInt(document.getElementById('wcParaMax').value) || 17,
+        min: parseInt(wcMinEl ? wcMinEl.value : '') || 1500,
+        max: parseInt(wcMaxEl ? wcMaxEl.value : '') || 3000,
+        paragraphMin: parseInt(wcParaMinEl ? wcParaMinEl.value : '') || 15,
+        paragraphMax: parseInt(wcParaMaxEl ? wcParaMaxEl.value : '') || 17,
         paragraphStyle: document.getElementById('wcParagraphStyle') ? document.getElementById('wcParagraphStyle').value : 'medium',
         perspective: document.getElementById('wcPerspective') ? document.getElementById('wcPerspective').value : 'third_person_limited',
         userPronoun: document.getElementById('wcUserPronoun') ? document.getElementById('wcUserPronoun').value : 'second_person',
@@ -5588,22 +5599,12 @@ function saveGameSettings() {
     var chapterModeEl = document.getElementById('settingChapterMode');
     if (chapterModeEl) gameState.chapterMode = chapterModeEl.value;
     // NPC 描写准则（已固定为默认开，UI 已移除开关）
-    gameState.npcDescriptionRules = true;
+    // 【动态化】移除强制 npcDescriptionRules = true——AI 能自行判断 NPC 外貌，不需要硬编码"好看原则"
     // 叙事基调（10眼）已固定为默认开，UI 不再展示
-    // 干练文风 10 项已固定为默认开，仅 1 项 NSFW 可选
+    // 【动态化】移除强制 10 项 squelchRules = true——AI 能理解文风指导，不需要硬编码"禁止X"规则
+    // _squelchPostProcess 已改为 no-op，squelchRules 字段保留向后兼容但不再有任何效果
     if (!gameState.squelchRules) gameState.squelchRules = {};
-    // 强制设置 10 项为 true
-    gameState.squelchRules.oilyCliches = true;
-    gameState.squelchRules.bodyCloseups = true;
-    gameState.squelchRules.cognitiveInability = true;
-    gameState.squelchRules.mandative = true;
-    gameState.squelchRules.referenceDep = true;
-    gameState.squelchRules.extremeAdverbs = true;
-    gameState.squelchRules.pronouns = true;
-    gameState.squelchRules.metaphors = true;
-    gameState.squelchRules.metaphorBlacklist = true;
-    gameState.squelchRules.forbidden = true;
-    // NSFW 解剖名词开关
+    // NSFW 解剖名词开关（保留，这是用户可选的 NSFW 内容控制）
     var anatomyEl = document.getElementById('settingAnatomyTerms');
     if (anatomyEl) gameState.squelchRules.anatomyTerms = anatomyEl.checked;
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
@@ -5837,7 +5838,8 @@ function openSettingsModal() {
             total += (m.content || '').length;
         });
     }
-    var estimated = Math.round(total * 1.5);
+    // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token
+    var estimated = Math.round(total / 1.7);
     var contextInfo = document.getElementById('contextInfo');
     if (contextInfo) contextInfo.textContent = '上下文: ' + msgCount + ' 条 | 约 ' + (estimated > 1000 ? (
         estimated / 1000).toFixed(1) + 'k' : estimated) + ' token';

@@ -53,7 +53,7 @@ async function initApp() {
             var dateStr = (now.getMonth() + 1) + '/' + now.getDate();
             var dateEl = document.getElementById('menuTopDate');
             if (dateEl) dateEl.textContent = dateStr;
-        } catch(e) {}
+        } catch(e) { console.warn('[INIT] 设置菜单日期失败:', e); }
 
         // 触发事件：APP_READY（应用启动完成）
         if (typeof TavernHelperCompat !== 'undefined') {

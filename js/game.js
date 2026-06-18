@@ -225,11 +225,14 @@ function buildNarrativeEnhancement() {
     }
 
     // === 1. 写作节奏（章节模式） ===
+    // 【动态化】字数从 wordCountConfig 动态读取，不再硬编码 1500-3000
     if (gs.chapterMode && gs.chapterMode !== 'off') {
+        var _wc = gs.wordCountConfig || {};
+        var _wcRange = (_wc.enabled && _wc.min && _wc.max) ? (_wc.min + '-' + _wc.max + ' 字') : '按设定阈值执行';
         if (gs.chapterMode === 'chapter') {
-            blocks.push('【章节模式·开启】\n本回合 = 一个章节。\n- 引入 10-20% → 发展 40-60% → （高潮）→ 收尾 10-20%\n- 章末必须留未竟：情绪/未竟动作/未答疑问\n- 一章聚焦一个场景/情况，不跨场景\n- 单章字数 1500-3000 字，按设定阈值执行');
+            blocks.push('【章节模式·开启】\n本回合 = 一个章节。\n- 引入 → 发展 → （高潮）→ 收尾\n- 章末留未竟：情绪/未竟动作/未答疑问\n- 一章聚焦一个场景/情况\n- 单章字数 ' + _wcRange);
         } else if (gs.chapterMode === 'longform') {
-            blocks.push('【长篇模式·开启】\n- 沉浸式长段落，单段 250-600 字\n- 拒绝碎片化换行，禁止一两句就换段\n- 把对话、动作、环境、心理整合为高密度完整段');
+            blocks.push('【长篇模式·开启】\n- 沉浸式长段落，把对话、动作、环境、心理整合为高密度完整段');
         }
     }
 
@@ -257,87 +260,25 @@ function buildNarrativeEnhancement() {
     }
 
     // === 3. NPC 好看原则 ===
-    if (gs.npcDescriptionRules) {
-        blocks.push('【NPC 好看原则】\n- 男帅女美，爱干净，禁止邋遢脏乱或散发臭味\n- NPC 性格也可以很出彩，禁止脸谱化恶意\n- NPC 能力也可以超越主角，符合剧情逻辑即可\n- 禁用：磕碜/其貌不扬/歪瓜裂枣/指甲藏垢/肥/肥宅/臃肿/油腻/黑泥/邋遢/流浪汉/抠脚/横肉/淫邪 等与丑相关的形容');
-    }
+    // 【动态化】移除硬编码的"NPC 必须好看/禁止丑形容"——这是 API 游戏，AI 能根据世界观自行判断 NPC 外貌
+    // 旧代码强制"男帅女美，禁止邋遢脏乱"，禁用大量丑相关词汇，限制了 AI 创作真实多样的人物
+    // 如果用户在自定义风格中写了外貌要求，AI 自然会遵循
 
     // === 4. 干练文风（生成前引导） ===
-    // 注意：实际净化在 _squelchPostProcess 中执行（输出后处理）
-    // 这里只在 prompt 中明确告知 AI，避免它产生这些表达
-    if (gs.squelchRules) {
-        var sr = gs.squelchRules;
-        var rules = [];
-        if (sr.oilyCliches)         rules.push('【油腻套路】禁止"嘴角勾起弧度/捏下巴"，改为"浅笑/轻笑/微笑"');
-        if (sr.bodyCloseups)        rules.push('【身体特写】禁止"胸膛震动/胸腔起伏/喉结滚出/手部工业糖精特写"，整句删除');
-        if (sr.anatomyTerms)        rules.push('【解剖名词】禁用"耻骨/肋骨/肩胛骨/肌理"，替换为"小穴/腿心/胸/手/手指"');
-        if (sr.cognitiveInability)  rules.push('【难以形容】禁用"难以言喻/无法名状/不易察觉/近乎/不轻不重"，直接删除');
-        if (sr.mandative)           rules.push('【强制语气】禁用"不容置疑/不容置喙/不容分说"，删除');
-        if (sr.referenceDep)        rules.push('【对比句式】禁用"不是A而是B/比任何A都/不像A倒像B/平日里A"，删除');
-        if (sr.extremeAdverbs)      rules.push('【夸张副词】禁用"极其/极/极度"，删除或替换');
-        if (sr.pronouns)            rules.push('【重复代词】删除"那个/那种/那股"，让具体事物做主语');
-        if (sr.metaphors)           rules.push('【假设比喻】禁用"仿佛/像是/好似+动词短语"，出现即删');
-        if (sr.metaphorBlacklist)   rules.push('【老套比喻】禁用：石子/雕像/珍宝/艺术品/棋子/炸弹/救命稻草/浮木/烙印/骨血/羽毛/火焰/无形的(手/墙)/猎物/困兽/小动物/小兽/探针/刺/手术刀/弓弦/锤子');
-        if (sr.forbidden)           rules.push('【模板描写】必须删除"嘴角勾起弧度/捏下巴/胸膛震动/胸腔起伏/喉结滚出/嗓音低沉而富有磁性"等模板化描写');
-        if (rules.length > 0) {
-            blocks.push('【干练文风·去除 AI 模板化表达】\n' + rules.join('\n'));
-        }
-    }
+    // 【动态化】移除硬编码的 11 条"禁止X"规则——这是 API 游戏，AI 能理解文风指导
+    // 旧代码强制注入"禁止嘴角勾起弧度/禁止极其/禁止老套比喻"等负面约束，限制了 AI 的表达自由
+    // 文风指导应通过正面引导（如自定义风格字段）而非负面禁止
+    // 实际的输出后处理 _squelchPostProcess 也已改为 no-op，完全信任 AI 的输出
 
     if (blocks.length === 0) return '';
     return '\n\n【写作指导·让故事更耐读】\n' + blocks.join('\n\n') + '\n';
 }
 
 // 缄默法则·输出后处理
-// 在 AI 返回文本后，对 JSON story 字段执行净化，删除 AI 漏网的违禁表达
+// 【动态化】这是 API 游戏，AI 能理解文风指导，不需要输出后篡改 AI 的创作
+// 旧代码用正则删除 AI 输出中的"违禁表达"，直接篡改了 AI 的创作意图，破坏叙事连贯性
+// 新策略：完全信任 AI 的输出，文风指导应在 prompt 中正面引导，而非输出后删除
 function _squelchPostProcess(story) {
-    var gs = gameState;
-    if (!gs || !gs.squelchRules || !story) return story;
-    var sr = gs.squelchRules;
-
-    // 第一层：整句删除模式（强约束）
-    var sentenceKillers = [];
-    if (sr.bodyCloseups) {
-        sentenceKillers = sentenceKillers.concat([
-            // 身体特写：胸膛震动/胸腔起伏/喉结滚出/手部特写
-            /胸膛[^。\n]{0,15}震动[^。\n]*[。\n]/g,
-            /胸腔[^。\n]{0,15}起伏[^。\n]*[。\n]/g,
-            /喉结[^。\n]{0,8}滚出[^。\n]*[。\n]/g,
-            /[^。\n]{0,8}(掌心|指节|指骨|骨节)[^。\n]{0,8}(分明|泛白|作响|修长|修长)[^。\n]*[。\n]/g
-        ]);
-    }
-    if (sr.oilyCliches) {
-        sentenceKillers = sentenceKillers.concat([
-            // 油腻套路
-            /嘴角[^。\n]{0,5}勾起[^。\n]{0,5}弧度[^。\n]*[。\n]/g,
-            /捏[着住][^。\n]{0,5}(下巴|脸颊|脸庞)[^。\n]*[。\n]/g,
-            /嗓音[^。\n]{0,8}低沉[^。\n]{0,8}而[^。\n]{0,5}富有[^。\n]{0,5}磁性[^。\n]*[。\n]/g
-        ]);
-    }
-
-    for (var i = 0; i < sentenceKillers.length; i++) {
-        story = story.replace(sentenceKillers[i], '');
-    }
-
-    // 第二层：词级净化
-    if (sr.extremeAdverbs) {
-        story = story.replace(/极其|极度|极为/g, '');
-    }
-    if (sr.mandative) {
-        story = story.replace(/不容置喙|不容置疑|不容分说/g, '');
-    }
-    if (sr.cognitiveInability) {
-        story = story.replace(/难以言喻|无法名状|不易察觉|不轻不重/g, '');
-    }
-    if (sr.metaphorBlacklist) {
-        // 喻体黑名单：删除"仿佛/像/似+喻体"整段（中间允许"一团/一个/了"等量词）
-        var _blacklist = '石子|石头|雕像|珍宝|艺术品|棋子|炸弹|救命稻草|浮木|烙印|骨血|羽毛|火焰|无形的(手|墙)|猎物|困兽|小动物|小兽|探针|刺|手术刀|弓弦|锤子';
-        story = story.replace(new RegExp('(仿佛|好像|好似|似乎|如同|就好似|就像是?)([^。，；\\n]{0,8})(' + _blacklist + ')', 'g'), '');
-        story = story.replace(new RegExp('(' + _blacklist + ')([^。，；\\n]{0,4})(一般?|一样|似的)', 'g'), '');
-    }
-
-    // 第三层：清理因删除产生的多余空白
-    story = story.replace(/[ \t]{2,}/g, ' ').replace(/\n[ \t]+/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-
     return story;
 }
 
@@ -572,12 +513,6 @@ ${_setupText}
 ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
-
-【叙事守则】（来自酒馆大佬们的调参智慧）
-- 抗OOC：角色行为必须符合其性格和动机，不为了剧情需要而强行改变
-- 抗全知：角色只能知道自己应该知道的信息
-- 抗发情：角色不会无缘无故地对主角产生强烈好感，好感度需要时间培养
-- 关系自然：角色保留各自的生活重心，不因主角出现就变成围绕其旋转的情绪体
 
 【引导玩家输入】（提升剧情质量）
 - 好的输入：包含**动作+对象+意图**，如"我想去图书室查阅螺旋塔的资料"、"我假装不经意地绕到薇拉身后"
@@ -900,7 +835,7 @@ function injectPresetGlobalVars() {
     var writingStyle = config.writingStyle || (gameState && gameState.writingStyle) || '';
     if (writingStyle) {
         var styleMap = {
-            'baimiao': '此乃【白描之梦】\n- 禁止使用多个形容词叠加描述，但也要避免说明书化和平铺直叙，应当体现文学的美感\n- 由动词、名称主宰\n- 克制用词，不走极端，禁止使用"极其/极度/极为"等表达\n- 温和、克制、谨慎地塑造',
+            'baimiao': '此乃【白描之梦】\n- 由动词、名称主宰，克制用词，体现文学的美感\n- 温和、克制、谨慎地塑造',
             'liudong': '此乃【流动之梦】\n- 叙事跟随感知流淌，感官印象先于事件浮现——气味、温度、光线、声音是叙事入口\n- 时间感可以扭曲：一瞬间可以延展为漫长凝视，一段时光可以在一行中滑过\n- 内心意识与外部场景互相渗透，边界是模糊的\n- 情绪从不被直接命名，而是在流淌的感知中自然显现',
             'lengjun': '此乃【冷峻之梦】\n- 叙事如镜头，保持克制的距离，不介入，不评判，不渲染\n- 句子短促，信息密度高；对话简短直接，省去一切多余的情绪说明\n- 用行为与细节替代内心独白，读者自行推断情感\n- 冷静直面荒诞与痛苦——既不回避，也不放大',
             'nongmo': '此乃【浓墨之梦】\n- 色彩、光影、气味、温度可以承载情感，景物随人物内心微微变形\n- 允许繁复的意象与精准的形容词，但须服务于情感而非纯粹堆砌\n- 情感以具体的物理感受外化——不直接命名，却处处可感\n- 每个细节都带有主观温度，文字本身就是情绪的投射'
@@ -1680,9 +1615,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         try {
             response = await callAI(messages, options);
         } catch (e) {
-            // 如果是AbortController取消的，显示友好提示
-            if (e.name === 'AbortError') {
-                throw new Error('请求已取消');
+            // 【修复 P1-4】保留 AbortError 的 name 属性——上游通过 e.name === 'AbortError' 判断用户取消
+            // 旧代码 throw new Error('请求已取消') 会让 name 变成 'Error'，导致上游判断失败
+            if (e && e.name === 'AbortError') {
+                var abortErr = new Error('请求已取消');
+                abortErr.name = 'AbortError';
+                abortErr.aborted = true;
+                throw abortErr;
             }
             throw e;
         }
@@ -1973,7 +1912,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (!gameState) return;
         if (!gameState._stats) gameState._stats = {};
         gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
-        var currentTokens = response ? Math.round(response.length * 1.5) : 0;
+        // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（与 utils.js estimateTokensUtil 一致）
+        var currentTokens = response ? Math.round(response.length / 1.7) : 0;
         gameState._stats.totalTokens = (gameState._stats.totalTokens || 0) + currentTokens;
         if (currentTokens > (gameState._stats.maxTokensInTurn || 0)) {
             gameState._stats.maxTokensInTurn = currentTokens;
@@ -2244,8 +2184,9 @@ async function _compressConversation(removed, sys) {
     if (config.incrementalUpdate && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.masterSummary) {
         summaryContent = normalMessages.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
-            var text = m.content.length > 500 ? m.content.substring(0, 500) + '...' : m.content;
-            return role + '\n' + text;
+            // 【动态化】移除 500 字截断——重要消息内容应完整传给 AI 做摘要
+            // 旧代码截断到 500 字会丢失剧情细节，影响摘要质量
+            return role + '\n' + m.content;
         }).join('\n\n---\n\n');
         // 【提示词重设计】从「命令式」改为「编剧视角 + 信任模型」
         // 【P0一致性修复】明确要求保留专有名词一致性，避免摘要与正文用词错位
@@ -2259,8 +2200,9 @@ async function _compressConversation(removed, sys) {
     } else {
         summaryContent = removed.map(function(m) {
             var role = m.role === 'user' ? '【玩家行动】' : '【剧情发展】';
-            var text = m.content.length > 800 ? m.content.substring(0, 800) + '...(内容过长已截断)' : m.content;
-            return role + '\n' + text;
+            // 【动态化】移除 800 字截断——首次摘要应保留完整内容
+            // 旧代码截断到 800 字会丢失剧情细节
+            return role + '\n' + m.content;
         }).join('\n\n---\n\n');
         // 【提示词重设计】从「命令式」改为「编剧视角 + 信任模型」
         summaryPrompt = '你正在帮一位游戏编剧做剧情摘要——把一段游戏对话浓缩成能快速回顾的文本。\n\n' +
@@ -2739,10 +2681,9 @@ function formatStory(text) {
     // 心声完全由AI通过<giggle>标签动态生成，不使用固定文本后备
     // 如果AI没有生成<giggle>标签，则不显示心声触发器
 
-    // 限制心声数量为2-5个（如果超过，优先保留前面的）
-    if (allThoughts.length > 5) {
-        allThoughts = allThoughts.slice(0, 5);
-    }
+    // 【动态化】移除心声数量 5 个硬上限——AI 能自行判断合适的心声数量
+    // 旧代码强制最多 5 个心声，多余的会被丢弃，限制了 AI 的表达
+    // 新策略：信任 AI 输出的心声数量，不做截断
 
     // 标记已使用的心声
     allThoughts.forEach(function(t) {
@@ -3088,16 +3029,22 @@ function safeSaveSlot(slot) {
     });
 }
 async function saveToSlot(slot) {
-    try {
-        await SaveDB.set(slot, buildSaveData(''));
-        UI.toast('保存成功');
-        openSaveLoadModal();
-    } catch (e) {
-        console.error('saveToSlot出错:', e);
-        UI.toast('保存失败: ' + translateError(e.message || e));
-    }
+    // 【修复 P0-5】走全局存档锁，防止与 autoSave/loadFromSlot 并发
+    return withSaveLock(async function() {
+        try {
+            await SaveDB.set(slot, buildSaveData(''));
+            UI.toast('保存成功');
+            openSaveLoadModal();
+        } catch (e) {
+            console.error('saveToSlot出错:', e);
+            UI.toast('保存失败: ' + translateError(e.message || e));
+        }
+    });
 }
 async function loadFromSlot(slot) {
+    // 【修复 P0-5】走全局存档锁，并在加载期间设 _loading 标志阻止 autoSave
+    return withSaveLock(async function() {
+    if (typeof gameState !== 'undefined' && gameState) gameState._loading = true;
     try {
         var data = null;
         try {
@@ -3136,13 +3083,25 @@ async function loadFromSlot(slot) {
         if (!gameState) { gameState = {}; }
         Object.keys(parsed).forEach(function(k) { gameState[k] = parsed[k]; });
 
-        // 【修复AI生成慢】maxTokens 限位：保留旧版本遗留的 80000 等异常大值时，自动修正为合理范围
-        // 历史 bug：默认值曾误写为 80000，导致模型生成 8 万 token 才会停，体感"非常慢"
-        if (typeof gameState.maxTokens === 'undefined' || gameState.maxTokens === null || gameState.maxTokens > 32000) {
-            console.warn('[loadFromSlot] 修正异常的 maxTokens:', gameState.maxTokens, '→ 4096');
+        // 【动态化】maxTokens 不再硬编码上限——这是 API 游戏，AI 能理解输出长度
+        // 旧代码：maxTokens > 32000 强制改为 4096，maxTokens < 256 强制改为 4096
+        // 问题：用户若想生成长篇内容（如 50000 tokens），会被强制截断为 4096，严重限制 AI
+        // 新策略：只修正明显无效的值（null/undefined/NaN/非数字），尊重用户设置
+        // 历史 bug 兼容：仅当检测到遗留的 80000 异常默认值时才重置（这是旧版本 bug，非用户选择）
+        if (typeof gameState.maxTokens === 'undefined' || gameState.maxTokens === null) {
             gameState.maxTokens = 4096;
+        } else {
+            var _mtVal = Number(gameState.maxTokens);
+            if (!isFinite(_mtVal) || _mtVal <= 0) {
+                console.warn('[loadFromSlot] maxTokens 非有效数字，重置为默认:', gameState.maxTokens);
+                gameState.maxTokens = 4096;
+            } else if (_mtVal === 80000) {
+                // 历史 bug：旧版本默认值曾误写为 80000，导致模型生成 8 万 token 才停
+                console.warn('[loadFromSlot] 检测到遗留的 80000 异常默认值，重置为 4096');
+                gameState.maxTokens = 4096;
+            }
+            // 其他值（无论多大或多小）都尊重用户设置，API 会按模型实际上限处理
         }
-        if (gameState.maxTokens < 256) gameState.maxTokens = 4096;
         
         // 读档后重置临时字段，防止旧数据残留
         if (gameState) {
@@ -3266,7 +3225,11 @@ async function loadFromSlot(slot) {
     } catch (e) {
         console.error('loadFromSlot出错:', e);
         UI.toast('读档失败: ' + translateError(e.message || e));
+    } finally {
+        // 【修复 P0-5】清除加载标志，恢复 autoSave
+        if (typeof gameState !== 'undefined' && gameState) gameState._loading = false;
     }
+    }); // end withSaveLock
 }
 // 提取存档行数据格式化的公共辅助函数
 function _formatSaveSlotData(data) {
@@ -3474,7 +3437,9 @@ async function requestNpcReply(playerText) {
         }
         // 联动1：把这次私聊摘要加入剧情记忆（避免剧情AI忘记NPC私聊内容）
         if (replies.length > 0) {
-            var chatSummary = name + '与玩家私聊：' + replies.slice(0, 3).join(' / ');
+            // 【动态化】移除 slice(0, 3) 硬上限——私聊摘要应保留完整内容
+            // 旧代码只保留前 3 条回复，后续回复丢失，AI 看不到完整私聊上下文
+            var chatSummary = name + '与玩家私聊：' + replies.join(' / ');
             if (window.EnhancedMemory && EnhancedMemory.addImportantEvent) {
                 try {
                     EnhancedMemory.addImportantEvent({

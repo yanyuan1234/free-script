@@ -119,7 +119,7 @@ var QuestSystem = {
         filterBtns += '<button class="quest-filter-btn" data-quest-filter="hidden">隐藏</button>';
         // 动态添加自定义类型按钮
         for (var k in QuestSystem._customTypes) {
-            filterBtns += '<button class="quest-filter-btn" data-quest-filter="' + k + '">' + QuestSystem._customTypes[k].label + '</button>';
+            filterBtns += '<button class="quest-filter-btn" data-quest-filter="' + escapeHtml(k) + '">' + escapeHtml(QuestSystem._customTypes[k].label) + '</button>';
         }
         filterBtns += '<button class="quest-filter-btn" data-quest-filter="active">进行中</button>';
         html += '<div class="quest-filter-bar">' + filterBtns + '</div>';
@@ -161,8 +161,8 @@ var QuestSystem = {
             var rh = '';
             if (q.rewards && q.rewards.length > 0) {
                 rh = '<div class="quest-rewards">' + q.rewards.map(function(r) {
-                    return '<span class="quest-reward-tag">' + r.name + (r.amount ?
-                    ' x' + r.amount : '') + '</span>';
+                    return '<span class="quest-reward-tag">' + escapeHtml(r.name) + (r.amount ?
+                    ' x' + escapeHtml(r.amount) : '') + '</span>';
                     }).join('') + '</div>';
             }
         var ph = '';

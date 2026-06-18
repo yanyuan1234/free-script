@@ -1665,9 +1665,12 @@ var GameMemory = {
         }
 
         // 核心规则 → 永久事实
+        // 【动态化】移除 slice(0, 10) 硬上限——核心规则是"承重墙"，不应被截断
+        // 旧代码只保留前 10 条规则，多余的规则 AI 后续看不到，导致世界观不一致
+        // 新策略：保留所有规则，由 token 预算系统自然控制总量
         if (parsed.coreRules && parsed.coreRules.length > 0) {
             self.permanentFacts.worldRules = self.permanentFacts.worldRules || [];
-            parsed.coreRules.slice(0, 10).forEach(function(rule) {
+            parsed.coreRules.forEach(function(rule) {
                 if (!self.permanentFacts.worldRules.some(function(a) { return a && a.content === rule; })) {
                     self.permanentFacts.worldRules.push({ content: rule, locked: true });
                 }
@@ -1840,7 +1843,10 @@ var GameMemory = {
                 }
             }
         }
-        return indexLines.slice(0, 30).join('\n');
+        // 【动态化】移除 slice(0, 30) 硬上限——设定索引不应被截断
+        // 旧代码最多保留 30 行，长设定会被截断，AI 看不到完整设定索引
+        // 新策略：保留所有索引行，由 token 预算系统自然控制
+        return indexLines.join('\n');
     },
 
     // 标记设定已压缩（渐进式，不再需要硬开关）
@@ -2035,38 +2041,24 @@ var GameMemory = {
         var headerLine = lines[0] || '';
         var bodyLines = lines.slice(1);
 
-        // 不同模块采用不同的精简策略（绝不截断）
+        // 不同模块采用不同的精简策略
+        // 【动态化】移除所有 substring 截断——注释说"绝不截断"但实际截断了，丢失角色/物品/约定信息
+        // 新策略：只做字段级精简（如去掉 outfit），不做字符级截断，由 token 预算系统控制总量
         switch (moduleKey) {
             case 'characters':
-                // 【优化】三层架构已分层，精简时只保留活跃角色的关键字段
+                // 三层架构已分层，精简时只保留活跃角色的关键字段
                 // 去掉 outfit（穿着细节），保留关系/好感/心情/位置/状态
                 return headerLine + '\n' + bodyLines.map(function(line) {
-                    // 如果是休眠角色索引行，大幅压缩
-                    if (line.indexOf('存在角色：') === 0 || line.indexOf('（这些角色') === 0) {
-                        return line.length > 60 ? line.substring(0, 60) + '…等' : line;
-                    }
                     return line.replace(/\s*\|\s*outfit:[^\n]*/g, '');
                 }).join('\n');
 
             case 'items':
-                // 【优化】三层架构已分层，休眠物品只保留名字列表
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.indexOf('持有物品：') === 0 && line.length > 80) {
-                        return line.substring(0, 80) + '…等';
-                    }
-                    return line;
-                }).join('\n');
+                // 三层架构已分层，保留完整物品信息
+                return headerLine + '\n' + bodyLines.join('\n');
 
             case 'quests':
-                // 【优化】休眠约定可以精简描述
-                return headerLine + '\n' + bodyLines.map(function(line) {
-                    if (line.indexOf('【休眠约定') === 0) return line;
-                    // 约定内容如果太长，保留前40字
-                    if (line.indexOf('• ') === 0 && line.length > 60) {
-                        return line.substring(0, 60) + '…';
-                    }
-                    return line;
-                }).join('\n');
+                // 保留完整约定内容
+                return headerLine + '\n' + bodyLines.join('\n');
 
             case 'events':
                 // 事件：按重要度选择，不截断单条
@@ -2138,13 +2130,12 @@ var GameMemory = {
                         return scoreB - scoreA;
                     });
                     if (hasCharSection) {
-                        // 【Token优化】角色近况已注入详细信息，核心设定只保留名字和一句话
+                        // 【动态化】移除"只保留第一句/40字"截断——AI 需要完整角色档案来保持一致性
+                        // 旧代码只保留角色名和第一句描述（最多40字），AI 看不到完整角色设定
+                        // 新策略：保留完整角色内容，由 token 预算系统自然控制
                         sorted.forEach(function(a) {
                             if (a && a.content) {
-                                // 提取角色名和第一句描述
-                                var content = a.content;
-                                var firstSentence = content.match(/^[^。！？\n]{2,40}[。！？]?/);
-                                lines.push('• ' + (firstSentence ? firstSentence[0] : content.substring(0, 40)));
+                                lines.push('• ' + a.content);
                             }
                         });
                     } else {
@@ -2813,7 +2804,9 @@ var GameMemory = {
     _generateSummary: function(message, gameData, extractedInfo) {
         var summary = { turn: this.currentTurn + 1, timestamp: Date.now(), title: gameData ? gameData.title : '', storySummary: '', keyEvents: (extractedInfo && extractedInfo.events) || [], characters: (extractedInfo && extractedInfo.characters && Array.isArray(extractedInfo.characters)) ? extractedInfo.characters.map(function(c) { return c && c.name; }).filter(Boolean) : [], importance: (extractedInfo && extractedInfo.importance) || 0, changes: [] };
         if (gameData && gameData.contextSummary) summary.storySummary = gameData.contextSummary;
-        else if (gameData && gameData.story) summary.storySummary = gameData.story.substring(0, 100) + '...';
+        else if (gameData && gameData.story) summary.storySummary = gameData.story;
+        // 【动态化】移除 substring(0, 100) 截断——摘要应保留完整剧情，由预算系统控制长度
+        // 旧代码截断到 100 字会导致 AI 看到的剧情摘要严重失真
         return summary;
     },
 
@@ -2892,7 +2885,7 @@ var GameMemory = {
     removeWorldAnchorsBySource: function(sourcePrefix) {
         var self = this; var removed = 0;
         Object.keys(self.permanentFacts).forEach(function(key) { var before = self.permanentFacts[key].length; self.permanentFacts[key] = self.permanentFacts[key].filter(function(a) { return !(a && a.source && a.source.indexOf(sourcePrefix) === 0); }); removed += before - self.permanentFacts[key].length; });
-        if (removed > 0) try { self.saveToStorage(); } catch(e) {}
+        if (removed > 0) try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] removeWorldAnchorsBySource 保存失败:', e); }
         return removed;
     },
 
@@ -2910,9 +2903,11 @@ var GameMemory = {
         self.removeWorldAnchorsBySource(sourceTag);
         var label = entry.comment ? '【' + entry.comment + '】' : '';
         var syncContent = label ? label + ' ' + content : content;
-        if (syncContent.length > 300) syncContent = syncContent.substring(0, 300) + '...';
+        // 【动态化】移除 300 字截断——世界设定是核心信息，不应被截断
+        // 旧代码截断到 300 字会导致长世界设定丢失后半段，AI 看到不完整的世界观
+        // 新策略：保留完整内容，由 token 预算系统自然控制
         var created = self.addWorldAnchor(anchorType, syncContent, sourceTag, self.currentTurn);
-        try { if (created) self.saveToStorage(); } catch(e) {}
+        try { if (created) self.saveToStorage(); } catch(e) { console.warn('[GameMemory] syncWorldInfoEntry 保存失败:', e); }
         return created;
     },
 
@@ -3011,7 +3006,7 @@ var GameMemory = {
         if (this.events.some(function(e) { return e.content === evt.content; })) return false;
         this.events.push({ content: evt.content, turn: this.currentTurn, gameTime: this.getGameTimeStr(), importance: evt.importance || 5, decayScore: evt.importance || 5, accessCount: 0 });
         this._pruneImportantEvents(50);
-        try { this.saveToStorage(); } catch(e) {}
+        try { this.saveToStorage(); } catch(e) { console.warn('[GameMemory] addImportantEvent 保存失败:', e); }
         return true;
     },
 
@@ -3031,8 +3026,11 @@ var GameMemory = {
         var epic = this.events.filter(function(e) { return e.importance >= 9; });
         var normal = this.events.filter(function(e) { return e.importance < 9; });
         epic.sort(function(a, b) { return b.decayScore - a.decayScore; });
-        var keptEpic = epic.slice(0, 15);
         normal.sort(function(a, b) { return b.decayScore - a.decayScore; });
+        // 【动态化】移除 epic.slice(0, 15) 硬上限——重要事件不应被武断截断
+        // 旧代码最多只保留 15 条 epic 事件，长游戏的关键剧情会丢失
+        // 新策略：按 decayScore 排序后，epic 事件优先保留，normal 事件填充剩余预算
+        var keptEpic = epic;
         this.events = keptEpic.concat(normal.slice(0, Math.max(0, maxCount - keptEpic.length))).sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
     },
 
@@ -3160,7 +3158,29 @@ var GameMemory = {
     loadFromStorage: function() {
         var self = this; var data = null;
         try { data = Storage.getJSON(Storage.KEYS.MEMORY, null); } catch(e) { data = null; }
-        if (!data || data.version !== 3) return false;
+        // 【修复 P0-6】链式迁移：支持 v1/v2/v3 → 当前 v3，旧版本不再静默丢弃
+        // 旧代码 `if (!data || data.version !== 3) return false;` 会让 v2 数据被静默丢弃
+        if (!data) return false;
+        if (data.version !== 3) {
+            console.warn('[GameMemory] 检测到旧版本数据 v' + data.version + '，开始迁移到 v3');
+            // 备份原始数据，防止迁移失败导致数据丢失
+            try {
+                Storage.setJSON(Storage.KEYS.MEMORY + '_backup_v' + (data.version || 0), data);
+            } catch(backupErr) {
+                console.warn('[GameMemory] 备份旧版数据失败（继续迁移）:', backupErr);
+            }
+            data = this._migrateDataToV3(data);
+            if (!data) {
+                console.error('[GameMemory] 迁移失败，数据无法加载');
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('记忆数据版本过旧且迁移失败，已备份原始数据');
+                }
+                return false;
+            }
+            // 迁移成功后立即保存为新版本
+            try { this._migratedData = data; } catch(e) {}
+            console.log('[GameMemory] 迁移到 v3 完成');
+        }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
         var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig'];
         for (var i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
@@ -3178,7 +3198,41 @@ var GameMemory = {
         if (!self.workingMemory.farSummary) self.workingMemory.farSummary = '';
         // 加载后初始化休眠追踪（兼容旧存档）
         self._initDormantTracking();
+        // 迁移成功后异步保存
+        if (this._migratedData) {
+            this._migratedData = null;
+            var migrateSelf = this;
+            TimerManager.setTimeout('migrateMemorySave', function() { migrateSelf.saveToStorage(); }, 100);
+        }
         return true;
+    },
+
+    // 【修复 P0-6】将旧版本数据结构迁移到 v3
+    // 支持 v1（无 version 字段）、v2（旧 EnhancedMemory 格式）→ v3
+    _migrateDataToV3: function(data) {
+        try {
+            var v = data.version || 1;
+            // v1/v2 → v3：字段结构基本兼容，只需补全缺失字段并修正版本号
+            var migrated = JSON.parse(JSON.stringify(data));
+            // 补全 v3 新增字段
+            if (!migrated.permanentFacts) migrated.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [] };
+            if (!migrated.tables) migrated.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
+            if (!migrated.plot) migrated.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
+            if (!migrated.events) migrated.events = [];
+            if (!migrated.timeline) migrated.timeline = [];
+            if (!migrated.quests) migrated.quests = [];
+            if (!migrated.workingMemory) migrated.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [], nearSummary: '', midSummary: '', farSummary: '' };
+            if (!migrated.stats) migrated.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
+            if (!migrated._dormantTracking) migrated._dormantTracking = { characters: {}, items: {}, locations: {} };
+            if (!migrated._storytellingConfig) migrated._storytellingConfig = {};
+            if (!migrated._summaryLayers) migrated._summaryLayers = { near: [], mid: [], far: [] };
+            if (!migrated._setupLayers) migrated._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
+            migrated.version = 3;
+            return migrated;
+        } catch(e) {
+            console.error('[GameMemory] _migrateDataToV3 失败:', e);
+            return null;
+        }
     },
 
     startAutoSave: function() { var self = this; if (typeof TimerManager !== 'undefined' && TimerManager.clearInterval) TimerManager.clearInterval('gameMemoryAutoSave'); if (typeof TimerManager !== 'undefined' && TimerManager.setInterval) TimerManager.setInterval('gameMemoryAutoSave', function() { self.saveToStorage(); }, 30000); },
