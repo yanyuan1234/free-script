@@ -146,11 +146,21 @@ function estimateTokensUtil(text) {
 }
 
 // 估算一组消息的 token 数
+// 【阶段四】按消息对象缓存长度，避免每次遍历长对话历史都重复计算
+var _msgTokenCache = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
 function estimateTokensForMessagesUtil(messages) {
-    var total = 0;
     if (!messages) return 0;
+    var total = 0;
     for (var i = 0; i < messages.length; i++) {
-        total += (messages[i].content || '').length;
+        var m = messages[i];
+        var len;
+        if (_msgTokenCache && _msgTokenCache.has(m)) {
+            len = _msgTokenCache.get(m);
+        } else {
+            len = (m.content || '').length;
+            if (_msgTokenCache) _msgTokenCache.set(m, len);
+        }
+        total += len;
     }
     return Math.ceil(total / 1.7);
 }

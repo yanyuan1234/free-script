@@ -1887,7 +1887,6 @@ var TypewriterBuffer = {
     _completedParagraphs: [],
     _currentParaChars: '',
     _lastRendered: '',
-    _forceFullRender: false,
     _rafPending: false,
     // 【性能优化】缓存已完成段落的格式化HTML，避免每tick重新formatStory
     _cachedCompletedHtml: '',
@@ -1923,7 +1922,6 @@ var TypewriterBuffer = {
             this._completedParagraphs = [];
             this._currentParaChars = '';
         }
-        this._forceFullRender = true;
         // 【用户需求】打字机开始时显示「跳过」按钮（无长按快进、无点击屏幕快进）
         try { _showSkipButton(); } catch (e) {}
         const self = this;
@@ -1999,7 +1997,6 @@ var TypewriterBuffer = {
         this.queue = '';
         this.displayed = '';
         this._lastRendered = '';
-        this._forceFullRender = true;
         this.onComplete = null;
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';

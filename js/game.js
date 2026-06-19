@@ -2334,26 +2334,32 @@ async function autoCompressContext() {
     window._currentAbort = _compressAbort;
     try {
         var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
-        var rest = gameState.conversationHistory ? gameState.conversationHistory.slice(1) : [];
-        // 过滤掉之前注入的L2/L3/L4 system消息，只保留真正的对话
-        var dialogOnly = rest.filter(function(m) {
+        // 【阶段四】合并多次 slice/filter 为单次遍历，减少大数组重复扫描
+        var dialogOnly = [];
+        var conv = gameState.conversationHistory || [];
+        for (var i = 1; i < conv.length; i++) {
+            var m = conv[i];
             if (m.role === 'system') {
                 var c = m.content || '';
-                if (c.indexOf('当前世界状态快照') !== -1) return false;
-                if (c.indexOf('重要事件记录') !== -1) return false;
-                if (c.indexOf('前情摘要') !== -1) return false;
+                if (c.indexOf('当前世界状态快照') !== -1) continue;
+                if (c.indexOf('重要事件记录') !== -1) continue;
+                if (c.indexOf('前情摘要') !== -1) continue;
             }
-            return true;
-        });
+            dialogOnly.push(m);
+        }
         var keep = dialogOnly.slice(-30);
         var removed = dialogOnly.slice(0, -30);
 
         // 【酒馆特性】消息Pinning：固定重要消息不被压缩
         // 消息上有 _pinned=true 标记的，即使在前30条之外也要保留
-        var pinnedMessages = removed.filter(function(m) { return m._pinned === true; });
+        var pinnedMessages = [];
+        var nonPinnedRemoved = [];
+        for (var j = 0; j < removed.length; j++) {
+            if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
+            else nonPinnedRemoved.push(removed[j]);
+        }
         if (pinnedMessages.length > 0) {
-            // 把固定消息从removed移到keep
-            removed = removed.filter(function(m) { return m._pinned !== true; });
+            removed = nonPinnedRemoved;
             keep = pinnedMessages.concat(keep);
             console.log('[压缩] 保留了 ' + pinnedMessages.length + ' 条固定消息');
         }
@@ -2410,13 +2416,30 @@ async function manualCompress(btn) {
         var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近30条原文，确定吗？');
         if (!ok) return;
         var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
-        var rest = gameState.conversationHistory ? gameState.conversationHistory.slice(1) : [];
-        var keep = rest.slice(-30);
-        var removed = rest.slice(0, -30);
+        // 【阶段四】合并多次 slice/filter 为单次遍历
+        var dialogOnly = [];
+        var conv = gameState.conversationHistory || [];
+        for (var i = 1; i < conv.length; i++) {
+            var m = conv[i];
+            if (m.role === 'system') {
+                var c = m.content || '';
+                if (c.indexOf('当前世界状态快照') !== -1) continue;
+                if (c.indexOf('重要事件记录') !== -1) continue;
+                if (c.indexOf('前情摘要') !== -1) continue;
+            }
+            dialogOnly.push(m);
+        }
+        var keep = dialogOnly.slice(-30);
+        var removed = dialogOnly.slice(0, -30);
         // 【酒馆特性】消息Pinning：固定消息不被压缩
-        var pinnedMessages = removed.filter(function(m) { return m._pinned === true; });
+        var pinnedMessages = [];
+        var nonPinnedRemoved = [];
+        for (var j = 0; j < removed.length; j++) {
+            if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
+            else nonPinnedRemoved.push(removed[j]);
+        }
         if (pinnedMessages.length > 0) {
-            removed = removed.filter(function(m) { return m._pinned !== true; });
+            removed = nonPinnedRemoved;
             keep = pinnedMessages.concat(keep);
         }
         if (removed.length === 0) {
@@ -2547,16 +2570,28 @@ function renderStory(text) {
     TypewriterBuffer.stop();
     var storyEl = document.getElementById('storyText');
     var contentEl = document.getElementById('gameContent');
-    
+
+    // 【阶段四】渲染结果缓存：相同文本跳过重复 formatStory + sanitizeHtml + innerHTML
+    // 典型收益：切页面返回、重复渲染同一剧情时避免整段重新解析
+    if (text === renderStory._lastText && renderStory._lastHtml !== undefined) {
+        if (storyEl && storyEl.innerHTML !== renderStory._lastHtml) {
+            storyEl.innerHTML = renderStory._lastHtml;
+        }
+        if (contentEl) contentEl.scrollTop = 0;
+        return;
+    }
+    renderStory._lastText = text;
+
     // 【修复】应用正则表达式处理（用于显示）
     if (typeof RegexEngine !== 'undefined' && RegexEngine.regexScripts.length > 0) {
         // 计算当前消息深度
         var depth = (gameState.conversationHistory || []).length;
         text = RegexEngine.processAIResponse(text, depth);
     }
-    
+
     // 【修复C P2-2】在设置innerHTML前进行HTML净化，防止XSS
     var formatted = sanitizeHtml(formatStory(text));
+    renderStory._lastHtml = formatted;
     if (storyEl) storyEl.innerHTML = formatted;
     if (contentEl) contentEl.scrollTop = 0;
 }
@@ -2589,20 +2624,26 @@ function formatStory(text) {
     // 【修复】反转义 HTML 实体，防止 <giggle> 和 「」被转义后无法匹配
     // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
     // 【性能优化】使用预编译正则，避免每次调用都 new RegExp
-    _reHtmlLt.lastIndex = 0; _reHtmlGt.lastIndex = 0;
-    _reHtmlQuot.lastIndex = 0; _reHtmlAmp.lastIndex = 0;
-    text = text.replace(_reHtmlLt, '<').replace(_reHtmlGt, '>').replace(_reHtmlQuot, '"').replace(_reHtmlAmp, '&');
-    // 同时处理数字字符实体（如 &#12300; → 「）
-    _reDecEntity.lastIndex = 0; _reHexEntity.lastIndex = 0;
-    text = text.replace(_reDecEntity, function(_, code) {
-        return String.fromCharCode(parseInt(code, 10));
-    }).replace(_reHexEntity, function(_, hex) {
-        return String.fromCharCode(parseInt(hex, 16));
-    });
+    // 【阶段四】快速跳过：大多数 AI 输出不含 HTML 实体，避免无意义的多次全量扫描
+    if (text.indexOf('&') !== -1) {
+        _reHtmlLt.lastIndex = 0; _reHtmlGt.lastIndex = 0;
+        _reHtmlQuot.lastIndex = 0; _reHtmlAmp.lastIndex = 0;
+        text = text.replace(_reHtmlLt, '<').replace(_reHtmlGt, '>').replace(_reHtmlQuot, '"').replace(_reHtmlAmp, '&');
+        // 同时处理数字字符实体（如 &#12300; → 「）
+        _reDecEntity.lastIndex = 0; _reHexEntity.lastIndex = 0;
+        text = text.replace(_reDecEntity, function(_, code) {
+            return String.fromCharCode(parseInt(code, 10));
+        }).replace(_reHexEntity, function(_, hex) {
+            return String.fromCharCode(parseInt(hex, 16));
+        });
+    }
 
     // 【新增兼容】处理AI错误返回的中文方括号格式 【giggle】→<giggle>
-    _reGiggleCN.lastIndex = 0; _reGiggleCNClose.lastIndex = 0;
-    text = text.replace(_reGiggleCN, '<giggle>').replace(_reGiggleCNClose, '</giggle>');
+    // 【阶段四】快速跳过：不含中文方括号标记时直接跳过
+    if (text.indexOf('【giggle】') !== -1 || text.indexOf('【/giggle】') !== -1) {
+        _reGiggleCN.lastIndex = 0; _reGiggleCNClose.lastIndex = 0;
+        text = text.replace(_reGiggleCN, '<giggle>').replace(_reGiggleCNClose, '</giggle>');
+    }
 
     // 【性能修复】打字机tick期间跳过PresetAppManager解析和标签移除
     // parseFromText 遍历所有装饰标签做正则匹配，stripDecorTags 做大量正则替换
@@ -2651,30 +2692,32 @@ function formatStory(text) {
 
     // 收集所有心声（整章限制2-5个）
     // 【性能优化】使用预编译正则
-    _reGiggleOpen.lastIndex = 0;
+    // 【阶段四】快速跳过：绝大多数剧情不含心声标签，直接跳过整段扫描
     var allThoughts = [];
-    for (var pI = 0; pI < paragraphs.length; pI++) {
-        var pp = paragraphs[pI];
-        _reGiggleOpen.lastIndex = 0;
-        var tmatch;
-        while ((tmatch = _reGiggleOpen.exec(pp)) !== null) {
-            var giggleText = tmatch[1].trim();
-            var colonIdx = giggleText.indexOf('：');
-            if (colonIdx === -1) colonIdx = giggleText.indexOf(':');
-            var character, ttext;
-            if (colonIdx > 0) {
-                character = giggleText.substring(0, colonIdx).trim();
-                ttext = giggleText.substring(colonIdx + 1).trim();
-            } else {
-                character = '???';
-                ttext = giggleText;
+    if (text.indexOf('<giggle>') !== -1 || text.indexOf('【giggle】') !== -1) {
+        for (var pI = 0; pI < paragraphs.length; pI++) {
+            var pp = paragraphs[pI];
+            _reGiggleOpen.lastIndex = 0;
+            var tmatch;
+            while ((tmatch = _reGiggleOpen.exec(pp)) !== null) {
+                var giggleText = tmatch[1].trim();
+                var colonIdx = giggleText.indexOf('：');
+                if (colonIdx === -1) colonIdx = giggleText.indexOf(':');
+                var character, ttext;
+                if (colonIdx > 0) {
+                    character = giggleText.substring(0, colonIdx).trim();
+                    ttext = giggleText.substring(colonIdx + 1).trim();
+                } else {
+                    character = '???';
+                    ttext = giggleText;
+                }
+                allThoughts.push({
+                    character: character,
+                    text: ttext,
+                    original: tmatch[0],
+                    paragraphIdx: pI
+                });
             }
-            allThoughts.push({
-                character: character,
-                text: ttext,
-                original: tmatch[0],
-                paragraphIdx: pI
-            });
         }
     }
 
@@ -2738,9 +2781,15 @@ function formatStory(text) {
                     return placeholders[parseInt(i)];
                 }) + '</p>';
             } else {
-                _reBold.lastIndex = 0; _reItalic.lastIndex = 0;
-                html = '<p>' + escapeHtml(cleanText).replace(_reBold,
-                    '<strong>$1</strong>').replace(_reItalic, '<em>$1</em>') + '</p>';
+                // 【阶段四】快速跳过：不含 * 时直接转义，避免无意义的正则扫描
+                var escaped = escapeHtml(cleanText);
+                if (cleanText.indexOf('*') !== -1) {
+                    _reBold.lastIndex = 0; _reItalic.lastIndex = 0;
+                    html = '<p>' + escaped.replace(_reBold,
+                        '<strong>$1</strong>').replace(_reItalic, '<em>$1</em>') + '</p>';
+                } else {
+                    html = '<p>' + escaped + '</p>';
+                }
             }
         }
 
@@ -2998,6 +3047,21 @@ function buildSaveData(customName) {
         gameState._schemaVersion = (typeof SaveMigrator !== 'undefined') ? SaveMigrator.CURRENT_SCHEMA_VERSION : 1;
     }
 
+    // 【阶段四】序列化缓存：如果当前回合数与上次保存相同，复用已序列化的字符串
+    // 避免 autoSave 在对话未推进时重复 JSON.stringify 整个 gameState
+    var currentTurns = (gameState && gameState._stats) ? gameState._stats.totalTurns : -1;
+    if (gameState && gameState._lastSaveTurn === currentTurns &&
+        gameState._lastSaveState && gameState._lastSaveMemoryData) {
+        return {
+            name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
+            prompt: (gameState && gameState.userPrompt) || '',
+            time: new Date().toLocaleString(),
+            version: GAME_VERSION,
+            state: gameState._lastSaveState,
+            memoryData: gameState._lastSaveMemoryData
+        };
+    }
+
     // 打包记忆数据到存档中，确保存档包含完整游戏数据
     var memoryData = null;
     try {
@@ -3016,7 +3080,7 @@ function buildSaveData(customName) {
         console.warn('[buildSaveData] 打包记忆数据失败:', e);
     }
 
-    return {
+    var saveData = {
         name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
         prompt: (gameState && gameState.userPrompt) || '',
         time: new Date().toLocaleString(),
@@ -3024,6 +3088,15 @@ function buildSaveData(customName) {
         state: gameState ? JSON.stringify(gameState) : '{}',
         memoryData: memoryData ? JSON.stringify(memoryData) : null
     };
+
+    // 缓存序列化结果（读档时会清除这些缓存字段）
+    if (gameState) {
+        gameState._lastSaveTurn = currentTurns;
+        gameState._lastSaveState = saveData.state;
+        gameState._lastSaveMemoryData = saveData.memoryData;
+    }
+
+    return saveData;
 }
 
 // 【阶段二】存档版本链迁移器
@@ -3167,6 +3240,11 @@ async function loadFromSlot(slot) {
         var saveVersion = parsed._version || data.version || '1.0.0';
         var schemaVersion = parsed._schemaVersion || 0;
         console.log('[存档] 版本:', saveVersion, '当前:', GAME_VERSION, 'schema:', schemaVersion);
+
+        // 【阶段四】清除序列化缓存字段，避免读档后使用旧存档的序列化结果
+        delete parsed._lastSaveTurn;
+        delete parsed._lastSaveState;
+        delete parsed._lastSaveMemoryData;
 
         // 【阶段二】版本链迁移：按 schemaVersion 顺序应用迁移器
         if (typeof SaveMigrator !== 'undefined') {
