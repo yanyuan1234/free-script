@@ -37,22 +37,41 @@ function detectWorldTheme() {
 }
 
 /**
- * 根据世界观主题返回术语映射
- * 已废弃硬编码字典：所有世界观统一由AI根据设定自行决定术语
- * 保留此函数仅为兼容 _buildFormatRules 中的 _t() 调用，始终返回 null
- */
-function getWorldTerms(theme) {
-    return null;
-}
-
-/**
  * 获取当前世界观的术语（缓存版，避免重复检测）
- * 始终返回 null，术语由AI自行决定
+ * 根据 theme/genre/userPrompt/setupText 自动推断世界观并返回对应术语
  */
 var _cachedWorldTheme = null;
 var _cachedWorldTerms = null;
+
+var _WORLD_TERM_TEMPLATES = {
+    modern: { message: '消息', mail: '邮件', feed: '朋友圈', shop: '商店', forum: '论坛', currency: '元', bag: '背包', quest: '任务' },
+    ancient: { message: '传话', mail: '飞鸽传书', feed: '江湖传闻', shop: '集市', forum: '茶馆', currency: '银两', bag: '行囊', quest: '差事' },
+    xianxia: { message: '传音', mail: '传音符', feed: '修士手札', shop: '灵宝阁', forum: '论道台', currency: '灵石', bag: '储物袋', quest: '历练' },
+    game: { message: '系统消息', mail: '系统邮件', feed: '玩家动态', shop: '兑换商城', forum: '玩家论坛', currency: '积分', bag: '空间仓库', quest: '副本任务' },
+    cyberpunk: { message: '全息通讯', mail: '数据包', feed: '暗网动态', shop: '义体诊所', forum: '黑客频道', currency: '信用点', bag: '存储芯片', quest: '委托' },
+    space: { message: '星际通讯', mail: '量子信标', feed: '星网动态', shop: '空间站市集', forum: '星际议会', currency: '星币', bag: '货舱', quest: '远征' }
+};
+
+function _detectWorldTheme() {
+    var gs = gameState || {};
+    var text = (gs.theme || '') + ' ' + (gs.genre || '') + ' ' + (gs.userPrompt || '') + ' ' + (gs.setupText || '');
+    text = text.toLowerCase();
+    if (/修仙|修真|灵石|宗门|筑基|金丹/.test(text)) return 'xianxia';
+    if (/赛博|赛博朋克|义体|黑客|信用点|neon|cyber/.test(text)) return 'cyberpunk';
+    if (/星际|太空|星舰|量子|星币|galaxy|space/.test(text)) return 'space';
+    if (/无限流|系统|主神|积分|副本|玩家/.test(text)) return 'game';
+    if (/古代|古风|江湖|武侠|飞鸽|银两|客栈/.test(text)) return 'ancient';
+    if (/现代|都市|校园|公司|元|手机/.test(text)) return 'modern';
+    return 'modern';
+}
+
 function getCurrentWorldTerms() {
-    return null;
+    var theme = _detectWorldTheme();
+    if (_cachedWorldTheme !== theme) {
+        _cachedWorldTheme = theme;
+        _cachedWorldTerms = _WORLD_TERM_TEMPLATES[theme] || _WORLD_TERM_TEMPLATES.modern;
+    }
+    return _cachedWorldTerms;
 }
 
 /**
@@ -60,14 +79,21 @@ function getCurrentWorldTerms() {
  * 所有世界观统一：AI读取设定后自行决定术语，开局确定后全程固定
  */
 function buildWorldTermsPrompt(_terms) {
+    var t = _terms || getCurrentWorldTerms() || _WORLD_TERM_TEMPLATES.modern;
+    var examples = [
+        '现代都市：消息→消息、邮件→邮件、朋友圈→朋友圈、商店→商店、论坛→论坛、货币→元、背包→背包、任务→任务',
+        '古代：消息→传话、邮件→飞鸽传书、朋友圈→江湖传闻、商店→集市、论坛→茶馆、货币→银两、背包→行囊、任务→差事',
+        '修仙：消息→传音、邮件→传音符、朋友圈→修士手札、商店→灵宝阁、论坛→论道台、货币→灵石、背包→储物袋、任务→历练',
+        '无限流/游戏系统：消息→系统消息、邮件→系统邮件、朋友圈→玩家动态、商店→兑换商城、论坛→玩家论坛、货币→积分、背包→空间仓库、任务→副本任务',
+        '赛博朋克：消息→全息通讯、邮件→数据包、朋友圈→暗网动态、商店→义体诊所、论坛→黑客频道、货币→信用点、背包→存储芯片、任务→委托',
+        '太空歌剧：消息→星际通讯、邮件→量子信标、朋友圈→星网动态、商店→空间站市集、论坛→星际议会、货币→星币、背包→货舱、任务→远征'
+    ];
     return '【世界观术语】\n' +
         '你理解每个世界都有自己的语言体系——界面上的模块标题、货币名称、通讯方式等都应该融入世界观，而不是用通用词汇破坏沉浸感。例如：\n' +
-        '- 现代都市：消息→消息、邮件→邮件、朋友圈→朋友圈、商店→商店、论坛→论坛、货币→元、背包→背包、任务→任务\n' +
-        '- 古代：消息→传话、邮件→飞鸽传书、朋友圈→江湖传闻、商店→集市、论坛→茶馆、货币→银两、背包→行囊、任务→差事\n' +
-        '- 修仙：消息→传音、邮件→传音符、朋友圈→修士手札、商店→灵宝阁、论坛→论道台、货币→灵石、背包→储物袋、任务→历练\n' +
-        '- 无限流/游戏系统：消息→系统消息、邮件→系统邮件、朋友圈→玩家动态、商店→兑换商城、论坛→玩家论坛、货币→积分、背包→空间仓库、任务→副本任务\n' +
-        '- 赛博朋克：消息→全息通讯、邮件→数据包、朋友圈→暗网动态、商店→义体诊所、论坛→黑客频道、货币→信用点、背包→存储芯片、任务→委托\n' +
-        '- 太空歌剧：消息→星际通讯、邮件→量子信标、朋友圈→星网动态、商店→空间站市集、论坛→星际议会、货币→星币、背包→货舱、任务→远征\n' +
+        examples.map(function(ex) { return '- ' + ex; }).join('\n') + '\n' +
+        '当前世界推荐术语：消息→' + t.message + '、邮件→' + t.mail + '、朋友圈→' + t.feed +
+        '、商店→' + t.shop + '、论坛→' + t.forum + '、货币→' + t.currency +
+        '、背包→' + t.bag + '、任务→' + t.quest + '\n' +
         '请在第一回合的world模块title中体现你选定的术语，之后全程保持一致。';
 }
 
@@ -1181,11 +1207,6 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 支持 use_sysprompt 配置（月读预设设为 false）
             // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            // 【防429模式】精简噪声注入（原版无此功能，过多噪声浪费token）
-            if (gameState && gameState.anti429Mode) {
-                messages.push({ role: 'system', content: '[INIT]⚡entropy_burst##START##⚡' });
-            }
-
             if (gameState && gameState._useSysprompt !== false) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
             } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
@@ -1653,6 +1674,20 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (parseResult.truncated && data && storyText) {
             storyText = '⚠️ **AI回复可能被截断**（JSON不完整，部分字段可能缺失）\n\n' + storyText;
             if (gameState) gameState._lastTruncated = true;
+        }
+
+        // 【优化】校验 AI 返回字段完整性
+        if (data && typeof validateAIResponse === 'function') {
+            var _validation = validateAIResponse(data);
+            if (!_validation.valid) {
+                console.warn('[sendAIRequest] AI 返回字段不完整，缺失:', _validation.missing.join(', '));
+                if (gameState) gameState._lastValidationWarning = 'AI返回缺少字段：' + _validation.missing.join(', ');
+            } else {
+                if (gameState) gameState._lastValidationWarning = null;
+                if (_validation.missing.length > 0) {
+                    console.log('[sendAIRequest] AI 返回可选字段缺失:', _validation.missing.join(', '));
+                }
+            }
         }
 
         // 【P0优化】成功收到有效剧情，清零流式失败计数

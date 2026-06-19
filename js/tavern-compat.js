@@ -3077,6 +3077,8 @@ var GameMemory = {
         this.budget.maxChars = base;
         // 按次计费：各模块理想预算也按比例放大
         var scale = base / 4000; // 以4000为基准缩放
+        // 【优化】限制缩放倍数，避免大上下文模型在低优先级模块塞入过多内容
+        if (scale > 15) scale = 15;
         var minB = this.budget.minBudget;
         var idealB = this.budget.idealBudget;
         if (minB) {

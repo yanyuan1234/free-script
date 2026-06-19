@@ -1021,8 +1021,9 @@ var LocalGameAPI = {
             this._logRequest(this._currentSlot, true, '', Date.now() - startTs);
             return result;
             } catch (e) {
-            this._logRequest(this._currentSlot, false, e.message, Date.now() - startTs);
-            this._markModelFailed(this._currentSlot);
+            var _singleErr = (e && e.message) ? e.message : String(e);
+            this._logRequest(this._currentSlot, false, _singleErr, Date.now() - startTs);
+            this._markModelFailed(this._currentSlot, _singleErr);
             throw e;
             }
     }
@@ -1033,13 +1034,17 @@ var LocalGameAPI = {
     for (let i = 0; i < totalSlots; i++) {
         orderedSlots.push((this._currentSlot + i) % totalSlots);
     }
-    var self = this;
     for (let attempt = 0; attempt < totalSlots; attempt++) {
         const slotIdx = orderedSlots[attempt];
         const cfg = this._configs[slotIdx];
         // 跳过配置不完整的API
         if (!cfg.baseUrl || !cfg.apiKey) {
             console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 不完整，跳过');
+            continue;
+        }
+        // 【优化】跳过近期因超时失败的配置，避免连续超时浪费用户时间
+        if (this.isSlotTimeoutRecent(slotIdx)) {
+            console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 近期超时，跳过');
             continue;
         }
         // 注意：不再自动跳过"近期失败"的模型——失败只是 UI 提醒，玩家想用就能用
@@ -1056,11 +1061,13 @@ var LocalGameAPI = {
         } catch (e) {
         var errMsg = translateError((e && e.message) ? e.message : String(e));
         this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
-        // 失败标记仅作 UI 提醒分组，不影响轮换和调用逻辑
-        this._markModelFailed(slotIdx);
+        // 失败标记记录原因，超时模型会在短期内被跳过
+        this._markModelFailed(slotIdx, errMsg);
         console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
-        // model_not_found 等"配置错误"静默跳过，不弹误导性 toast
-        if (attemptedCount < totalSlots && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
+        // 超时错误给出明确提示
+        if (/timeout|timed out|超时/i.test(errMsg)) {
+            UI.toast('配置 ' + (slotIdx + 1) + ' 请求超时，已临时跳过');
+        } else if (attemptedCount < totalSlots && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
             UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
         }
     }
@@ -1095,13 +1102,14 @@ var LocalGameAPI = {
         }, 5000);
     }
     },
-    _markModelFailed(slot) {
+    _markModelFailed(slot, reason) {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return;
         // 【优化 #14】key 改为 slot+model 组合
         // 之前用 model 名，两个 slot 用同模型时一个挂会误标记另一个
         var key = slot + '|' + cfg.model;
-        this._failedModels[key] = Date.now();
+        // 【优化】记录失败原因，便于超时时跳过近期失败的配置
+        this._failedModels[key] = { time: Date.now(), reason: reason || 'unknown' };
         // 复用延迟保存机制，避免重试循环中频繁写 localStorage
         if (!this._savePending) {
             this._savePending = true;
@@ -1119,11 +1127,22 @@ var LocalGameAPI = {
         var key = slot + '|' + cfg.model;
         return this.isModelFailed(key);
     },
+    _getFailedTime(record) {
+        // 兼容旧格式：之前存的是数字时间戳，新格式是 { time, reason }
+        if (!record) return 0;
+        if (typeof record === 'number') return record;
+        return record.time || 0;
+    },
+    _getFailedReason(record) {
+        if (!record) return '';
+        if (typeof record === 'object') return record.reason || '';
+        return '';
+    },
     isModelFailed(modelName) {
         if (!modelName || !this._failedModels[modelName]) return false;
         // 24小时过期机制，与注释描述一致
         // 之前是永久生效，导致所有模型一旦失败过一次就永远被跳过
-        var failedAt = this._failedModels[modelName];
+        var failedAt = this._getFailedTime(this._failedModels[modelName]);
         var now = Date.now();
         var TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
         if (now - failedAt > TWENTY_FOUR_HOURS) {
@@ -1132,20 +1151,34 @@ var LocalGameAPI = {
             this.save();
             return false;
         }
-    return true;
+        return true;
+    },
+    // 【优化】检查某个 slot 是否在近期因超时失败
+    isSlotTimeoutRecent(slot, withinMs) {
+        var cfg = this._configs[slot];
+        if (!cfg || !cfg.model) return false;
+        var key = slot + '|' + cfg.model;
+        var record = this._failedModels[key];
+        if (!record) return false;
+        var reason = this._getFailedReason(record);
+        var failedAt = this._getFailedTime(record);
+        if (!/timeout|timed out|超时/i.test(reason)) return false;
+        return (Date.now() - failedAt) < (withinMs || 5 * 60 * 1000);
     },
     getFailedModels() {
         var result = [];
         for (var m in this._failedModels) {
             // 【优化 #14】key 可能是 "slot|model" 形式，UI 显示时拆出 model
             var modelName = m.indexOf('|') >= 0 ? m.split('|').slice(1).join('|') : m;
+            var record = this._failedModels[m];
             result.push({
                 model: modelName,
-                failedAt: this._failedModels[m]
+                failedAt: this._getFailedTime(record),
+                reason: this._getFailedReason(record)
                 });
         }
-    return result.sort(function(a, b) {
-        return b.failedAt - a.failedAt;
+        return result.sort(function(a, b) {
+            return b.failedAt - a.failedAt;
         });
     },
     // 【分类标签】UI提醒列表——纯分类，无任何功能限制
@@ -2799,6 +2832,37 @@ if (Object.keys(theaterContent).length > 0) {
     };
 }
 
+// 【优化】校验 AI 返回的 JSON 字段完整性
+// 返回 { valid: Boolean, missing: Array, storyField: String }
+function validateAIResponse(data) {
+    if (!data || typeof data !== 'object') {
+        return { valid: false, missing: ['data'], storyField: null };
+    }
+    var missing = [];
+    // 剧情字段：任意一个非空即可
+    var storyFields = ['story', 'storyText', 'content', 'text', 'narrative'];
+    var storyField = null;
+    for (var _sfIdx = 0; _sfIdx < storyFields.length; _sfIdx++) {
+        var f = storyFields[_sfIdx];
+        if (data[f] && typeof data[f] === 'string' && data[f].trim()) {
+            storyField = f;
+            break;
+        }
+    }
+    if (!storyField) missing.push('story');
+    // 场景/标题：建议有，但不是致命
+    if (!data.title && !data.scene && !data.sceneTitle) missing.push('title/scene');
+    // 可玩选项：不是致命，缺失会自动生成
+    if (!data.choices || !Array.isArray(data.choices) || data.choices.length === 0) {
+        missing.push('choices（将自动生成）');
+    }
+    return {
+        valid: storyField !== null,
+        missing: missing,
+        storyField: storyField
+    };
+}
+
 // 根据 AI 指定的 type 字段创建模块
 function _createModuleFromType(type, theater, key) {
     var content = theater.html || theater.content || '';
@@ -4429,9 +4493,10 @@ function parseAIResponseFallback(rawBody) {
             var _content = (typeof _msg.content === 'string') ? _msg.content : '';
             var _reasoning = (typeof _msg.reasoning_content === 'string') ? _msg.reasoning_content
                            : (typeof _msg.reasoning === 'string') ? _msg.reasoning : '';
-            // 优先用 content；content 为空时回退到 reasoning_content（兼容 Cloudflare Workers AI Kimi）
             if (_content) return _content;
-            if (_reasoning) return _reasoning;
+            if (_reasoning) {
+                console.warn('[parseAIResponseFallback] AI 只返回思考链（' + _reasoning.length + ' 字符），正文为空');
+            }
             if (jsonData.usage) return '';
             return rawBody;
         }
@@ -4442,18 +4507,19 @@ function parseAIResponseFallback(rawBody) {
         if (e && e.message && e.message.indexOf('API') === 0) throw e;
         // 不是纯 JSON，继续走 SSE 兜底
     }
-    // 2) SSE：首条 data 行（整行内除换行符外不截断，应对嵌套 JSON）
-    var dataLine = (rawBody.match(/data:\s*\{[^\n]+\}/) || [])[0];
-    if (dataLine) {
+    // 2) SSE：从 rawBody 中解析所有 data 行并累加 content（兼容长回复被截断后仍保留末尾内容）
+    var dataLines = rawBody.match(/data:\s*\{[^\n]+\}/g) || [];
+    var sseContent = '';
+    for (var _dlIdx = 0; _dlIdx < dataLines.length; _dlIdx++) {
         try {
-            var parsed = JSON.parse(dataLine.replace(/^data:\s*/, '').trim());
+            var parsed = JSON.parse(dataLines[_dlIdx].replace(/^data:\s*/, '').trim());
             var d = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
-            if (d) {
-                var _dContent = (typeof d.content === 'string') ? d.content : '';
-                if (_dContent) return _dContent;
+            if (d && typeof d.content === 'string') {
+                sseContent += d.content;
             }
-        } catch (_) { /* 忽略 */ }
+        } catch (_) { /* 忽略单条解析失败 */ }
     }
+    if (sseContent) return sseContent;
     // 3) 终极兜底：原文（与原版一致）
     return rawBody;
 }
@@ -4483,7 +4549,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // 【修复 #19】reasoningText 用于统计思考链长度，便于排查"只回了思考链没回正文"的情况
     var ctx = { fullText: '', reasoningText: '', streamError: null, onChunk: onChunk };
     var sseBuffer = '';
-    // 【优化 #1】rawBody 加 64KB 上限，避免长内容把内存吃光
+    // 【优化 #1】rawBody 滚动保留最近 64KB，兜底解析通常只看末尾数据
     var rawBody = '';
     var RAW_BODY_MAX = 64 * 1024;
     var rawBodyTruncated = false;
@@ -4497,14 +4563,13 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
             break;
         }
         var chunk = decoder.decode(readResult.value, { stream: true });
-        // 【优化 #1】限制 rawBody 累积大小
-        if (!rawBodyTruncated) {
-            if (rawBody.length + chunk.length <= RAW_BODY_MAX) {
-                rawBody += chunk;
-            } else {
-                rawBody += chunk.substring(0, RAW_BODY_MAX - rawBody.length);
+        // 【优化 #1】滚动保留最近 64KB，SSE 兜底通常依赖末尾内容
+        rawBody += chunk;
+        if (rawBody.length > RAW_BODY_MAX) {
+            rawBody = rawBody.slice(-RAW_BODY_MAX);
+            if (!rawBodyTruncated) {
                 rawBodyTruncated = true;
-                console.warn('[callAI] rawBody 达到 64KB 上限，停止累积');
+                console.warn('[callAI] rawBody 超过 64KB，改为滚动保留最近 64KB 用于兜底');
             }
         }
         sseBuffer += chunk;
