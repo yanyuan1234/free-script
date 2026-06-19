@@ -6925,7 +6925,8 @@ function renderNpcPage() {
         container.innerHTML = chars.map(function(c) {
             var fav = Number(c.favorability) || 0;
             fav = Math.max(-100, Math.min(100, fav));
-            var sn = c.name.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '&quot;').replace(/\n/g, ' ');
+            // 先转义 HTML 实体，再转义 JS 字符串中的单引号（属性外层是双引号）
+            var sn = escapeHtml(c.name).replace(/'/g, "\\'");
             // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
             var favLevel = c.relation || '中立';
             // 根据好感度数值选择颜色（-100到100，0为中立）
