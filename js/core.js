@@ -4040,7 +4040,8 @@ async function autoSave() {
                 dot.style.animation = 'pulse 0.9s ease-in-out infinite';
             }
             if (typeof SaveDB !== 'undefined') {
-                await SaveDB.set(0, buildSaveData(''));
+                // 【阶段四】autoSave 明确开启序列化缓存，手动保存保持默认不重缓存
+                await SaveDB.set(0, buildSaveData('', true));
             }
             // 【顶栏指示】自动存档完成：显示一秒钟后淡出
             if (dot) {

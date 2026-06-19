@@ -3023,7 +3023,7 @@ function deleteCharacter(name) {
 // ========================================
 
 // ── 保存到指定槽位 ──
-function buildSaveData(customName) {
+function buildSaveData(customName, useCache) {
     // 更新游戏时长统计
     // 添加 gameState._stats 空值检查
     if (!gameState._stats) {
@@ -3047,10 +3047,10 @@ function buildSaveData(customName) {
         gameState._schemaVersion = (typeof SaveMigrator !== 'undefined') ? SaveMigrator.CURRENT_SCHEMA_VERSION : 1;
     }
 
-    // 【阶段四】序列化缓存：如果当前回合数与上次保存相同，复用已序列化的字符串
-    // 避免 autoSave 在对话未推进时重复 JSON.stringify 整个 gameState
+    // 【阶段四】序列化缓存：仅在明确请求时复用，避免误伤手动保存和 beforeunload
+    // 默认关闭，只有 autoSave 传 true 使用，防止同一回合内用户修改后保存得到旧数据
     var currentTurns = (gameState && gameState._stats) ? gameState._stats.totalTurns : -1;
-    if (gameState && gameState._lastSaveTurn === currentTurns &&
+    if (useCache && gameState && gameState._lastSaveTurn === currentTurns &&
         gameState._lastSaveState && gameState._lastSaveMemoryData) {
         return {
             name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
