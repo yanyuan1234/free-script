@@ -2537,8 +2537,15 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'character':
-                    if (!gameState.characters) gameState.characters = [];
-                    var ch = gameState.characters.find(function(c) { return c.name === mem.name; });
+                    // 【修复】统一使用 gameState.allCharacters（与 gm.tables.characters 别名一致）
+                    if (!gameState.allCharacters) {
+                        if (typeof GameMemory !== 'undefined' && GameMemory.tables && GameMemory.tables.characters) {
+                            gameState.allCharacters = GameMemory.tables.characters;
+                        } else {
+                            gameState.allCharacters = {};
+                        }
+                    }
+                    var ch = gameState.allCharacters[mem.name];
                     if (ch) {
                         if (mem.field && mem.value !== undefined) {
                             // 数字字段（好感度等）
@@ -2553,7 +2560,7 @@ function _applyMemsToGameState(mems) {
                         // 新角色
                         var newCh = { name: mem.name };
                         if (mem.field && mem.value !== undefined) newCh[mem.field] = mem.value;
-                        gameState.characters.push(newCh);
+                        gameState.allCharacters[mem.name] = newCh;
                     }
                     break;
                 case 'quest':

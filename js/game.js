@@ -1751,15 +1751,23 @@ async function sendAIRequest(userMessage, isInit = false) {
                 renderRelationships();
             }
             if (data.contextSummary) gameState.rollingSummary = data.contextSummary;
+        }
 
-        // 时间系统：从AI返回的JSON中解析gameTime字段
+        // 时间系统：从AI返回的JSON中解析gameTime字段（纯文本模式下 data 为 null 也尝试更新UI）
         if (typeof GameTimeSystem !== 'undefined') {
             GameTimeSystem.parseFromAI(data);
             GameTimeSystem.updateUI();
         }
 
+        // 纯文本模式下没有 JSON title，用用户设定作为兜底标题
+        if (gameState && gameState.pureTextMode && !gameState._lastSceneTitle && gameState.userPrompt) {
+            var fallbackTitle = gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : '');
+            updateSceneTitle(fallbackTitle);
+            gameState._lastSceneTitle = fallbackTitle;
+        }
+
         // 【方案C】纯文本模式：AI没输出choices时，基于story末段自动生成3个选项
-        if (gameState && gameState.pureTextMode && gameState.generateChoices && !data.choices) {
+        if (gameState && gameState.pureTextMode && gameState.generateChoices && (!data || !data.choices)) {
             // 【P2优化】传入上一轮选项用于去重，避免套路化
             var autoChoices = _generateAutoChoices(storyText, gameState._lastChoices);
             if (autoChoices && autoChoices.length > 0) {
@@ -1774,7 +1782,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 return typeof c === 'string' ? c : (c && c.text) || '';
             });
         }
-        
+
         // 处理增强记忆
         if (typeof EnhancedMemory !== 'undefined') {
             EnhancedMemory.processMessage(
@@ -1786,6 +1794,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) {
             try { AchievementSystem.checkAchievements(); } catch (e) {}
         }
+
+        if (data) {
             // === 货币系统 ===
             if (gameState) {
                 if (data.currency !== undefined) gameState.currency = data.currency;
