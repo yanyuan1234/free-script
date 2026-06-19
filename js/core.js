@@ -1774,8 +1774,8 @@ function createDefaultGameState() {
         useStream: true,
         streamFailCount: 0,
         generateChoices: true,
-        // 【方案C】按次计费优化：默认开启纯文本模式，story质量优先
-        pureTextMode: true,
+        // 默认使用 JSON 模式，让 AI 返回结构化数据以填充个人/人际/日志等面板
+        pureTextMode: false,
         keyEvents: [],
         worldSnapshot: {},
         currentQuests: [],
