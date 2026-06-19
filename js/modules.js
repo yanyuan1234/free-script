@@ -772,17 +772,19 @@ var PresetManager = {
             try {
                 var imported = self.parsePreset(data, file.name);
                 if (imported) {
-                    self.presets.push(imported);
+                    // 新导入的放在最前面，并限制总数为 30；避免 push 后 slice 把新预设截掉
+                    self.presets.unshift(imported);
                     if (self.presets.length > 30) self.presets = self.presets.slice(0, 30);
                     self.save();
                     self.renderPresetList();
 
                     // 自动加载导入的预设（应用参数和提示词）
-                    var newIdx = self.presets.length - 1;
+                    var newIdx = 0;
                     try {
                         self.loadPreset(newIdx);
                         } catch(loadErr) {
                         console.error('[PresetManager] loadPreset 失败:', loadErr);
+                        UI.toast('预设已导入，但加载失败: ' + translateError(loadErr.message));
                         }
 
                     // 提示导入的提示词数量
@@ -819,9 +821,11 @@ var PresetManager = {
     // 解析酒馆预设格式
     parsePreset: function(data, fileName) {
         // 辅助函数：安全取值，避免 0 被 falsy 吞掉
+        // 兼容两种调用：safeNum(a, b, def) 和 safeNum(a, b, c, def)
         function safeNum(a, b, c, def) {
             if (a != null) return a;
             if (b != null) return b;
+            if (arguments.length === 3) return c;
             if (c != null) return c;
             return def;
         }
@@ -964,15 +968,13 @@ var PresetManager = {
             content: p.content,
             injection_position: p.injection_position || 0,
             injection_depth: p.injection_depth || 4,
-            // 【修复排序】优先使用 prompt_order 中的位置作为 injection_order
-            // 如果 prompt 自身设置了 injection_order 且不是默认值100，则保留原值
-            // 否则使用 prompt_order 中的位置索引，确保排列顺序与酒馆一致
-            injection_order: (p.injection_order != null && p.injection_order !== 100)
-            ? p.injection_order
-            : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
-            system_prompt: !!p.system_prompt,
-            isJailbreak: true,  // 标记为越狱提示词，放在聊天历史之后
-            enabled: isEnabled,  // 保留原有的启用状态
+            // 【修复排序】优先使用 prompt 自身设置的 injection_order；未定义时才用 prompt_order 索引
+                    injection_order: (p.injection_order != null)
+                    ? p.injection_order
+                    : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
+                    system_prompt: !!p.system_prompt,
+                    isJailbreak: true,  // 标记为越狱提示词，放在聊天历史之后
+                    enabled: isEnabled,  // 保留原有的启用状态
             // 酒馆V2新增字段
             forbid_overrides: !!p.forbid_overrides,
             injection_trigger: p.injection_trigger || []
@@ -987,12 +989,12 @@ var PresetManager = {
         content: p.content,
         injection_position: p.injection_position || 0,
         injection_depth: p.injection_depth || 4,
-        // 【修复排序】同上，保留用户的拖拽排列顺序
-        injection_order: (p.injection_order != null && p.injection_order !== 100)
-        ? p.injection_order
-        : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
-        system_prompt: !!p.system_prompt,
-        enabled: isEnabled,  // 保留原有的启用状态
+        // 【修复排序】优先使用 prompt 自身设置的 injection_order；未定义时才用 prompt_order 索引
+                    injection_order: (p.injection_order != null)
+                    ? p.injection_order
+                    : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
+                    system_prompt: !!p.system_prompt,
+                    enabled: isEnabled,  // 保留原有的启用状态
         // 酒馆V2新增字段
         forbid_overrides: !!p.forbid_overrides,
         injection_trigger: p.injection_trigger || []
