@@ -3864,7 +3864,7 @@ var _saveLockState = {
     startTime: 0,
     depth: 0
 };
-var SAVE_LOCK_TIMEOUT = 30000; // 30 秒强制释放
+var SAVE_LOCK_TIMEOUT = 300000; // 5 分钟强制释放（避免长写入/大模型推理期间误释放）
 
 function withSaveLock(fn, label) {
     label = label || 'unnamed';
