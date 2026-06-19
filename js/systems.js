@@ -840,6 +840,28 @@ function mergeRelationships(newRels) {
     }
 }
 
+// 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网
+function _inferRelationshipsFromCharacters() {
+    if (!gameState) return;
+    var playerName = (gameState.playerData && gameState.playerData.name) || '主角';
+    var chars = gameState.allCharacters || {};
+    var inferred = [];
+    Object.keys(chars).forEach(function(name) {
+        var c = chars[name];
+        if (!c || name === playerName) return;
+        var relType = (c.relation && String(c.relation).trim()) || '相识';
+        inferred.push({
+            from: playerName,
+            to: name,
+            type: relType,
+            desc: (c.title ? c.title + '。' : '') + (c.desc || '')
+        });
+    });
+    if (inferred.length > 0) {
+        mergeRelationships(inferred);
+    }
+}
+
 function renderRelationships() {
     var container = document.getElementById('relationModule');
     var list = document.getElementById('relationList');

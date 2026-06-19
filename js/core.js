@@ -2776,26 +2776,27 @@ if (Object.keys(theaterContent).length > 0) {
     _bridgeBranchesToChoices(theaterContent);
 }
 
-// 【修复】检测JSON是否被截断（不完整）
-// 症状：AI输出到一半被maxTokens截断，JSON的{ }不配对，前端把残余`\n\n`当纯文本渲染
-// 检测方法：数 { 和 } 数量是否相等
-if (reply && typeof reply === 'string') {
-    var openBraces = (reply.match(/\{/g) || []).length;
-    var closeBraces = (reply.match(/\}/g) || []).length;
-    if (openBraces > 0 && openBraces > closeBraces) {
-        console.warn('[parseAIResponse] 检测到JSON被截断：{=' + openBraces + ', }=' + closeBraces);
-        if (!data) {
-            // 解析完全失败的情况下，把残余内容标识为截断
-            storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n' + (storyText || '').trim() + '\n\n💡 建议点击 🔄 重新生成';
+ // 检测JSON是否被截断（不完整）
+    var _truncated = false;
+    if (reply && typeof reply === 'string') {
+        var openBraces = (reply.match(/\{/g) || []).length;
+        var closeBraces = (reply.match(/\}/g) || []).length;
+        if (openBraces > 0 && openBraces > closeBraces) {
+            _truncated = true;
+            console.warn('[parseAIResponse] 检测到JSON被截断：{=' + openBraces + ', }=' + closeBraces);
+            if (!data) {
+                // 解析完全失败的情况下，把残余内容标识为截断
+                storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n' + (storyText || '').trim() + '\n\n💡 建议点击 🔄 重新生成';
+            }
         }
     }
-}
 
-return {
-    data,
-    storyText,
-    mems: memParseResult.mems
-};
+    return {
+        data,
+        storyText,
+        mems: memParseResult.mems,
+        truncated: _truncated
+    };
 }
 
 // 根据 AI 指定的 type 字段创建模块
@@ -4561,9 +4562,10 @@ async function executeAINormal(url, body, apiKey, signal) {
         var _content = (typeof _nmsg.content === 'string') ? _nmsg.content : '';
         var _reasoning = (typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content
                        : (typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning : '';
-        // 优先用 content；content 为空时回退到 reasoning_content（兼容 Cloudflare Workers AI Kimi）
         if (_content) return _content;
-        if (_reasoning) return _reasoning;
+        if (_reasoning) {
+            console.warn('[executeAINormal] AI 只返回思考链（' + _reasoning.length + ' 字符），正文为空，按空内容处理');
+        }
         return '';
     }
     // JSON 解析成功但结构不识别，原版兜底行为：返回 res.text() 让用户看到原文

@@ -1149,7 +1149,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                     if (_sMsg.role === 'assistant' && _sMsg.content) {
                         var _slimResult = _slimAssistantMessage(_sMsg.content);
                         if (_slimResult !== _sMsg.content) {
-                            _sMsg.content = _slimResult;
+                            // 【修复】克隆消息对象，避免污染原始 conversationHistory
+                            recent[_si] = Object.assign({}, _sMsg, { content: _slimResult });
                         }
                     }
                 }
@@ -1552,8 +1553,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                     if (slimResult !== _slMsg.content) {
                         var savedTokens = estimateTokensUtil(beforeLen - slimResult.length > 0 ? 'x'.repeat(beforeLen - slimResult.length) : '');
                         currentTokens -= savedTokens;
-                        _slMsg.content = slimResult;
-                        _slMsg._slimmed = true;
+                        // 【修复】克隆消息对象，避免污染原始消息引用
+                        messages[_slIdx] = Object.assign({}, _slMsg, { content: slimResult, _slimmed: true });
                         slimmedCount++;
                     }
                 }
@@ -1568,8 +1569,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             for (var _rIdx = messages.length - 1; _rIdx >= 0; _rIdx--) {
                 if (messages[_rIdx].role === 'user') { lastUserIdx = _rIdx; break; }
             }
+            // 【修复】至少保留上一轮完整对话（1 user + 1 assistant），避免 AI 只看到孤立用户消息
+            var protectedIdx = {};
+            if (lastUserIdx > 0) {
+                var prevIdx = lastUserIdx - 1;
+                // 前一条如果是 assistant，再前一条如果是 user，都保护
+                if (messages[prevIdx] && messages[prevIdx].role === 'assistant') {
+                    protectedIdx[prevIdx] = true;
+                    if (prevIdx - 1 >= 0 && messages[prevIdx - 1] && messages[prevIdx - 1].role === 'user') {
+                        protectedIdx[prevIdx - 1] = true;
+                    }
+                }
+            }
             for (var _rIdx2 = chatHistoryStart; _rIdx2 < messages.length && currentTokens > maxInputTokens; _rIdx2++) {
-                if (_rIdx2 === lastUserIdx) continue;
+                if (_rIdx2 === lastUserIdx || protectedIdx[_rIdx2]) continue;
                 var msg = messages[_rIdx2];
                 if (msg._pinned) continue;
                 if (msg.role === 'user' || msg.role === 'assistant') {
@@ -1636,6 +1649,12 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
+        // 【修复】JSON 截断时即使解析出 data 也要提示用户
+        if (parseResult.truncated && data && storyText) {
+            storyText = '⚠️ **AI回复可能被截断**（JSON不完整，部分字段可能缺失）\n\n' + storyText;
+            if (gameState) gameState._lastTruncated = true;
+        }
+
         // 【P0优化】成功收到有效剧情，清零流式失败计数
         if (gameState && gameState.streamFailCount && storyText && storyText.trim().length > 0) {
             gameState.streamFailCount = 0;
@@ -1644,6 +1663,14 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【方案C】应用<mem>标签解析结果到gameState（自动维护结构化数据）
         if (parseResult.mems && parseResult.mems.length > 0) {
             _applyMemsToGameState(parseResult.mems);
+            // 【修复】<mem> 更新了结构化数据后，刷新相关页面
+            if (typeof GameLinker !== 'undefined' && GameLinker.refreshByDataChange) {
+                GameLinker.refreshByDataChange('currentBag');
+                GameLinker.refreshByDataChange('allCharacters');
+                GameLinker.refreshByDataChange('quests');
+                GameLinker.refreshByDataChange('relationships');
+                GameLinker.refreshByDataChange('worldModules');
+            }
         }
 
         // === COT（思维链）处理 ===
@@ -1755,6 +1782,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.relationships) {
                 mergeRelationships(data.relationships);
                 renderRelationships();
+            } else if (data.characters && typeof _inferRelationshipsFromCharacters === 'function') {
+                // 【修复】AI 没返回 relationships 但返回了角色时，自动推断关系网
+                _inferRelationshipsFromCharacters();
             }
             if (data.contextSummary) gameState.rollingSummary = data.contextSummary;
         }
