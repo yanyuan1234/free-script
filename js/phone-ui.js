@@ -3396,7 +3396,9 @@ function showPresetAction(idx) {
         renderPresetPages();
         // 同时删除关联的存档
         if (slotId) {
-            SaveDB.set(slotId, null).catch(function(e) {
+            withSaveLock(async function() {
+                await SaveDB.set(slotId, null);
+            }, 'deletePresetSave:' + slotId).catch(function(e) {
                 console.warn('删除预设存档失败:', e);
             });
         }
@@ -5741,7 +5743,10 @@ function triggerGrandSummary(mode) {
 }
 async function exportSaves() {
     try {
-        var allSaves = await SaveDB.getAll();
+        // 【阶段二】导出走全局存档锁，避免与写入操作并发
+        var allSaves = await withSaveLock(async function() {
+            return await SaveDB.getAll();
+        }, 'exportSaves');
         if (Object.keys(allSaves).length === 0) {
             UI.toast('当前没有任何存档可导出');
             return;
@@ -5798,31 +5803,37 @@ async function handleImportFile(e) {
         }
         var msg = '发现 ' + validCount + ' 个存档。\n\n【确定】= 覆盖导入（清空现有存档）\n【取消】= 选择合并模式';
         var overwrite = await UI.confirm('导入存档', msg);
-        if (overwrite) {
-            // 覆盖模式
-            for (var i = 0; i < slots.length; i++) {
-                var slot = parseInt(slots[i]);
-                if (!isNaN(slot) && saves[slots[i]]) {
-                    await SaveDB.set(slot, saves[slots[i]]);
-                }
-            }
-            UI.toast('覆盖导入完成');
-        } else {
-            // 合并模式
-            var merge = await UI.confirm('合并导入', '确认以【合并模式】导入？（不会覆盖已有存档）');
+        var merge = false;
+        if (!overwrite) {
+            merge = await UI.confirm('合并导入', '确认以【合并模式】导入？（不会覆盖已有存档）');
             if (!merge) return;
-            var imported = 0;
-            for (var j = 0; j < slots.length; j++) {
-                var mSlot = parseInt(slots[j]);
-                if (isNaN(mSlot) || !saves[slots[j]]) continue;
-                var existing = await SaveDB.get(mSlot);
-                if (!existing) {
-                    await SaveDB.set(mSlot, saves[slots[j]]);
-                    imported++;
-                }
-            }
-            UI.toast('合并导入完成');
         }
+        // 【阶段二】实际写入走全局存档锁，UI 确认在锁外完成
+        await withSaveLock(async function() {
+            if (overwrite) {
+                // 覆盖模式
+                for (var i = 0; i < slots.length; i++) {
+                    var slot = parseInt(slots[i]);
+                    if (!isNaN(slot) && saves[slots[i]]) {
+                        await SaveDB.set(slot, saves[slots[i]]);
+                    }
+                }
+                UI.toast('覆盖导入完成');
+            } else if (merge) {
+                // 合并模式
+                var imported = 0;
+                for (var j = 0; j < slots.length; j++) {
+                    var mSlot = parseInt(slots[j]);
+                    if (isNaN(mSlot) || !saves[slots[j]]) continue;
+                    var existing = await SaveDB.get(mSlot);
+                    if (!existing) {
+                        await SaveDB.set(mSlot, saves[slots[j]]);
+                        imported++;
+                    }
+                }
+                UI.toast('合并导入完成');
+            }
+        }, 'handleImportFile');
         renderSaveUI();
     } catch (e) {
         UI.toast('导入失败：' + translateError(e.message));
@@ -6078,7 +6089,9 @@ async function renameSave(slot) {
         var newName = await UI.prompt('修改存档名：', oldName);
         if (newName === null) return;
         data.name = newName;
-        await SaveDB.set(slot, data);
+        await withSaveLock(async function() {
+            await SaveDB.set(slot, data);
+        }, 'renameSave:' + slot);
         renderSaveUI();
     } catch (e) {
         console.error('renameSave出错:', e);

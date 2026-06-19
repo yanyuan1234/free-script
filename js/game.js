@@ -2993,7 +2993,10 @@ function buildSaveData(customName) {
         gameState._stats.startTime = Date.now();
     }
     // 确保版本号正确
-    if (gameState) gameState._version = GAME_VERSION;
+    if (gameState) {
+        gameState._version = GAME_VERSION;
+        gameState._schemaVersion = (typeof SaveMigrator !== 'undefined') ? SaveMigrator.CURRENT_SCHEMA_VERSION : 1;
+    }
 
     // 打包记忆数据到存档中，确保存档包含完整游戏数据
     var memoryData = null;
@@ -3022,6 +3025,88 @@ function buildSaveData(customName) {
         memoryData: memoryData ? JSON.stringify(memoryData) : null
     };
 }
+
+// 【阶段二】存档版本链迁移器
+// 每次 schema 变更时递增 CURRENT_SCHEMA_VERSION，并注册对应迁移函数。
+// loadFromSlot 会按顺序应用从旧 schemaVersion 到当前版本的所有迁移。
+var SaveMigrator = {
+    CURRENT_SCHEMA_VERSION: 1,
+    _migrations: [],
+    register: function(version, fn, desc) {
+        this._migrations[version] = { fn: fn, desc: desc || '' };
+    },
+    migrate: function(parsed, fromVersion) {
+        if (!parsed) parsed = {};
+        var start = (fromVersion || 0) + 1;
+        for (var v = start; v <= this.CURRENT_SCHEMA_VERSION; v++) {
+            var m = this._migrations[v];
+            if (m) {
+                console.log('[SaveMigrator] 应用迁移 v' + v + ': ' + m.desc);
+                parsed = m.fn(parsed) || parsed;
+            }
+        }
+        parsed._schemaVersion = this.CURRENT_SCHEMA_VERSION;
+        return parsed;
+    }
+};
+
+// 注册历史迁移：v1 处理旧版字段兼容
+SaveMigrator.register(1, function(parsed) {
+    // 旧版 worldInfo 字段改名保留
+    if (parsed.worldInfo) {
+        parsed._worldInfoLegacy = parsed.worldInfo;
+        delete parsed.worldInfo;
+    }
+    // 以下字段在旧存档中可能缺失，统一补默认值
+    if (!parsed.pinnedModules) parsed.pinnedModules = {};
+    if (!parsed.rollingSummary) parsed.rollingSummary = '';
+    if (!parsed.allCharacters) parsed.allCharacters = {};
+    if (!parsed.keyEvents) parsed.keyEvents = [];
+    if (!parsed.worldSnapshot) parsed.worldSnapshot = {};
+    if (!parsed.currentQuests) parsed.currentQuests = [];
+    if (!parsed.relationships) parsed.relationships = [];
+    if (!parsed.currentBag) parsed.currentBag = [];
+    if (parsed.playerData === undefined) parsed.playerData = null;
+    if (!parsed.favStories) parsed.favStories = [];
+    if (!parsed.generatedNovel) parsed.generatedNovel = '';
+    if (!parsed.conversationHistory) parsed.conversationHistory = [];
+    if (typeof parsed.autoCompress === 'undefined') parsed.autoCompress = true;
+    if (typeof parsed.useStream === 'undefined') parsed.useStream = true;
+    if (typeof parsed.temperature === 'undefined') parsed.temperature = 0.8;
+    if (typeof parsed.fontSize === 'undefined') parsed.fontSize = 16;
+    if (typeof parsed.generateChoices === 'undefined') parsed.generateChoices = true;
+    if (!parsed.protagonistSetup) parsed.protagonistSetup = {};
+    if (!parsed._presetApps) parsed._presetApps = {};
+    if (!parsed._undoHistory) parsed._undoHistory = [];
+    if (!Array.isArray(parsed._worldModules)) parsed._worldModules = [];
+    if (!Array.isArray(parsed._moments)) parsed._moments = [];
+    if (!parsed._npcDiaries) parsed._npcDiaries = {};
+    if (!parsed._chattedNpcs) parsed._chattedNpcs = {};
+    if (!parsed._chatLogs) parsed._chatLogs = {};
+    if (!parsed._mail) parsed._mail = [];
+    if (!parsed._diary) parsed._diary = [];
+    if (typeof parsed.userPrompt === 'undefined') parsed.userPrompt = '';
+    if (typeof parsed.customStyle === 'undefined') parsed.customStyle = '';
+    if (typeof parsed.systemPrompt === 'undefined') parsed.systemPrompt = '';
+    if (typeof parsed.tokenCount === 'undefined') parsed.tokenCount = 0;
+    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = 4096;
+    if (typeof parsed.streamFailCount === 'undefined') parsed.streamFailCount = 0;
+    if (!parsed.gameTime) parsed.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
+    if (typeof parsed._jailbreakPrompt === 'undefined') parsed._jailbreakPrompt = '';
+    if (typeof parsed._assistantPrompt === 'undefined') parsed._assistantPrompt = '';
+    if (typeof parsed._MAX_UNDO_HISTORY === 'undefined') parsed._MAX_UNDO_HISTORY = 50;
+    if (!parsed.wordCountConfig) {
+        parsed.wordCountConfig = {
+            enabled: true, min: 1500, max: 3000,
+            paragraphMin: 15, paragraphMax: 17,
+            paragraphStyle: 'medium', lengthPreset: 'medium'
+        };
+    }
+    if (!parsed._theaterContent) parsed._theaterContent = {};
+    if (parsed._lastAIReply === undefined) parsed._lastAIReply = null;
+    return parsed;
+}, '旧版字段迁移（worldInfo 及缺失字段默认值）');
+
 function safeSaveSlot(slot) {
     saveToSlot(slot).catch(function(e) {
         console.error('保存失败:', e);
@@ -3029,7 +3114,7 @@ function safeSaveSlot(slot) {
     });
 }
 async function saveToSlot(slot) {
-    // 【修复 P0-5】走全局存档锁，防止与 autoSave/loadFromSlot 并发
+    // 【修复 P0-5 + 阶段二】走全局存档锁，防止与 autoSave/loadFromSlot 并发
     return withSaveLock(async function() {
         try {
             await SaveDB.set(slot, buildSaveData(''));
@@ -3039,7 +3124,7 @@ async function saveToSlot(slot) {
             console.error('saveToSlot出错:', e);
             UI.toast('保存失败: ' + translateError(e.message || e));
         }
-    });
+    }, 'saveToSlot:' + slot);
 }
 async function loadFromSlot(slot) {
     // 【修复 P0-5】走全局存档锁，并在加载期间设 _loading 标志阻止 autoSave
@@ -3056,6 +3141,18 @@ async function loadFromSlot(slot) {
             UI.toast('该存档位为空');
             return;
         }
+        // 【阶段二】校验和检查：检测静默损坏
+        if (!SaveDB._verifyChecksum(data)) {
+            console.error('[loadFromSlot] 存档校验和失败，尝试从备份恢复');
+            var backup = await SaveDB.restore(slot);
+            if (backup) {
+                data = backup;
+            } else {
+                UI.toast('存档校验失败且备份不可用');
+                return;
+            }
+        }
+
         // 解析状态
         var parsed = null;
         try {
@@ -3065,15 +3162,18 @@ async function loadFromSlot(slot) {
             console.error('存档解析失败:', e);
             return;
         }
-        
+
         // 版本兼容性检查
         var saveVersion = parsed._version || data.version || '1.0.0';
-        console.log('[存档] 版本:', saveVersion, '当前:', GAME_VERSION);
-        
-        // 版本迁移处理（简化）
-        if (saveVersion !== GAME_VERSION) {
-            // 处理旧版本数据
-            if (parsed.worldInfo) {
+        var schemaVersion = parsed._schemaVersion || 0;
+        console.log('[存档] 版本:', saveVersion, '当前:', GAME_VERSION, 'schema:', schemaVersion);
+
+        // 【阶段二】版本链迁移：按 schemaVersion 顺序应用迁移器
+        if (typeof SaveMigrator !== 'undefined') {
+            parsed = SaveMigrator.migrate(parsed, schemaVersion);
+        } else {
+            // 兼容旧逻辑
+            if (saveVersion !== GAME_VERSION && parsed.worldInfo) {
                 parsed._worldInfoLegacy = parsed.worldInfo;
                 delete parsed.worldInfo;
             }
@@ -3229,7 +3329,7 @@ async function loadFromSlot(slot) {
         // 【修复 P0-5】清除加载标志，恢复 autoSave
         if (typeof gameState !== 'undefined' && gameState) gameState._loading = false;
     }
-    }); // end withSaveLock
+    }, 'loadFromSlot:' + slot); // end withSaveLock
 }
 // 提取存档行数据格式化的公共辅助函数
 function _formatSaveSlotData(data) {
@@ -3244,7 +3344,9 @@ async function deleteFromSlot(slot) {
     try {
         var ok = await UI.confirm('删除存档', '确定删除这个存档？');
         if (!ok) return;
-        await SaveDB.set(slot, null);
+        await withSaveLock(async function() {
+            await SaveDB.set(slot, null);
+        }, 'deleteFromSlot:' + slot);
         renderSaveUI();
     } catch (e) {
         console.error('deleteFromSlot出错:', e);

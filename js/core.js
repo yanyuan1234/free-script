@@ -1186,11 +1186,13 @@ var LocalGameAPI = {
 // ========================================
 var SaveDB = {
     DB_NAME: 'BunnyGameDB',
-    DB_VERSION: 1,
+    DB_VERSION: 2,
     STORE_NAME: 'saves',
     _db: null,
     _ready: false,
     _useFallback: false,
+    _fallbackFailCount: 0,
+    MAX_FALLBACK_FAILS: 3,
     async init() {
         if (this._ready) return;
         try {
@@ -1199,61 +1201,74 @@ var SaveDB = {
                 // 添加超时保护，防止 IndexedDB 在某些环境中永远不响应
                 var timeoutId = TimerManager.setTimeout('idbOpenTimeout', function() {
                     reject(new Error('IndexedDB open timeout'));
-                    }, 3000);
+                }, 3000);
                 req.onupgradeneeded = function(e) {
                     var db = e.target.result;
                     if (!db.objectStoreNames.contains('saves')) {
                         db.createObjectStore('saves');
                     }
                 };
-            req.onsuccess = function(e) {
-                TimerManager.clearTimeout('idbOpenTimeout');
-                resolve(e.target.result);
+                req.onsuccess = function(e) {
+                    TimerManager.clearTimeout('idbOpenTimeout');
+                    resolve(e.target.result);
                 };
-            req.onerror = function(e) {
-                TimerManager.clearTimeout('idbOpenTimeout');
-                reject(e.target.error);
+                req.onerror = function(e) {
+                    TimerManager.clearTimeout('idbOpenTimeout');
+                    reject(e.target.error);
                 };
             });
             this._ready = true;
             console.log('✅ IndexedDB 就绪');
-            } catch (e) {
+        } catch (e) {
             console.warn('⚠️ IndexedDB 不可用，回退 localStorage:', e);
             this._useFallback = true;
             this._ready = true;
         }
     },
+    // ── 底层原始读写（带一次重试，偶发错误不立即永久 fallback） ──
+    async _getRaw(key) {
+        return await new Promise(function(resolve, reject) {
+            var tx = SaveDB._db.transaction('saves', 'readonly');
+            var req = tx.objectStore('saves').get(key);
+            req.onsuccess = function() { resolve(req.result || null); };
+            req.onerror = function() { reject(req.error || new Error('IDB get error')); };
+        });
+    },
+    async _setRaw(key, data) {
+        return await new Promise(function(resolve, reject) {
+            var tx = SaveDB._db.transaction('saves', 'readwrite');
+            var store = tx.objectStore('saves');
+            if (data === null || data === undefined) store.delete(key);
+            else store.put(data, key);
+            tx.oncomplete = function() { resolve(); };
+            tx.onerror = function() { reject(tx.error || new Error('IDB set error')); };
+        });
+    },
     async get(slot) {
         await this.init();
-        // 优先检查fallback模式
         if (this._useFallback) return this._lsGetAll()[slot] || null;
         try {
-            return await new Promise(function(resolve) {
-                var tx = SaveDB._db.transaction('saves', 'readonly');
-                var req = tx.objectStore('saves').get('slot_' + slot);
-                req.onsuccess = function() {
-                    resolve(req.result || null);
-                    };
-                req.onerror = function() {
-                    resolve(null);
-                    };
-                });
-            } catch (e) {
-            console.warn('IDB get失败，切换到fallback模式:', e);
-            // 失败后永久切换到fallback模式
-            this._useFallback = true;
-            return this._lsGetAll()[slot] || null;
+            var result = await this._getRaw('slot_' + slot);
+            this._fallbackFailCount = 0;
+            return result;
+        } catch (e) {
+            this._fallbackFailCount++;
+            console.warn('IDB get失败（第' + this._fallbackFailCount + '次）:', e);
+            if (this._fallbackFailCount >= this.MAX_FALLBACK_FAILS) {
+                console.warn('IDB 连续失败，切换到fallback模式');
+                this._useFallback = true;
             }
+            return this._lsGetAll()[slot] || null;
+        }
     },
     async getAll() {
         await this.init();
-        // 优先检查fallback模式
-        if (this._useFallback) return this._lsGetAll();
+        if (this._useFallback) return this._lsGetFiltered();
         try {
-            return await new Promise(function(resolve) {
+            var result = await new Promise(function(resolve) {
                 var tx = SaveDB._db.transaction('saves', 'readonly');
                 var store = tx.objectStore('saves');
-                var result = {};
+                var all = {};
                 var req = store.openCursor();
                 req.onsuccess = function(e) {
                     var cursor = e.target.result;
@@ -1261,98 +1276,165 @@ var SaveDB = {
                         var key = cursor.key;
                         if (typeof key === 'string' && key.startsWith('slot_')) {
                             var slotNum = parseInt(key.replace('slot_', ''));
-                            if (!isNaN(slotNum)) result[slotNum] = cursor.value;
+                            if (!isNaN(slotNum) && !SaveDB._isBackupSlot(slotNum)) {
+                                all[slotNum] = cursor.value;
+                            }
                         }
-                    cursor.continue();
+                        cursor.continue();
                     } else {
-                    resolve(result);
-                }
-            };
-            req.onerror = function() {
-                resolve(SaveDB._lsGetAll());
+                        resolve(all);
+                    }
                 };
+                req.onerror = function() { resolve(SaveDB._lsGetFiltered()); };
             });
+            this._fallbackFailCount = 0;
+            return result;
         } catch (e) {
-        console.warn('IDB getAll失败，切换到fallback模式:', e);
-        // 失败后永久切换到fallback模式
-        this._useFallback = true;
-        return this._lsGetAll();
-    }
+            this._fallbackFailCount++;
+            console.warn('IDB getAll失败（第' + this._fallbackFailCount + '次）:', e);
+            if (this._fallbackFailCount >= this.MAX_FALLBACK_FAILS) this._useFallback = true;
+            return this._lsGetFiltered();
+        }
     },
     async set(slot, data) {
         await this.init();
-        // 优先检查fallback模式
+        var backupSlot = this._getBackupSlot(slot);
+        // 【阶段二】写前备份：保留旧数据到备份槽，防止写入崩溃导致旧档丢失
+        if (backupSlot !== null && data !== null && data !== undefined) {
+            try {
+                var oldData = await this.get(slot);
+                if (oldData) {
+                    if (this._useFallback) this._lsSet(backupSlot, oldData);
+                    else await this._setRaw('slot_' + backupSlot, oldData);
+                }
+            } catch (backupErr) {
+                console.warn('[SaveDB] 写前备份失败，继续写入:', backupErr);
+            }
+        }
+        // 附加校验和，便于读档时检测静默损坏
+        var dataToWrite = (data === null || data === undefined) ? data : this._attachChecksum(data);
         if (this._useFallback) {
-            this._lsSet(slot, data);
+            this._lsSet(slot, dataToWrite);
             return;
         }
-    try {
-        await new Promise(function(resolve, reject) {
-            var tx = SaveDB._db.transaction('saves', 'readwrite');
-            var store = tx.objectStore('saves');
-            if (data === null || data === undefined) {
-                store.delete('slot_' + slot);
-                } else {
-                store.put(data, 'slot_' + slot);
-            }
-        tx.oncomplete = resolve;
-        tx.onerror = function() {
-            reject(tx.error);
-            };
-        });
+        try {
+            await this._setRaw('slot_' + slot, dataToWrite);
+            this._fallbackFailCount = 0;
         } catch (e) {
-        console.warn('IDB写入失败，切换到fallback模式:', e);
-        // 失败后永久切换到fallback模式
-        this._useFallback = true;
-        this._lsSet(slot, data);
-    }
+            console.warn('IDB写入失败，重试一次:', e);
+            try {
+                await this._setRaw('slot_' + slot, dataToWrite);
+                this._fallbackFailCount = 0;
+            } catch (e2) {
+                this._fallbackFailCount++;
+                console.warn('IDB写入重试仍失败（第' + this._fallbackFailCount + '次）:', e2);
+                if (this._fallbackFailCount >= this.MAX_FALLBACK_FAILS) {
+                    console.warn('IDB 连续失败，切换到fallback模式');
+                    this._useFallback = true;
+                }
+                this._lsSet(slot, dataToWrite);
+            }
+        }
+    },
+    // 从备份槽恢复
+    async restore(slot) {
+        var backupSlot = this._getBackupSlot(slot);
+        if (backupSlot === null) return null;
+        var backup = await this.get(backupSlot);
+        if (!backup) {
+            console.warn('[SaveDB] 槽位 ' + slot + ' 没有备份可恢复');
+            return null;
+        }
+        if (!this._verifyChecksum(backup)) {
+            console.error('[SaveDB] 备份数据校验失败，无法恢复');
+            return null;
+        }
+        await this.set(slot, backup);
+        return backup;
     },
     // 启动时自动迁移：localStorage → IndexedDB
     async migrate() {
         await this.init();
         if (this._useFallback) return;
-        // fallback模式不需要迁移
         if (Storage.get(Storage.KEYS.IDB_MIGRATED)) return;
-        // 已迁移过
         var migrated = 0;
-        // 迁移 freeScript_localSaves（新格式）
         try {
             var raw = Storage.get(Storage.KEYS.LOCAL_SAVES);
             if (raw) {
                 var saves = JSON.parse(raw);
                 for (var slot in saves) {
-                    if (saves.hasOwnProperty(slot) && saves[slot]) {
+                    if (saves.hasOwnProperty(slot) && saves[slot] && !this._isBackupSlot(parseInt(slot))) {
                         await this.set(parseInt(slot), saves[slot]);
                         migrated++;
                     }
+                }
             }
+        } catch (e) {}
+        Storage.set(Storage.KEYS.IDB_MIGRATED, '1');
+    },
+    // ── 备份与校验工具 ──
+    _getBackupSlot(slot) {
+        if (slot === 0) return -1;
+        if (typeof slot === 'number' && slot >= 1 && slot <= 99) return -100 - slot;
+        return null;
+    },
+    _isBackupSlot(slot) {
+        return slot === -1 || (slot <= -101 && slot >= -199);
+    },
+    _attachChecksum(data) {
+        if (!data || typeof data !== 'object') return data;
+        var clone = JSON.parse(JSON.stringify(data));
+        var stateStr = typeof clone.state === 'string' ? clone.state : JSON.stringify(clone.state || {});
+        clone._checksum = this._crc32(stateStr);
+        clone._checksumTime = Date.now();
+        return clone;
+    },
+    _verifyChecksum(data) {
+        if (!data || typeof data !== 'object') return true;
+        if (typeof data._checksum !== 'number') return true; // 旧存档无校验，放行
+        var stateStr = typeof data.state === 'string' ? data.state : JSON.stringify(data.state || {});
+        return data._checksum === this._crc32(stateStr);
+    },
+    _crc32(str) {
+        var table = this._crc32Table;
+        if (!table) {
+            table = [];
+            for (var i = 0; i < 256; i++) {
+                var c = i;
+                for (var j = 0; j < 8; j++) {
+                    c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+                }
+                table[i] = c;
+            }
+            this._crc32Table = table;
         }
-    } catch (e) {}
-    Storage.set(Storage.KEYS.IDB_MIGRATED, '1');
+        var crc = -1;
+        for (var i = 0; i < str.length; i++) {
+            crc = table[(crc ^ str.charCodeAt(i)) & 0xFF] ^ (crc >>> 8);
+        }
+        return (crc ^ -1) >>> 0;
     },
     // ── localStorage fallback 方法 ──
     _lsGetAll() {
         try {
             return Storage.getJSON(Storage.KEYS.LOCAL_SAVES, {});
-            } catch (e) {
+        } catch (e) {
             console.error('[SaveManager] 读取localSaves失败:', e);
             return {};
-            }
-    },
-    // 检查数据大小是否安全
-    _isDataSizeSafe(data) {
-        try {
-            var jsonStr = JSON.stringify(data);
-            var sizeKB = jsonStr.length / 1024;
-            // 警告阈值：4MB（localStorage限制约5MB）
-            if (sizeKB > 4096) {
-                console.warn('⚠️ 存档数据较大:', sizeKB.toFixed(1), 'KB');
-                return false;
-            }
-            return true;
-            } catch (e) {
-            return false;
         }
+    },
+    _lsGetFiltered() {
+        var all = this._lsGetAll();
+        var result = {};
+        for (var k in all) {
+            if (all.hasOwnProperty(k)) {
+                var slotNum = parseInt(k);
+                if (!isNaN(slotNum) && !this._isBackupSlot(slotNum)) {
+                    result[k] = all[k];
+                }
+            }
+        }
+        return result;
     },
     _lsSet(slot, data) {
         try {
@@ -1365,7 +1447,7 @@ var SaveDB = {
                 Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
             }
             Storage.set(Storage.KEYS.LOCAL_SAVES, jsonStr);
-            } catch (e) {
+        } catch (e) {
             // 尝试清理后重试一次
             try {
                 Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
@@ -1374,14 +1456,14 @@ var SaveDB = {
                 if (data === null) delete saves[slot];
                 else saves[slot] = data;
                 Storage.set(Storage.KEYS.LOCAL_SAVES, JSON.stringify(saves));
-                } catch (e2) {
+            } catch (e2) {
                 console.error('❌ 清理后仍无法写入，存档可能丢失:', e2);
                 // 尝试提示用户
                 if (typeof UI !== 'undefined' && UI.toast) {
                     UI.toast('存储空间不足，请导出存档后清理');
                 }
             }
-    }
+        }
     }
 };
 // ========================================
@@ -3773,15 +3855,74 @@ function updateSceneTitle(title) {
     }
 }
 var _autoSaveTimer = null;
-// 【修复 P0-5】全局存档写入锁——所有写路径串行化，防止并发写入导致存档损坏
-// autoSave（写 slot 0）与 saveToSlot/loadFromSlot 可能同时执行，
-// buildSaveData 读改写 gameState 期间若发生 loadFromSlot 合并，会写入半合并状态的损坏快照
+// 【阶段二】增强版全局存档写入锁
+// 所有写路径（autoSave / saveToSlot / loadFromSlot / import / export / restore）串行化，
+// 防止并发写入导致存档损坏；同时增加超时保险，避免一次死锁永久卡死。
 var _saveLock = Promise.resolve();
-function withSaveLock(fn) {
-    var run = _saveLock.then(fn, fn);
-    // 无论成功失败都释放锁，避免一次失败永久卡死
-    _saveLock = run.then(function() {}, function() {});
+var _saveLockState = {
+    holder: null,
+    startTime: 0,
+    depth: 0
+};
+var SAVE_LOCK_TIMEOUT = 30000; // 30 秒强制释放
+
+function withSaveLock(fn, label) {
+    label = label || 'unnamed';
+    var run = _saveLock.then(function() {
+        if (_saveLockState.depth > 0) {
+            console.warn('[SaveLock] 检测到重入: ' + label + '，当前持有者: ' + _saveLockState.holder);
+        }
+        _saveLockState.holder = label;
+        _saveLockState.startTime = Date.now();
+        _saveLockState.depth++;
+        return fn();
+    }, function() {
+        // 前序操作失败也不阻塞后续操作
+        _saveLockState.holder = label;
+        _saveLockState.startTime = Date.now();
+        _saveLockState.depth++;
+        return fn();
+    });
+
+    _saveLock = run.then(
+        function(result) {
+            _saveLockState.depth = Math.max(0, _saveLockState.depth - 1);
+            if (_saveLockState.depth === 0) {
+                _saveLockState.holder = null;
+                _saveLockState.startTime = 0;
+            }
+            return result;
+        },
+        function(err) {
+            _saveLockState.depth = Math.max(0, _saveLockState.depth - 1);
+            if (_saveLockState.depth === 0) {
+                _saveLockState.holder = null;
+                _saveLockState.startTime = 0;
+            }
+            throw err;
+        }
+    );
+
+    // 超时保险：如果该锁持有超过 30 秒仍未释放，强制重置
+    var timeoutLabel = 'saveLockTimeout_' + label + '_' + Date.now();
+    TimerManager.setTimeout(timeoutLabel, function() {
+        if (_saveLockState.holder === label && (Date.now() - _saveLockState.startTime) >= SAVE_LOCK_TIMEOUT) {
+            console.error('[SaveLock] 锁超时强制释放:', label);
+            _saveLockState.holder = null;
+            _saveLockState.startTime = 0;
+            _saveLockState.depth = 0;
+            _saveLock = Promise.resolve();
+        }
+    }, SAVE_LOCK_TIMEOUT + 100);
+
     return run;
+}
+
+function isSaveLocked() {
+    return _saveLockState.holder !== null;
+}
+function getSaveLockHolder() {
+    return _saveLockState.holder;
 }
 async function autoSave() {
     if (_autoSaveTimer) return; // 防抖：已有待执行的保存，跳过
@@ -3823,7 +3964,7 @@ async function autoSave() {
     var dot2 = document.getElementById('autoSaveDot');
     if (dot2) dot2.style.display = 'none';
 }
-        });
+        }, 'autoSave');
 }, 2000);
 }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
