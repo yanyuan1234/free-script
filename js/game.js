@@ -2583,10 +2583,14 @@ function renderStory(text) {
     renderStory._lastText = text;
 
     // 【修复】应用正则表达式处理（用于显示）
-    if (typeof RegexEngine !== 'undefined' && RegexEngine.regexScripts.length > 0) {
-        // 计算当前消息深度
+    // 调用 RegexEngine.execute，isPrompt=false / isMarkdown=true 表示 AI 输出侧的 markdown 渲染阶段
+    if (typeof RegexEngine !== 'undefined' && RegexEngine.regexScripts && RegexEngine.regexScripts.length > 0) {
         var depth = (gameState.conversationHistory || []).length;
-        text = RegexEngine.processAIResponse(text, depth);
+        text = RegexEngine.execute(text, RegexEngine.regexScripts, {
+            messageDepth: depth,
+            isPrompt: false,
+            isMarkdown: true
+        });
     }
 
     // 【修复C P2-2】在设置innerHTML前进行HTML净化，防止XSS

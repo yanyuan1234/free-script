@@ -146,21 +146,13 @@ function estimateTokensUtil(text) {
 }
 
 // 估算一组消息的 token 数
-// 【阶段四】按消息对象缓存长度，避免每次遍历长对话历史都重复计算
-var _msgTokenCache = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+// 注意：不缓存 message.content.length。字符串 .length 是 O(1) 属性访问，缓存无收益；
+// 且代码中大量地方会原地修改 message.content（宏处理、加前缀、编辑消息等），缓存会导致 token 估算错误。
 function estimateTokensForMessagesUtil(messages) {
     if (!messages) return 0;
     var total = 0;
     for (var i = 0; i < messages.length; i++) {
-        var m = messages[i];
-        var len;
-        if (_msgTokenCache && _msgTokenCache.has(m)) {
-            len = _msgTokenCache.get(m);
-        } else {
-            len = (m.content || '').length;
-            if (_msgTokenCache) _msgTokenCache.set(m, len);
-        }
-        total += len;
+        total += (messages[i].content || '').length;
     }
     return Math.ceil(total / 1.7);
 }
