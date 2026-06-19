@@ -24,31 +24,33 @@ var GameLinker = {
         }
     },
     // 触发所有页面的刷新（用于全局数据变更）
+    // 合并为单次 rAF，避免页面多时触发多次 requestAnimationFrame
     refreshAll: function() {
         var self = this;
-        // 使用 rAF 批量调度，避免多次重排
-        var pages = Object.keys(this._refreshers);
-        for (var i = 0; i < pages.length; i++) {
-            (function(page) {
-                requestAnimationFrame(function() {
-                    self.refresh(page);
-                });
-            })(pages[i]);
-        }
+        if (self._rafPending) return;
+        self._rafPending = true;
+        requestAnimationFrame(function() {
+            self._rafPending = false;
+            var pages = Object.keys(self._refreshers);
+            for (var i = 0; i < pages.length; i++) {
+                self.refresh(pages[i]);
+            }
+        });
     },
     // 触发除当前页面外的所有页面刷新（避免当前页面重复刷新）
     refreshOthers: function(exceptPage) {
         var self = this;
-        var pages = Object.keys(this._refreshers);
-        for (var i = 0; i < pages.length; i++) {
-            if (pages[i] !== exceptPage) {
-                (function(page) {
-                    requestAnimationFrame(function() {
-                        self.refresh(page);
-                    });
-                })(pages[i]);
+        if (self._rafPending) return;
+        self._rafPending = true;
+        requestAnimationFrame(function() {
+            self._rafPending = false;
+            var pages = Object.keys(self._refreshers);
+            for (var i = 0; i < pages.length; i++) {
+                if (pages[i] !== exceptPage) {
+                    self.refresh(pages[i]);
+                }
             }
-        }
+        });
     },
     // 智能刷新：根据变更的数据类型，自动推断需要刷新的页面
     // 【性能优化】合并同一帧内的多次刷新请求，避免重复渲染

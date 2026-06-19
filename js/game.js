@@ -2566,21 +2566,26 @@ function onStreamChunk(delta, fullText) {
 // 第4层: 剧情渲染
 // ========================================
 // --- 剧情渲染 ---
+// 剧情渲染缓存上限：超过该长度的文本不缓存，避免长剧情长期占用内存
+var _MAX_CACHED_STORY_LEN = 50000;
+
 function renderStory(text) {
     TypewriterBuffer.stop();
     var storyEl = document.getElementById('storyText');
     var contentEl = document.getElementById('gameContent');
 
-    // 【阶段四】渲染结果缓存：相同文本跳过重复 formatStory + sanitizeHtml + innerHTML
-    // 典型收益：切页面返回、重复渲染同一剧情时避免整段重新解析
-    if (text === renderStory._lastText && renderStory._lastHtml !== undefined) {
+    var regexCount = (typeof RegexEngine !== 'undefined' && RegexEngine.regexScripts) ? RegexEngine.regexScripts.length : 0;
+    var canCache = typeof text === 'string' && text.length <= _MAX_CACHED_STORY_LEN;
+
+    // 【阶段四】渲染结果缓存：相同文本且正则脚本未变化时跳过重复 formatStory + sanitizeHtml + innerHTML
+    // 超过长度上限的文本不缓存，避免长剧情长期占用内存
+    if (canCache && text === renderStory._lastText && renderStory._lastHtml !== undefined && renderStory._lastRegexCount === regexCount) {
         if (storyEl && storyEl.innerHTML !== renderStory._lastHtml) {
             storyEl.innerHTML = renderStory._lastHtml;
         }
         if (contentEl) contentEl.scrollTop = 0;
         return;
     }
-    renderStory._lastText = text;
 
     // 【修复】应用正则表达式处理（用于显示）
     // 调用 RegexEngine.execute，isPrompt=false / isMarkdown=true 表示 AI 输出侧的 markdown 渲染阶段
@@ -2595,7 +2600,15 @@ function renderStory(text) {
 
     // 【修复C P2-2】在设置innerHTML前进行HTML净化，防止XSS
     var formatted = sanitizeHtml(formatStory(text));
-    renderStory._lastHtml = formatted;
+    if (canCache) {
+        renderStory._lastText = text;
+        renderStory._lastHtml = formatted;
+        renderStory._lastRegexCount = regexCount;
+    } else {
+        renderStory._lastText = undefined;
+        renderStory._lastHtml = undefined;
+        renderStory._lastRegexCount = undefined;
+    }
     if (storyEl) storyEl.innerHTML = formatted;
     if (contentEl) contentEl.scrollTop = 0;
 }

@@ -1765,10 +1765,27 @@ var PresetManager = {
         var depthPrompts = {};    // depth -> [prompts]  (depth >= 6, 动态深度)
         var systemPromptParts = []; // system_prompt=true 的提示词，合并到主系统提示词
 
+        var firstChar = (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters[0]) || null;
+        var history = gameState.conversationHistory || [];
+        var lastMsg = history.length > 0 ? history[history.length - 1] : null;
+        var lastUserMsg = '';
+        var lastCharMsg = '';
+        for (var i = history.length - 1; i >= 0; i--) {
+            if (!lastUserMsg && history[i].role === 'user') lastUserMsg = history[i].content || '';
+            if (!lastCharMsg && history[i].role === 'assistant') lastCharMsg = history[i].content || '';
+            if (lastUserMsg && lastCharMsg) break;
+        }
         var macroEnv = {
             user: gameState.playerName || '玩家',
-            char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters[0] && gameState.worldSnapshot.characters[0].name) ? gameState.worldSnapshot.characters[0].name : '角色',
-            original: gameState._lastOriginalContent || ''
+            char: firstChar ? (firstChar.name || '角色') : '角色',
+            original: gameState._lastOriginalContent || '',
+            input: lastUserMsg,
+            lastUserMessage: lastUserMsg,
+            lastCharMessage: lastCharMsg,
+            lastMessage: lastMsg ? (lastMsg.content || '') : '',
+            description: firstChar ? (firstChar.desc || '') : '',
+            personality: firstChar ? (firstChar.personality || '') : '',
+            scenario: (gameState.worldSnapshot && gameState.worldSnapshot.scenario) || gameState.userPrompt || ''
             };
 
         // 【酒馆标准提示词分流】
