@@ -70,6 +70,9 @@ async function initApp() {
                 if (loadingEl.parentNode) loadingEl.remove();
             }, 400);
         }
+
+        // 【阶段三】运行时基础可访问性增强
+        enhanceAccessibility();
     } catch(initErr) {
         console.error('[INIT] 初始化失败:', initErr);
         // 即使初始化失败，也尝试渲染基本UI
@@ -79,6 +82,70 @@ async function initApp() {
         } catch(e) {
             console.error('[INIT] 渲染基本UI也失败:', e);
         }
+    }
+}
+
+// 【阶段三】运行时基础可访问性增强：为大量静态 HTML 补丁式补充 ARIA 属性
+function enhanceAccessibility() {
+    try {
+        // 1. 所有无 type 的 button 默认设为 type="button"，避免表单默认提交
+        var buttons = document.querySelectorAll('button:not([type])');
+        for (var i = 0; i < buttons.length; i++) {
+            buttons[i].setAttribute('type', 'button');
+        }
+
+        // 2. 图标 svg 对屏幕阅读器隐藏
+        var icons = document.querySelectorAll('svg.icon, .icon svg');
+        for (var j = 0; j < icons.length; j++) {
+            if (!icons[j].getAttribute('aria-hidden')) {
+                icons[j].setAttribute('aria-hidden', 'true');
+                icons[j].setAttribute('focusable', 'false');
+            }
+        }
+
+        // 3. 图标按钮若无 aria-label，尝试推断
+        var iconBtns = document.querySelectorAll('button[class*="icon"], button[class*="circle"], [data-close]');
+        for (var k = 0; k < iconBtns.length; k++) {
+            var btn = iconBtns[k];
+            if (btn.getAttribute('aria-label')) continue;
+            if (btn.getAttribute('aria-labelledby')) continue;
+            if (btn.textContent && btn.textContent.trim().length > 0) continue;
+            if (btn.dataset.close) {
+                btn.setAttribute('aria-label', '关闭');
+            } else if (btn.className.indexOf('trash') !== -1 || btn.id.indexOf('delete') !== -1) {
+                btn.setAttribute('aria-label', '删除');
+            } else if (btn.className.indexOf('edit') !== -1 || btn.id.indexOf('edit') !== -1) {
+                btn.setAttribute('aria-label', '编辑');
+            } else if (btn.className.indexOf('save') !== -1 || btn.id.indexOf('save') !== -1) {
+                btn.setAttribute('aria-label', '保存');
+            } else if (btn.className.indexOf('plus') !== -1 || btn.className.indexOf('add') !== -1) {
+                btn.setAttribute('aria-label', '添加');
+            }
+        }
+
+        // 4. 图片若无 alt 则补空 alt（装饰性图片）
+        var imgs = document.querySelectorAll('img:not([alt])');
+        for (var m = 0; m < imgs.length; m++) {
+            imgs[m].setAttribute('alt', '');
+        }
+
+        // 5. 为已有 modal-overlay 补充基础 ARIA（showModal 也会动态补充）
+        var overlays = document.querySelectorAll('.modal-overlay');
+        for (var n = 0; n < overlays.length; n++) {
+            var ov = overlays[n];
+            if (!ov.getAttribute('role')) ov.setAttribute('role', 'dialog');
+            ov.setAttribute('aria-modal', 'true');
+            // 若内部有标题且未关联，则关联
+            var title = ov.querySelector('.modal-title');
+            if (title && !ov.getAttribute('aria-labelledby')) {
+                if (!title.id) title.id = ov.id + '_title';
+                ov.setAttribute('aria-labelledby', title.id);
+            }
+        }
+
+        console.log('[A11y] 基础可访问性增强完成');
+    } catch (e) {
+        console.warn('[A11y] 可访问性增强失败:', e);
     }
 }
 

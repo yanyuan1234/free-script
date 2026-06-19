@@ -2581,51 +2581,51 @@
             </div>
 
             <!-- ==================== 确认模态框 ==================== -->
-            <div class="modal-overlay" id="confirmModal">
-                <div class="modal-content" style="max-width:300px;">
+            <div class="modal-overlay" id="confirmModal" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+                <div class="modal-content" style="max-width:300px;" role="document">
                     <div class="modal-header">
                         <h3 class="modal-title" id="confirmTitle">确认</h3>
-                        <button class="circle-btn" data-close="confirmModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" type="button" data-close="confirmModal" aria-label="关闭"><svg class="icon icon-sm" aria-hidden="true">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
                     <div class="modal-body">
                         <div class="confirm-body" id="confirmMessage"></div>
                         <div class="confirm-actions">
-                            <button class="crystal-btn" id="confirmYes">确定</button>
-                            <button class="crystal-btn" id="confirmNo" style="opacity:.7;" data-close="confirmModal">取消</button>
+                            <button class="crystal-btn" type="button" id="confirmYes">确定</button>
+                            <button class="crystal-btn" type="button" id="confirmNo" style="opacity:.7;" data-close="confirmModal">取消</button>
                         </div>
                     </div>
                 </div>
             </div>
             <!-- 输入弹窗 -->
-            <div class="modal-overlay" id="promptModal">
-                <div class="modal-content" style="max-width:320px;">
+            <div class="modal-overlay" id="promptModal" role="dialog" aria-modal="true" aria-labelledby="promptTitle">
+                <div class="modal-content" style="max-width:320px;" role="document">
                     <div class="modal-header">
                         <h3 class="modal-title" id="promptTitle">输入</h3>
-                        <button class="circle-btn" data-close="promptModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" type="button" data-close="promptModal" aria-label="关闭"><svg class="icon icon-sm" aria-hidden="true">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
                     <div class="modal-body">
-                        <input type="text" id="promptInput" class="wi-field-input" style="width:100%;padding:10px;margin-bottom:12px;" placeholder="">
+                        <input type="text" id="promptInput" class="wi-field-input" aria-label="输入内容" style="width:100%;padding:10px;margin-bottom:12px;" placeholder="">
                         <div class="confirm-actions">
-                            <button class="crystal-btn" id="promptOk">确定</button>
-                            <button class="crystal-btn" style="opacity:.7;" id="promptCancel">取消</button>
+                            <button class="crystal-btn" type="button" id="promptOk">确定</button>
+                            <button class="crystal-btn" type="button" style="opacity:.7;" id="promptCancel">取消</button>
                         </div>
                     </div>
                 </div>
             </div>
 
             <!-- 【日志页面】AI 生成功能提醒弹窗 -->
-            <div class="modal-overlay" id="generatingModal" style="display:none;">
-                <div class="modal-content" style="max-width:340px;text-align:center;">
+            <div class="modal-overlay" id="generatingModal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="generatingTitle">
+                <div class="modal-content" style="max-width:340px;text-align:center;" role="document">
                     <div class="modal-body" style="padding:28px 22px 22px;">
-                        <div id="generatingSpinner" class="generating-spinner"></div>
+                        <div id="generatingSpinner" class="generating-spinner" aria-hidden="true"></div>
                         <h3 class="modal-title" id="generatingTitle" style="margin:14px 0 6px;font-size:16px;">AI 正在生成</h3>
                         <p class="text-soft" id="generatingMessage" style="margin:0 0 6px;font-size:13px;line-height:1.6;">请稍候，可能需要十几秒到几十秒</p>
                         <p class="text-soft" id="generatingFeature" style="margin:0 0 16px;font-size:12px;opacity:.7;"></p>
-                        <button class="crystal-btn" id="generatingCancelBtn" style="min-width:120px;">取消</button>
+                        <button class="crystal-btn" type="button" id="generatingCancelBtn" style="min-width:120px;">取消</button>
                     </div>
                 </div>
             </div>

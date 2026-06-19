@@ -378,6 +378,10 @@ var UI = {
         var t = document.createElement('div');
         t.className = 'toast';
         t.textContent = msg;
+        // 【阶段三】屏幕阅读器播报
+        t.setAttribute('role', 'status');
+        t.setAttribute('aria-live', 'polite');
+        t.setAttribute('aria-atomic', 'true');
         ct.appendChild(t);
         // 【全游戏弹窗策略】3 秒自动消失——使用 POPUP_DURATION_MS 常量
         // 【缺陷修复】使用唯一 key，避免连续 toast 时旧定时器被清除导致 DOM 永久残留
@@ -407,12 +411,20 @@ var UI = {
         }
     },
     _modalStack: [],
+    _lastFocusBeforeModal: null,
+    _modalKeydownBound: false,
+    // 【阶段三】可聚焦元素选择器（用于焦点陷阱）
+    _focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     showModal: function(id) {
         var el = document.getElementById(id);
         if (el) {
             // 【缺陷修复】已激活的 modal 不重复入栈，避免 z-index 虚高和导航栈残留
             if (this._modalStack.indexOf(id) !== -1) {
                 return;
+            }
+            // 记录打开弹窗前的焦点元素，关闭时恢复
+            if (this._modalStack.length === 0) {
+                this._lastFocusBeforeModal = document.activeElement;
             }
             // 【导航栈】模态框打开时入栈
             this.pushNav('modal', id);
@@ -425,6 +437,19 @@ var UI = {
             if (el.classList.contains('modal-overlay')) {
                 el.style.display = 'flex';
             }
+            // 【阶段三】ARIA 属性：标记为模态对话框
+            if (!el.getAttribute('role')) el.setAttribute('role', 'dialog');
+            el.setAttribute('aria-modal', 'true');
+            // 尝试关联标题
+            var titleEl = el.querySelector('.modal-title, .modal-header h3, h3, h2, .title');
+            if (titleEl) {
+                if (!titleEl.id) titleEl.id = id + '_title';
+                el.setAttribute('aria-labelledby', titleEl.id);
+            }
+            // 【阶段三】焦点管理：移到第一个可聚焦元素，或弹窗本身
+            this._focusModal(el);
+            // 【阶段三】绑定全局键盘事件（仅一次）
+            this._bindModalKeyboard();
             // 点击遮罩区域关闭模态框
             if (!el._maskClickBound) {
                 el._maskClickBound = true;
@@ -454,6 +479,64 @@ var UI = {
             }
         }
     },
+    // 【阶段三】将焦点移入弹窗
+    _focusModal: function(el) {
+        var focusable = el.querySelectorAll(this._focusableSelector);
+        var target = null;
+        // 优先聚焦到输入框或确认按钮
+        for (var i = 0; i < focusable.length; i++) {
+            var tag = focusable[i].tagName.toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') {
+                target = focusable[i];
+                break;
+            }
+        }
+        if (!target && focusable.length > 0) target = focusable[0];
+        if (target) {
+            try { target.focus(); } catch(e) {}
+        } else {
+            el.setAttribute('tabindex', '-1');
+            try { el.focus(); } catch(e) {}
+        }
+    },
+    // 【阶段三】绑定全局弹窗键盘事件（Escape 关闭、Tab 焦点陷阱）
+    _bindModalKeyboard: function() {
+        if (this._modalKeydownBound) return;
+        this._modalKeydownBound = true;
+        document.addEventListener('keydown', function(e) {
+            if (UI._modalStack.length === 0) return;
+            var topId = UI._modalStack[UI._modalStack.length - 1];
+            var topModal = document.getElementById(topId);
+            if (!topModal) return;
+
+            // Escape 关闭最顶层弹窗（confirm/prompt/generating 需要明确操作，不关闭）
+            if (e.key === 'Escape' || e.code === 'Escape' || e.keyCode === 27) {
+                if (topId === 'confirmModal' || topId === 'promptModal' || topId === 'generatingModal') return;
+                e.preventDefault();
+                UI.hideModal(topId);
+                return;
+            }
+
+            // Tab 焦点陷阱
+            if (e.key === 'Tab' || e.code === 'Tab') {
+                var focusable = topModal.querySelectorAll(UI._focusableSelector);
+                if (focusable.length === 0) return;
+                var first = focusable[0];
+                var last = focusable[focusable.length - 1];
+                if (e.shiftKey) {
+                    if (document.activeElement === first || !topModal.contains(document.activeElement)) {
+                        e.preventDefault();
+                        last.focus();
+                    }
+                } else {
+                    if (document.activeElement === last || !topModal.contains(document.activeElement)) {
+                        e.preventDefault();
+                        first.focus();
+                    }
+                }
+            }
+        });
+    },
     // ========================================
     // 【统一弹窗管理】动态创建模态框，走统一调度
     // 用法：UI.createModal({ id, html, onClose?, persistent? })
@@ -475,6 +558,7 @@ var UI = {
         // 创建内容容器
         var content = document.createElement('div');
         content.className = 'modal-content';
+        content.setAttribute('role', 'document');
         content.innerHTML = opts.html || '';
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
@@ -483,6 +567,14 @@ var UI = {
         if (opts.onClose) overlay._onClose = opts.onClose;
         overlay._persistent = !!opts.persistent;
         overlay._isDynamic = true; // 标记为动态创建的弹窗
+        // 【阶段三】动态弹窗内容基础 ARIA 增强
+        var newBtns = overlay.querySelectorAll('button:not([type])');
+        for (var b = 0; b < newBtns.length; b++) newBtns[b].setAttribute('type', 'button');
+        var newSvgs = overlay.querySelectorAll('svg');
+        for (var s = 0; s < newSvgs.length; s++) {
+            newSvgs[s].setAttribute('aria-hidden', 'true');
+            newSvgs[s].setAttribute('focusable', 'false');
+        }
         // 自动显示（showModal 会统一绑定遮罩点击关闭事件）
         UI.showModal(id);
         return overlay;
@@ -508,6 +600,11 @@ var UI = {
             // 非持久化的动态弹窗自动清理 DOM
             if (el._isDynamic && !el._persistent) {
                 el.remove();
+            }
+            // 【阶段三】恢复焦点到打开弹窗前的元素（当所有弹窗都关闭时）
+            if (this._modalStack.length === 0 && this._lastFocusBeforeModal) {
+                try { this._lastFocusBeforeModal.focus(); } catch(e) {}
+                this._lastFocusBeforeModal = null;
             }
         }
     },
