@@ -2143,6 +2143,32 @@ function isScrollNearBottom(el) {
 // 游戏内时间系统（AI动态生成）
 // ========================================
 var GameTimeSystem = {
+    // 从剧情文本中智能提取时间信息作为兜底
+    _extractTimeFromStory(story) {
+        if (!story || typeof story !== 'string') return null;
+        var result = {};
+        // 提取日期：xxxx年xx月xx日 / xx-xx-xx / xx/xx/xx
+        var dateMatch = story.match(/(\d{4}[年/-]\d{1,2}[月/-]\d{1,2}日?)/);
+        if (dateMatch) result.date = dateMatch[1];
+        // 提取时间：xx:xx
+        var timeMatch = story.match(/(\d{1,2}:\d{2})/);
+        if (timeMatch) result.time = timeMatch[1];
+        // 提取时段
+        var periodKeywords = {
+            '凌晨': '凌晨', '清晨': '清晨', '早晨': '早晨', '早上': '早上',
+            '上午': '上午', '中午': '中午', '午后': '午后', '下午': '下午',
+            '傍晚': '傍晚', '黄昏': '黄昏', '晚上': '晚上', '夜晚': '夜晚', '夜间': '夜间',
+            '深夜': '深夜'
+        };
+        for (var kw in periodKeywords) {
+            if (story.indexOf(kw) !== -1) {
+                result.period = periodKeywords[kw];
+                break;
+            }
+        }
+        return (result.date || result.time || result.period) ? result : null;
+    },
+
     // 从AI回复的JSON中解析时间字段并更新gameTime
     parseFromAI(data) {
         if (!data) return;
@@ -2157,6 +2183,20 @@ var GameTimeSystem = {
         if (data.gameTime.period) gt.period = data.gameTime.period;
         if (data.gameTime.weather) gt.weather = data.gameTime.weather;
         if (data.gameTime.era) gt.era = data.gameTime.era;
+    }
+    // 兜底：没有gameTime或全部为空时，从story中提取
+    if ((!gt.date && !gt.time && !gt.period) && data.story) {
+        var extracted = this._extractTimeFromStory(data.story);
+        if (extracted) {
+            if (extracted.date) gt.date = extracted.date;
+            if (extracted.time) gt.time = extracted.time;
+            if (extracted.period) gt.period = extracted.period;
+        }
+    }
+    // 最终兜底：游戏开局给一个默认时间，避免UI显示"--"
+    if (!gt.date && !gt.time && !gt.period) {
+        gt.date = '游戏开始';
+        gt.period = '初始时刻';
     }
     },
 
@@ -2713,8 +2753,8 @@ var theaterContent = {};
 if (typeof MacroEngine !== 'undefined') {
     var theaterVars = MacroEngine.getTheaterContent();
     Object.keys(theaterVars).forEach(function(key) {
-        var val = theaterVars[key];
-        if (val && val.trim()) {
+        var val = String(theaterVars[key] || '');
+        if (val.trim()) {
             var parsed = MacroEngine.parseTheaterContent(val);
             if (parsed && parsed.type !== 'unknown') {
                 theaterContent[key] = parsed;

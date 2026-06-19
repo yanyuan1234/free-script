@@ -1,0 +1,42 @@
+[info] Successfully preconnected to https://fonts.gstatic.com/
+[info] Successfully preconnected to https://fonts.googleapis.com/
+[log] [TavernHelper] 酒馆助手兼容层已加载 (SillyTavern API 已补全)
+[log] [GameAdapter v2.0] 集成适配器已初始化
+[log] [TavernHelperCompat] 酒馆助手兼容层已初始化
+[log] [STscript] 开始集成到游戏系统...
+[log] [STscript] ✅ 集成完成！兼容引擎已激活
+[log] [STscript] 支持预设：果实·叶子版 / 月读·Gemini / 蛾摩拉☼
+[log] [Fix Patch v3.0] 加载安全修复补丁...
+[log] [Fix Patch v3.0] ✅ 安全修复补丁已加载
+[log] ✅ IndexedDB 就绪
+[warning] [bindEvent] element not found: streamOn
+[warning] [bindEvent] element not found: streamOff
+[log] [A11y] 基础可访问性增强完成
+[info] Successfully preconnected to https://fonts.googleapis.com/
+[info] Successfully preconnected to https://fonts.gstatic.com/
+[log] [TavernHelper] 酒馆助手兼容层已加载 (SillyTavern API 已补全)
+[log] [GameAdapter v2.0] 集成适配器已初始化
+[log] [TavernHelperCompat] 酒馆助手兼容层已初始化
+[log] [STscript] 开始集成到游戏系统...
+[log] [STscript] ✅ 集成完成！兼容引擎已激活
+[log] [STscript] 支持预设：果实·叶子版 / 月读·Gemini / 蛾摩拉☼
+[log] [Fix Patch v3.0] 加载安全修复补丁...
+[log] [Fix Patch v3.0] ✅ 安全修复补丁已加载
+[log] ✅ IndexedDB 就绪
+[warning] [bindEvent] element not found: streamOn
+[warning] [bindEvent] element not found: streamOff
+[log] [A11y] 基础可访问性增强完成
+[log] [Context检测] AI自报context: 131072
+[log] [Context检测] 最终结果(qwen3.5-397b-a17b): 131072
+[log] [buildSystemPrompt] 已注入增强记忆
+[log] [injectPresetGlobalVars] 全局宏变量已注入
+[log] [buildSystemPrompt] 已注入增强记忆
+[log] [消息构建] 已合并相邻system消息 (squash_system_messages)
+[log] [Token] 输入: 1608/131072 (1%)
+[warning] [callAI] rawBody 达到 64KB 上限，停止累积
+[error] 请求出错: TypeError: content.trim is not a function. (In 'content.trim()', 'content.trim' is undefined)
+[log] [injectPresetGlobalVars] 全局宏变量已注入
+[log] [buildSystemPrompt] 已注入增强记忆
+[log] [消息构建] 已合并相邻system消息 (squash_system_messages)
+[log] [Token] 输入: 1641/131072 (1%)
+[warning] [callAI] rawBody 达到 64KB 上限，停止累积

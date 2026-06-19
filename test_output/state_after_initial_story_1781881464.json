@@ -1,0 +1,23 @@
+{
+  "currentPage": "storyPage",
+  "storyTitle": "校园求生：第1天",
+  "storyHtml": "<p>刺耳的警报声撕裂了清晨的宁静，你从宿舍床上惊醒，心脏狂跳。窗外传来凄厉的尖叫和玻璃破碎声，你冲到窗边，看到操场上几个身影正疯狂扑向奔跑的学生，鲜血在晨光中刺目地飞溅。</p><p class=\"story-typing-para\">\n手机震动，班级群里炸开了锅：「图书馆有人发疯咬人</p>",
+  "gameTime": "第1天 早晨 7:30",
+  "optionsCount": 3,
+  "isWaiting": false,
+  "genControlVisible": true,
+  "playerDataName": "你",
+  "allCharactersKeys": [],
+  "relationshipsLen": 0,
+  "currentBagLen": 3,
+  "currentQuestsLen": 2,
+  "keyEventsLen": 0,
+  "convHistoryLen": 3,
+  "apiConfigs": [
+    {
+      "baseUrl": "https://api.iamhc.cn/v1",
+      "model": "auto"
+    }
+  ],
+  "apiCurrentSlot": 0
+}

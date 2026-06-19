@@ -1,0 +1,25 @@
+{
+  "currentPage": "storyPage",
+  "storyTitle": "第一章：断线",
+  "storyHtml": "<p><span class=\"dialogue\">「砰！」</span></p><p>沉闷的撞击声在狭窄</p><p>的宿舍楼道里炸开，像是熟透的西瓜被重锤砸碎。那股令人作呕的腥甜气味瞬间弥漫开来，混合着陈浩身上常年不换的球衣汗味和血腥味，形成了一种令人窒息的恶臭。陈浩——你曾经的室友，那个会在深夜打呼噜震天响、抢你外卖还理直气壮的大男孩，此刻正像一只被切断提线的木偶，软绵绵地瘫软在墙角。</p><p>棒球棍的木质手柄上还残留着陈浩头骨的触感，震得你虎口发麻，指尖微微颤抖。你大口喘着粗气，心脏在胸腔里剧烈撞击，仿佛要冲破肋骨的束缚。楼道里应急灯的灯光忽明忽暗，将陈浩扭曲的影子拉得细长而狰狞，投射在剥落的墙皮上，像是一幅超现实的恐怖画作。</p><p><span class=\"dialogue\">「呕……」</span></p><p>你强压下胃里的翻江倒海，低头看向陈浩。他的双眼半睁着，瞳孔扩散，焦距涣散，嘴角挂着一缕暗红色的血沫。那双眼曾经在你挂科时嘲笑过你，在你失恋时陪你喝到凌晨三点，但此刻，里面只剩下一片死寂的空洞。他的喉咙里发出<span class=\"dialogue\">「荷",
+  "gameTime": "--",
+  "optionsCount": 3,
+  "isWaiting": false,
+  "genControlVisible": true,
+  "playerDataName": "林默",
+  "allCharactersKeys": [
+    "陈浩"
+  ],
+  "relationshipsLen": 0,
+  "currentBagLen": 0,
+  "currentQuestsLen": 0,
+  "keyEventsLen": 0,
+  "convHistoryLen": 3,
+  "apiConfigs": [
+    {
+      "baseUrl": "https://api.iamhc.cn/v1",
+      "model": "Qwen3.5-397B-A17B"
+    }
+  ],
+  "apiCurrentSlot": 0
+}

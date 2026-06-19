@@ -4679,8 +4679,8 @@ return prompts.map(p => {
             };
 
         enabled.forEach(p => {
-            const content = p.parsedContent || p.content;
-            if (!content || !content.trim()) return;
+            const content = String(p.parsedContent || p.content || '');
+            if (!content.trim()) return;
             const pos = p.injection_position || 0;
             const role = p.role || 0;
             const d = p.injection_depth || depth;

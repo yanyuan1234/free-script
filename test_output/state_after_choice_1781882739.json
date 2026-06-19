@@ -1,0 +1,25 @@
+{
+  "currentPage": "storyPage",
+  "storyTitle": "第一章：断裂的宁静",
+  "storyHtml": "<p>你压低声音，语速极</p><p>快，每一个字都像是从喉咙里硬挤出来的。苏清猛地抬头，那双总是带着几分疏离和清冷的眼睛此刻写满了惊恐与不可置信。她下意识地后退了半步，脊背撞上了冰冷的墙壁，发出轻微的闷响。走廊深处的撞击声更加密集了，伴随着某种湿润的、令人作呕的撕裂声，那是骨骼被咬碎的声音，就在隔壁教室。</p><p><span class=\"dialogue\">「你疯了？」</span>苏清的声音在颤抖，但她没有大声尖叫，本能地捂住了嘴巴，<span class=\"dialogue\">「那里是死路！而且……那些东西跑得比人还快！消防梯……万一断了怎么办？」</span></p><p><span class=\"dialogue\">「总比留在这里等死强。」</span>你迅速环顾四周，目光扫过散落在地上的书本、破碎的眼镜，以及窗外那片被夕阳染成血色的天空。这是校园丧尸爆发的第三个小时，秩序早已崩塌，剩下的只有本能。你伸出手，试图抓住她的衣袖，<span class=\"dialogue\">「相信我一次，苏清。我刚才看到隔壁班的人跑出去，他们选了楼梯，结果……你不想变成那样。」</span",
+  "gameTime": "2024-10-15 17:45",
+  "optionsCount": 4,
+  "isWaiting": false,
+  "genControlVisible": true,
+  "playerDataName": "林默",
+  "allCharactersKeys": [
+    "苏清"
+  ],
+  "relationshipsLen": 0,
+  "currentBagLen": 2,
+  "currentQuestsLen": 2,
+  "keyEventsLen": 0,
+  "convHistoryLen": 3,
+  "apiConfigs": [
+    {
+      "baseUrl": "https://api.iamhc.cn/v1",
+      "model": "Qwen3.5-397B-A17B"
+    }
+  ],
+  "apiCurrentSlot": 0
+}

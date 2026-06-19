@@ -1,0 +1,23 @@
+{
+  "currentPage": "storyPage",
+  "storyTitle": "校园求生：第1天",
+  "storyHtml": "<p>你被一阵刺耳的警报声惊醒，宿舍里弥漫着一种不寻常的寂静。窗外，原本应该熙熙攘攘的校园此刻却异常安静，只有远处偶尔传来几声凄厉的尖叫。</p><p>你揉了揉惺忪的睡眼，拿起手机，屏幕上显示着几条未读消息：</p><p>【校园紧急通知】</p><p><span class=\"dialogue\">「请各位同学立即锁好门窗，不要外出！校园内出现不明原因袭击事件，保安人员正在处理。重复，不要外出！」</span></p><p>你心头一紧，下意识地看向室友的床铺——空的。李明的被子叠得整整齐齐，但人不在。你想起昨晚他说过要去图书馆赶论文。</p><p class=\"story-typing-para\">\n宿舍门突然被轻轻敲响，一个颤抖的声音传来：「有人吗？</p>",
+  "gameTime": "2024年10月15日 07:30",
+  "optionsCount": 4,
+  "isWaiting": false,
+  "genControlVisible": true,
+  "playerDataName": "你",
+  "allCharactersKeys": [],
+  "relationshipsLen": 0,
+  "currentBagLen": 3,
+  "currentQuestsLen": 1,
+  "keyEventsLen": 0,
+  "convHistoryLen": 3,
+  "apiConfigs": [
+    {
+      "baseUrl": "https://api.iamhc.cn/v1",
+      "model": "auto"
+    }
+  ],
+  "apiCurrentSlot": 0
+}

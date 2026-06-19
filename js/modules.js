@@ -4139,7 +4139,7 @@ var MacroEngine = {
     * @param {string} env.char - {{char}} 宏的替换值
     */
     process: function(text, env) {
-        if (!text || typeof text !== 'string') return text || '';
+        if (!text || typeof text !== 'string') return String(text || '');
         const self = this;
         env = env || {};
 

@@ -1,0 +1,25 @@
+{
+  "currentPage": "storyPage",
+  "storyTitle": "第一章：凝固的清晨",
+  "storyHtml": "<p>阳光透过宿舍窗帘的缝隙，像一把钝刀切开昏暗的空气，落在林默的脸上。闹钟在床头柜上疯狂震动，发出令人牙酸的嗡嗡声，显示着07:30。距离《宏观经济学》的早八点名还有三十分钟。林默伸手关掉闹钟，指尖触碰到冰凉的金属外壳，一种莫名的违和感像电流般顺着脊椎爬升。太安静了。</p><p>往常这个时间，隔壁床的胖子应该在打呼噜，走廊里会有室友冲厕所的水声，楼下食堂的大妈早就开始吆喝豆浆油条。但现在，整栋六教宿舍楼像被按下了静音键。那种安静不是平和，而是某种巨大的、吞噬一切的真空，连灰尘落下的声音都显得震耳欲聋。林默坐起身，揉了揉发胀的太阳穴，窗外的梧桐树上没有鸟鸣，只有几片枯叶在死寂中缓缓飘落。</p><p><span class=\"dialogue\">「林默，你醒了吗？」</span>门外传来苏清冷静的声音，带着一丝不易察觉的紧绷。苏清是隔壁宿舍的学霸，也是林默在学生会认识的少数朋友之一。她的声音很稳，但林默听出了那层平静下的裂纹——就像结冰的湖面，底下暗流涌动。</p><p><span class=\"dialogue\">「醒了。」</span>林默下意识地回答，声音有些沙哑。他掀开被子，",
+  "gameTime": "--",
+  "optionsCount": 3,
+  "isWaiting": false,
+  "genControlVisible": true,
+  "playerDataName": "林默",
+  "allCharactersKeys": [
+    "苏清"
+  ],
+  "relationshipsLen": 0,
+  "currentBagLen": 0,
+  "currentQuestsLen": 0,
+  "keyEventsLen": 0,
+  "convHistoryLen": 1,
+  "apiConfigs": [
+    {
+      "baseUrl": "https://api.iamhc.cn/v1",
+      "model": "Qwen3.5-397B-A17B"
+    }
+  ],
+  "apiCurrentSlot": 0
+}

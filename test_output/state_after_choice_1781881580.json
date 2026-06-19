@@ -1,0 +1,23 @@
+{
+  "currentPage": "storyPage",
+  "storyTitle": "校园求生：第1天",
+  "storyHtml": "<p>用户选择了选项A：打开门让苏小雨进来。我需要根据这个选择来推进故事。</p><p>当前状态：</p><p>- 时间：2024年10月15日 07:30 早晨</p><p>- 主角：大三学生</p><p>- 持有物品：手机、宿舍钥匙、学生证</p><p>- 已知NPC：苏小雨（隔壁班同学，门外，受伤）、李明（室友，去向不明）、张老师（校医，发来警告信息）</p><p>- 任务：生存第一天（进行中）</p><p>选择A的后果分析：</p><p>1. 苏小雨进入宿舍，可能会带来风险（她可能被感染，或者门外有追兵）</p><p>2. 但同时也可能获得一个同伴，增加生存几率</p><p>3. 需要处理她的伤口，确认她是否安全</p><p>4. 可能会发现关于爆发的更多信息</p><p>5. 与张老师的警告产生冲突（张老师说不要开门）</p><p>我需要：</p><p>1. 描述开门后的场景</p><p class=\"story-typing-para\">2. 苏小雨的状态（受</p>",
+  "gameTime": "2024年10月15日 07:52",
+  "optionsCount": 3,
+  "isWaiting": false,
+  "genControlVisible": true,
+  "playerDataName": "写有线索的便条",
+  "allCharactersKeys": [],
+  "relationshipsLen": 0,
+  "currentBagLen": 3,
+  "currentQuestsLen": 1,
+  "keyEventsLen": 0,
+  "convHistoryLen": 5,
+  "apiConfigs": [
+    {
+      "baseUrl": "https://api.iamhc.cn/v1",
+      "model": "auto"
+    }
+  ],
+  "apiCurrentSlot": 0
+}
