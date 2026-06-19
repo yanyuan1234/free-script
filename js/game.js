@@ -484,10 +484,11 @@ function buildSystemPrompt(includeFormatRules) {
                 '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
                 '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
         } else {
-            // 【JSON模式】原有逻辑保持兼容
-            _formatAnchor = '\n\n【输出要求】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。' +
-                '字段：{ "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"","time":"","period":""} }\n' +
-                '<giggle>心声(2-5个) <mem>标记变化 约' + _maxTokensForAnchor + 'tokens输出空间';
+            // 【JSON模式】直接返回结构化数据，前端据此自动填充所有面板
+            _formatAnchor = '\n\n【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。\n' +
+                '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"","time":"","period":""} }\n' +
+                '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
+                '<giggle>心声(2-5个) 约' + _maxTokensForAnchor + 'tokens输出空间';
         }
     }
 
@@ -535,22 +536,26 @@ ${turn <= 3 ?
 `【心声系统 <giggle>】
 每回合穿插 2-5 个 <giggle>角色名：心声</giggle>，散在不同段落。心声是"没说出口的话"——口是心非、潜台词、旁观者吐槽。
 
-【状态变化 <mem>】
-重要状态变化时用 <mem> 标记，前端会自动提取并维护结构化数据：
-- <mem type="event" action="add">陈墨获得雷引玉简</mem>（关键事件）
-- <mem type="item" name="雷令" qty="1" action="add"/>（获得物品）
-- <mem type="character" name="林婉" field="favorability" value="70"/>（角色好感/状态变化）
-- <mem type="quest" action="add">明日卯时去后山</mem>（新任务）
-- <mem type="time" day="3" period="afternoon"/>（时间推进）
-
 ${(gameState && gameState.pureTextMode) ?
-`【持续维护】你不需要输出player/characters/bag/quests/gameTime等结构化数据——前端会从剧情和<mem>标签中自动提取。你只管写好故事，结构化数据由系统维护。` :
-`【世界模块】world数组类型：text(描述)、list/ranking(清单)、key_value(属性)、cards(卡片)、comments(论坛)、moments(朋友圈)、mail(邮件)、shop(商店)、diary(日记)
-
+`【状态变化 <mem>】（纯文本模式核心）
+重要状态变化时必须用 <mem> 标签标记，前端自动提取：
+- <mem type="event" action="add">陈墨获得雷引玉简</mem>
+- <mem type="item" name="雷令" qty="1" action="add"/>
+- <mem type="character" name="林婉" field="favorability" value="70"/>
+- <mem type="quest" action="add">明日卯时去后山</mem>
+- <mem type="time" day="3" period="afternoon"/>
+【持续维护】你不需要输出player/characters/bag/quests/gameTime等结构化数据——前端会从剧情和<mem>标签中自动提取。` :
+`【JSON 字段维护】（JSON模式核心）
+把状态变化写进对应 JSON 字段，不要依赖 <mem> 标签：
+- 角色变化 → characters 数组
+- 物品变化 → bag 数组
+- 任务变化 → quests 数组
+- 时间变化 → gameTime 对象
+- 世界/设定 → world 数组
+【世界模块】world数组类型：text(描述)、list/ranking(清单)、key_value(属性)、cards(卡片)、comments(论坛)、moments(朋友圈)、mail(邮件)、shop(商店)、diary(日记)
 【持续维护】favorability随剧情更新，bag/quests实时同步，空字段省略不输出。`}
 ` :
-`【工具】每回合2-5个<giggle>心声 | 状态变化用<mem>标记 | ${(gameState && gameState.pureTextMode) ? '纯文本模式：所有token用在story上' : 'world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略'}
-**【强制要求】**本回合必须输出至少 1 个 <mem> 状态标签（time/event/location/item/character/quest 任一类型），否则前端无法维护游戏状态。`
+`【工具】每回合2-5个<giggle>心声 | ${(gameState && gameState.pureTextMode) ? '状态变化用<mem>标记 | 纯文本模式：所有token用在story上 | **强制要求**：每回合至少1个<mem>标签' : 'JSON模式：维护title/story/choices/characters/bag/quests/gameTime等字段 | world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略'}`
 }
 
 【信息优先级】始终生效>本轮变化>旧记录>旧指令
@@ -582,8 +587,8 @@ function _buildFormatRules(gs, _t) {
             + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
             + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
     } else {
-        // 第4轮起：极简格式提醒
-        return '【格式】直接输出JSON（以{开头），不要前缀，空字段省略。<giggle>心声 <mem>标记变化';
+        // 第4轮起：保留关键字段提醒，防止模型遗忘
+        return '【格式·JSON模式】直接输出JSON（以{开头），不要前缀，空字段省略。必填：title、story。常用：choices、player、characters、bag、quests、gameTime、world。<giggle>心声可穿插';
     }
 }
 
@@ -1759,8 +1764,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             GameTimeSystem.updateUI();
         }
 
-        // 纯文本模式下没有 JSON title，用用户设定作为兜底标题
-        if (gameState && gameState.pureTextMode && !gameState._lastSceneTitle && gameState.userPrompt) {
+        // AI 没有返回章节标题时，用用户设定作为兜底标题
+        if (gameState && !gameState._lastSceneTitle && gameState.userPrompt) {
             var fallbackTitle = gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : '');
             updateSceneTitle(fallbackTitle);
             gameState._lastSceneTitle = fallbackTitle;

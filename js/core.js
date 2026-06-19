@@ -2446,25 +2446,34 @@ function robustParse(raw) {
         r.story = story;
         ok = true;
     }
-// 提取各字段
-const hud = extractObjArr(raw, 'hud');
-if (hud) r.hud = hud;
-const choices = extractObjArr(raw, 'choices');
-if (choices) r.choices = choices;
-const player = extractObj(raw, 'player');
-if (player) {
-    r.player = player;
-    if (!r.player.stats) r.player.stats = extractObjArr(raw, 'stats') || [];
-}
-const chars = extractObjArr(raw, 'characters');
-if (chars) r.characters = chars;
-const world = extractObjArr(raw, 'world');
-if (world) r.world = world;
-const bag = extractObjArr(raw, 'bag');
-if (bag) r.bag = bag;
-// story从JSON外面提取
-if (Object.keys(r).length > 0) ok = true;
-return ok ? r : null;
+    // 提取各字段（保持与 JSON 模式提示词字段一致）
+    const title = extractStr(raw, 'title');
+    if (title) { r.title = title; ok = true; }
+    const hud = extractObjArr(raw, 'hud');
+    if (hud) r.hud = hud;
+    const choices = extractObjArr(raw, 'choices');
+    if (choices) r.choices = choices;
+    const player = extractObj(raw, 'player');
+    if (player) {
+        r.player = player;
+        if (!r.player.stats) r.player.stats = extractObjArr(raw, 'stats') || [];
+    }
+    const chars = extractObjArr(raw, 'characters');
+    if (chars) r.characters = chars;
+    const world = extractObjArr(raw, 'world');
+    if (world) r.world = world;
+    const bag = extractObjArr(raw, 'bag');
+    if (bag) r.bag = bag;
+    const quests = extractObjArr(raw, 'quests');
+    if (quests) r.quests = quests;
+    const relationships = extractObjArr(raw, 'relationships');
+    if (relationships) r.relationships = relationships;
+    const keyEvents = extractArr(raw, 'keyEvents');
+    if (keyEvents) r.keyEvents = keyEvents;
+    const gameTime = extractObj(raw, 'gameTime');
+    if (gameTime) r.gameTime = gameTime;
+    if (Object.keys(r).length > 0) ok = true;
+    return ok ? r : null;
 }
 // === <mem>标签解析器（方案C核心：状态自动提取）===
 // AI只输出纯文本story + <mem>状态变化 + <giggle>心声
