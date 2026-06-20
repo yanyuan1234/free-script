@@ -3768,7 +3768,7 @@ function translateError(msg) {
 
         // ═══ 模型兼容性错误（X19）═══
         // 针对"连接成功但配置失败"的场景，给出具体可操作建议
-        'does not exist': '该模型不存在或已下线 → 请在设置中更换为文本对话模型（如 DeepSeek-V4-Flash、glm-4.7）',
+        'does not exist': '该模型不存在或已下线 → 请在设置中更换为支持文本对话的模型',
         'model does not exist': '该模型不存在 → 请更换为支持的文本对话模型',
         'model is not found': '该模型未找到 → 可能已下线，请更换模型',
         'not found': '资源未找到 → 该模型可能不支持文本生成，请更换为对话模型',
@@ -4700,9 +4700,9 @@ async function executeAINormal(url, body, apiKey, signal) {
         }
         // 【修复X19】content 和 reasoning 都为空 → 抛明确错误，而非返回空串让上游困惑
         // 旧代码返回 ''，上游 parseAIResponse 兜底显示"AI未返回剧情内容"，用户不知道是模型问题
-        // 新错误信息明确告知是模型兼容性问题，并推荐可用模型
+        // 新错误信息明确告知是模型兼容性问题，引导用户更换模型（不硬编码具体模型名）
         console.warn('[executeAINormal] 模型返回 200 但 content 和 reasoning_content 均为空，可能是不兼容的模型');
-        throw new Error('该模型返回了空内容（content 和 reasoning_content 均为空）→ 可能是不支持文本生成的模型，请更换为 DeepSeek-V4-Flash、glm-4.7、Qwen3.5 等对话模型');
+        throw new Error('该模型返回了空内容（content 和 reasoning_content 均为空）→ 可能是不支持文本生成的模型，请更换为支持文本对话的模型');
     }
     // JSON 解析成功但结构不识别，原版兜底行为：返回 res.text() 让用户看到原文
     try { return await res.text(); } catch (e) { return ''; }
