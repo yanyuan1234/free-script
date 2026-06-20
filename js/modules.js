@@ -869,7 +869,7 @@ var PresetManager = {
             response_format: safeNum(data.response_format, null, null),
             modalities: safeNum(data.modalities, null, null),
             tool_reasoning_mode: data.tool_reasoning_mode || 'disabled',
-            // DeepSeek V4 等模型的推理参数
+            // 部分推理模型的思考深度参数
             reasoning_effort: data.reasoning_effort || null,
             // 酒馆预设行为控制参数
             show_thoughts: data.show_thoughts !== undefined ? data.show_thoughts : null,

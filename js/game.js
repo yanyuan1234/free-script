@@ -989,7 +989,7 @@ function applyParamPreset(preset) {
             name: '高温创意',
             temperature: 1.71, top_p: 0.9, top_k: 0,
             frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 30000, description: '超高温长篇，适合 Gemini（DeepSeek 命中缓存低）'
+            max_tokens: 30000, description: '超高温长篇，适合部分大上下文模型（部分模型命中缓存低）'
         },
         default: {
             name: '默认参数',
@@ -1734,7 +1734,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // === COT（思维链）处理 ===
         // 从AI回复中提取 <ECoT>...</ECoT>、<thinking>...</thinking>、💭...💭 标签内容
         // 这些内容不显示给用户，但需要保存为 {{original}} 的值
-        // 支持 DeepSeek V4 的 💭...💭 格式（自动解析）
+        // 支持部分模型的 💭...💭 格式（自动解析）
         // 【增强】支持更多思维链标签格式
         // <thinking>...</thinking>, <ECoT>...</ECoT>, 💭...💭
         // 💭...💭, <cot>...</cot>, <reasoning>...</reasoning>
@@ -1746,7 +1746,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         var cotMatch;
         while ((cotMatch = cotRegex.exec(storyText)) !== null) {
             // 捕获组1: XML标签格式 <thinking>...</thinking>
-            // 捕获组2: DeepSeek格式 💭...💭
+            // 捕获组2: 💭...💭 格式
             var cotContent = (cotMatch[1] || cotMatch[2] || '').trim();
             if (cotContent) {
                 cotMatches.push(cotContent);

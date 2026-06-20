@@ -1185,14 +1185,9 @@ var LocalGameAPI = {
     // 作用：在UI上给模型打个标签（如"已下架""不推荐"），提醒玩家注意
     // 重要：列表中的模型完全可以正常使用，调用/轮换/重试逻辑均不检查此列表
     // 添加/删除模型到此列表，只影响UI显示，不影响任何功能
-    _deprecatedModels: [
-        'deepseek-v4-flash',
-        'gemini-2.5-flash',
-        // 2026-06 排查：iamhc.cn 中转站下架的模型（依然可用，只是官方不再提供）
-        'moonshotai/kimi-k2.6',
-        'meta/llama-3.3-70b-instruct',
-        'qwen/qwen3-coder-480b-a35b-instruct'
-    ],
+    // 【修复X20】移除硬编码的模型名——不同中转站下架情况不同，硬编码会误标
+    // 改为空列表，如需标记特定模型，用户可自行添加
+    _deprecatedModels: [],
     // 【纯查询】判断模型是否在分类标签中，仅用于UI显示，不影响功能
     isModelDeprecated(modelName) {
         return modelName && this._deprecatedModels.indexOf(modelName) !== -1;
@@ -2772,7 +2767,7 @@ if (!storyText || storyText.trim() === '') {
 }
 
 // 【修复X8】裸文本思维链泄漏检测
-// 某些模型（如 Qwen3.5）在 JSON 解析失败后会把推理过程当剧情输出：
+// 某些模型在 JSON 解析失败后会把推理过程当剧情输出：
 //   "用户选择了选项A：打开门让苏小雨进来。我需要根据这个选择来推进故事。
 //    当前状态：- 时间：2024年10月15日 07:30 早晨 - 主角：大三学生..."
 // 这些是 AI 的内心 OS，不应显示给玩家。检测特征：
@@ -3725,7 +3720,7 @@ function translateError(msg) {
         '无效的': '参数无效 → 请检查API配置中的参数设置',
 
         // ═══ 模型相关 ═══
-        'invalid model': '模型名称无效 → 请到API配置检查模型名（注意大小写，如 deepseek-chat 不是 DeepSeek-Chat）',
+        'invalid model': '模型名称无效 → 请到API配置检查模型名（注意大小写和拼写）',
         'model_overloaded': '模型过载 → 当前使用人数太多，请稍后重试或切换模型',
         'model_rate_limit': '模型速率限制 → 该模型请求太频繁，请稍后重试',
 
@@ -4483,7 +4478,7 @@ function buildAIRequestBody(messages, options, config) {
 
 // 【优化 #6 + #7】解析一条 SSE 事件文本，把内容累加到 ctx
 // 统一前缀处理：兼容 "data:" 和 "data: " 两种格式
-// 【修复 #19】推理模型（DeepSeek-R1 / o1 / o3 等）的思考链走 reasoning_content 字段，
+// 【修复 #19】部分推理模型的思考链走 reasoning_content 字段，
 //              剧情正文走 content 字段。两者必须分离——只把 content 给用户看，
 //              否则推理阶段 reason chain 会被当成剧情渲染出来。
 function parseSSEEventText(eventText, ctx) {
@@ -4514,7 +4509,7 @@ function parseSSEEventText(eventText, ctx) {
         if (!content && reasoningChunk) {
             content = reasoningChunk;
         } else if (reasoningChunk) {
-            // 真正的思考链（DeepSeek-R1 等），统计但不进入正文
+            // 真正的思考链，统计但不进入正文
             ctx.reasoningText += reasoningChunk;
         }
         ctx.fullText += content;
@@ -4683,9 +4678,8 @@ async function executeAINormal(url, body, apiKey, signal) {
     }
     var data = await res.json();
     // 【修复X18】非流式模式回退到 reasoning_content（与流式模式行为一致）
-    // 旧代码（修复 #19）明确拒绝回退，导致 MiniMax-M2.7、Spark-X2-Flash、step-3.5/3.7-flash
-    // 等 4 个模型返回 200 但 content 为空时，游戏报"配置失败"
-    // 流式模式（parseSSEEventText）已为 Cloudflare Kimi 实现了回退，非流式应保持一致
+    // 旧代码（修复 #19）明确拒绝回退，导致部分模型返回 200 但 content 为空时报"配置失败"
+    // 流式模式（parseSSEEventText）已实现了回退，非流式应保持一致
     // 安全措施：打 _reasoningAsContent 标记，让 parseAIResponse 的思维链泄漏检测（X8）能拦截真正的推理内容
     var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
     if (_nmsg) {
@@ -4721,7 +4715,7 @@ async function callAI(messages, options = {}) {
 
     // 【优化 #2 + #3】每次调用创建独立的 AbortController
     // 【修复X12】超时时间从 5 分钟延长到 10 分钟，并支持用户自定义
-    // 旧代码 5 分钟超时对 DeepSeek-V4-Pro 等推理模型不够，导致正常请求被误杀
+    // 旧代码 5 分钟超时对部分推理模型不够，导致正常请求被误杀
     // 优先级：gameState.aiTimeoutMs（用户自定义）> 默认 10 分钟
     var _timeoutMs = 10 * 60 * 1000;
     if (typeof gameState !== 'undefined' && gameState && gameState.aiTimeoutMs && gameState.aiTimeoutMs > 0) {
