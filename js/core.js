@@ -3765,6 +3765,14 @@ function translateError(msg) {
         'invalid response': '无效的响应 → API返回了异常数据，请检查API配置',
         'empty response': '服务器返回空数据 → AI未生成任何内容，可能是max_tokens太小或模型异常',
         '请求超时（5分钟）': 'AI请求超时 → 模型思考时间过长，可能是上下文太大或模型过载，请重试或在设置中调整超时时间',
+
+        // ═══ 模型兼容性错误（X19）═══
+        // 针对"连接成功但配置失败"的场景，给出具体可操作建议
+        'does not exist': '该模型不存在或已下线 → 请在设置中更换为文本对话模型（如 DeepSeek-V4-Flash、glm-4.7）',
+        'model does not exist': '该模型不存在 → 请更换为支持的文本对话模型',
+        'model is not found': '该模型未找到 → 可能已下线，请更换模型',
+        'not found': '资源未找到 → 该模型可能不支持文本生成，请更换为对话模型',
+        '所有': '所有API配置均调用失败 → 请检查：1)模型是否支持文本对话 2)API密钥是否有效 3)网络是否正常',
     };
 // 预构建按长度降序排列的key数组，避免每次调用都排序
 var _translateErrorSortedKeys = null;
@@ -4523,7 +4531,7 @@ function parseSSEEventText(eventText, ctx) {
 // 2) 如果整体不是 JSON，从 rawBody 中找首条 data 行提取
 // 3) 都失败时**回退到 rawBody 原文**——与原版 [backup/index.html L11882-11903] 一致：
 //    原版注释明确说"如果也不是 JSON，直接用原始文本"，避免对未知格式显示空白
-// 【修复 #19】在流式 / 兜底路径里都不要把 reasoning_content 当 content 用
+// 【修复X18】兜底路径也回退到 reasoning_content（与 executeAINormal 保持一致）
 function parseAIResponseFallback(rawBody) {
     if (!rawBody) return '';
     // 1) 整体 JSON
@@ -4538,8 +4546,10 @@ function parseAIResponseFallback(rawBody) {
             var _reasoning = (typeof _msg.reasoning_content === 'string') ? _msg.reasoning_content
                            : (typeof _msg.reasoning === 'string') ? _msg.reasoning : '';
             if (_content) return _content;
+            // 【修复X18】content 为空时回退到 reasoning_content（与 executeAINormal 一致）
             if (_reasoning) {
-                console.warn('[parseAIResponseFallback] AI 只返回思考链（' + _reasoning.length + ' 字符），正文为空');
+                console.warn('[parseAIResponseFallback] content 为空，回退 reasoning_content（' + _reasoning.length + ' 字符）');
+                return _reasoning;
             }
             if (jsonData.usage) return '';
             return rawBody;
@@ -4672,18 +4682,27 @@ async function executeAINormal(url, body, apiKey, signal) {
         throw new Error(errMsg);
     }
     var data = await res.json();
-    // 【修复 #19】只取 content；reasoning_content/reasoning 是思考链，content 为空时
-    //              打警告并返回空串（绝不回退到思考链），让上游能感知到异常
+    // 【修复X18】非流式模式回退到 reasoning_content（与流式模式行为一致）
+    // 旧代码（修复 #19）明确拒绝回退，导致 MiniMax-M2.7、Spark-X2-Flash、step-3.5/3.7-flash
+    // 等 4 个模型返回 200 但 content 为空时，游戏报"配置失败"
+    // 流式模式（parseSSEEventText）已为 Cloudflare Kimi 实现了回退，非流式应保持一致
+    // 安全措施：打 _reasoningAsContent 标记，让 parseAIResponse 的思维链泄漏检测（X8）能拦截真正的推理内容
     var _nmsg = data.choices && data.choices[0] && data.choices[0].message;
     if (_nmsg) {
         var _content = (typeof _nmsg.content === 'string') ? _nmsg.content : '';
         var _reasoning = (typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content
                        : (typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning : '';
         if (_content) return _content;
+        // 【修复X18】content 为空时回退到 reasoning_content（与 executeAIStream 一致）
         if (_reasoning) {
-            console.warn('[executeAINormal] AI 只返回思考链（' + _reasoning.length + ' 字符），正文为空，按空内容处理');
+            console.warn('[executeAINormal] content 为空，回退使用 reasoning_content（' + _reasoning.length + ' 字符）');
+            return _reasoning;
         }
-        return '';
+        // 【修复X19】content 和 reasoning 都为空 → 抛明确错误，而非返回空串让上游困惑
+        // 旧代码返回 ''，上游 parseAIResponse 兜底显示"AI未返回剧情内容"，用户不知道是模型问题
+        // 新错误信息明确告知是模型兼容性问题，并推荐可用模型
+        console.warn('[executeAINormal] 模型返回 200 但 content 和 reasoning_content 均为空，可能是不兼容的模型');
+        throw new Error('该模型返回了空内容（content 和 reasoning_content 均为空）→ 可能是不支持文本生成的模型，请更换为 DeepSeek-V4-Flash、glm-4.7、Qwen3.5 等对话模型');
     }
     // JSON 解析成功但结构不识别，原版兜底行为：返回 res.text() 让用户看到原文
     try { return await res.text(); } catch (e) { return ''; }

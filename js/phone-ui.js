@@ -728,10 +728,13 @@ function _autoExtractWorldNotes(modules) {
                 }).join('\n');
             }
         } else {
-            content = mod.content || '';
+            // 【修复X17】mod.content 可能是 undefined/数组/对象（非字符串），不能直接用 || ''
+            // 因为数组是 truthy，[] || '' 会得到 [] 而非 ''，后续 .trim() 抛 TypeError
+            content = (typeof mod.content === 'string') ? mod.content : '';
         }
-        
-        if (content.trim()) {
+
+        // 【修复X17】双重保险：确保 content 是字符串再 trim
+        if (typeof content === 'string' && content.trim()) {
             EnhancedMemory.longTermMemory.worldNotes.push({
                 title: mod.title,
                 category: categoryMap[mod.type] || '设定',

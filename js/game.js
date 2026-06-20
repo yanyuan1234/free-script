@@ -390,7 +390,10 @@ function _generateAutoChoices(storyText, lastChoices) {
 }
 
 function _slimAssistantMessage(content) {
-    if (!content || content.length < 200) return content;
+    // 【修复X17】content 可能是 undefined/数组/对象（非字符串），需类型检查
+    // 旧代码 !content 能挡住 undefined/null/''，但挡不住数组（truthy），数组.length 返回 undefined
+    // undefined < 200 是 false，会走到 content.trim() 抛 TypeError
+    if (!content || typeof content !== 'string' || content.length < 200) return content;
     // 尝试提取JSON中的story字段
     try {
         // 快速检测：不是JSON格式就直接返回
