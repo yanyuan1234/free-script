@@ -4469,6 +4469,16 @@ function buildAIRequestBody(messages, options, config) {
 
     var filtered = filterRequestParams(params);
     if (options.stream) filtered.stream = true;
+    // 【修复P1-1】temperature 防御性清理：NaN/负数/非数字修正为模型默认（不传）
+    // 注意：不硬钳制到 1.0——OpenAI 官方支持 0-2，部分模型（如 Gemini/DeepSeek）支持更高
+    // 真正的越界报错由 API 自己返回 400，调用方会通过 tryWithFallback 切换配置重试
+    if (filtered.temperature != null) {
+        var tp = Number(filtered.temperature);
+        if (!isFinite(tp) || tp < 0) {
+            console.warn('[API] temperature 异常值已移除，使用模型默认:', filtered.temperature);
+            delete filtered.temperature;
+        }
+    }
     // 【修复 P0-2 + 动态化】移除 max_tokens 4096 硬上限——这是 API 游戏，AI 能理解输出长度
     // 硬编码 4096 会让长篇叙事预设（如 30000 token 的 Gemini 预设）全部失效
     // 现在只做"防止明显错误"的兜底：负数、0、非数字修正为模型默认（不传 max_tokens）
@@ -4479,6 +4489,24 @@ function buildAIRequestBody(messages, options, config) {
             // 负数/0/NaN/Infinity：删除字段，让 API 用模型默认值
             console.warn('[API] max_tokens 异常值已移除，使用模型默认:', filtered.max_tokens);
             delete filtered.max_tokens;
+        }
+    }
+    // 【修复P1-2】max_tokens 上限动态约束：与 contextSize 联动
+    // 不硬编码上限——某些模型支持输出 >50% 上下文长度（如 Gemini 2.0 Flash 输出 8192 / 输入 1M）
+    // 只在 contextSize 已知且 max_tokens 明显超出时（>contextSize）才裁剪，避免必然的 400 错误
+    if (filtered.max_tokens != null) {
+        var ctxSize = 0;
+        try {
+            if (typeof gameState !== 'undefined' && gameState && gameState.contextSize) {
+                ctxSize = Number(gameState.contextSize) || 0;
+            }
+        } catch (e) { /* gameState 可能未定义 */ }
+        if (ctxSize > 0) {
+            var mt2 = Number(filtered.max_tokens);
+            if (mt2 > ctxSize) {
+                console.warn('[API] max_tokens(' + mt2 + ') 超过 contextSize(' + ctxSize + ')，已裁剪');
+                filtered.max_tokens = ctxSize;
+            }
         }
     }
     // 注：不再强制下限 512——某些模型支持小 max_tokens 做摘要，应由调用方/预设决定

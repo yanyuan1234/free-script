@@ -5628,20 +5628,44 @@ var ARCHETYPE_PRESETS = {
     passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📙 长篇' },
     delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '📕 细腻' }
 };
+// 【修复P1-3】核心采样参数默认基线——applyArchetype 和 applyParamPreset 应用新值前先重置到这个基线，
+// 避免两个档位系统互相残留字段（如先点参数预设设了 max_tokens=30000，再点写法档位时 max_tokens 不会残留）
+// 与 PresetManager.currentParams 初始值保持一致（见 modules.js:338）
+var SAMPLING_PARAMS_BASELINE = {
+    temperature: 0.8,
+    top_p: 0.9,
+    top_k: 0,
+    frequency_penalty: 0,
+    presence_penalty: 0,
+    max_tokens: 4096,
+    repeat_penalty: 1.0
+};
 function applyArchetype(name) {
     var p = ARCHETYPE_PRESETS[name];
     if (!p) return;
     // 写入 PresetManager（这是 callAI 真正读取的源）
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        // 【修复P1-3】先重置核心采样参数到基线，避免 applyParamPreset 残留字段污染
+        PresetManager.currentParams.temperature = SAMPLING_PARAMS_BASELINE.temperature;
+        PresetManager.currentParams.top_p = SAMPLING_PARAMS_BASELINE.top_p;
+        PresetManager.currentParams.top_k = SAMPLING_PARAMS_BASELINE.top_k;
+        PresetManager.currentParams.frequency_penalty = SAMPLING_PARAMS_BASELINE.frequency_penalty;
+        PresetManager.currentParams.presence_penalty = SAMPLING_PARAMS_BASELINE.presence_penalty;
+        PresetManager.currentParams.max_tokens = SAMPLING_PARAMS_BASELINE.max_tokens;
+        PresetManager.currentParams.repeat_penalty = SAMPLING_PARAMS_BASELINE.repeat_penalty;
+        // 再覆盖写法档位自己的值
         PresetManager.currentParams.temperature = p.temperature;
         PresetManager.currentParams.top_p = p.top_p;
         PresetManager.currentParams.frequency_penalty = p.frequency_penalty;
         PresetManager.currentParams.presence_penalty = p.presence_penalty;
         PresetManager.currentParams.repeat_penalty = p.repeat_penalty;
+        if (typeof PresetManager.saveCurrentParams === 'function') PresetManager.saveCurrentParams();
         if (typeof PresetManager.syncParamsToUI === 'function') PresetManager.syncParamsToUI();
     }
     if (typeof gameState !== 'undefined') {
         gameState.temperature = p.temperature;
+        // 【修复P1-3】同步 max_tokens 到 gameState，避免 UI 与实际请求不一致
+        if (gameState.maxTokens !== undefined) gameState.maxTokens = SAMPLING_PARAMS_BASELINE.max_tokens;
         gameState.presetArchetype = name;
     }
     // UI 反馈

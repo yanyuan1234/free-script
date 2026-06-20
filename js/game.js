@@ -1013,6 +1013,18 @@ function applyParamPreset(preset) {
 
     // 同步到PresetManager（参数统一由预设管理器控制）
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        // 【修复P1-3】先重置核心采样参数到基线，避免 applyArchetype 残留字段污染
+        // （如先点写法档位设了 repeat_penalty=1.1，再点参数预设时 repeat_penalty 不会残留）
+        if (typeof SAMPLING_PARAMS_BASELINE !== 'undefined') {
+            PresetManager.currentParams.temperature = SAMPLING_PARAMS_BASELINE.temperature;
+            PresetManager.currentParams.top_p = SAMPLING_PARAMS_BASELINE.top_p;
+            PresetManager.currentParams.top_k = SAMPLING_PARAMS_BASELINE.top_k;
+            PresetManager.currentParams.frequency_penalty = SAMPLING_PARAMS_BASELINE.frequency_penalty;
+            PresetManager.currentParams.presence_penalty = SAMPLING_PARAMS_BASELINE.presence_penalty;
+            PresetManager.currentParams.max_tokens = SAMPLING_PARAMS_BASELINE.max_tokens;
+            PresetManager.currentParams.repeat_penalty = SAMPLING_PARAMS_BASELINE.repeat_penalty;
+        }
+        // 再覆盖参数预设自己的值
         PresetManager.currentParams.temperature = p.temperature;
         PresetManager.currentParams.top_p = p.top_p;
         PresetManager.currentParams.top_k = p.top_k;
