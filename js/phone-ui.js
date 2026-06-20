@@ -4255,7 +4255,9 @@ function startNewGame() {
     streamBuffer = '';
     isWaiting = false;
     isCompressing = false;
-    lastCompressTime = 0;
+    // 【修复P0-4】压缩冷却实际使用 window.lastCompressTime（见 game.js），
+    // 此前误重置 core.js 的 let lastCompressTime（死代码），导致新游戏后旧冷却仍生效
+    window.lastCompressTime = 0;
     _streamModeLocked = false;
     _streamMode = null;
     if (typeof _streamFullText !== 'undefined') _streamFullText = '';

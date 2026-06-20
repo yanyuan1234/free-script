@@ -971,7 +971,7 @@ function applyParamPreset(preset) {
             name: '高温创意',
             temperature: 1.71, top_p: 0.9, top_k: 0,
             frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事（推荐 Gemini）'
+            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事'
         },
         moonread: {
             name: '低温稳定',
@@ -2166,10 +2166,12 @@ function updateTokenCount(currentResponseLength) {
         if (gameState && gameState.autoCompress !== false && !isCompressing && !isWaiting && typeof EnhancedMemory !== 'undefined') {
         var triggerResult = EnhancedMemory.shouldTriggerCompression(estimated, (gameState && gameState.maxTokens) || 4096);
         if (triggerResult.shouldCompress) {
-            var cooldownMs = (EnhancedMemory.compressionConfig.cooldownMinutes || 5) * 60 * 1000;
+            var cooldownMs = (EnhancedMemory.compressionConfig.cooldownMinutes || 15) * 60 * 1000;
             if (Date.now() - (window.lastCompressTime || 0) > cooldownMs) {
                 console.log('⚠️ 触发压缩:', triggerResult.reason);
-                window.lastCompressTime = Date.now();
+                // 【修复P0-3】冷却时间改到 autoCompressContext 内部设置：
+                // 成功后才设完整冷却；失败时设 1 分钟短冷却，避免 15 分钟内无法重试，
+                // 同时防止 API 持续失败时被瞬间反复触发。
                 autoCompressContext();
             }
         }
@@ -2494,8 +2496,14 @@ async function autoCompressContext() {
         console.log('自动压缩完成，保留', gameState.conversationHistory.length, '条，keyEvents', (gameState
             .keyEvents || []).length, '条不受影响');
         autoSave();
+        // 【修复P0-3】压缩成功后才设置完整冷却时间
+        window.lastCompressTime = Date.now();
     } catch (e) {
         console.error('自动压缩失败:', e);
+        // 【修复P0-3】失败时只设 1 分钟短冷却，允许尽快重试，
+        // 同时避免在 API 持续异常时被瞬间反复触发
+        var _fullCooldownMs = ((EnhancedMemory && EnhancedMemory.compressionConfig && EnhancedMemory.compressionConfig.cooldownMinutes) || 15) * 60 * 1000;
+        window.lastCompressTime = Date.now() - _fullCooldownMs + (60 * 1000);
     } finally {
         isCompressing = false;
         if (!_wasWaiting) isWaiting = false;

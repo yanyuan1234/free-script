@@ -1034,6 +1034,8 @@ var LocalGameAPI = {
     for (let i = 0; i < totalSlots; i++) {
         orderedSlots.push((this._currentSlot + i) % totalSlots);
     }
+    // 【修复P0-1】聚合各配置失败原因，让最终错误信息透明
+    var failReasons = [];
     for (let attempt = 0; attempt < totalSlots; attempt++) {
         const slotIdx = orderedSlots[attempt];
         const cfg = this._configs[slotIdx];
@@ -1064,6 +1066,8 @@ var LocalGameAPI = {
         // 失败标记记录原因，超时模型会在短期内被跳过
         this._markModelFailed(slotIdx, errMsg);
         console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
+        // 【修复P0-1】记录失败原因，用于最终错误聚合
+        failReasons.push('配置' + (slotIdx + 1) + '(' + (cfg.model || '?') + '): ' + errMsg);
         // 超时错误给出明确提示
         if (/timeout|timed out|超时/i.test(errMsg)) {
             UI.toast('配置 ' + (slotIdx + 1) + ' 请求超时，已临时跳过');
@@ -1076,7 +1080,13 @@ var LocalGameAPI = {
     if (attemptedCount === 0) {
         throw new Error('没有可用的API配置，请检查API设置（URL和Key是否完整）');
     }
-    throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败，请检查API配置');
+    // 【修复P0-1】最终错误附带各配置失败原因，让用户知道真正失败原因
+    // 只保留前 3 条原因避免过长，每条截断到 100 字符
+    var shortReasons = failReasons.slice(0, 3).map(function(r) {
+        return r.length > 100 ? r.substring(0, 100) + '...' : r;
+    });
+    var reasonSummary = shortReasons.length > 0 ? '\n失败原因：\n' + shortReasons.join('\n') : '';
+    throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + reasonSummary);
     },
     _logRequest(slot, success, error, durationMs) {
         var cfg = this._configs[slot];
@@ -1280,7 +1290,7 @@ var LocalGameAPI = {
                     'Authorization': 'Bearer ' + config.apiKey
                 },
             body: JSON.stringify({
-                model: config.model || 'gpt-3.5-turbo',
+                model: config.model || '',
                 messages: [{
                     role: 'user',
                     content: 'Hi'
@@ -2148,7 +2158,6 @@ function _hideSkipButton() {
 // Token 计数 + 自动压缩
 // ========================================
 let isCompressing = false;
-let lastCompressTime = 0;
 const npcChatState = {
     npcName: '',
     chatHistory: [],
@@ -3702,7 +3711,7 @@ function translateError(msg) {
         // ═══ API Key / 账户相关 ═══
         'Incorrect API key provided': 'API Key 不正确 → 请到「设置→API配置」检查并重新粘贴（注意前后空格和换行）',
         'You exceeded your current quota': '账户额度已用完 → 请到API服务商官网充值，或切换到其他API Key',
-        'You must provide a model': '未指定模型 → 请到「设置→API配置」填写模型名（如 gpt-4o-mini、deepseek-chat）',
+        'You must provide a model': '未指定模型 → 请到「设置→API配置」填写模型名',
         'The model `': '模型不存在或已下架 → 请到API配置检查模型名是否正确',
         'has been deprecated': '该模型已下架 → 请更换为其他可用模型',
         'deprecat': '该模型已下架 → 请更换为其他可用模型',
@@ -4398,7 +4407,7 @@ function buildAIRequestBody(messages, options, config) {
 
     // 基础参数（兼容模式只发这些）
     var params = {
-        model: config.model || 'gpt-3.5-turbo',
+        model: config.model || '',
         messages: messages,
         temperature: presetParams.temperature,
         max_tokens: presetParams.max_tokens,
