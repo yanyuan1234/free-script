@@ -1670,6 +1670,26 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
+        // 【修复X9】JSON 解析失败兜底：data 为 null 但 response 含 JSON 字段时，
+        // 用 robustParse 状态机从原文提取结构化字段（gameTime/bag/quests/choices 等）
+        // 避免"故事显示了但游戏状态半残"（gameTime="--"、背包空、任务空）
+        if (!data && response && typeof response === 'string') {
+            var _rescuedData = null;
+            try {
+                if (typeof robustParse === 'function') {
+                    _rescuedData = robustParse(response);
+                }
+            } catch (e) { console.warn('[sendAIRequest] robustParse 兜底失败:', e && e.message); }
+            if (_rescuedData && (_rescuedData.story || _rescuedData.gameTime || _rescuedData.choices || _rescuedData.bag)) {
+                console.log('[sendAIRequest] robustParse 兜底成功，已恢复结构化字段:', Object.keys(_rescuedData).join(','));
+                data = _rescuedData;
+                // 如果 storyText 为空但兜底 data 有 story，用兜底 story
+                if ((!storyText || !storyText.trim()) && data.story) {
+                    storyText = data.story;
+                }
+            }
+        }
+
         // 【修复】JSON 截断时即使解析出 data 也要提示用户
         if (parseResult.truncated && data && storyText) {
             storyText = '⚠️ **AI回复可能被截断**（JSON不完整，部分字段可能缺失）\n\n' + storyText;
@@ -2085,7 +2105,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
         // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
         showError(errDisplay, error);
-        console.error('请求出错:', error);
+        // 【修复X14】Error 对象的 message/name/stack 是不可枚举的，JSON.stringify(new Error('x')) 结果为 "{}"
+        // 旧代码 console.error('请求出错:', error) 在控制台能正常显示，但被序列化捕获时丢失信息
+        // 改为显式输出 message 和 stack，便于远程调试和日志收集
+        console.error('请求出错:', (error && error.message) ? error.message : String(error),
+            error && error.stack ? '\n' + error.stack : '');
     } finally {
         window._currentAbort = null;
         setWaiting(false);
@@ -2707,6 +2731,12 @@ var _reGiggleCNClose = /【\/giggle】/g;
 var _reGiggleOpen = /<giggle>([\s\S]*?)<\/giggle>/gi;
 var _reGiggleStrip = /<giggle>[\s\S]*?<\/giggle>/gi;
 var _reGiggleCNStrip = /【giggle】[\s\S]*?【\/giggle】/gi;
+// 【修复X7】AI 有时只输出 <giggle> 开标签而无 </giggle> 闭标签
+// 旧正则要求闭合标签，导致未闭合标签残留并被 escapeHtml 转成 &lt;giggle&gt; 显示给玩家
+// 新增两个正则：匹配未闭合的开标签（到行尾/段尾/全文末尾）
+var _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi;
+var _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi;
+var _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi;
 var _reDecorTagsTyping = /<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
 var _reChapterEnd = /\[章节结束\|([^\]]+)\]/;
 var _reDialogueCN = /(\u300c[^\u300d]+\u300d)/g;
@@ -2797,6 +2827,7 @@ function formatStory(text) {
             var pp = paragraphs[pI];
             _reGiggleOpen.lastIndex = 0;
             var tmatch;
+            // 先匹配闭合标签 <giggle>...</giggle>
             while ((tmatch = _reGiggleOpen.exec(pp)) !== null) {
                 var giggleText = tmatch[1].trim();
                 var colonIdx = giggleText.indexOf('：');
@@ -2816,6 +2847,34 @@ function formatStory(text) {
                     paragraphIdx: pI
                 });
             }
+            // 【修复X7】再匹配未闭合标签 <giggle>...（到段尾）
+            // 避免重复：先剔除已匹配闭合标签的部分
+            _reGiggleStrip.lastIndex = 0;
+            var ppWithoutClosed = pp.replace(_reGiggleStrip, '');
+            _reGiggleUnclosed.lastIndex = 0;
+            var umatch;
+            while ((umatch = _reGiggleUnclosed.exec(ppWithoutClosed)) !== null) {
+                var uText = umatch[1].trim();
+                if (!uText) continue;
+                var uColon = uText.indexOf('：');
+                if (uColon === -1) uColon = uText.indexOf(':');
+                var uChar, uBody;
+                if (uColon > 0) {
+                    uChar = uText.substring(0, uColon).trim();
+                    uBody = uText.substring(uColon + 1).trim();
+                } else {
+                    uChar = '???';
+                    uBody = uText;
+                }
+                allThoughts.push({
+                    character: uChar,
+                    text: uBody,
+                    original: umatch[0],
+                    paragraphIdx: pI
+                });
+                // 未闭合标签 $ 匹配到段尾，只可能匹配一次
+                break;
+            }
         }
     }
 
@@ -2832,9 +2891,15 @@ function formatStory(text) {
     });
 
     paragraphs.forEach(function(p, pIdx) {
-        // 移除所有心声标记（兼容中文方括号格式）
+        // 移除所有心声标记（兼容中文方括号格式 + 未闭合标签）
         _reGiggleStrip.lastIndex = 0; _reGiggleCNStrip.lastIndex = 0;
-        var cleanText = p.replace(_reGiggleStrip, '').replace(_reGiggleCNStrip, '').trim();
+        _reGiggleUnclosedStrip.lastIndex = 0; _reGiggleCNUnclosedStrip.lastIndex = 0;
+        var cleanText = p
+            .replace(_reGiggleStrip, '')
+            .replace(_reGiggleCNStrip, '')
+            .replace(_reGiggleUnclosedStrip, '')
+            .replace(_reGiggleCNUnclosedStrip, '')
+            .trim();
 
         // 检查这个段落是否有对应的心声
         var hasThoughtInThisPara = false;
@@ -3023,15 +3088,30 @@ function renderChoices(choices) {
         // 兼容多种AI输出格式：text/label/content/description/action
         var text = c.text || c.label || c.content || c.description || c.action || '';
         if (typeof text !== 'string') text = String(text);
-        var safeT = JSON.stringify(text);
+        // 【修复X5】onclick 引号冲突：JSON.stringify 产生的双引号会与 HTML 属性双引号冲突
+        // 改用 data-* 属性 + addEventListener，彻底避免内联 JS 注入和引号转义问题
+        var safeText = escapeHtml(text);
         var tagHtml = c.tag ?
             '<span class="badge badge-soft" style="margin-left:8px;font-size:10px;">' + escapeHtml(c.tag) +
             '</span>' : '';
-        return '<button class="option-btn" onclick="fillChoiceToInput(' + safeT + ')">' +
+        return '<button class="option-btn" data-choice-text="' + safeText + '">' +
             '<span class="option-index">' + id + '</span><span>' + escapeHtml(text) + '</span>' + tagHtml +
             '</button>';
     }).join('');
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
+    // 【修复X5】用事件代理绑定点击，避免内联 onclick
+    var btns = container.querySelectorAll('.option-btn[data-choice-text]');
+    btns.forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            fillChoiceToInput(this.getAttribute('data-choice-text'));
+        });
+    });
+    // 【修复X6】选项面板默认展开：AI 生成新选项后玩家应能直接看到，无需手动点击
+    // 旧代码面板初始 max-height:0px，许多玩家不知道要点击 "选项 (N个) ▶" 标题
+    var panel = document.getElementById('choicesPanel');
+    if (panel) panel.style.maxHeight = '2000px';
+    var icon = document.getElementById('choicesToggleIcon');
+    if (icon) icon.style.transform = 'rotate(0deg)';
 }
 function toggleChoicesPanel() {
     var panel = document.getElementById('choicesPanel');

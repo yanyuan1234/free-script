@@ -2017,7 +2017,13 @@ var TypewriterBuffer = {
     }, this.baseSpeed);
     if (!this._visibilityHandler) {
         this._visibilityHandler = function() {
-            if (document.hidden && self.isTyping) self.pause();
+            if (document.hidden && self.isTyping) {
+                self.pause();
+            } else if (!document.hidden && !self.isTyping && self.queue.length > 0) {
+                // 【修复X15】页面重新可见时自动恢复打字
+                // 旧代码只 pause 不 resume，切回标签页后打字机永久停滞
+                self.start();
+            }
             };
         GlobalCleanup.registerListener(document, 'visibilitychange', this._visibilityHandler);
     }
@@ -2204,13 +2210,13 @@ var GameTimeSystem = {
 
     // 从AI回复的JSON中解析时间字段并更新gameTime
     parseFromAI(data) {
-        if (!data) return;
+        if (!gameState) return;
         if (!gameState.gameTime) {
             gameState.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
         }
     var gt = gameState.gameTime;
     // AI在JSON中返回 gameTime 字段
-    if (data.gameTime) {
+    if (data && data.gameTime) {
         if (data.gameTime.date) gt.date = data.gameTime.date;
         if (data.gameTime.time) gt.time = data.gameTime.time;
         if (data.gameTime.period) gt.period = data.gameTime.period;
@@ -2218,7 +2224,7 @@ var GameTimeSystem = {
         if (data.gameTime.era) gt.era = data.gameTime.era;
     }
     // 兜底：没有gameTime或全部为空时，从story中提取
-    if ((!gt.date && !gt.time && !gt.period) && data.story) {
+    if ((!gt.date && !gt.time && !gt.period) && data && data.story) {
         var extracted = this._extractTimeFromStory(data.story);
         if (extracted) {
             if (extracted.date) gt.date = extracted.date;
@@ -2226,6 +2232,8 @@ var GameTimeSystem = {
             if (extracted.period) gt.period = extracted.period;
         }
     }
+    // 【修复X10】data 为 null 时也要给默认时间，避免 UI 显示 "--"
+    // 旧代码在 data 为 null 时直接 return，导致 gameTime 一直为空
     // 最终兜底：游戏开局给一个默认时间，避免UI显示"--"
     if (!gt.date && !gt.time && !gt.period) {
         gt.date = '游戏开始';
@@ -2761,6 +2769,42 @@ if (!storyText || storyText.trim() === '') {
 }
 }
 }
+}
+
+// 【修复X8】裸文本思维链泄漏检测
+// 某些模型（如 Qwen3.5）在 JSON 解析失败后会把推理过程当剧情输出：
+//   "用户选择了选项A：打开门让苏小雨进来。我需要根据这个选择来推进故事。
+//    当前状态：- 时间：2024年10月15日 07:30 早晨 - 主角：大三学生..."
+// 这些是 AI 的内心 OS，不应显示给玩家。检测特征：
+//   1. 含 "我需要"/"我应该"/"我来"/"让我" 等第一人称推理词
+//   2. 含 "当前状态"/"选择X的后果"/"分析" 等元叙述词
+//   3. 含 "- 时间：" / "- 主角：" 等状态清单格式
+// 触发条件：data 为空（JSON 解析失败）+ storyText 含明显推理特征
+if (!data && storyText && storyText.length > 0) {
+    var _leakPatterns = [
+        /我需要根据[^。]*推进/,
+        /我需要[^。]*分析/,
+        /我应该[^。]*描述/,
+        /让我[^。]*开始/,
+        /选择[A-Z]的后果分析/,
+        /当前状态[：:]/,
+        /- 时间[：:]/,
+        /- 主角[：:]/,
+        /- 已知NPC[：:]/,
+        /- 任务[：:]/,
+        /我需要[：:]/,
+        /分析[：:]/
+    ];
+    var _leakHits = 0;
+    for (var _li = 0; _li < _leakPatterns.length; _li++) {
+        if (_leakPatterns[_li].test(storyText)) _leakHits++;
+    }
+    // 命中 2 个以上特征，判定为思维链泄漏
+    if (_leakHits >= 2) {
+        console.warn('[parseAIResponse] 检测到 AI 思维链泄漏到剧情，已拦截（命中 ' + _leakHits + ' 个特征）');
+        storyText = '⚠️ **AI 回复格式异常**（输出了推理过程而非剧情）\n\n💡 建议点击 🔄 重新生成，或检查预设是否要求 JSON 输出格式。';
+        if (gameState) gameState._lastLeakBlocked = true;
+    }
 }
 
 // === 缄默法则·输出后处理 ===
@@ -3720,7 +3764,7 @@ function translateError(msg) {
         'parse error': '解析数据出错 → API返回了无法识别的内容',
         'invalid response': '无效的响应 → API返回了异常数据，请检查API配置',
         'empty response': '服务器返回空数据 → AI未生成任何内容，可能是max_tokens太小或模型异常',
-        '请求超时（5分钟）': 'AI请求超时（5分钟）→ 模型思考时间过长，可能是上下文太大或模型过载，请重试',
+        '请求超时（5分钟）': 'AI请求超时 → 模型思考时间过长，可能是上下文太大或模型过载，请重试或在设置中调整超时时间',
     };
 // 预构建按长度降序排列的key数组，避免每次调用都排序
 var _translateErrorSortedKeys = null;
@@ -4600,6 +4644,14 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     if (!ctx.fullText && rawBody) {
         return parseAIResponseFallback(rawBody);
     }
+    // 【修复X11】HTTP 200 但 SSE 解析为空 + 无 streamError 时，不应抛 openai_error
+    // 旧逻辑：流式空回会返回空字符串，上游 parseAIResponse 兜底显示原文，但若 rawBody 也空则报错
+    // 新逻辑：明确区分"HTTP 错误"（res.ok=false，已抛错）和"解析为空"（HTTP 200 但内容空）
+    // 后者给出更具体的错误信息，避免误判为 openai_error
+    if (!ctx.fullText && !ctx.streamError) {
+        console.warn('[callAI] HTTP 200 但流式响应内容为空，可能是 API 返回了非 SSE 格式或空响应');
+        throw new Error('AI返回内容为空 → 可能是API返回了非流式格式或响应被截断，请尝试关闭流式模式或重试');
+    }
     return ctx.fullText;
 }
 
@@ -4649,12 +4701,18 @@ async function callAI(messages, options = {}) {
     }
 
     // 【优化 #2 + #3】每次调用创建独立的 AbortController
-    // 5 分钟超时：流式模型生成可能很慢（长上下文/复杂剧情），但不能无限挂死
+    // 【修复X12】超时时间从 5 分钟延长到 10 分钟，并支持用户自定义
+    // 旧代码 5 分钟超时对 DeepSeek-V4-Pro 等推理模型不够，导致正常请求被误杀
+    // 优先级：gameState.aiTimeoutMs（用户自定义）> 默认 10 分钟
+    var _timeoutMs = 10 * 60 * 1000;
+    if (typeof gameState !== 'undefined' && gameState && gameState.aiTimeoutMs && gameState.aiTimeoutMs > 0) {
+        _timeoutMs = gameState.aiTimeoutMs;
+    }
     var localAC = new AbortController();
     var timeoutId = setTimeout(function() {
-        try { localAC.abort(new Error('AI请求超时（5分钟）')); }
+        try { localAC.abort(new Error('AI请求超时（' + Math.round(_timeoutMs / 60000) + '分钟）')); }
         catch (e) { /* 忽略 */ }
-    }, 5 * 60 * 1000);
+    }, _timeoutMs);
 
     // 串联外部 signal：options.signal 优先，其次兼容旧的 window._currentAbort（safeAbort）
     var externalSignal = options.signal || (window._currentAbort && window._currentAbort.signal);

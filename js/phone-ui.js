@@ -3908,33 +3908,9 @@ function bindEvents() {
 
     // 日志子页面返回按钮（已在 renderLogPage 中绑定，此处不再重复）
 
-    // 设置弹窗
-    bindEvent('streamOn', 'click', function() {
-        gameState.useStream = true;
-        this.classList.add('active');
-        var streamOffEl = document.getElementById('streamOff');
-        if (streamOffEl) streamOffEl.classList.remove('active');
-        // 同步预设的流式开关
-        var presetStreamToggle = document.getElementById('presetStreamToggle');
-        if (presetStreamToggle) presetStreamToggle.classList.add('checked');
-        if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
-            PresetManager.currentParams.stream = true;
-        }
-        saveGameSettings();
-    });
-    bindEvent('streamOff', 'click', function() {
-        gameState.useStream = false;
-        this.classList.add('active');
-        var streamOnEl = document.getElementById('streamOn');
-        if (streamOnEl) streamOnEl.classList.remove('active');
-        // 同步预设的流式开关
-        var presetStreamToggle = document.getElementById('presetStreamToggle');
-        if (presetStreamToggle) presetStreamToggle.classList.remove('checked');
-        if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
-            PresetManager.currentParams.stream = false;
-        }
-        saveGameSettings();
-    });
+    // 【修复X13】移除 streamOn/streamOff 事件绑定
+    // 这两个元素已从 index.html 中移除（流式开关改由预设面板的 presetStreamToggle 控制）
+    // 旧代码每次加载都会打 warn "element not found: streamOn/streamOff"
 
     // 字体大小
     document.querySelectorAll('[data-fontsize]').forEach(function(btn) {
@@ -4235,18 +4211,8 @@ function bindEvents() {
         document.getElementById('apiAutoRotateOn').classList.remove('active');
     }
 
-    // 初始化流式UI
-    var streamOnInit = document.getElementById('streamOn');
-    var streamOffInit = document.getElementById('streamOff');
-    if (streamOnInit && streamOffInit) {
-        if (gameState.useStream) {
-            streamOnInit.classList.add('active');
-            streamOffInit.classList.remove('active');
-        } else {
-            streamOffInit.classList.add('active');
-            streamOnInit.classList.remove('active');
-        }
-    }
+    // 【修复X13】移除 streamOn/streamOff 初始化代码（元素已不存在）
+    // 流式开关状态由预设面板的 presetStreamToggle 控制
 
     // 初始化字体大小UI
     var fontSizes = {
