@@ -294,18 +294,10 @@ function buildNarrativeEnhancement() {
     // 【动态化】移除硬编码的 11 条"禁止X"规则——这是 API 游戏，AI 能理解文风指导
     // 旧代码强制注入"禁止嘴角勾起弧度/禁止极其/禁止老套比喻"等负面约束，限制了 AI 的表达自由
     // 文风指导应通过正面引导（如自定义风格字段）而非负面禁止
-    // 实际的输出后处理 _squelchPostProcess 也已改为 no-op，完全信任 AI 的输出
+    // 【修复P2-2】_squelchPostProcess 已移除——输出后篡改 AI 创作破坏叙事连贯性，完全信任 AI 的输出
 
     if (blocks.length === 0) return '';
     return '\n\n【写作指导·让故事更耐读】\n' + blocks.join('\n\n') + '\n';
-}
-
-// 缄默法则·输出后处理
-// 【动态化】这是 API 游戏，AI 能理解文风指导，不需要输出后篡改 AI 的创作
-// 旧代码用正则删除 AI 输出中的"违禁表达"，直接篡改了 AI 的创作意图，破坏叙事连贯性
-// 新策略：完全信任 AI 的输出，文风指导应在 prompt 中正面引导，而非输出后删除
-function _squelchPostProcess(story) {
-    return story;
 }
 
 // 【Token优化】瘦身AI回复：旧轮次只保留story字段，删除结构化数据

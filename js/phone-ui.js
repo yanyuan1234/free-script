@@ -5564,8 +5564,7 @@ function saveGameSettings() {
     if (writingStyleEl) gameState.writingStyle = writingStyleEl.value;
     var cotModeEl = document.getElementById('settingCotMode');
     if (cotModeEl) gameState.cotMode = cotModeEl.value;
-    var anti429El = document.getElementById('settingAnti429');
-    if (anti429El) gameState.anti429Mode = anti429El.checked;
+    // 【修复P2-1】移除 anti429Mode UI 读取——该字段是死代码，没有任何代码读取它来影响请求
     // squashSystemMessages 已固定开启，不需要从UI读取
     // === 酒馆预设融合：叙事融合层 v2 ===
     // 章节模式
@@ -5574,12 +5573,9 @@ function saveGameSettings() {
     // NPC 描写准则（已固定为默认开，UI 已移除开关）
     // 【动态化】移除强制 npcDescriptionRules = true——AI 能自行判断 NPC 外貌，不需要硬编码"好看原则"
     // 叙事基调（10眼）已固定为默认开，UI 不再展示
-    // 【动态化】移除强制 10 项 squelchRules = true——AI 能理解文风指导，不需要硬编码"禁止X"规则
-    // _squelchPostProcess 已改为 no-op，squelchRules 字段保留向后兼容但不再有任何效果
-    if (!gameState.squelchRules) gameState.squelchRules = {};
-    // NSFW 解剖名词开关（保留，这是用户可选的 NSFW 内容控制）
-    var anatomyEl = document.getElementById('settingAnatomyTerms');
-    if (anatomyEl) gameState.squelchRules.anatomyTerms = anatomyEl.checked;
+    // 【修复P2-3】移除 squelchRules UI 读取——_squelchPostProcess 已删除，squelchRules 是死代码
+    // NSFW 内容控制应通过自定义风格/设定实现，而非无效的安慰剂开关
+    // squelchRules 字段保留在 createDefaultGameState 中，向后兼容旧存档导入
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
     Storage.setJSON(Storage.KEYS.SETTINGS, {
@@ -5595,12 +5591,11 @@ function saveGameSettings() {
         // 【酒馆预设融合】叙事增强设置
         writingStyle: gameState.writingStyle,
         cotMode: gameState.cotMode,
-        anti429Mode: gameState.anti429Mode,
         // === 酒馆预设融合 v2 ===
         chapterMode: gameState.chapterMode,
         npcDescriptionRules: gameState.npcDescriptionRules,
         narrativeEyes: gameState.narrativeEyes,
-        squelchRules: gameState.squelchRules,
+        // 【修复P2-3】不再导出 squelchRules——死代码，UI 已移除
         presetArchetype: gameState.presetArchetype
     });
     applyFontSize();
@@ -5911,31 +5906,25 @@ function loadGameSettings() {
             // 【酒馆预设融合】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
-            if (d.anti429Mode !== undefined) gameState.anti429Mode = d.anti429Mode;
+            // 【修复P2-1】不再恢复 anti429Mode——死代码已移除
             // squashSystemMessages 固定开启，不再从存档恢复（预设可覆盖）
             // 恢复叙事增强UI
             var wsEl = document.getElementById('settingWritingStyle');
             if (wsEl) wsEl.value = gameState.writingStyle || '';
             var cmEl = document.getElementById('settingCotMode');
             if (cmEl) cmEl.value = gameState.cotMode || '';
-            var a429El = document.getElementById('settingAnti429');
-            if (a429El) a429El.checked = !!gameState.anti429Mode;
+            // 【修复P2-1】不再同步 anti429Mode checkbox——UI 已移除
             // === 酒馆预设融合 v2 恢复 ===
             if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
             if (d.npcDescriptionRules !== undefined) gameState.npcDescriptionRules = d.npcDescriptionRules;
             if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
                 gameState.narrativeEyes = d.narrativeEyes;
             }
-            if (d.squelchRules && typeof d.squelchRules === 'object') {
-                gameState.squelchRules = d.squelchRules;
-            }
             if (d.presetArchetype !== undefined) gameState.presetArchetype = d.presetArchetype;
             // 恢复 UI 控件
             var chModeEl = document.getElementById('settingChapterMode');
             if (chModeEl) chModeEl.value = gameState.chapterMode || 'off';
-            // NSFW 解剖名词开关（仅 1 项可定制）
-            var anatomyEl = document.getElementById('settingAnatomyTerms');
-            if (anatomyEl) anatomyEl.checked = gameState.squelchRules && gameState.squelchRules.anatomyTerms === true;
+            // 【修复P2-3】不再恢复/同步 squelchRules UI——死代码已移除
             // 叙事基调/干练文风 9 项已固定为默认开启，不再暴露 UI 开关
             document.querySelectorAll('.archetype-card').forEach(function(el) {
                 el.classList.toggle('active', el.getAttribute('data-archetype') === gameState.presetArchetype);

@@ -1863,7 +1863,6 @@ _npcDiaries: {},
 _mail: [],
 _diary: [],
 // 【酒馆预设融合】新增叙事增强字段
-anti429Mode: false,          // 防429模式（来自果实预设）
 writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
 cotMode: '',                 // 思维链模式（来自蛾摩拉预设）
 summaryThreshold: 6,         // 摘要阈值（来自月读预设）
@@ -2811,23 +2810,8 @@ if (!data && storyText && storyText.length > 0) {
     }
 }
 
-// === 缄默法则·输出后处理 ===
-// 对提取出的 storyText 应用 _squelchPostProcess，删除 AI 漏网的违禁表达
-if (typeof _squelchPostProcess === 'function' && storyText) {
-    try {
-        var squelchedStory = _squelchPostProcess(storyText);
-        if (squelchedStory !== storyText) {
-            console.log('[缄默法则] 已净化 story 文本');
-            storyText = squelchedStory;
-            // 如果 data 也有 story 字段，单独更新（不影响其它字段）
-            if (data && typeof data === 'object') {
-                data.story = squelchedStory;
-            }
-        }
-    } catch (e) {
-        console.warn('[缄默法则] 净化失败（不影响主流程）:', e && e.message);
-    }
-}
+// 【修复P2-2】移除 _squelchPostProcess 调用块——该函数是 no-op（直接 return story），
+// 调用它是纯开销（字符串比较 + try/catch），无任何效果。文风指导应在 prompt 中正面引导。
 
 // 【小剧场融合】提取小剧场内容
 var theaterContent = {};

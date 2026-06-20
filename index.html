@@ -2389,12 +2389,6 @@
                                             <option value="enabled">开启（自动解析thinking标签）</option>
                                         </select>
                                     </div>
-                                    <!-- 防429模式 -->
-                                    <div class="setting-row">
-                                        <label class="field-label">防429模式</label>
-                                        <label class="switch"><input type="checkbox" id="settingAnti429" onchange="gameState.anti429Mode=this.checked;"><span class="slider"></span></label>
-                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">遇到429报错时再开启</span>
-                                    </div>
                                     <!-- 写作节奏（决定每段/每章的篇幅） -->
                                     <div class="setting-row">
                                         <label class="field-label">写作节奏</label>
@@ -2404,12 +2398,7 @@
                                             <option value="longform">长篇模式（每段 250-600 字）</option>
                                         </select>
                                     </div>
-                                    <!-- NSFW 描写开关：默认关闭，需要时开启 -->
-                                    <div class="setting-row">
-                                        <label class="field-label">NSFW 描写</label>
-                                        <label class="switch"><input type="checkbox" id="settingAnatomyTerms" onchange="if(gameState.squelchRules){gameState.squelchRules.anatomyTerms=this.checked;}"><span class="slider"></span></label>
-                                        <span style="font-size:11px;color:var(--text-tertiary);margin-left:6px;">允许 AI 使用解剖学名词（NSFW 场景专用）</span>
-                                    </div>
+                                    <!-- 【修复P2-3】移除 NSFW 描写开关——squelchRules 是死代码，该开关无效 -->
                                 </div>
                             </div>
                             <!-- 写法档位（一键切换写作风格） -->
