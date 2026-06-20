@@ -4443,7 +4443,8 @@ function buildAIRequestBody(messages, options, config) {
     }
 
     // options 中的采样参数覆盖预设
-    if (options.temperature != null) params.temperature = options.temperature;
+    // 【修复P0-1】移除 options.temperature 覆盖——temperature 统一从 PresetManager.currentParams 读取
+    // 此前 options.temperature 来自 gameState.temperature，会覆盖 PresetManager 的值，导致预设温度不生效
     if (options.max_tokens != null) params.max_tokens = options.max_tokens;
     if (options.top_p != null) params.top_p = options.top_p;
     if (options.top_k != null) params.top_k = options.top_k;

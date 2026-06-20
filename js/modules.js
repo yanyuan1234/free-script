@@ -1977,9 +1977,9 @@ var PresetManager = {
 
             // 同步参数到 gameState（解决滑块更新但 gameState 未变的 bug）
             // syncParamsToUI() 只更新了 DOM，但没有自动更新 gameState
-            // 【修复】使用 != null 而非 || 避免temperature=0等合法值被默认值覆盖
+            // 【修复P0-1】不再同步 gameState.temperature——temperature 统一由 PresetManager.currentParams 管理
+            // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
             if (typeof gameState !== 'undefined') {
-                gameState.temperature = this.currentParams.temperature != null ? this.currentParams.temperature : 0.8;
                 gameState.maxTokens = this.currentParams.max_tokens != null ? this.currentParams.max_tokens : 4096;
             }
 

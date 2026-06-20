@@ -2476,8 +2476,10 @@
                                     <select id="compressThreshold" class="setting-select">
                                         <option value="0.6">60%</option>
                                         <option value="0.7">70%</option>
-                                        <option value="0.8" selected>80%</option>
+                                        <option value="0.8">80%</option>
                                         <option value="0.9">90%</option>
+                                        <!-- 【修复P0-3】默认值改为 0.92，与 EnhancedMemory.compressionConfig.triggerThreshold 一致 -->
+                                        <option value="0.92" selected>92%</option>
                                     </select>
                                 </div>
                                 <div class="setting-item">

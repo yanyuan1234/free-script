@@ -5554,8 +5554,8 @@ function saveGameSettings() {
         presencePenalty: pm ? (pm.presence_penalty || 0) : 0,
         repeatPenalty: pm ? (pm.repeat_penalty || 1.1) : 1.1
     };
-    // 使用预设温度而非硬编码，避免覆盖预设设置
-    gameState.temperature = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams.temperature : defaultParams.temperature;
+    // 【修复P0-1】不再同步 gameState.temperature——temperature 统一由 PresetManager.currentParams 管理
+    // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
     gameState.autoCompress = document.getElementById('autoCompressOn') && document.getElementById(
         'autoCompressOn').classList.contains('active');
     gameState.summaryThreshold = parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0;
@@ -5580,13 +5580,15 @@ function saveGameSettings() {
     gameState.generateChoices = true;
     Storage.setJSON(Storage.KEYS.SETTINGS, {
         useStream: gameState.useStream,
-        temperature: gameState.temperature,
+        // 【修复P0-1】不再导出 gameState.temperature——统一由 PresetManager.currentParams 持久化
         fontSize: gameState.fontSize,
         wordCountConfig: gameState.wordCountConfig,
         autoCompress: gameState.autoCompress,
         summaryThreshold: gameState.summaryThreshold,
         generateChoices: gameState.generateChoices,
         maxTokens: gameState.maxTokens,
+        // 【修复P0-3】持久化 compressThreshold，此前不保存导致刷新后 UI 显示 80% 但实际用 92%
+        compressThreshold: (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) ? EnhancedMemory.compressionConfig.triggerThreshold : 0.92,
         defaultParams: defaultParams,
         // 【酒馆预设融合】叙事增强设置
         writingStyle: gameState.writingStyle,
@@ -5618,10 +5620,13 @@ function saveGameSettings() {
 // 一键应用酒馆前辈沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
 // 注意：字段名是 ID 不会变，_label 仅用于 toast 提示
 var ARCHETYPE_PRESETS = {
-    conservative: { temperature: 0.6,  top_p: 0.9,  top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📘 短篇' },
-    natural:      { temperature: 0.95, top_p: 0.95, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📗 中篇' },
-    passionate:   { temperature: 1.3,  top_p: 0.91, top_k: 0, frequency_penalty: 0,    presence_penalty: 0,    repeat_penalty: 1.1, _label: '📙 长篇' },
-    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0, frequency_penalty: 0.2,  presence_penalty: 0.2,  repeat_penalty: 1.1, _label: '📕 细腻' }
+    // 【修复P0-2】统一写法档位与参数预设的值，消除 conservative 名称冲突
+    // 此前 ARCHETYPE_PRESETS.conservative (temp=0.6) 与 applyParamPreset.conservative (temp=0.88) 值不同
+    // 现在两套系统的同名档位使用相同的采样参数值
+    conservative: { temperature: 0.88, top_p: 0.88, top_k: 0,  frequency_penalty: 0.2, presence_penalty: 0.2, repeat_penalty: 1.1, _label: '📘 短篇' },
+    natural:      { temperature: 1.3,  top_p: 0.91, top_k: 64, frequency_penalty: 0,   presence_penalty: 0,   repeat_penalty: 1.1, _label: '📗 中篇' },
+    passionate:   { temperature: 1.71, top_p: 0.9,  top_k: 0,  frequency_penalty: 0.65,presence_penalty: 0.75,repeat_penalty: 1.1, _label: '📙 长篇' },
+    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0,  frequency_penalty: 0.2, presence_penalty: 0.2, repeat_penalty: 1.1, _label: '📕 细腻' }
 };
 // 【修复P1-3】核心采样参数默认基线——applyArchetype 和 applyParamPreset 应用新值前先重置到这个基线，
 // 避免两个档位系统互相残留字段（如先点参数预设设了 max_tokens=30000，再点写法档位时 max_tokens 不会残留）
@@ -5658,7 +5663,7 @@ function applyArchetype(name) {
         if (typeof PresetManager.syncParamsToUI === 'function') PresetManager.syncParamsToUI();
     }
     if (typeof gameState !== 'undefined') {
-        gameState.temperature = p.temperature;
+        // 【修复P0-1】不再写 gameState.temperature——统一由 PresetManager.currentParams 管理
         // 【修复P1-3】同步 max_tokens 到 gameState，避免 UI 与实际请求不一致
         if (gameState.maxTokens !== undefined) gameState.maxTokens = SAMPLING_PARAMS_BASELINE.max_tokens;
         gameState.presetArchetype = name;
@@ -5874,7 +5879,7 @@ function loadGameSettings() {
     if (s) {
         try {
             var d = JSON.parse(s);
-            gameState.temperature = d.temperature || 0.8;
+            // 【修复P0-1】不再恢复 gameState.temperature——统一由 PresetManager.currentParams 管理
             gameState.fontSize = d.fontSize || 16;
             gameState.autoCompress = d.autoCompress !== false;
             gameState.summaryThreshold = d.summaryThreshold !== undefined ? d.summaryThreshold : 6;
@@ -5903,6 +5908,14 @@ function loadGameSettings() {
             // 恢复摘要阈值UI
             var stEl = document.getElementById('summaryThreshold');
             if (stEl) stEl.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
+            // 【修复P0-3】恢复 compressThreshold 到 UI 和 EnhancedMemory
+            // 此前不恢复导致刷新后 UI 显示 80%（HTML 默认）但实际压缩用 92%（EnhancedMemory 默认）
+            var _savedThreshold = d.compressThreshold !== undefined ? d.compressThreshold : 0.92;
+            if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) {
+                EnhancedMemory.compressionConfig.triggerThreshold = _savedThreshold;
+            }
+            var ctEl = document.getElementById('compressThreshold');
+            if (ctEl) ctEl.value = _savedThreshold;
             // 【酒馆预设融合】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;

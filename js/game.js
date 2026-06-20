@@ -999,7 +999,7 @@ function applyParamPreset(preset) {
 
     // 同步到gameState
     if (gameState) {
-        gameState.temperature = p.temperature;
+        // 【修复P0-1】不再写 gameState.temperature——统一由 PresetManager.currentParams 管理
         gameState.maxTokens = p.max_tokens;
     }
 
@@ -1631,7 +1631,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _useStreamNow = gameState && gameState.useStream && _streamFailCount < 2;
         var options = {
             stream: _useStreamNow,
-            temperature: (gameState && gameState.temperature != null) ? gameState.temperature : 0.8,
+            // 【修复P0-1】不再通过 options 传 temperature——buildAIRequestBody 直接从 PresetManager.currentParams 读取
+            // 此前 options.temperature 来自 gameState.temperature，会覆盖 PresetManager 的值，导致预设温度不生效
             onChunk: function(delta, fullText) {
                 onStreamChunk(delta, fullText);
             }
@@ -3506,7 +3507,7 @@ async function loadFromSlot(slot) {
             if (!gameState.conversationHistory) gameState.conversationHistory = [];
             if (typeof gameState.autoCompress === 'undefined') gameState.autoCompress = true;
             if (typeof gameState.useStream === 'undefined') gameState.useStream = true;
-            if (typeof gameState.temperature === 'undefined') gameState.temperature = 0.8;
+            // 【修复P0-1】不再补全 gameState.temperature——统一由 PresetManager.currentParams 管理
             if (typeof gameState.fontSize === 'undefined') gameState.fontSize = 16;
             if (typeof gameState.generateChoices === 'undefined') gameState.generateChoices = true;
             if (!gameState.protagonistSetup) gameState.protagonistSetup = {};
@@ -3743,7 +3744,7 @@ async function requestNpcReply(playerText) {
         chatMessages = _applyUseSysprompt(chatMessages);
         var response = await callAI(chatMessages, {
             stream: false,
-            temperature: gameState.temperature != null ? gameState.temperature : 0.8,
+            // 【修复P0-1】不再传 temperature——统一从 PresetManager.currentParams 读取
             max_tokens: 1024,
             antiRepeat: true,
             // 【修复R1】使用NPC聊天专用的AbortController
