@@ -511,12 +511,18 @@ var PresetManager = {
     this.saveCurrentParams();
 
     // 【同步】预设max_tokens修改后，同步到设置页面的"剧情长度"和gameState
-    var storyLengthEl = document.getElementById('settingStoryLength');
-    if (storyLengthEl) {
-        storyLengthEl.value = this.currentParams.max_tokens || 4096;
-    }
-    if (typeof gameState !== 'undefined') {
-        gameState.maxTokens = this.currentParams.max_tokens || 4096;
+    // 【修复P1-2】统一调用 _syncMaxTokens（phone-ui.js），替代分散的内联同步
+    if (typeof _syncMaxTokens === 'function') {
+        _syncMaxTokens(this.currentParams.max_tokens);
+    } else {
+        // fallback：直接同步
+        var storyLengthEl = document.getElementById('settingStoryLength');
+        if (storyLengthEl) {
+            storyLengthEl.value = this.currentParams.max_tokens || 4096;
+        }
+        if (typeof gameState !== 'undefined') {
+            gameState.maxTokens = this.currentParams.max_tokens || 4096;
+        }
     }
     },
 
@@ -1979,7 +1985,10 @@ var PresetManager = {
             // syncParamsToUI() 只更新了 DOM，但没有自动更新 gameState
             // 【修复P0-1】不再同步 gameState.temperature——temperature 统一由 PresetManager.currentParams 管理
             // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
-            if (typeof gameState !== 'undefined') {
+            // 【修复P1-2】统一调用 _syncMaxTokens 同步 max_tokens 到 gameState 和 UI
+            if (typeof _syncMaxTokens === 'function') {
+                _syncMaxTokens(this.currentParams.max_tokens);
+            } else if (typeof gameState !== 'undefined') {
                 gameState.maxTokens = this.currentParams.max_tokens != null ? this.currentParams.max_tokens : 4096;
             }
 

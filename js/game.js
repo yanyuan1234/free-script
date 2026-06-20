@@ -944,96 +944,27 @@ function applyLengthPreset(preset) {
 
 /**
  * 应用参数推荐预设（融合4份酒馆预设的调参智慧）
+ * 【修复P1-1】合并双预设系统——现在统一调用 _applyUnifiedPreset（phone-ui.js）
+ * 此前 applyParamPreset 和 applyArchetype 是两套独立系统，字段重叠但不一致，需要 baseline 重置补丁
  */
 function applyParamPreset(preset) {
-    var presets = {
-        conservative: {
-            name: '低温稳定',
-            temperature: 0.88, top_p: 0.88, top_k: 0,
-            frequency_penalty: 0.2, presence_penalty: 0.2,
-            max_tokens: 4096, description: '低温+低惩罚，输出稳定可控，适合需要一致性的叙事'
-        },
-        balanced: {
-            name: '均衡自然',
-            temperature: 1.3, top_p: 0.91, top_k: 64,
-            frequency_penalty: 0, presence_penalty: 0,
-            max_tokens: 8192, description: '中高温+TopK，输出自然丰富，适合大多数场景'
-        },
-        creative: {
-            name: '高温创意',
-            temperature: 1.71, top_p: 0.9, top_k: 0,
-            frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 8192, description: '超高温+高惩罚，输出极具创意，适合长篇叙事'
-        },
-        moonread: {
-            name: '低温稳定',
-            temperature: 0.88, top_p: 0.88, top_k: 0,
-            frequency_penalty: 0.2, presence_penalty: 0.2,
-            max_tokens: 4096, description: '低温稳定，抓人设、不超雄、无过度描写'
-        },
-        fruit: {
-            name: '均衡自然',
-            temperature: 1.3, top_p: 0.91, top_k: 64,
-            frequency_penalty: 0, presence_penalty: 0,
-            max_tokens: 3000, description: '均衡自然，外表自然内里丰富'
-        },
-        gomorrah: {
-            name: '高温创意',
-            temperature: 1.71, top_p: 0.9, top_k: 0,
-            frequency_penalty: 0.65, presence_penalty: 0.75,
-            max_tokens: 30000, description: '超高温长篇，适合部分大上下文模型（部分模型命中缓存低）'
-        },
-        default: {
-            name: '默认参数',
-            temperature: 0.8, top_p: 0.9, top_k: 0,
-            frequency_penalty: 0, presence_penalty: 0,
-            max_tokens: 4096, description: 'Free-Script 默认参数'
-        }
+    // 兼容历史别名：moonread→conservative, fruit→natural, gomorrah→passionate
+    var _legacyAliases = {
+        moonread: 'conservative',
+        fruit: 'natural',
+        gomorrah: 'passionate'
     };
-    var p = presets[preset];
+    var key = _legacyAliases[preset] || preset;
+    if (!_applyUnifiedPreset(key, {})) return;
+    var p = UNIFIED_PRESETS[PRESET_ALIASES[key] || key];
     if (!p) return;
-
-    // 应用到剧情长度UI（设置页唯一保留的参数输入框）
-    var elMaxTokens = document.getElementById('settingStoryLength');
-    if (elMaxTokens) elMaxTokens.value = p.max_tokens;
-
-    // 同步到gameState
-    if (gameState) {
-        // 【修复P0-1】不再写 gameState.temperature——统一由 PresetManager.currentParams 管理
-        gameState.maxTokens = p.max_tokens;
-    }
-
-    // 同步到PresetManager（参数统一由预设管理器控制）
-    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
-        // 【修复P1-3】先重置核心采样参数到基线，避免 applyArchetype 残留字段污染
-        // （如先点写法档位设了 repeat_penalty=1.1，再点参数预设时 repeat_penalty 不会残留）
-        if (typeof SAMPLING_PARAMS_BASELINE !== 'undefined') {
-            PresetManager.currentParams.temperature = SAMPLING_PARAMS_BASELINE.temperature;
-            PresetManager.currentParams.top_p = SAMPLING_PARAMS_BASELINE.top_p;
-            PresetManager.currentParams.top_k = SAMPLING_PARAMS_BASELINE.top_k;
-            PresetManager.currentParams.frequency_penalty = SAMPLING_PARAMS_BASELINE.frequency_penalty;
-            PresetManager.currentParams.presence_penalty = SAMPLING_PARAMS_BASELINE.presence_penalty;
-            PresetManager.currentParams.max_tokens = SAMPLING_PARAMS_BASELINE.max_tokens;
-            PresetManager.currentParams.repeat_penalty = SAMPLING_PARAMS_BASELINE.repeat_penalty;
-        }
-        // 再覆盖参数预设自己的值
-        PresetManager.currentParams.temperature = p.temperature;
-        PresetManager.currentParams.top_p = p.top_p;
-        PresetManager.currentParams.top_k = p.top_k;
-        PresetManager.currentParams.frequency_penalty = p.frequency_penalty;
-        PresetManager.currentParams.presence_penalty = p.presence_penalty;
-        PresetManager.currentParams.max_tokens = p.max_tokens;
-        PresetManager.saveCurrentParams();
-        PresetManager.syncParamsToUI();
-    }
-
     // 显示信息
     var infoEl = document.getElementById('paramPresetInfo');
     if (infoEl) {
         infoEl.style.display = 'block';
-        infoEl.textContent = '已应用: ' + p.name + ' — ' + p.description;
+        infoEl.textContent = '已应用: ' + p._name + ' — ' + p._desc;
     }
-    if (typeof UI !== 'undefined') UI.toast('已应用参数: ' + p.name);
+    if (typeof UI !== 'undefined') UI.toast('已应用参数: ' + p._name);
 }
 
 async function sendAIRequest(userMessage, isInit = false) {
@@ -3455,112 +3386,12 @@ async function loadFromSlot(slot) {
         if (!gameState) { gameState = {}; }
         Object.keys(parsed).forEach(function(k) { gameState[k] = parsed[k]; });
 
-        // 【动态化】maxTokens 不再硬编码上限——这是 API 游戏，AI 能理解输出长度
-        // 旧代码：maxTokens > 32000 强制改为 4096，maxTokens < 256 强制改为 4096
-        // 问题：用户若想生成长篇内容（如 50000 tokens），会被强制截断为 4096，严重限制 AI
-        // 新策略：只修正明显无效的值（null/undefined/NaN/非数字），尊重用户设置
-        // 历史 bug 兼容：仅当检测到遗留的 80000 异常默认值时才重置（这是旧版本 bug，非用户选择）
-        if (typeof gameState.maxTokens === 'undefined' || gameState.maxTokens === null) {
-            gameState.maxTokens = 4096;
-        } else {
-            var _mtVal = Number(gameState.maxTokens);
-            if (!isFinite(_mtVal) || _mtVal <= 0) {
-                console.warn('[loadFromSlot] maxTokens 非有效数字，重置为默认:', gameState.maxTokens);
-                gameState.maxTokens = 4096;
-            } else if (_mtVal === 80000) {
-                // 历史 bug：旧版本默认值曾误写为 80000，导致模型生成 8 万 token 才停
-                console.warn('[loadFromSlot] 检测到遗留的 80000 异常默认值，重置为 4096');
-                gameState.maxTokens = 4096;
-            }
-            // 其他值（无论多大或多小）都尊重用户设置，API 会按模型实际上限处理
-        }
-        
-        // 读档后重置临时字段，防止旧数据残留
-        if (gameState) {
-            gameState._depthPrompts = {};
-            gameState._positionPrompts = {};
-            gameState._afterChatPrompts = [];
-            gameState._wiCachedResult = null;
-        }
-        // 重置世界书轮次追踪器，防止cooldown/delay状态异常
-        if (typeof WorldInfo !== 'undefined') {
-            WorldInfo._turnTracker = {};
-            WorldInfo._currentTurn = 0;
-        }
-        
-        // 确保版本号更新
+        // 【修复P1-3】统一调用 ensureGameStateFields 替代 70 行字段补全
+        // 此前 loadFromSlot 用 70+ 行 if(!gameState.xxx) 逐字段补全，与 createDefaultGameState 高度重复
+        // 现在统一调用 ensureGameStateFields，遍历 createDefaultGameState 的 key 补全缺失字段
+        // 同时处理 maxTokens 历史 bug（80000）和 _stats.startTime 重置
+        ensureGameStateFields(gameState);
         if (gameState) gameState._version = GAME_VERSION;
-        
-        // 兼容旧存档缺少的字段
-        if (gameState) {
-            if (!gameState.pinnedModules) gameState.pinnedModules = {};
-            if (!gameState.rollingSummary) gameState.rollingSummary = '';
-            if (!gameState.allCharacters) gameState.allCharacters = {};
-            if (!gameState.keyEvents) gameState.keyEvents = [];
-            if (!gameState.worldSnapshot) gameState.worldSnapshot = {};
-            if (!gameState.currentQuests) gameState.currentQuests = [];
-            if (!gameState.relationships) gameState.relationships = [];
-            if (!gameState.currentBag) gameState.currentBag = [];
-            if (gameState.playerData === undefined) gameState.playerData = null;
-            if (!gameState.favStories) gameState.favStories = [];
-            if (!gameState.generatedNovel) gameState.generatedNovel = '';
-            if (!gameState.conversationHistory) gameState.conversationHistory = [];
-            if (typeof gameState.autoCompress === 'undefined') gameState.autoCompress = true;
-            if (typeof gameState.useStream === 'undefined') gameState.useStream = true;
-            // 【修复P0-1】不再补全 gameState.temperature——统一由 PresetManager.currentParams 管理
-            if (typeof gameState.fontSize === 'undefined') gameState.fontSize = 16;
-            if (typeof gameState.generateChoices === 'undefined') gameState.generateChoices = true;
-            if (!gameState.protagonistSetup) gameState.protagonistSetup = {};
-            if (!gameState._presetApps) gameState._presetApps = {};
-            if (!gameState._stats) {
-                gameState._stats = {
-                    startTime: Date.now(),
-                    totalTurns: (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length,
-                    totalTokens: 0,
-                    maxTokensInTurn: 0,
-                    totalCharacters: Object.keys(gameState.allCharacters || {}).length,
-                    completedQuests: 0,
-                    totalPlayTime: 0
-                };
-            } else {
-                gameState._stats.startTime = Date.now();
-                if (typeof gameState._stats.totalTurns === 'undefined') gameState._stats.totalTurns = 0;
-                if (typeof gameState._stats.totalTokens === 'undefined') gameState._stats.totalTokens = 0;
-                if (typeof gameState._stats.maxTokensInTurn === 'undefined') gameState._stats.maxTokensInTurn = 0;
-                if (typeof gameState._stats.totalCharacters === 'undefined') gameState._stats.totalCharacters = 0;
-                if (typeof gameState._stats.completedQuests === 'undefined') gameState._stats.completedQuests = 0;
-                if (typeof gameState._stats.totalPlayTime === 'undefined') gameState._stats.totalPlayTime = 0;
-            }
-            if (!gameState._undoHistory) gameState._undoHistory = [];
-            if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-            if (!Array.isArray(gameState._moments)) gameState._moments = [];
-            if (!gameState._npcDiaries) gameState._npcDiaries = {};
-            if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-            if (!gameState._chatLogs) gameState._chatLogs = {};
-            if (!gameState._mail) gameState._mail = [];
-            if (!gameState._diary) gameState._diary = [];
-            if (typeof gameState.userPrompt === 'undefined') gameState.userPrompt = '';
-            if (typeof gameState.customStyle === 'undefined') gameState.customStyle = '';
-            if (typeof gameState.systemPrompt === 'undefined') gameState.systemPrompt = '';
-            if (typeof gameState.tokenCount === 'undefined') gameState.tokenCount = 0;
-            if (typeof gameState.maxTokens === 'undefined') gameState.maxTokens = 4096;
-        }
-        if (gameState) {
-            if (typeof gameState.streamFailCount === 'undefined') gameState.streamFailCount = 0;
-            if (!gameState.gameTime) gameState.gameTime = {date: '', time: '', period: '', weather: '', era: ''};
-            if (typeof gameState._jailbreakPrompt === 'undefined') gameState._jailbreakPrompt = '';
-            if (typeof gameState._assistantPrompt === 'undefined') gameState._assistantPrompt = '';
-            if (typeof gameState._MAX_UNDO_HISTORY === 'undefined') gameState._MAX_UNDO_HISTORY = 50;
-            if (!gameState.wordCountConfig) {
-                gameState.wordCountConfig = {
-                    enabled: true, min: 1500, max: 3000,
-                    paragraphMin: 15, paragraphMax: 17,
-                    paragraphStyle: 'medium', lengthPreset: 'medium'
-                };
-            }
-            if (!gameState._theaterContent) gameState._theaterContent = {};
-            if (gameState._lastAIReply === undefined) gameState._lastAIReply = null;
-        }
 
         // 恢复记忆数据（从存档中还原EnhancedMemory）
         if (data.memoryData) {

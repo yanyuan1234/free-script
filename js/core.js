@@ -1909,6 +1909,74 @@ summaryBookmarks: []         // [{ id, label, timestamp, hidden }]
 
 var gameState = createDefaultGameState();
 
+// 【修复P1-3】统一状态重置入口——此前 startNewGame/loadFromSlot/handleImportFile 三处各自重置不同字段子集，
+// 极易字段遗漏。现在统一为 ensureGameStateFields() 和 resetRuntimeState(scope) 两个函数。
+// ensureGameStateFields：补全缺失字段（用于 loadFromSlot 和 handleImportFile）
+function ensureGameStateFields(gs) {
+    if (!gs) gs = {};
+    var defaults = createDefaultGameState();
+    Object.keys(defaults).forEach(function(k) {
+        if (gs[k] === undefined || gs[k] === null) {
+            gs[k] = defaults[k];
+        }
+    });
+    // 特殊处理：maxTokens 的历史 bug 兼容（80000 是旧版本误写的异常默认值）
+    var _mtVal = Number(gs.maxTokens);
+    if (!isFinite(_mtVal) || _mtVal <= 0 || _mtVal === 80000) {
+        gs.maxTokens = 4096;
+    }
+    // 特殊处理：_stats.startTime 读档时应重置
+    if (gs._stats) {
+        gs._stats.startTime = Date.now();
+    }
+    // 读档后重置临时字段，防止旧数据残留
+    gs._depthPrompts = {};
+    gs._positionPrompts = {};
+    gs._afterChatPrompts = [];
+    gs._wiCachedResult = null;
+    // 重置世界书轮次追踪器
+    if (typeof WorldInfo !== 'undefined') {
+        WorldInfo._turnTracker = {};
+        WorldInfo._currentTurn = 0;
+    }
+    return gs;
+}
+
+// resetRuntimeState：重置运行时状态（用于 startNewGame 和 loadFromSlot 前清场）
+// scope: 'full'（新游戏，全部重置）/ 'load'（读档，保留 gameState 但重置运行时变量）
+function resetRuntimeState(scope) {
+    streamBuffer = '';
+    isWaiting = false;
+    isCompressing = false;
+    // 压缩冷却实际使用 window.lastCompressTime（见 game.js）
+    window.lastCompressTime = 0;
+    _streamModeLocked = false;
+    _streamMode = null;
+    if (typeof _streamFullText !== 'undefined') _streamFullText = '';
+    // 清空增强记忆系统（防止旧记忆污染新游戏）
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.clear) {
+        EnhancedMemory.clear();
+    }
+    // 清空NPC聊天状态
+    if (typeof npcChatState !== 'undefined') {
+        npcChatState.npcName = '';
+        npcChatState.chatHistory = [];
+        npcChatState.abortController = null;
+        npcChatState.isSending = false;
+    }
+    // 清空打字机缓冲
+    if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.stop) {
+        TypewriterBuffer.stop();
+    }
+    // 清空UI残留
+    var storyEl = document.getElementById('storyText');
+    if (storyEl) storyEl.innerHTML = '';
+    // full 模式：整体替换 gameState
+    if (scope === 'full') {
+        gameState = createDefaultGameState();
+    }
+}
+
 var streamBuffer = '';
 var isWaiting = false;
 // ======= 打字机缓冲系统 v2（优化版） =======

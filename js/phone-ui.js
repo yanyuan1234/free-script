@@ -4251,34 +4251,9 @@ function startNewGame() {
     }
 
     // ======== 重置所有游戏数据 ========
-    gameState = createDefaultGameState();
-    streamBuffer = '';
-    isWaiting = false;
-    isCompressing = false;
-    // 【修复P0-4】压缩冷却实际使用 window.lastCompressTime（见 game.js），
-    // 此前误重置 core.js 的 let lastCompressTime（死代码），导致新游戏后旧冷却仍生效
-    window.lastCompressTime = 0;
-    _streamModeLocked = false;
-    _streamMode = null;
-    if (typeof _streamFullText !== 'undefined') _streamFullText = '';
-
-    // 清空增强记忆系统（核心修复：防止旧记忆污染新游戏）
-    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.clear) {
-        EnhancedMemory.clear();
-    }
-
-    // 清空NPC聊天状态
-    npcChatState.npcName = '';
-    npcChatState.chatHistory = [];
-    npcChatState.abortController = null;
-    npcChatState.isSending = false;
-
-    // 清空打字机缓冲
-    TypewriterBuffer.stop();
-
-    // 清空UI残留
-    var storyEl = document.getElementById('storyText');
-    if (storyEl) storyEl.innerHTML = '';
+    // 【修复P1-3】统一调用 resetRuntimeState('full')，替代分散的重置逻辑
+    // 此前 startNewGame/loadFromSlot/handleImportFile 三处各自重置不同字段子集，极易字段遗漏
+    resetRuntimeState('full');
 
     // ======== 开始新游戏 ========
     gameState.userPrompt = prompt;
@@ -5511,16 +5486,13 @@ function saveGameSettings() {
     var activeFont = document.querySelector('[data-fontsize].active');
     gameState.fontSize = activeFont ? (fontSizeMap[activeFont.dataset.fontsize] || 16) : 16;
     // 【修复S1】读取剧情长度设置并同步到gameState.maxTokens
+    // 【修复P1-2】统一调用 _syncMaxTokens，替代分散的内联同步
     var storyLengthEl = document.getElementById('settingStoryLength');
     if (storyLengthEl) {
         var len = parseInt(storyLengthEl.value);
         if (len && len >= 100) {
-            gameState.maxTokens = len;
-            // 【同步】设置页面的剧情长度修改后，同步到预设的max_tokens
-            if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
-                PresetManager.currentParams.max_tokens = len;
-                var maxTokensEl = document.getElementById('presetMaxTokens');
-                if (maxTokensEl) maxTokensEl.value = len;
+            if (typeof _syncMaxTokens === 'function') {
+                _syncMaxTokens(len);
             }
         }
     }
@@ -5616,63 +5588,129 @@ function saveGameSettings() {
     }
 })();
 
+// 【修复P1-2】统一 max_tokens 同步入口——此前 max_tokens 有 4 重表示（PresetManager.currentParams.max_tokens / gameState.maxTokens / settingStoryLength / presetMaxTokens），
+// 同步逻辑分散在 6 处，任何一处遗漏都会导致"请求用的长度"和"压缩计算用的长度"不一致。
+// 现在统一调用 _syncMaxTokens()，从 PresetManager.currentParams.max_tokens（唯一源）同步到其他 3 处。
+function _syncMaxTokens(value) {
+    var mt = value != null ? value :
+        (typeof PresetManager !== 'undefined' && PresetManager.currentParams ?
+            (PresetManager.currentParams.max_tokens != null ? PresetManager.currentParams.max_tokens : 4096) : 4096);
+    // 1. 同步 PresetManager（如果 value 是外部传入的）
+    if (value != null && typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+        PresetManager.currentParams.max_tokens = mt;
+    }
+    // 2. 同步 gameState.maxTokens（压缩计算用）
+    if (typeof gameState !== 'undefined' && gameState) {
+        gameState.maxTokens = mt;
+    }
+    // 3. 同步 settingStoryLength（设置页 UI）
+    var storyLengthEl = document.getElementById('settingStoryLength');
+    if (storyLengthEl) storyLengthEl.value = mt;
+    // 4. 同步 presetMaxTokens（预设管理器 UI）
+    var maxTokensEl = document.getElementById('presetMaxTokens');
+    if (maxTokensEl) maxTokensEl.value = mt;
+}
+
 // === 推荐档位切换 ===
-// 一键应用酒馆前辈沉淀的采样参数组合（导入酒馆预设时会自动覆盖）
-// 注意：字段名是 ID 不会变，_label 仅用于 toast 提示
-var ARCHETYPE_PRESETS = {
-    // 【修复P0-2】统一写法档位与参数预设的值，消除 conservative 名称冲突
-    // 此前 ARCHETYPE_PRESETS.conservative (temp=0.6) 与 applyParamPreset.conservative (temp=0.88) 值不同
-    // 现在两套系统的同名档位使用相同的采样参数值
-    conservative: { temperature: 0.88, top_p: 0.88, top_k: 0,  frequency_penalty: 0.2, presence_penalty: 0.2, repeat_penalty: 1.1, _label: '📘 短篇' },
-    natural:      { temperature: 1.3,  top_p: 0.91, top_k: 64, frequency_penalty: 0,   presence_penalty: 0,   repeat_penalty: 1.1, _label: '📗 中篇' },
-    passionate:   { temperature: 1.71, top_p: 0.9,  top_k: 0,  frequency_penalty: 0.65,presence_penalty: 0.75,repeat_penalty: 1.1, _label: '📙 长篇' },
-    delicate:     { temperature: 0.88, top_p: 0.88, top_k: 0,  frequency_penalty: 0.2, presence_penalty: 0.2, repeat_penalty: 1.1, _label: '📕 细腻' }
+// 【修复P1-1】合并双预设系统——此前 applyParamPreset（game.js）和 applyArchetype（phone-ui.js）
+// 是两套独立的预设系统，字段重叠但不完全一致，需要 SAMPLING_PARAMS_BASELINE 重置补丁避免互相污染。
+// 现在统一为 UNIFIED_PRESETS 单一预设表，两个函数都从它读取，天然无残留问题。
+// 字段集：temperature/top_p/top_k/frequency_penalty/presence_penalty/max_tokens/repeat_penalty
+var UNIFIED_PRESETS = {
+    // 短篇档（= applyParamPreset.conservative = applyArchetype.conservative）
+    conservative: {
+        temperature: 0.88, top_p: 0.88, top_k: 0,
+        frequency_penalty: 0.2, presence_penalty: 0.2,
+        max_tokens: 4096, repeat_penalty: 1.1,
+        _label: '📘 短篇', _name: '低温稳定',
+        _desc: '低温+低惩罚，输出稳定可控，适合需要一致性的叙事'
+    },
+    // 中篇档（= applyParamPreset.balanced = applyArchetype.natural）
+    natural: {
+        temperature: 1.3, top_p: 0.91, top_k: 64,
+        frequency_penalty: 0, presence_penalty: 0,
+        max_tokens: 8192, repeat_penalty: 1.1,
+        _label: '📗 中篇', _name: '均衡自然',
+        _desc: '中高温+TopK，输出自然丰富，适合大多数场景'
+    },
+    // 长篇档（= applyParamPreset.creative = applyArchetype.passionate）
+    passionate: {
+        temperature: 1.71, top_p: 0.9, top_k: 0,
+        frequency_penalty: 0.65, presence_penalty: 0.75,
+        max_tokens: 8192, repeat_penalty: 1.1,
+        _label: '📙 长篇', _name: '高温创意',
+        _desc: '超高温+高惩罚，输出极具创意，适合长篇叙事'
+    },
+    // 细腻档（= applyArchetype.delicate，与 conservative 采样参数相同，仅语义不同）
+    delicate: {
+        temperature: 0.88, top_p: 0.88, top_k: 0,
+        frequency_penalty: 0.2, presence_penalty: 0.2,
+        max_tokens: 4096, repeat_penalty: 1.1,
+        _label: '📕 细腻', _name: '低温细腻',
+        _desc: '克制含蓄，适合日常情感'
+    },
+    // 默认档（= applyParamPreset.default）
+    default: {
+        temperature: 0.8, top_p: 0.9, top_k: 0,
+        frequency_penalty: 0, presence_penalty: 0,
+        max_tokens: 4096, repeat_penalty: 1.1,
+        _label: '⚙️ 默认', _name: '默认参数',
+        _desc: 'Free-Script 默认参数'
+    }
 };
-// 【修复P1-3】核心采样参数默认基线——applyArchetype 和 applyParamPreset 应用新值前先重置到这个基线，
-// 避免两个档位系统互相残留字段（如先点参数预设设了 max_tokens=30000，再点写法档位时 max_tokens 不会残留）
-// 与 PresetManager.currentParams 初始值保持一致（见 modules.js:338）
-var SAMPLING_PARAMS_BASELINE = {
-    temperature: 0.8,
-    top_p: 0.9,
-    top_k: 0,
-    frequency_penalty: 0,
-    presence_penalty: 0,
-    max_tokens: 4096,
-    repeat_penalty: 1.0
+// 兼容别名：applyParamPreset 历史使用 balanced/creative 等名称，映射到统一预设
+var PRESET_ALIASES = {
+    balanced: 'natural',
+    creative: 'passionate'
 };
-function applyArchetype(name) {
-    var p = ARCHETYPE_PRESETS[name];
-    if (!p) return;
+// 【修复P1-1】统一的参数应用函数——applyParamPreset 和 applyArchetype 都调用它
+// 从 UNIFIED_PRESETS 读取完整字段集，一次性写入 PresetManager，无需 baseline 重置
+function _applyUnifiedPreset(presetKey, opts) {
+    var key = PRESET_ALIASES[presetKey] || presetKey;
+    var p = UNIFIED_PRESETS[key];
+    if (!p) return false;
     // 写入 PresetManager（这是 callAI 真正读取的源）
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
-        // 【修复P1-3】先重置核心采样参数到基线，避免 applyParamPreset 残留字段污染
-        PresetManager.currentParams.temperature = SAMPLING_PARAMS_BASELINE.temperature;
-        PresetManager.currentParams.top_p = SAMPLING_PARAMS_BASELINE.top_p;
-        PresetManager.currentParams.top_k = SAMPLING_PARAMS_BASELINE.top_k;
-        PresetManager.currentParams.frequency_penalty = SAMPLING_PARAMS_BASELINE.frequency_penalty;
-        PresetManager.currentParams.presence_penalty = SAMPLING_PARAMS_BASELINE.presence_penalty;
-        PresetManager.currentParams.max_tokens = SAMPLING_PARAMS_BASELINE.max_tokens;
-        PresetManager.currentParams.repeat_penalty = SAMPLING_PARAMS_BASELINE.repeat_penalty;
-        // 再覆盖写法档位自己的值
         PresetManager.currentParams.temperature = p.temperature;
         PresetManager.currentParams.top_p = p.top_p;
+        PresetManager.currentParams.top_k = p.top_k;
         PresetManager.currentParams.frequency_penalty = p.frequency_penalty;
         PresetManager.currentParams.presence_penalty = p.presence_penalty;
+        PresetManager.currentParams.max_tokens = p.max_tokens;
         PresetManager.currentParams.repeat_penalty = p.repeat_penalty;
         if (typeof PresetManager.saveCurrentParams === 'function') PresetManager.saveCurrentParams();
         if (typeof PresetManager.syncParamsToUI === 'function') PresetManager.syncParamsToUI();
     }
-    if (typeof gameState !== 'undefined') {
-        // 【修复P0-1】不再写 gameState.temperature——统一由 PresetManager.currentParams 管理
-        // 【修复P1-3】同步 max_tokens 到 gameState，避免 UI 与实际请求不一致
-        if (gameState.maxTokens !== undefined) gameState.maxTokens = SAMPLING_PARAMS_BASELINE.max_tokens;
-        gameState.presetArchetype = name;
+    // 同步 max_tokens 到 gameState（压缩计算用）和 UI
+    // 【修复P1-2】统一调用 _syncMaxTokens，替代分散的内联同步
+    if (typeof _syncMaxTokens === 'function') {
+        _syncMaxTokens(p.max_tokens);
+    } else {
+        // fallback：直接同步
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState.maxTokens = p.max_tokens;
+        }
+        var elMaxTokens = document.getElementById('settingStoryLength');
+        if (elMaxTokens) elMaxTokens.value = p.max_tokens;
     }
-    // UI 反馈
-    document.querySelectorAll('.archetype-card').forEach(function(el) {
-        el.classList.toggle('active', el.getAttribute('data-archetype') === name);
-    });
-    if (typeof UI !== 'undefined' && UI.toast) UI.toast('已切换到「' + p._label + '」写法（导入他人预设时会被覆盖）');
+    // 可选：更新 presetArchetype（仅 applyArchetype 调用时）
+    if (opts && opts.setArchetype && typeof gameState !== 'undefined') {
+        gameState.presetArchetype = key;
+    }
+    // 可选：UI 卡片高亮（仅 applyArchetype 调用时）
+    if (opts && opts.updateCardHighlight) {
+        document.querySelectorAll('.archetype-card').forEach(function(el) {
+            el.classList.toggle('active', el.getAttribute('data-archetype') === key);
+        });
+    }
+    return true;
+}
+function applyArchetype(name) {
+    if (!_applyUnifiedPreset(name, { setArchetype: true, updateCardHighlight: true })) return;
+    var p = UNIFIED_PRESETS[PRESET_ALIASES[name] || name];
+    if (p && typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('已切换到「' + p._label + '」写法（导入他人预设时会被覆盖）');
+    }
 }
 
 // === 触发剧情助手 ===
@@ -5852,7 +5890,8 @@ function openSettingsModal() {
 
     // 更新剧情长度
     var lengthEl = document.getElementById('settingStoryLength');
-    if (lengthEl) lengthEl.value = gameState.maxTokens || 2048;
+    // 【修复P1-2】统一默认值为 4096，与全局一致（此前这里是 2048，与 PresetManager 默认 4096 不一致）
+    if (lengthEl) lengthEl.value = gameState.maxTokens || 4096;
 
     // 同步预设参数到设置面板（预设 > 默认）
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
