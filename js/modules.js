@@ -455,20 +455,8 @@ var PresetManager = {
     }
     // 同步游戏设置的流式开关
     gameState.useStream = this.currentParams.stream !== false;
-    var streamOn = document.getElementById('streamOn');
-    var streamOff = document.getElementById('streamOff');
-    if (streamOn && streamOff) {
-        if (gameState.useStream) {
-            streamOn.classList.add('active');
-            streamOff.classList.remove('active');
-            } else {
-            streamOff.classList.add('active');
-            streamOn.classList.remove('active');
-        }
-    }
+    // 【修复P3】移除 streamOn/streamOff 死引用——P2-1 已改为 switch checkbox，这两个 ID 不再存在
     },
-
-    // 从UI同步参数
     syncParamsFromUI: function() {
         var tempEl = document.getElementById('presetTemp');
         var topPEl = document.getElementById('presetTopP');
@@ -496,17 +484,7 @@ var PresetManager = {
         }
         // 同步游戏设置的流式开关
         gameState.useStream = this.currentParams.stream !== false;
-        var streamOn = document.getElementById('streamOn');
-        var streamOff = document.getElementById('streamOff');
-        if (streamOn && streamOff) {
-            if (gameState.useStream) {
-                streamOn.classList.add('active');
-                streamOff.classList.remove('active');
-                } else {
-                streamOff.classList.add('active');
-                streamOn.classList.remove('active');
-            }
-    }
+        // 【修复P3】移除 streamOn/streamOff 死引用——P2-1 已改为 switch checkbox，这两个 ID 不再存在
 
     this.saveCurrentParams();
 
@@ -2012,11 +1990,7 @@ var PresetManager = {
             }
         });
 
-        // 同步 max_tokens
-        var maxTokensEl = document.getElementById('presetMaxTokens');
-        if (maxTokensEl) {
-            maxTokensEl.value = this.currentParams.max_tokens || 4096;
-        }
+        // 【修复P3】移除重复的 presetMaxTokens 同步——上方 _syncMaxTokens() 已同步到 UI（含 presetMaxTokens）和 gameState
 
     // 同步 context length（如果有的话）
     var ctxLenEl = document.getElementById('presetContextLength');

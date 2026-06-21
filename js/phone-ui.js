@@ -3949,15 +3949,7 @@ function bindEvents() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.triggerThreshold = parseFloat(this.value);
         UI.toast('触发阈值已设置为 ' + (this.value * 100) + '%');
     });
-    // 回滚摘要按钮
-    bindEvent('btnRollbackSummary', 'click', function() {
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.rollbackSummary()) {
-            UI.toast('已回滚到上一版本摘要');
-            updateCompressionStats();
-        } else {
-            UI.toast('没有更早的版本可回滚');
-        }
-    });
+    // 【修复P3】移除 btnRollbackSummary 处理器——EnhancedMemory.rollbackSummary 是 stub（恒返回 false），按钮无效
     // 更新压缩统计
     function updateCompressionStats() {
         var statsEl = document.getElementById('compressionStats');
@@ -5504,12 +5496,8 @@ function saveGameSettings() {
     // 章节模式
     var chapterModeEl = document.getElementById('settingChapterMode');
     if (chapterModeEl) gameState.chapterMode = chapterModeEl.value;
-    // NPC 描写准则（已固定为默认开，UI 已移除开关）
-    // 【动态化】移除强制 npcDescriptionRules = true——AI 能自行判断 NPC 外貌，不需要硬编码"好看原则"
-    // 叙事基调（10眼）已固定为默认开，UI 不再展示
-    // 【修复P2-3】移除 squelchRules UI 读取——_squelchPostProcess 已删除，squelchRules 是死代码
+    // 【修复P3】squelchRules/npcDescriptionRules 字段已从 createDefaultGameState 移除——死代码
     // NSFW 内容控制应通过自定义风格/设定实现，而非无效的安慰剂开关
-    // squelchRules 字段保留在 createDefaultGameState 中，向后兼容旧存档导入
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
     Storage.setJSON(Storage.KEYS.SETTINGS, {
@@ -5529,7 +5517,6 @@ function saveGameSettings() {
         cotMode: gameState.cotMode,
         // === 酒馆预设融合 v2 ===
         chapterMode: gameState.chapterMode,
-        npcDescriptionRules: gameState.npcDescriptionRules,
         narrativeEyes: gameState.narrativeEyes,
         // 【修复P2-3】不再导出 squelchRules——死代码，UI 已移除
         presetArchetype: gameState.presetArchetype
@@ -5855,18 +5842,8 @@ function openSettingsModal() {
     // 【修复P1-2】统一默认值为 4096，与全局一致（此前这里是 2048，与 PresetManager 默认 4096 不一致）
     if (lengthEl) lengthEl.value = gameState.maxTokens || 4096;
 
-    // 同步预设参数到设置面板（预设 > 默认）
-    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
-        var p = PresetManager.currentParams;
-        var el = function(id) { return document.getElementById(id); };
-        if (el('settingContextLength') && p.context_length) el('settingContextLength').value = p.context_length;
-        if (el('settingTemperature') && p.temperature !== undefined) el('settingTemperature').value = p.temperature;
-        if (el('settingTopP') && p.top_p !== undefined) el('settingTopP').value = p.top_p;
-        if (el('settingTopK') && p.top_k !== undefined) el('settingTopK').value = p.top_k;
-        if (el('settingFreqPen') && p.frequency_penalty !== undefined) el('settingFreqPen').value = p.frequency_penalty;
-        if (el('settingPresPen') && p.presence_penalty !== undefined) el('settingPresPen').value = p.presence_penalty;
-        if (el('settingRepeatPen') && p.repeat_penalty !== undefined) el('settingRepeatPen').value = p.repeat_penalty;
-    }
+    // 【修复P3】移除 7 个死 ID 引用——settingContextLength/settingTemperature/settingTopP/settingTopK/
+    // settingFreqPen/settingPresPen/settingRepeatPen 在 HTML 中均不存在（参数由预设管理器控制）
 
     // 显示设置弹窗
     UI.showModal('settingsModal');
@@ -5930,7 +5907,7 @@ function loadGameSettings() {
             // 【修复P2-1】不再同步 anti429Mode checkbox——UI 已移除
             // === 酒馆预设融合 v2 恢复 ===
             if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
-            if (d.npcDescriptionRules !== undefined) gameState.npcDescriptionRules = d.npcDescriptionRules;
+            // 【修复P3】不再恢复 npcDescriptionRules——死代码字段已从 createDefaultGameState 移除
             if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
                 gameState.narrativeEyes = d.narrativeEyes;
             }

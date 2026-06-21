@@ -1883,27 +1883,8 @@ narrativeEyes: {
     balanced: true,          // 戏剧平衡：戏剧性与合理性平衡
     mystery: true            // 超自然：现实与超常模糊边界
 },
-// === 干练文风（来自蛾摩拉预设的词句肃清） ===
-// 10 项基础规范默认开启，1 项 NSFW 专用默认关闭
-squelchRules: {
-    oilyCliches: true,       // 油腻套路：嘴角勾起弧度/捏下巴 等
-    bodyCloseups: true,      // 身体特写：胸膛震动/手部工业糖精特写
-    anatomyTerms: false,     // 解剖名词：耻骨/肋骨/肌理（NSFW 场景才建议开）
-    cognitiveInability: true,// 难以形容：难以言喻/无法名状
-    mandative: true,         // 强制语气：不容置疑
-    referenceDep: true,      // 对比句式：不是A而是B
-    extremeAdverbs: true,    // 夸张副词：极其/极度
-    pronouns: true,          // 重复代词：那个/那种
-    metaphors: true,         // 假设比喻：像是在.../仿佛...
-    metaphorBlacklist: true, // 老套比喻：石子/羽毛/烙印
-    forbidden: true          // 模板描写：嘴角勾起弧度/捏下巴
-},
-// === NPC 描写准则（默认注入，导入预设时可被覆盖） ===
-npcDescriptionRules: true,   // 男帅女美、禁止脸谱化、禁用丑相关形容
 // === 推荐参数档位（一键切换 4 档叙事参数） ===
-presetArchetype: 'free',     // conservative / natural / passionate / delicate / free
-// === 预设助手大总结书签（来自象牙塔预设的summarize功能） ===
-summaryBookmarks: []         // [{ id, label, timestamp, hidden }]
+presetArchetype: 'free'      // conservative / natural / passionate / delicate / free
 };
 }
 
@@ -4338,17 +4319,6 @@ function setWaiting(w) {
         else _setWaitingCache.progressBar.classList.remove('active');
     }
 }
-// 获取最近 API 错误历史（用于调试面板）
-function getRecentApiErrors() {
-    return Storage.getJSON(Storage.KEYS.API_ERRORS, []);
-}
-// 清空 API 错误历史
-function clearRecentApiErrors() {
-    Storage.remove(Storage.KEYS.API_ERRORS);
-}
-
-
-
 
 // ========================================
 // 第3层: AI核心

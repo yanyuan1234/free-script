@@ -3257,8 +3257,6 @@ var GameMemory = {
         Storage.remove(Storage.KEYS.MEMORY); Storage.remove(Storage.KEYS.ENHANCED_MEMORY);
     },
 
-    saveSummaryHistory: function() {},
-    rollbackSummary: function() { return false; },
     getCharacterInfo: function(name) { return this.tables.characters[name] || null; },
     getItemHistory: function(name) { var it = this.tables.items[name]; return it ? it.history : null; },
     getTimeline: function(startTurn, endTurn) { return this.timeline.filter(function(t) { return t.turn >= (startTurn || 0) && t.turn <= (endTurn || Infinity); }); },

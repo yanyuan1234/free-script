@@ -2259,7 +2259,6 @@ async function _compressConversation(removed, sys) {
     var summary = await callAI(summaryMessages, { temperature: 0.3 });
     // Step 4: 保存摘要到历史记录
     if (typeof EnhancedMemory !== 'undefined') {
-        EnhancedMemory.saveSummaryHistory(summary, gameState.conversationHistory.length);
         EnhancedMemory.longTermMemory.masterSummary = summary;
         if (summary.includes('【剧情主线】')) _parseStructuredSummary(summary);
         // 同步逐层摘要
