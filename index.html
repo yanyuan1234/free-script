@@ -1222,7 +1222,7 @@
                         </button>
                         <button class="wi-toolbar-btn wi-btn-danger" id="btnPresetClearAll">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            清空全部
+                            清空
                         </button>
                     </div>
                     <div class="modal-body" style="overflow-y:auto;flex:1;padding:0 !important;">
@@ -1782,9 +1782,9 @@
                                         API出错时自动切换到下一个可用配置</div>
                                 </div>
                             </div>
-                            <div class="settings-row" style="margin-top:0;">
-                                <button class="tag-btn" id="apiAutoRotateOn">开启</button>
-                                <button class="tag-btn" id="apiAutoRotateOff">关闭</button>
+                            <div class="setting-btn-row" style="margin-top:0;">
+                                <!-- 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组 -->
+                                <label class="switch"><input type="checkbox" id="apiAutoRotateToggle" onchange="LocalGameAPI.setAutoRotate(this.checked);"><span class="slider"></span></label>
                             </div>
                         </div>
                         <!-- 分组标签 -->
@@ -1949,7 +1949,7 @@
                         <div class="edit-panel" id="apiErrorsPanel">
                             <div class="flex-between mb-10">
                                 <span class="text-sm-secondary">错误日志</span>
-                                <button class="crystal-btn" id="btnClearApiErrors" style="font-size:11px;padding:4px 10px;color:var(--danger);border-color:var(--danger);">清空错误</button>
+                                <button class="crystal-btn" id="btnClearApiErrors" style="font-size:11px;padding:4px 10px;color:var(--danger);border-color:var(--danger);">清空</button>
                             </div>
                             <div id="apiErrorList" class="flex-col-gap-10">
                                 <div class="empty-state">暂无错误记录</div>
@@ -2226,10 +2226,10 @@
                             </svg></button>
                     </div>
                     <div class="modal-body">
-                        <div class="settings-group">
+                        <div class="setting-group">
                             <div>
                                 <label class="field-label">文字大小</label>
-                                <div class="settings-row">
+                                <div class="setting-btn-row">
                                     <button class="tag-btn" data-fontsize="small">小</button>
                                     <button class="tag-btn active" data-fontsize="medium">中</button>
                                     <button class="tag-btn" data-fontsize="large">大</button>
@@ -2449,21 +2449,20 @@
                                     </div>
                                 </div>
                             </div>
-                            <hr class="settings-divider">
+                            <hr class="setting-divider">
                             <div class="compress-settings">
                                 <label class="field-label">智能压缩</label>
                                 <div class="setting-item">
                                     <span class="setting-label">自动压缩</span>
                                     <div class="setting-controls">
-                                        <button class="tag-btn active" id="autoCompressOn">开启</button>
-                                        <button class="tag-btn" id="autoCompressOff">关闭</button>
+                                        <!-- 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组 -->
+                                        <label class="switch"><input type="checkbox" id="autoCompressToggle" checked><span class="slider"></span></label>
                                     </div>
                                 </div>
                                 <div class="setting-item">
                                     <span class="setting-label">增量更新</span>
                                     <div class="setting-controls">
-                                        <button class="tag-btn active" id="incrementalOn">开启</button>
-                                        <button class="tag-btn" id="incrementalOff">关闭</button>
+                                        <label class="switch"><input type="checkbox" id="incrementalToggle" checked><span class="slider"></span></label>
                                     </div>
                                 </div>
                                 <div class="setting-item">
@@ -2496,12 +2495,14 @@
                                     <div class="status-row" id="compressionStats">已节省: 0 token</div>
                                 </div>
                             </div>
-                            <hr class="settings-divider">
-                            <button class="crystal-btn w-full" id="btnSettingsBackToMenu">返回主页</button>
-                            <button class="crystal-btn w-full" id="btnExportNovel" style="margin-top:8px;">导出为小说</button>
+                            <hr class="setting-divider">
+                            <!-- 【修复P2-3】设置页按钮清理：移除重复的"返回主页"（header已有），按功能分组 -->
+                            <label class="field-label">数据管理</label>
                             <button class="crystal-btn danger w-full" id="btnSettingsClear">清除所有数据</button>
-                            <hr class="settings-divider">
-                            <button class="crystal-btn primary w-full" id="btnGenerateEnding" style="margin-top:10px;">
+                            <hr class="setting-divider">
+                            <label class="field-label">游戏操作</label>
+                            <button class="crystal-btn w-full" id="btnExportNovel">导出为小说</button>
+                            <button class="crystal-btn primary w-full" id="btnGenerateEnding" style="margin-top:8px;">
                                 <svg class="icon icon-sm" style="stroke:white;">
                                     <use href="#icon-sparkles" />
                                 </svg>

@@ -3933,31 +3933,16 @@ function bindEvents() {
         });
     });
 
+    // 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组
     // 自动压缩
-    bindEvent('autoCompressOn', 'click', function() {
-        gameState.autoCompress = true;
-        this.classList.add('active');
-        document.getElementById('autoCompressOff').classList.remove('active');
-        saveGameSettings();
-    });
-    bindEvent('autoCompressOff', 'click', function() {
-        gameState.autoCompress = false;
-        this.classList.add('active');
-        document.getElementById('autoCompressOn').classList.remove('active');
+    bindEvent('autoCompressToggle', 'change', function() {
+        gameState.autoCompress = this.checked;
         saveGameSettings();
     });
     // 增量更新开关
-    bindEvent('incrementalOn', 'click', function() {
-        if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = true;
-        this.classList.add('active');
-        document.getElementById('incrementalOff').classList.remove('active');
-        UI.toast('增量更新已开启');
-    });
-    bindEvent('incrementalOff', 'click', function() {
-        if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = false;
-        this.classList.add('active');
-        document.getElementById('incrementalOn').classList.remove('active');
-        UI.toast('增量更新已关闭');
+    bindEvent('incrementalToggle', 'change', function() {
+        if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.incrementalUpdate = this.checked;
+        UI.toast('增量更新已' + (this.checked ? '开启' : '关闭'));
     });
     // 触发阈值选择
     bindEvent('compressThreshold', 'change', function() {
@@ -3993,17 +3978,8 @@ function bindEvents() {
         manualCompress();
     });
 
-    // 重新开始
-    bindEvent('btnSettingsBackToMenu', 'click', async function() {
-        if (await UI.confirm('返回主页', '确定要返回主页吗？当前进度会自动保存。')) {
-            try { await autoSave(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
-            safeAbort();
-            window._currentAbort = null;
-            UI.hideModal('settingsModal');
-            UI.showPage('menuPage');
-            UI.toast('已返回主页');
-        }
-    });
+    // 【修复P2-3】移除 btnSettingsBackToMenu（与 header 的 btnBackToMenu 重复）
+    // 用户关闭设置弹窗后点击 header 返回主页即可
 
     // 导出为小说
     bindEvent('btnExportNovel', 'click', function() {
@@ -4153,16 +4129,10 @@ function bindEvents() {
         UI.toast(msg);
     });
 
+    // 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组
     // 自动轮询
-    bindEvent('apiAutoRotateOn', 'click', function() {
-        LocalGameAPI.setAutoRotate(true);
-        this.classList.add('active');
-        document.getElementById('apiAutoRotateOff').classList.remove('active');
-    });
-    bindEvent('apiAutoRotateOff', 'click', function() {
-        LocalGameAPI.setAutoRotate(false);
-        this.classList.add('active');
-        document.getElementById('apiAutoRotateOn').classList.remove('active');
+    bindEvent('apiAutoRotateToggle', 'change', function() {
+        LocalGameAPI.setAutoRotate(this.checked);
     });
 
     // 题材标签 - 点击后从THEME_LIBRARY选取题材填充描述
@@ -4205,14 +4175,10 @@ function bindEvents() {
         });
     });
 
+    // 【修复P2-1】初始化布尔开关 UI（switch checkbox，替代双按钮组的 active class 切换）
     // 初始化自动轮询UI
-    if (LocalGameAPI._autoRotate) {
-        document.getElementById('apiAutoRotateOn').classList.add('active');
-        document.getElementById('apiAutoRotateOff').classList.remove('active');
-    } else {
-        document.getElementById('apiAutoRotateOff').classList.add('active');
-        document.getElementById('apiAutoRotateOn').classList.remove('active');
-    }
+    var _apiRotateEl = document.getElementById('apiAutoRotateToggle');
+    if (_apiRotateEl) _apiRotateEl.checked = !!LocalGameAPI._autoRotate;
 
     // 【修复X13】移除 streamOn/streamOff 初始化代码（元素已不存在）
     // 流式开关状态由预设面板的 presetStreamToggle 控制
@@ -4230,17 +4196,12 @@ function bindEvents() {
     });
 
     // 初始化智能压缩UI
-    if (gameState.autoCompress !== false) {
-        document.getElementById('autoCompressOn').classList.add('active');
-        document.getElementById('autoCompressOff').classList.remove('active');
-    } else {
-        document.getElementById('autoCompressOff').classList.add('active');
-        document.getElementById('autoCompressOn').classList.remove('active');
-    }
+    var _autoCompressEl = document.getElementById('autoCompressToggle');
+    if (_autoCompressEl) _autoCompressEl.checked = gameState.autoCompress !== false;
     // 初始化增量更新UI
-    if (typeof EnhancedMemory !== 'undefined' && !EnhancedMemory.compressionConfig.incrementalUpdate) {
-        document.getElementById('incrementalOff').classList.add('active');
-        document.getElementById('incrementalOn').classList.remove('active');
+    var _incrementalEl = document.getElementById('incrementalToggle');
+    if (_incrementalEl && typeof EnhancedMemory !== 'undefined') {
+        _incrementalEl.checked = !!EnhancedMemory.compressionConfig.incrementalUpdate;
     }
 }
 function startNewGame() {
@@ -5528,8 +5489,9 @@ function saveGameSettings() {
     };
     // 【修复P0-1】不再同步 gameState.temperature——temperature 统一由 PresetManager.currentParams 管理
     // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
-    gameState.autoCompress = document.getElementById('autoCompressOn') && document.getElementById(
-        'autoCompressOn').classList.contains('active');
+    // 【修复P2-1】从 switch checkbox 读取 autoCompress，替代双按钮组的 active class 判断
+    var _autoCompressToggleEl = document.getElementById('autoCompressToggle');
+    gameState.autoCompress = _autoCompressToggleEl ? _autoCompressToggleEl.checked : true;
     gameState.summaryThreshold = parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0;
     // 【酒馆预设融合】保存叙事增强设置
     var writingStyleEl = document.getElementById('settingWritingStyle');
