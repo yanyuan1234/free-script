@@ -707,7 +707,9 @@ function mergeQuests(newQuests) {
     gameState.currentQuests = active.concat(done);
     // 【数据联通】推送到权威源 gm.quests，再触发同步 + UI 刷新
     _pushCurrentQuestsToGM();
-    if (typeof _syncQuestsToGameState === 'function') _syncQuestsToGameState();
+    // 【优化·循环同步修复】移除 _syncQuestsToGameState 调用——_pushCurrentQuestsToGM 已将数据推送到 gm.quests
+    // 旧代码紧接着调用 _syncQuestsToGameState（gm.quests → gameState.currentQuests），可能覆盖刚推送的数据
+    // 正确流程：推送后只刷新 UI，不再反向同步
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('currentQuests');
     }

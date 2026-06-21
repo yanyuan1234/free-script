@@ -1910,6 +1910,15 @@ function ensureGameStateFields(gs) {
     if (gs._stats) {
         gs._stats.startTime = Date.now();
     }
+    // 【优化·playerName 同步】gameState.playerName 此前从未被赋值，所有读取都走 || '玩家' 兜底
+    // 从 protagonistSetup.mcName 或 playerData.name 同步，确保 playerName 始终有值
+    if (!gs.playerName) {
+        if (gs.protagonistSetup && gs.protagonistSetup.mcName) {
+            gs.playerName = gs.protagonistSetup.mcName;
+        } else if (gs.playerData && gs.playerData.name) {
+            gs.playerName = gs.playerData.name;
+        }
+    }
     // 读档后重置临时字段，防止旧数据残留
     gs._depthPrompts = {};
     gs._positionPrompts = {};
@@ -3353,6 +3362,8 @@ if (options.length > 0) {
 }
 
 // 【深度融合】将预设<meow_FM>摘要桥接到游戏EnhancedMemory系统
+// 【优化】旧代码写入 shortTermMemory.summaries（注入路径从不读取，是死字段）
+// 新代码写入 _summaryLayers.near，确保摘要能被 buildInjection 第9层注入给 AI
 function _bridgeSummaryToMemory(theaterData) {
     if (!theaterData) return;
     var summaryText = '';
@@ -3365,20 +3376,19 @@ summaryText = theaterData.html.replace(/<[^>]+>/g, '').trim();
 }
 if (!summaryText || summaryText.length < 10) return;
 
-// 注入到EnhancedMemory的短期记忆
-if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.shortTermMemory && EnhancedMemory.shortTermMemory.summaries) {
-    var summaryEntry = {
-        turn: (gameState._stats && gameState._stats.totalTurns) || 0,
-        storySummary: summaryText.substring(0, 500),
-        timestamp: Date.now(),
-        source: 'preset_meow_FM'
-    };
-EnhancedMemory.shortTermMemory.summaries.push(summaryEntry);
-// 保留最近10条短期记忆
-if (EnhancedMemory.shortTermMemory.summaries.length > EnhancedMemory.shortTermMemory.maxRounds) {
-    EnhancedMemory.shortTermMemory.summaries = EnhancedMemory.shortTermMemory.summaries.slice(-EnhancedMemory.shortTermMemory.maxRounds);
-}
-console.log('[深度融合] 已将<meow_FM>摘要桥接到EnhancedMemory (长度:' + summaryText.length + ')');
+// 【优化】注入到 EnhancedMemory._summaryLayers.near（会被 buildInjection 第9层读取）
+if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._summaryLayers) {
+    var summaryEntry = '[预设摘要] ' + summaryText.substring(0, 500);
+    // 避免重复
+    if (EnhancedMemory._summaryLayers.near.indexOf(summaryEntry) === -1) {
+        EnhancedMemory._summaryLayers.near.push(summaryEntry);
+        // 保留最近10条
+        if (EnhancedMemory._summaryLayers.near.length > 10) {
+            EnhancedMemory._summaryLayers.near = EnhancedMemory._summaryLayers.near.slice(-10);
+        }
+        try { EnhancedMemory.saveToStorage(); } catch(e) {}
+        console.log('[深度融合] 已将<meow_FM>摘要桥接到 _summaryLayers.near (长度:' + summaryText.length + ')');
+    }
 }
 
 // 同时更新游戏的滚动摘要（如果AI没有返回contextSummary）
@@ -4209,15 +4219,18 @@ function withSaveLock(fn, label) {
         }
     );
 
-    // 超时保险：如果该锁持有超过 30 秒仍未释放，强制重置
+    // 超时保险：如果该锁持有超过 5 分钟仍未释放，强制重置
+    // 【优化】旧代码直接 _saveLock = Promise.resolve() 会丢失 pending 操作链
+    // 新代码：保留 pending 链，只重置状态计数器，让 pending 操作自然完成
     var timeoutLabel = 'saveLockTimeout_' + label + '_' + Date.now();
     TimerManager.setTimeout(timeoutLabel, function() {
         if (_saveLockState.holder === label && (Date.now() - _saveLockState.startTime) >= SAVE_LOCK_TIMEOUT) {
-            console.error('[SaveLock] 锁超时强制释放:', label);
+            console.error('[SaveLock] 锁超时强制释放:', label, '（pending 操作链保留，仅重置状态计数器）');
+            // 只重置状态计数器，不重置 _saveLock Promise 链
+            // pending 操作仍会自然完成，避免丢失写入
             _saveLockState.holder = null;
             _saveLockState.startTime = 0;
             _saveLockState.depth = 0;
-            _saveLock = Promise.resolve();
         }
     }, SAVE_LOCK_TIMEOUT + 100);
 
@@ -5200,16 +5213,8 @@ gameState.conversationHistory = [{
         role: 'system',
         content: gameState.systemPrompt
     }];
-if (gameState.customStyle && PresetManager.currentPresetIndex < 0) {
-    // 仅在无预设时注入写作风格；有预设时由预设完全控制
-    gameState.conversationHistory.push({
-        role: 'user',
-        content: '【写作风格要求】请在所有输出中遵循：\n' + gameState.customStyle + '\n\n回复"明白"确认。'
-    }, {
-    role: 'assistant',
-    content: '明白，我会遵循上述写作风格。'
-});
-}
+// 【优化】移除 customStyle 注入——customStyle 是死字段（无 UI 输入框），文风由 writingStyle 统一管理
+// 旧代码在此注入【写作风格要求】对话，与文风选择（writingStyle）语义重复，可能互相矛盾
 // 初始化游戏时间显示
 if (typeof GameTimeSystem !== 'undefined') {
     GameTimeSystem.updateUI();

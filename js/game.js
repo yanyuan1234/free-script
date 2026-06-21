@@ -251,14 +251,13 @@ function buildNarrativeEnhancement() {
     }
 
     // === 1. 写作节奏（章节模式） ===
-    // 【动态化】字数从 wordCountConfig 动态读取，不再硬编码 1500-3000
+    // 【优化·冲突3】章节模式不再重复注入字数——字数已由字数控制（字数总要求）统一注入
+    // 【优化·冲突2】长篇模式不再重复注入"长段落"——段落风格（单段落字数）已统一处理段落长度
     if (gs.chapterMode && gs.chapterMode !== 'off') {
-        var _wc = gs.wordCountConfig || {};
-        var _wcRange = (_wc.enabled && _wc.min && _wc.max) ? (_wc.min + '-' + _wc.max + ' 字') : '按设定阈值执行';
         if (gs.chapterMode === 'chapter') {
-            blocks.push('【章节模式·开启】\n本回合 = 一个章节。\n- 引入 → 发展 → （高潮）→ 收尾\n- 章末留未竟：情绪/未竟动作/未答疑问\n- 一章聚焦一个场景/情况\n- 单章字数 ' + _wcRange);
+            blocks.push('【章节模式·开启】\n本回合 = 一个章节。\n- 引入 → 发展 → （高潮）→ 收尾\n- 章末留未竟：情绪/未竟动作/未答疑问\n- 一章聚焦一个场景/情况');
         } else if (gs.chapterMode === 'longform') {
-            blocks.push('【长篇模式·开启】\n- 沉浸式长段落，把对话、动作、环境、心理整合为高密度完整段');
+            blocks.push('【长篇模式·开启】\n- 把对话、动作、环境、心理整合为高密度完整段，拒绝碎片化换行');
         }
     }
 
@@ -456,7 +455,8 @@ function buildSystemPrompt(includeFormatRules) {
 
     // 【修复A P1-4】对用户可控输入进行清理，防止prompt injection
     var _safeUserPrompt = _sanitizePromptInput(gameState && gameState.userPrompt);
-    var _safeCustomStyle = _sanitizePromptInput(gameState && gameState.customStyle);
+    // 【优化】移除 customStyle 死字段读取——全项目无 UI 输入框，默认空字符串
+    // 旧存档若带 customStyle，由文风选择（writingStyle）统一接管，避免双重风格注入冲突
 
     // 设定分层注入（Lorebook风格：核心常驻+按需加载）
     var _setupText = _safeUserPrompt;
@@ -516,7 +516,7 @@ function buildSystemPrompt(includeFormatRules) {
 
     if (!includeFormatRules) {
         return `${_setupText}
-${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
+${_narrativeEnhancement}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
     }
 
     var _maxTokens = (gameState && gameState.maxTokens) || 4096;
@@ -533,7 +533,7 @@ ${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCus
 '你的回复将直接被前端JSON解析器读取。**不要输出任何思考过程、计划、解释、前缀**。每次回复都以 { 开头，以 } 结尾，中间是合法的JSON。'}
 
 ${_setupText}
-${_narrativeEnhancement}${_safeCustomStyle ? '\n【写作风格】\n' + _safeCustomStyle + '\n' : ''}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
+${_narrativeEnhancement}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
 
 ${_termsPrompt}
 
@@ -873,9 +873,27 @@ function injectPresetGlobalVars() {
     }
 
     // === 思维链模式（来自蛾摩拉预设的COT控制） ===
+    // 【优化·冲突4】预设已配置 thinking/ECoT 标签时，cotMode 自动关闭，避免重复注入
     var cotMode = (gameState && gameState.cotMode) || '';
     if (cotMode === 'enabled') {
-        MacroEngine.setGlobalVar('起始标签', '<thinking>');
+        var _presetHasCot = false;
+        try {
+            if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
+                var _cotPreset = PresetManager.presets[PresetManager.currentPresetIndex];
+                if (_cotPreset && _cotPreset.prompts) {
+                    _presetHasCot = _cotPreset.prompts.some(function(p) {
+                        var c = (p && p.content) || '';
+                        return /<thinking>|<thought>|<cot>|ECoT/i.test(c);
+                    });
+                }
+            }
+        } catch(e) {}
+        if (_presetHasCot) {
+            // 预设已配置思维链，cotMode 退位
+            MacroEngine.setGlobalVar('起始标签', '');
+        } else {
+            MacroEngine.setGlobalVar('起始标签', '<thinking>');
+        }
     } else {
         MacroEngine.setGlobalVar('起始标签', '');
     }
@@ -1595,12 +1613,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             response = await callAI(messages, options);
         } catch (e) {
             // 【修复 P1-4】保留 AbortError 的 name 属性——上游通过 e.name === 'AbortError' 判断用户取消
-            // 旧代码 throw new Error('请求已取消') 会让 name 变成 'Error'，导致上游判断失败
+            // 【优化】保留原始 stack，便于调试
             if (e && e.name === 'AbortError') {
-                var abortErr = new Error('请求已取消');
-                abortErr.name = 'AbortError';
-                abortErr.aborted = true;
-                throw abortErr;
+                if (!e.aborted) e.aborted = true;
+                throw e;
             }
             throw e;
         }
@@ -2377,7 +2393,26 @@ async function autoCompressContext() {
     var _compressAbort = new AbortController();
     var _origCurrentAbort = window._currentAbort;
     window._currentAbort = _compressAbort;
+    // 【优化】统一的恢复函数——所有退出路径都恢复 _currentAbort，避免竞态丢失
+    var _restoreAbort = function() {
+        if (window._currentAbort === _compressAbort) {
+            window._currentAbort = _origCurrentAbort;
+        }
+    };
     try {
+        // 【优化·rollingSummary API 浪费】记忆系统激活且有摘要数据时，跳过 API 调用
+        // 旧逻辑：记忆系统激活后 rollingSummary 永不注入，但 autoCompressContext 仍消耗 API 调用生成它
+        // 新逻辑：检测到 _summaryLayers 有数据时，直接跳过压缩（摘要由记忆系统维护）
+        var _hasMemorySummary = (typeof EnhancedMemory !== 'undefined') && EnhancedMemory._summaryLayers &&
+            (EnhancedMemory._summaryLayers.near.length > 0 || EnhancedMemory._summaryLayers.mid.length > 0);
+        if (_hasMemorySummary) {
+            console.log('[压缩跳过] 记忆系统已有摘要数据，rollingSummary 不会注入，跳过 API 调用');
+            isCompressing = false;
+            if (!_wasWaiting) isWaiting = false;
+            _restoreAbort();
+            return;
+        }
+
         var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
         // 【阶段四】合并多次 slice/filter 为单次遍历，减少大数组重复扫描
         var dialogOnly = [];
@@ -2410,9 +2445,10 @@ async function autoCompressContext() {
         }
 
         if (removed.length === 0) {
-            // 提前返回时需要正确恢复状态
+            // 【优化】提前返回时也恢复 _currentAbort
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
+            _restoreAbort();
             return;
         }
         // 【P1优化】历史<10轮时不生成摘要：节省200-500 tokens
@@ -2422,6 +2458,7 @@ async function autoCompressContext() {
             console.log('[摘要跳过] 历史仅' + _historyTurns + '轮 (<10), 不生成摘要');
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
+            _restoreAbort();
             return;
         }
         var summary = await _compressConversation(removed, sys);
@@ -2442,9 +2479,7 @@ async function autoCompressContext() {
     } finally {
         isCompressing = false;
         if (!_wasWaiting) isWaiting = false;
-        if (window._currentAbort === _compressAbort) {
-            window._currentAbort = _origCurrentAbort;
-        }
+        _restoreAbort();
     }
 }
 // ========================================
@@ -2456,16 +2491,23 @@ async function manualCompress(btn) {
     var _compressAbort = new AbortController();
     var _origCurrentAbort = window._currentAbort;
     window._currentAbort = _compressAbort;
+    // 【优化】统一的恢复函数
+    var _restoreAbort = function() {
+        if (window._currentAbort === _compressAbort) {
+            window._currentAbort = _origCurrentAbort;
+        }
+    };
     try {
         var msgCount = (gameState && gameState.conversationHistory) ? gameState.conversationHistory.filter(function(m) {
             return m.role !== 'system';
         }).length : 0;
         if (msgCount <= 30) {
             UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于30条才有意义）');
+            _restoreAbort();
             return;
         }
         var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近30条原文，确定吗？');
-        if (!ok) return;
+        if (!ok) { _restoreAbort(); return; }
         var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
         // 【阶段四】合并多次 slice/filter 为单次遍历
         var dialogOnly = [];
@@ -2495,6 +2537,7 @@ async function manualCompress(btn) {
         }
         if (removed.length === 0) {
             UI.toast('没有需要压缩的内容');
+            _restoreAbort();
             return;
         }
         var summary = await _compressConversation(removed, sys);
@@ -2507,9 +2550,7 @@ async function manualCompress(btn) {
         console.error('手动压缩失败:', e);
         UI.toast('压缩失败: ' + translateError(e.message || '未知错误'));
     } finally {
-        if (window._currentAbort === _compressAbort) {
-            window._currentAbort = _origCurrentAbort;
-        }
+        _restoreAbort();
     }
 }
 (function() {
@@ -2596,6 +2637,10 @@ function onStreamChunk(delta, fullText) {
         var story = extractStoryStreaming(streamBuffer);
         if (story && story.length > 0) {
             TypewriterBuffer.push(story);
+        } else if (streamBuffer.length > 200) {
+            // 【优化】JSON 模式但 story 提取失败且累积超过 200 字时，记录警告便于调试
+            // 旧代码静默丢弃内容，用户可能看到空白剧情却不知原因
+            console.warn('[onStreamChunk] JSON 模式但 story 提取失败，缓冲区长度:', streamBuffer.length);
         }
         return;
     }
@@ -3094,6 +3139,12 @@ function mergeCharacters(chars) {
     if (gameState && gameState.playerData && gameState.playerData.name) {
         playerName = gameState.playerData.name;
     }
+    // 【优化】预构建 cleanKey → originalKey 索引，将 O(n²) 匹配降为 O(n)
+    var _charKeyIndex = {};
+    Object.keys((gameState && gameState.allCharacters) || {}).forEach(function(key) {
+        var cleanKey = key.replace(/[（(].*?[）)]/g, '').trim();
+        if (cleanKey) _charKeyIndex[cleanKey] = key;
+    });
     chars.forEach(function(c) {
         if (!c || !c.name) return;
         // 跳过主角
@@ -3103,15 +3154,13 @@ function mergeCharacters(chars) {
         }
         // 严格匹配：只清理括号备注
         var cleanName = c.name.replace(/[（(].*?[）)]/g, '').trim();
-        var existingKey = null;
-        Object.keys((gameState && gameState.allCharacters) || {}).forEach(function(key) {
-            var cleanKey = key.replace(/[（(].*?[）)]/g, '').trim();
-            if (cleanKey === cleanName) {
-                existingKey = key;
-            }
-        });
+        // 【优化】O(n²) → O(n)：预构建 cleanKey → originalKey 的索引，避免每次都遍历全部角色
+        var existingKey = _charKeyIndex[cleanName] || null;
         if (existingKey && existingKey !== c.name) {
-            if (gameState && gameState.allCharacters) delete gameState.allCharacters[existingKey];
+            if (gameState && gameState.allCharacters) {
+                delete gameState.allCharacters[existingKey];
+                delete _charKeyIndex[cleanName];
+            }
         }
         // ★ 合并而非覆盖：AI返回了什么就更新什么，没返回的保留
         var existing = gameState && gameState.allCharacters ? gameState.allCharacters[c.name] : undefined;
@@ -3122,7 +3171,10 @@ function mergeCharacters(chars) {
             if (c.desc) existing.desc = c.desc;
             if (c.details) existing.details = c.details;
         } else {
-            if (gameState && gameState.allCharacters) gameState.allCharacters[c.name] = c;
+            if (gameState && gameState.allCharacters) {
+                gameState.allCharacters[c.name] = c;
+                _charKeyIndex[cleanName] = c.name;
+            }
         }
     });
     renderNpcList();

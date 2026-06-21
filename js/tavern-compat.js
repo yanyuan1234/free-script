@@ -547,9 +547,11 @@ _renderQuickReplyButtons: function() {
                             });
                         }
                         // 设置为全局变量
+                        // 【优化】移除 gameState._globalVars 死字段写入——MacroEngine._globalVars 已迁移到 VariableStore
+                        // 旧代码的 else 分支写入 gameState._globalVars，但该字段从未被任何读取逻辑使用
                         if (typeof setGlobalVar === 'function') setGlobalVar(varName, varValue);
                         else if (typeof MacroEngine !== 'undefined' && MacroEngine.setGlobalVar) MacroEngine.setGlobalVar(varName, varValue);
-                        else { if(!gameState._globalVars) gameState._globalVars = {}; gameState._globalVars[varName] = varValue; }
+                        else console.warn('[TavernHelperCompat] 无法设置全局变量:', varName);
                     });
                 }
 
@@ -659,7 +661,18 @@ _executeScriptCode: function(code, sourceName) {
         /\bFunction\s*\(/,
         /\bnew\s+Function\s*\(/,
         /\bdocument\.write\s*\(/,
-        /\bdocument\.writeln\s*\(/
+        /\bdocument\.writeln\s*\(/,
+        // 【优化】补充间接调用检测——旧代码可被 window['eval']()、(0,eval)()、globalThis.eval 等绕过
+        /\bwindow\s*\[\s*['"]eval['"]\s*\]/,
+        /\bglobalThis\s*\.\s*eval\b/,
+        /\bself\s*\.\s*eval\b/,
+        /\btop\s*\.\s*eval\b/,
+        /\bparent\s*\.\s*eval\b/,
+        /\bframes\s*\[\s*['"]eval['"]\s*\]/,
+        /\(\s*0\s*,\s*eval\s*\)/,
+        /\bReflect\s*\.\s*apply\s*\(\s*eval\b/,
+        /\bsetTimeout\s*\(\s*['"]/,  // setTimeout('eval(...)') 字符串形式
+        /\bsetInterval\s*\(\s*['"]/   // setInterval('eval(...)') 字符串形式
     ];
     for (var i = 0; i < dangerousPatterns.length; i++) {
         if (dangerousPatterns[i].test(code)) {
@@ -845,7 +858,8 @@ var GameMemory = {
     events: [],
     timeline: [],
     quests: [],
-    workingMemory: { recentMessages: [], currentTopic: null, turns: [], messages: [], nearSummary: '', midSummary: '', farSummary: '' },
+    // 【优化】移除 nearSummary/midSummary/farSummary 死字段——注入路径从不读取，_summaryLayers 已统一处理
+    workingMemory: { recentMessages: [], currentTopic: null, turns: [], messages: [] },
     // 变化驱动注入快照（Horae风格：无变化零Token）
     _injectionSnapshots: {},
     // 逐层摘要系统（Qvink风格：近详细→远压缩）
@@ -1064,8 +1078,7 @@ var GameMemory = {
             self._updateAccessCounts(message);
             // 逐层摘要：更新摘要层级（Qvink风格）
             self._updateSummaryLayers();
-            // 设定压缩检查
-            self.compressSetupIfNeeded();
+            // 【优化】移除 compressSetupIfNeeded() 调用——函数体为空（仅有注释），是无用调用
             // 【AI叙事驱动】更新所有角色/物品/任务的休眠状态
             self._updateDormantStatus(message);
         } catch (e) {
@@ -1491,10 +1504,7 @@ var GameMemory = {
             }).filter(function(s) { return s && s.length > 0; });
         }
 
-        // 生成合并摘要文本
-        self.workingMemory.nearSummary = self._summaryLayers.near.join('\n');
-        self.workingMemory.midSummary = self._summaryLayers.mid.join('\n');
-        self.workingMemory.farSummary = self._summaryLayers.far.join('\n');
+        // 【优化】移除 workingMemory.nearSummary/midSummary/farSummary 赋值——这 3 个字段是死字段，注入路径从不读取
     },
 
     // 变化驱动：检测某模块是否有变化（Horae风格）
@@ -1849,11 +1859,8 @@ var GameMemory = {
         return indexLines.join('\n');
     },
 
-    // 标记设定已压缩（渐进式，不再需要硬开关）
-    compressSetupIfNeeded: function() {
-        // 渐进式压缩由 getSetupInjection 根据轮次自动处理，无需手动标记
-        // 保留此方法以兼容旧代码
-    },
+    // 【优化】移除 compressSetupIfNeeded 空函数——函数体只有注释，processMessage 已不再调用
+    // 保留此注释说明：渐进式压缩由 getSetupInjection 根据轮次自动处理，无需手动标记
 
     buildInjection: function() {
         var self = this;
@@ -2984,7 +2991,7 @@ var GameMemory = {
                 });
             }
         }
-        if (typeof gameState !== 'undefined' && gameState.customStyle && self.currentTurn <= 2) self.addWorldAnchor('setting', '风格偏好：' + gameState.customStyle, 'userStyle', self.currentTurn);
+        // 【优化】移除 customStyle 注入——customStyle 是死字段（无 UI 输入框），文风由 writingStyle 统一管理
     },
 
     scoreEventImportance: function(text) {
@@ -3393,7 +3400,8 @@ Object.defineProperty(GameMemory, 'injectionBudget', {
 });
 
 Object.defineProperty(GameMemory, 'workingMemory', {
-    get: function() { return this._workingMemory || { messages: [], turns: [], recentMessages: [], currentTopic: null, nearSummary: '', midSummary: '', farSummary: '' }; },
+    // 【优化】移除 nearSummary/midSummary/farSummary 死字段
+    get: function() { return this._workingMemory || { messages: [], turns: [], recentMessages: [], currentTopic: null }; },
     set: function(val) { this._workingMemory = val; },
     configurable: true
 });
@@ -4247,13 +4255,19 @@ window.MemoryManagerUI = MemoryManagerUI;
             const d = {};
             this.global.forEach((v, k) => d[k] = v);
             Storage.setJSON(Storage.KEYS.GLOBAL_VARS, d);
-            } catch (e) { /* silent */ }
+            } catch (e) {
+                // 【优化】记录错误日志，便于调试存档失败问题
+                console.warn('[VariableStore] 全局变量持久化失败:', e && e.message);
+            }
         },
     loadGlobal() {
         try {
             const d = Storage.getJSON(Storage.KEYS.GLOBAL_VARS, {});
             Object.entries(d).forEach(([k, v]) => this.global.set(k, v));
-            } catch (e) { /* silent */ }
+            } catch (e) {
+                // 【优化】记录错误日志，便于调试存档读取失败问题
+                console.warn('[VariableStore] 全局变量加载失败:', e && e.message);
+            }
         },
     clearAll() { this.local.clear(); this.character.clear(); },
     clearLocal() { this.local.clear(); },

@@ -424,7 +424,10 @@ function openDiaryDatePicker() {
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
         '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="UI.hideModal(\'diaryDatePicker\')">×</span></div>' +
         dateList.map(function(d) {
-            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="UI.hideModal(\'diaryDatePicker\');diaryJumpToDate(\'' + d.replace(/'/g, "\\'") + '\')">' + escapeHtml(d) + '</div>';
+            // 【优化·XSS 修复】旧代码只转义单引号，不防 XSS；新代码先 escapeHtml 再转义单引号
+            // d 来自 AI 返回的日记数据，可能含恶意字符
+            var safeD = escapeHtml(d).replace(/&#39;/g, "\\'").replace(/'/g, "\\'");
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="UI.hideModal(\'diaryDatePicker\');diaryJumpToDate(\'' + safeD + '\')">' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div>';
     UI.createModal({ id: 'diaryDatePicker', html: listHtml, persistent: false });
@@ -2207,7 +2210,7 @@ function renderDiaryPage() {
                 var mentionTag = mentionCount > 0 ?
                     '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
                 return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" onclick="viewNpcDiary(\'' +
-                    escapeHtml(npcName).replace(/'/g, "\\'") + '\')">' +
+                    escapeHtml(npcName).replace(/&#39;/g, "\\'").replace(/'/g, "\\'") + '\')">' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
                     '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
@@ -4623,11 +4626,19 @@ async function continueStory() {
                 console.error('[继续剧情] 异步操作失败:', e);
             });
         }
+        // 【优化·时序修复】_continuePrefill 必须在 sendAIRequest 完成后才清除
+        // 旧代码同步清除，但 sendAIRequest 是异步的，AI 请求可能拿不到该值
+        // 新代码：在 then/catch 后清除，确保 sendAIRequest 内部能读到
+        if (p && typeof p.then === 'function') {
+            p.then(function() { gameState._continuePrefill = ''; }).catch(function() { gameState._continuePrefill = ''; });
+        } else {
+            // 兜底：1秒后清除（防止 sendAIRequest 非 Promise 时标记残留）
+            setTimeout(function() { gameState._continuePrefill = ''; }, 1000);
+        }
     } catch (e) {
         console.error('[继续剧情] 同步错误:', e);
+        gameState._continuePrefill = '';
     }
-    // 清除标记
-    gameState._continuePrefill = '';
 }
 function deleteLastTurn() {
     // 检查撤销历史
@@ -4644,8 +4655,17 @@ function deleteLastTurn() {
             if (gm.tables.characters) {
                 Object.keys(gm.tables.characters).forEach(function(k) { delete gm.tables.characters[k]; });
                 // 从快照恢复
+                // 【优化·引用别名修复】深拷贝快照中的角色对象，避免与快照共享引用
+                // 旧代码直接赋值 chars[k]，导致后续修改会影响快照数据
                 var chars = lastUndo.allCharacters || {};
-                Object.keys(chars).forEach(function(k) { gm.tables.characters[k] = chars[k]; });
+                Object.keys(chars).forEach(function(k) {
+                    try {
+                        gm.tables.characters[k] = JSON.parse(JSON.stringify(chars[k]));
+                    } catch(e) {
+                        // 循环引用等异常时直接赋值（保留旧行为作为兜底）
+                        gm.tables.characters[k] = chars[k];
+                    }
+                });
             }
         }
         gameState.worldSnapshot = lastUndo.worldSnapshot || {};
@@ -4703,16 +4723,33 @@ function saveUndoState() {
     if (gameState._undoHistory.length >= (gameState._MAX_UNDO_HISTORY || 50)) {
         gameState._undoHistory.shift(); // 移除最旧的
     }
-    // 保存当前状态快照（使用 structuredClone 替代 JSON 深拷贝，快 2-5 倍）
-    var clone = typeof structuredClone === 'function' ? structuredClone : function(o) { return JSON.parse(JSON.stringify(o)); };
+    // 【优化】structuredClone 对循环引用对象会抛错，添加 try/catch fallback
+    // 旧代码 fallback 到 JSON.parse(JSON.stringify()) 也会因循环引用抛错
+    // 新代码：先尝试 structuredClone，失败则用安全拷贝（跳过循环引用字段）
+    var _safeClone = function(o) {
+        if (typeof structuredClone === 'function') {
+            try { return structuredClone(o); } catch(e) { /* 循环引用，走 fallback */ }
+        }
+        try { return JSON.parse(JSON.stringify(o)); } catch(e) {
+            // 【优化】最终 fallback：浅拷贝 + 跳过无法序列化的字段
+            console.warn('[saveUndoState] 深拷贝失败，使用浅拷贝:', e && e.message);
+            var result = Array.isArray(o) ? [] : {};
+            for (var k in o) {
+                if (typeof o[k] !== 'object' || o[k] === null) {
+                    try { result[k] = o[k]; } catch(e2) {}
+                }
+            }
+            return result;
+        }
+    };
     gameState._undoHistory.push({
-        conversationHistory: clone(gameState.conversationHistory),
-        allCharacters: clone(gameState.allCharacters || {}),
-        worldSnapshot: clone(gameState.worldSnapshot || {}),
-        keyEvents: clone(gameState.keyEvents || []),
-        currentQuests: clone(gameState.currentQuests || []),
-        relationships: clone(gameState.relationships || []),
-        currentBag: clone(gameState.currentBag || []),
+        conversationHistory: _safeClone(gameState.conversationHistory),
+        allCharacters: _safeClone(gameState.allCharacters || {}),
+        worldSnapshot: _safeClone(gameState.worldSnapshot || {}),
+        keyEvents: _safeClone(gameState.keyEvents || []),
+        currentQuests: _safeClone(gameState.currentQuests || []),
+        relationships: _safeClone(gameState.relationships || []),
+        currentBag: _safeClone(gameState.currentBag || []),
         timestamp: Date.now()
     });
 }
@@ -5455,12 +5492,19 @@ function saveGameSettings() {
     var wcMaxEl = document.getElementById('wcMax');
     var wcParaMinEl = document.getElementById('wcParaMin');
     var wcParaMaxEl = document.getElementById('wcParaMax');
+    // 【优化·边界校验】min > max 时自动交换，避免注入矛盾指令给 AI
+    var _wcMin = parseInt(wcMinEl ? wcMinEl.value : '') || 1500;
+    var _wcMax = parseInt(wcMaxEl ? wcMaxEl.value : '') || 3000;
+    if (_wcMin > _wcMax) { var _tmp = _wcMin; _wcMin = _wcMax; _wcMax = _tmp; }
+    var _pcMin = parseInt(wcParaMinEl ? wcParaMinEl.value : '') || 15;
+    var _pcMax = parseInt(wcParaMaxEl ? wcParaMaxEl.value : '') || 17;
+    if (_pcMin > _pcMax) { var _tmp2 = _pcMin; _pcMin = _pcMax; _pcMax = _tmp2; }
     gameState.wordCountConfig = {
         enabled: document.getElementById('wcEnabled') ? document.getElementById('wcEnabled').checked : true,
-        min: parseInt(wcMinEl ? wcMinEl.value : '') || 1500,
-        max: parseInt(wcMaxEl ? wcMaxEl.value : '') || 3000,
-        paragraphMin: parseInt(wcParaMinEl ? wcParaMinEl.value : '') || 15,
-        paragraphMax: parseInt(wcParaMaxEl ? wcParaMaxEl.value : '') || 17,
+        min: _wcMin,
+        max: _wcMax,
+        paragraphMin: _pcMin,
+        paragraphMax: _pcMax,
         paragraphStyle: document.getElementById('wcParagraphStyle') ? document.getElementById('wcParagraphStyle').value : 'medium',
         perspective: document.getElementById('wcPerspective') ? document.getElementById('wcPerspective').value : 'third_person_limited',
         userPronoun: document.getElementById('wcUserPronoun') ? document.getElementById('wcUserPronoun').value : 'second_person',
@@ -5916,7 +5960,13 @@ function loadGameSettings() {
             var chModeEl = document.getElementById('settingChapterMode');
             if (chModeEl) chModeEl.value = gameState.chapterMode || 'off';
             // 【修复P2-3】不再恢复/同步 squelchRules UI——死代码已移除
-            // 叙事基调/干练文风 9 项已固定为默认开启，不再暴露 UI 开关
+            // 【优化·narrativeEyes 可调开关】恢复 checkbox 状态
+            document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
+                var eye = cb.getAttribute('data-eye');
+                if (eye && gameState.narrativeEyes && gameState.narrativeEyes[eye] !== undefined) {
+                    cb.checked = !!gameState.narrativeEyes[eye];
+                }
+            });
             document.querySelectorAll('.archetype-card').forEach(function(el) {
                 el.classList.toggle('active', el.getAttribute('data-archetype') === gameState.presetArchetype);
             });
@@ -6901,7 +6951,8 @@ function renderNpcPage() {
             var fav = Number(c.favorability) || 0;
             fav = Math.max(-100, Math.min(100, fav));
             // 先转义 HTML 实体，再转义 JS 字符串中的单引号（属性外层是双引号）
-            var sn = escapeHtml(c.name).replace(/'/g, "\\'");
+            // 【优化】escapeHtml 将 ' 转为 &#39;，需先还原 &#39; 再转义单引号，否则 replace(/'/g) 无效
+            var sn = escapeHtml(c.name).replace(/&#39;/g, "\\'").replace(/'/g, "\\'");
             // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
             var favLevel = c.relation || '中立';
             // 根据好感度数值选择颜色（-100到100，0为中立）

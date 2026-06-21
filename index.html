@@ -2368,7 +2368,7 @@
                                     <!-- 文风选择 -->
                                     <div class="setting-row">
                                         <label class="field-label">文风选择</label>
-                                        <select id="settingWritingStyle" class="select-field" onchange="gameState.writingStyle=this.value;if(typeof MacroEngine!=='undefined')MacroEngine.setGlobalVar('文风指导','');">
+                                        <select id="settingWritingStyle" class="select-field" onchange="gameState.writingStyle=this.value;">
                                             <option value="" selected>默认（不限定）</option>
                                             <option value="baimiao">白描（克制精准·动词主导）</option>
                                             <option value="liudong">流动（感官流淌·意识渗透）</option>
@@ -2393,6 +2393,42 @@
                                             <option value="longform">长篇模式（每段 250-600 字）</option>
                                         </select>
                                     </div>
+                                    <!-- 【优化·narrativeEyes 可调开关】10 项叙事基调，默认全开，用户可关闭不想要的 -->
+                                    <div class="setting-row" style="flex-direction:column;align-items:flex-start;">
+                                        <label class="field-label" style="margin-bottom:6px;">叙事基调（可关闭不想要的，最多保留 5 项）</label>
+                                        <div id="narrativeEyesContainer" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;width:100%;font-size:12px;">
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="realistic" checked> 现实感</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="ideal" checked> 温情</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="ensemble" checked> 多角色</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="daily" checked> 日常感</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="heartbeat" checked> 情绪强</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="undercurrent" checked> 潜台词</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="fate" checked> 因果链</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="comedy" checked> 轻松幽默</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="balanced" checked> 戏剧平衡</label>
+                                            <label><input type="checkbox" class="narrative-eye-toggle" data-eye="mystery" checked> 超自然</label>
+                                        </div>
+                                        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">提示：喜剧与悬疑、日常与命运等基调天然互斥，建议只保留 3-5 项</div>
+                                    </div>
+                                    <script>
+                                    // 【优化·narrativeEyes 可调开关】绑定 onchange 事件，最多保留 5 项
+                                    (function() {
+                                        document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
+                                            cb.addEventListener('change', function() {
+                                                if (!gameState.narrativeEyes) gameState.narrativeEyes = {};
+                                                gameState.narrativeEyes[this.dataset.eye] = this.checked;
+                                                // 限制最多 5 项开启，避免矛盾基调同时注入
+                                                var checked = document.querySelectorAll('.narrative-eye-toggle:checked');
+                                                if (checked.length > 5) {
+                                                    this.checked = false;
+                                                    gameState.narrativeEyes[this.dataset.eye] = false;
+                                                    if (typeof UI !== 'undefined' && UI.toast) UI.toast('最多保留 5 项叙事基调，避免矛盾');
+                                                }
+                                                if (typeof autoSave === 'function') autoSave();
+                                            });
+                                        });
+                                    })();
+                                    </script>
                                     <!-- 【修复P2-3】移除 NSFW 描写开关——squelchRules 是死代码，该开关无效 -->
                                 </div>
                             </div>

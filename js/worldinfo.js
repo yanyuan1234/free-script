@@ -133,7 +133,10 @@ var WorldInfo = {
             books: this.books,
             settings: this.settings
         });
+        // 【优化】同时重置 _wiCachedTurn——旧代码只重置 _wiCachedResult 不重置 _wiCachedTurn
+        // 导致缓存可能命中过期数据（game.js 的缓存逻辑会检查 _wiCachedTurn === currentTurn）
         gameState._wiCachedResult = null;
+        if (gameState) gameState._wiCachedTurn = null;
         },
 
     // 绑定事件
@@ -1935,6 +1938,28 @@ var WorldInfo = {
         var activated = this.scan(chatMessages);
         if (activated.length === 0) return null;
 
+        // 【优化·世界书双重注入去重】跳过已被收割到 permanentFacts 的条目
+        // 旧代码：同一条世界书条目会同时出现在【世界知识库】和【核心设定】中
+        // 新代码：检测条目是否已被 syncWorldInfoEntry 收割，若是则跳过
+        var _harvestedContents = {};
+        try {
+            if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.permanentFacts) {
+                var pf = EnhancedMemory.permanentFacts;
+                Object.keys(pf).forEach(function(key) {
+                    var list = pf[key];
+                    if (!Array.isArray(list)) return;
+                    list.forEach(function(anchor) {
+                        if (anchor && anchor.source && anchor.source.indexOf('worldInfo:') === 0 && anchor.content) {
+                            // 存储原始 content 和带 label 的 content
+                            _harvestedContents[anchor.content] = true;
+                        }
+                    });
+                });
+            }
+        } catch(e) {
+            console.warn('[WorldInfo] 构建 permanentFacts 去重索引失败:', e);
+        }
+
         var groups = {
             beforeChar: [],
             afterChar: [],
@@ -1947,6 +1972,15 @@ var WorldInfo = {
             };
 
         activated.forEach(function(entry) {
+            // 【优化·去重】检查条目是否已被收割到 permanentFacts
+            var entryContent = (entry.content || '').trim();
+            var entryLabel = entry.comment || '';
+            var labeledContent = entryLabel ? ('【' + entryLabel + '】 ' + entryContent) : entryContent;
+            if (_harvestedContents[entryContent] || _harvestedContents[labeledContent]) {
+                // 已被收割到 permanentFacts，跳过世界书注入，避免双重注入
+                return;
+            }
+
             var label = entry.comment || (entry.key || []).join(', ');
             var text = entry.addMemo
             ? '[' + label + ']: ' + (entry.content || '')
