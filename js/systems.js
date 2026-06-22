@@ -116,8 +116,13 @@ var QuestSystem = {
             return q.status === QuestSystem.STATUS.ACTIVE;
             });
         if (status === 'completed') return quests.filter(function(q) {
-            return q.status === QuestSystem.STATUS.COMPLETED || q.status === QuestSystem
-            .STATUS.FAILED;
+            return q.status === QuestSystem.STATUS.COMPLETED;
+            });
+        if (status === 'failed') return quests.filter(function(q) {
+            return q.status === QuestSystem.STATUS.FAILED;
+            });
+        if (status === 'abandoned') return quests.filter(function(q) {
+            return q.status === QuestSystem.STATUS.ABANDONED;
             });
         return quests.filter(function(q) {
             return q.status === status;
@@ -155,15 +160,11 @@ var QuestSystem = {
         cc +
         '</div><div class="quest-stat-label">已完成</div></div><div class="quest-stat-item"><div class="quest-stat-num">' +
         fc + '</div><div class="quest-stat-label">已失败</div></div></div>';
+        // 【修复BUG-M4】使用与统计对应的状态标签页：全部 / 进行中 / 已完成 / 已失败
         var filterBtns = '<button class="quest-filter-btn active" data-quest-filter="all">全部</button>';
-        filterBtns += '<button class="quest-filter-btn" data-quest-filter="main">主线</button>';
-        filterBtns += '<button class="quest-filter-btn" data-quest-filter="side">支线</button>';
-        filterBtns += '<button class="quest-filter-btn" data-quest-filter="hidden">隐藏</button>';
-        // 动态添加自定义类型按钮
-        for (var k in QuestSystem._customTypes) {
-            filterBtns += '<button class="quest-filter-btn" data-quest-filter="' + escapeHtml(k) + '">' + escapeHtml(QuestSystem._customTypes[k].label) + '</button>';
-        }
-        filterBtns += '<button class="quest-filter-btn" data-quest-filter="active">进行中</button>';
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="active">进行中 ' + ac + '</button>';
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="completed">已完成 ' + cc + '</button>';
+        filterBtns += '<button class="quest-filter-btn" data-quest-filter="failed">已失败 ' + fc + '</button>';
         html += '<div class="quest-filter-bar">' + filterBtns + '</div>';
         html += '<div class="quest-list-container" id="questListContainer">';
         if (quests.length === 0) {
@@ -245,17 +246,9 @@ var QuestSystem = {
                 var f = this.dataset.questFilter;
                 var quests = self.getAllQuests();
                 var filtered = quests;
-                if (f === 'main' || f === 'side' || f === 'hidden' || QuestSystem._customTypes[f]) {
-                    var tm = {
-                        main: self.TYPE.MAIN,
-                        side: self.TYPE.SIDE,
-                        hidden: self.TYPE.HIDDEN
-                        };
-                    // 合入自定义类型
-                    for (var k in QuestSystem._customTypes) { tm[k] = QuestSystem._customTypes[k].label; }
-                    filtered = self.filterByType(quests, tm[f]);
-                    } else if (f === 'active') {
-                    filtered = self.filterByStatus(quests, 'active');
+                // 【修复BUG-M4】标签页统一按状态过滤，确保统计数字与列表一致
+                if (f === 'active' || f === 'completed' || f === 'failed' || f === 'abandoned') {
+                    filtered = self.filterByStatus(quests, f);
                 }
             var lc = container.querySelector('#questListContainer');
             if (lc) {
@@ -537,6 +530,12 @@ var AchievementSystem = {
             if (cat[c]) cat[c].push(a);
             });
         var html = '<div class="achieve-page">';
+        // 【修复BUG-L1】没有成就数据时显示占位提示，避免 0/0 白屏/空屏
+        if (all.length === 0) {
+            html += '<div class="empty-state" style="padding:40px 20px;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><p>成就系统即将开放</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">随着剧情推进，AI 将自动生成可解锁的成就</p></div></div>';
+            container.innerHTML = html;
+            return;
+        }
         html +=
         '<div class="achieve-overview"><div class="achieve-overview-ring"><svg class="achieve-ring-svg" viewBox="0 0 100 100"><circle class="achieve-ring-bg" cx="50" cy="50" r="42"/><circle class="achieve-ring-progress" cx="50" cy="50" r="42" stroke-dasharray="' +
         (2 * Math.PI * 42) + '" stroke-dashoffset="' + (2 * Math.PI * 42 * (1 - cr / 100)) +
@@ -722,8 +721,43 @@ var AchievementSystem = {
 function mergeQuests(newQuests) {
     if (!newQuests || !Array.isArray(newQuests)) return;
     if (!gameState.currentQuests) gameState.currentQuests = [];
+    // 【修复BUG-M4】状态/类型标准化映射：AI 可能返回英文状态，统一转中文
+    var statusMap = {
+        'pending': QuestSystem.STATUS.ACTIVE,
+        'active': QuestSystem.STATUS.ACTIVE,
+        'in_progress': QuestSystem.STATUS.ACTIVE,
+        'ongoing': QuestSystem.STATUS.ACTIVE,
+        'completed': QuestSystem.STATUS.COMPLETED,
+        'done': QuestSystem.STATUS.COMPLETED,
+        'finished': QuestSystem.STATUS.COMPLETED,
+        'success': QuestSystem.STATUS.COMPLETED,
+        'resolved': QuestSystem.STATUS.COMPLETED,
+        'failed': QuestSystem.STATUS.FAILED,
+        'failure': QuestSystem.STATUS.FAILED,
+        'fail': QuestSystem.STATUS.FAILED,
+        'abandoned': QuestSystem.STATUS.ABANDONED,
+        'cancelled': QuestSystem.STATUS.ABANDONED,
+        'canceled': QuestSystem.STATUS.ABANDONED
+    };
+    var typeMap = {
+        'main': QuestSystem.TYPE.MAIN,
+        '主线': QuestSystem.TYPE.MAIN,
+        'side': QuestSystem.TYPE.SIDE,
+        '支线': QuestSystem.TYPE.SIDE,
+        'hidden': QuestSystem.TYPE.HIDDEN,
+        '隐藏': QuestSystem.TYPE.HIDDEN
+    };
     newQuests.forEach(function(nq) {
         if (!nq || !nq.title) return;
+        // 标准化状态
+        var rawStatus = String(nq.status || '').toLowerCase().trim();
+        if (statusMap[rawStatus]) nq.status = statusMap[rawStatus];
+        else if (!rawStatus) nq.status = QuestSystem.STATUS.ACTIVE;
+        // 标准化类型
+        var rawType = String(nq.type || '').toLowerCase().trim();
+        if (typeMap[rawType]) nq.type = typeMap[rawType];
+        else if (!rawType) nq.type = QuestSystem.TYPE.SIDE;
+
         var existIdx = -1;
         for (var i = 0; i < gameState.currentQuests.length; i++) {
             if (gameState.currentQuests[i].title === nq.title) {
@@ -739,10 +773,10 @@ function mergeQuests(newQuests) {
     });
     // 修复：先分离，再合并，避免闭包变量污染
     var active = gameState.currentQuests.filter(function(q) {
-        return q.status !== '已完成' && q.status !== '失败';
+        return q.status !== QuestSystem.STATUS.COMPLETED && q.status !== QuestSystem.STATUS.FAILED && q.status !== QuestSystem.STATUS.ABANDONED;
     });
     var done = gameState.currentQuests.filter(function(q) {
-        return q.status === '已完成' || q.status === '失败';
+        return q.status === QuestSystem.STATUS.COMPLETED || q.status === QuestSystem.STATUS.FAILED || q.status === QuestSystem.STATUS.ABANDONED;
     });
     // 最多保留3个已完成的
     if (done.length > 3) done = done.slice(-3);

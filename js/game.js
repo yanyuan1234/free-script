@@ -551,7 +551,8 @@ ${(gameState && gameState.pureTextMode) ?
 '你大约有 ' + _maxTokens + ' tokens输出空间——把故事写完整、写精彩。' :
 '**直接输出JSON**（以 { 开头），不要任何前缀（不要"让我开始"、不要"title:"、不要"story:"等思考过程）。\n' +
 'story放第一个字段，用\\n换行，对话用「」。你大约有 ' + _maxTokens + ' tokens输出空间。\n' +
-'- story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾'
+'- story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾\n' +
+'- **严禁回到故事开头或重复初始场景**：必须严格基于上文继续推进，title/gameTime 必须反映当前回合进度，不能回到“第1章/初始/苏醒/开局”等初始描述。'
 }
 
 ${turn <= 3 ?
@@ -1011,6 +1012,16 @@ async function sendAIRequest(userMessage, isInit = false) {
     
     // 保存撤销状态（在AI回复前）
     saveUndoState();
+    // 【修复BUG-C1/C2】记录AI请求前的关键状态，用于检测并恢复剧情回退
+    if (gameState) {
+        gameState._preAIState = {
+            title: gameState._lastSceneTitle || '',
+            gameTime: gameState.gameTime ? JSON.parse(JSON.stringify(gameState.gameTime)) : null,
+            turn: (gameState._stats && gameState._stats.totalTurns) || 0,
+            storySnapshot: (gameState.conversationHistory && gameState.conversationHistory.length > 0) ?
+                gameState.conversationHistory.filter(function(m) { return m.role === 'assistant'; }).slice(-1)[0] : null
+        };
+    }
     // 应用正则脚本到用户输入
     if (userMessage) {
         userMessage = RegexManager.applyToInput(userMessage);
@@ -1774,10 +1785,21 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.player) renderPlayerStats(data.player);
             if (data.characters) mergeCharacters(data.characters);
             // 更新章节标题（如果有）
+            var _aiTitleReset = false;
             if (data.title || data.scene) {
-                updateSceneTitle(data.title || data.scene);
+                var incomingTitle = data.title || data.scene;
+                // 【修复BUG-C1】防御性检查：若 AI 返回的标题与初始场景关键词高度重合，
+                // 说明模型可能 confused 回退了，沿用上一回合标题或回合递增标题
+                if (gameState && gameState.userPrompt && _looksLikeInitialScene(incomingTitle, gameState.userPrompt)) {
+                    _aiTitleReset = true;
+                    var preTitle = gameState._preAIState && gameState._preAIState.title;
+                    var turnNumC = (gameState._stats && gameState._stats.totalTurns) || 1;
+                    incomingTitle = preTitle || ('第 ' + turnNumC + ' 回合');
+                    console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
+                }
+                updateSceneTitle(incomingTitle);
                 // 保存到gameState，确保读档后能恢复
-                if (gameState) gameState._lastSceneTitle = data.title || data.scene;
+                if (gameState) gameState._lastSceneTitle = incomingTitle;
             } else if (gameState && storyText && storyText.trim()) {
                 // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
                 var turnNum = (gameState._stats && gameState._stats.totalTurns) || 1;
@@ -1815,8 +1837,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // 时间系统：从AI返回的JSON中解析gameTime字段（纯文本模式下 data 为 null 也尝试更新UI）
+        // 【修复BUG-C2】若标题已被判定为回退，则禁止 gameTime 覆盖为更早/初始时间
         if (typeof GameTimeSystem !== 'undefined') {
-            GameTimeSystem.parseFromAI(data);
+            var _preGameTime = gameState && gameState._preAIState && gameState._preAIState.gameTime;
+            if (_aiTitleReset && _preGameTime) {
+                gameState.gameTime = JSON.parse(JSON.stringify(_preGameTime));
+                console.warn('[时间防御] AI 标题疑似回退，已沿用上一回合时间:', gameState.gameTime);
+            } else {
+                GameTimeSystem.parseFromAI(data);
+            }
             GameTimeSystem.updateUI();
         }
 
@@ -2767,6 +2796,45 @@ var _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi;
 var _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi;
 var _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi;
 var _reDecorTagsTyping = /<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+
+// 检测标题是否疑似初始场景（用于防御 AI  confused 回退）
+function _looksLikeInitialScene(title, userPrompt) {
+    if (!title || !userPrompt) return false;
+    var t = title.toLowerCase();
+    var p = userPrompt.toLowerCase();
+    // 标题中出现用户 prompt 前30个字符中的任意2字关键词，且包含"第1"、"第一章"、"苏醒"、"开始"等
+    var promptHead = p.substring(0, 30);
+    var hasPromptKeyword = false;
+    // 提取 prompt 前30字符中所有连续的2字子串（中文语义下2字词覆盖度更高）
+    for (var i = 0; i + 2 <= promptHead.length; i++) {
+        var seg = promptHead.substring(i, i + 2);
+        if (/[\u4e00-\u9fa5]{2}/.test(seg) && t.indexOf(seg) !== -1) {
+            hasPromptKeyword = true;
+            break;
+        }
+    }
+    var initialMarkers = /第\s*1\s*[章回]|第一章|第1回|初始|开始|苏醒|醒来|开局|起点|序幕|序章/;
+    return hasPromptKeyword && initialMarkers.test(t);
+}
+
+// 【修复BUG-M1】通用标签清理：移除 AI 错误输出的控制指令和未识别标签
+function _cleanUnrecognizedTags(text) {
+    if (!text || typeof text !== 'string') return text;
+    // 允许的 HTML/Markdown 标签白名单（保留基础格式）
+    var allowedTags = /^(<\/?(b|i|u|em|strong|span|div|p|br|hr|h[1-6]|blockquote|code|pre|a|img|ul|ol|li|table|tr|td|th|thead|tbody|sup|sub|small|big|font|strike|s)\b)/i;
+    return text
+        // 孤立控制指令（如 /ic、/sys）
+        .replace(/\/(ic|sys|imp|story|nar|raw|nocb|dpo|cfg)\b/gi, '')
+        // 未闭合的 <gi、<giggle 等残留片段
+        .replace(/<gi\b[^>]*>[\s\S]*?(<\/gi>|$)/gi, '')
+        .replace(/<\/gi>/gi, '')
+        // 其他未闭合的开标签（到行尾或段尾）
+        .replace(/<([a-zA-Z_][a-zA-Z0-9_]*)\b[^>]*>[\s\S]*?$/gm, '')
+        // 通用未知标签：保留白名单内的，其他移除
+        .replace(/<\/?[a-zA-Z_][a-zA-Z0-9_]*\b[^>]*>/g, function(tag) {
+            return allowedTags.test(tag) ? tag : '';
+        });
+}
 var _reChapterEnd = /\[章节结束\|([^\]]+)\]/;
 var _reDialogueCN = /(\u300c[^\u300d]+\u300d)/g;
 var _reDialogueEN = /("[^"]+")/g;
@@ -2821,6 +2889,8 @@ function formatStory(text) {
         if (typeof PresetAppManager !== 'undefined') {
             text = PresetAppManager.stripDecorTags(text);
         }
+        // 【修复BUG-M1】通用标签清理：移除 AI 错误输出的控制指令和未识别标签
+        text = _cleanUnrecognizedTags(text);
     } else {
         // 打字机tick期间：移除装饰标签和 giggle 标签
         // 【修复BUG-03】原代码保留 giggle 标签用于心声显示，但打字机 tick 期间 textContent 渲染会导致 <giggle> 可见
@@ -2831,6 +2901,8 @@ function formatStory(text) {
         _reGiggleUnclosedStrip.lastIndex = 0;
         _reGiggleCNUnclosedStrip.lastIndex = 0;
         text = text.replace(_reGiggleStrip, '').replace(_reGiggleCNStrip, '').replace(_reGiggleUnclosedStrip, '').replace(_reGiggleCNUnclosedStrip, '');
+        // 【修复BUG-M1】打字机 tick 期间同样清理孤立控制指令
+        text = _cleanUnrecognizedTags(text);
     }
 
     // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）

@@ -1082,13 +1082,7 @@ function renderLogPage() {
     var logSubBackBtn = document.getElementById('logSubBackBtn');
     if (logSubBackBtn && !logSubBackBtn._hasClick) {
         logSubBackBtn.addEventListener('click', function() {
-            var subContainer = document.getElementById('logSubContainer');
-            subContainer.style.animation = 'slideOutLeft .2s ease forwards';
-            TimerManager.setTimeout('logSubBack', function() {
-                subContainer.style.display = 'none';
-                subContainer.style.animation = 'slideInRight .3s ease';
-                document.getElementById('logMainContent').style.display = 'block';
-            }, 200);
+            closeLogSubPage();
         });
         logSubBackBtn._hasClick = true;
     }
@@ -1298,6 +1292,20 @@ function _renderPresetAppContent(content, tag) {
         displayContent +
         '</div></div>';
 }
+// 关闭日志子页面（返回日志主页面）
+function closeLogSubPage() {
+    var subContainer = document.getElementById('logSubContainer');
+    if (!subContainer || subContainer.style.display === 'none') return;
+    subContainer.style.animation = 'slideOutLeft .2s ease forwards';
+    TimerManager.setTimeout('logSubBack', function() {
+        subContainer.style.display = 'none';
+        subContainer.classList.add('hidden');
+        subContainer.style.animation = 'slideInRight .3s ease';
+        var logMainContent = document.getElementById('logMainContent');
+        if (logMainContent) logMainContent.style.display = 'block';
+    }, 200);
+}
+
 function openLogSubPage(type) {
     var titles = {
         chat: '聊天',
@@ -2067,11 +2075,16 @@ function renderRankPage() {
         '</div>';
 }
 function renderItemsPage() {
-    var bag = gameState.currentBag || [];
+    var bag = (gameState.currentBag || []).filter(function(item) {
+        // 【修复BUG-M2】过滤占位/空值物品
+        if (!item) return false;
+        var name = String(item.name || item.title || '').trim();
+        return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知';
+    });
     var playerName = gameState.playerName || '我';
     var currency = gameState.currency || gameState.money || gameState.coins || 0;
     var currencyName = gameState.currencyName || '金币';
-    // 【性能】渲染缓存
+    // 【性能】渲染缓存（基于过滤后的 bag）
     var _lastItem = bag.length > 0 ? String(bag[bag.length-1].name || bag[bag.length-1].title || '') : '';
     var _key = 'items:' + bag.length + '|' + currency + '|' + _lastItem;
     if (shouldSkipPageRender('renderItemsPage', _key)) return;
@@ -2797,7 +2810,19 @@ function renderDefaultPage(type) {
                 (mod.title || '信息') + '</div>' + inner + '</div>';
         }).join('');
     } else {
-        return '<div class="empty-state"><div class="empty-state-icon">单</div><p>暂无内容</p><p style="font-size:12px;margin-top:4px;">该功能将在游戏进行中自动填充</p></div>';
+        // 【修复BUG-L2】为各空状态子页面提供更明确的引导
+        var hints = {
+            chat: '在「人际」页面选择角色后点击「找TA聊聊」即可开始对话',
+            forum: '论坛内容会随剧情推进由 AI 自动生成',
+            rank: '排行榜将在有竞争/评比剧情时自动出现',
+            shop: '商店会在剧情中出现可交易场景后解锁',
+            moments: '朋友圈动态会随角色关系与事件自动更新',
+            diary: '日记条目会在剧情触发回忆或内心独白时生成',
+            mail: '邮件会在 NPC 或系统向玩家发送消息时出现',
+            achieve: '成就系统即将开放'
+        };
+        var hint = hints[type] || '该功能将在游戏进行中自动填充';
+        return '<div class="empty-state"><div class="empty-state-icon">单</div><p>暂无内容</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);padding:0 24px;text-align:center;">' + escapeHtml(hint) + '</p></div>';
     }
 }
 
@@ -3112,7 +3137,12 @@ function renderBag(items) {
         return;
     }
     // 【修复X3】物品数据需要转义；并使用与 renderItemsPage 一致的 items-box 结构，保证 filterBagItems 仍可工作
-    container.innerHTML = gameState.currentBag.map(function(item) {
+    // 【修复BUG-M2】同步过滤占位/空值物品，避免在物品网格中显示“无”等占位条目
+    container.innerHTML = gameState.currentBag.filter(function(item) {
+        if (!item) return false;
+        var name = String(item.name || item.title || '').trim();
+        return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知' && name !== '未知物品';
+    }).map(function(item) {
         var name = item.name || item || '未知物品';
         var count = item.count || item.amount || 1;
         var rarity = item.rarity || '普通';

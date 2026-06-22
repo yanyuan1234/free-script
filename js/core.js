@@ -395,6 +395,8 @@ var UI = {
     showPage: function(id) {
         var el = document.getElementById(id);
         if (el && el.classList.contains('active')) return;
+        // 记录离开页，若从日志页离开则关闭其子页面
+        var fromPage = document.querySelector('.page.active');
         // 【导航栈】页面切换时入栈（剧情页不入栈，它是根页面）
         if (id !== 'storyPage' && id !== 'menuPage' && id !== 'loadingPage') {
             this.pushNav('page', id);
@@ -404,6 +406,10 @@ var UI = {
             pages[pi].classList.remove('active');
         }
         if (el) el.classList.add('active');
+        // 【修复BUG-M3】离开日志页时自动关闭子页面，防止子页面覆盖到其他页面
+        if (fromPage && fromPage.id === 'logPage' && id !== 'logPage' && typeof closeLogSubPage === 'function') {
+            try { closeLogSubPage(); } catch (e) {}
+        }
         el.scrollTop = 0;
         var body = el.querySelector('.page-body');
         if (body) body.scrollTop = 0;
@@ -2171,11 +2177,13 @@ var TypewriterBuffer = {
             storyEl.innerHTML = this._cachedCompletedHtml;
         }
 
-        // 当前段落：textContent 增量更新（极快）
+        // 当前段落：增量更新（极快）
         if (this._currentParaChars) {
             // 打字机 tick 期间只做基本装饰标签移除（与原 formatStory 行为一致）
             var currentText = this._currentParaChars;
-            if (typeof _reDecorTagsTyping !== 'undefined') {
+            if (typeof _cleanUnrecognizedTags === 'function') {
+                currentText = _cleanUnrecognizedTags(currentText);
+            } else if (typeof _reDecorTagsTyping !== 'undefined') {
                 _reDecorTagsTyping.lastIndex = 0;
                 currentText = currentText.replace(_reDecorTagsTyping, '');
             }
@@ -2185,8 +2193,10 @@ var TypewriterBuffer = {
                 this._currentParaEl.className = 'story-typing-para';
                 storyEl.appendChild(this._currentParaEl);
             }
-            // 【性能】textContent 比 innerHTML 快得多——不需要 HTML 解析、不会重建已完成段落
-            this._currentParaEl.textContent = currentText;
+            // 【修复BUG-M6】生成过程中添加闪烁光标，提示文本尚未完成，避免玩家误以为截断
+            var cursorHtml = (this.isTyping || this.queue.length > 0) ? '<span class="typing-cursor">▌</span>' : '';
+            // currentText 已经过标签清理，innerHTML 安全
+            this._currentParaEl.innerHTML = escapeHtml(currentText) + cursorHtml;
         } else if (this._currentParaEl) {
             // 当前段落清空：清掉元素引用，下一次会创建新的
             this._currentParaEl = null;
@@ -2287,6 +2297,10 @@ var GameTimeSystem = {
             gameState.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
         }
     var gt = gameState.gameTime;
+    // 记录初始时间，用于后续检测剧情回退
+    if (!gameState._initialGameTime && (gt.time || gt.period || gt.date)) {
+        gameState._initialGameTime = JSON.parse(JSON.stringify(gt));
+    }
     // AI在JSON中返回 gameTime 字段
     if (data && data.gameTime) {
         if (data.gameTime.date) gt.date = data.gameTime.date;
@@ -4012,6 +4026,10 @@ const _navBarClickHandler = function(e) {
     if (navContainer) {
         navContainer.querySelectorAll('.nav-item').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
+    }
+    // 【修复BUG-M3】切页前关闭日志子页面，避免子页面覆盖在新页面上
+    if (typeof closeLogSubPage === 'function') {
+        try { closeLogSubPage(); } catch (e) { console.warn('[导航] 关闭日志子页面失败:', e); }
     }
     UI.showPage(page);
     // 延迟渲染，让浏览器先显示页面切换效果
