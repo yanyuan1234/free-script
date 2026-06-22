@@ -1554,7 +1554,9 @@ var GameMemory = {
 
     // 开局设定智能分层（Lorebook风格：核心常驻+按需加载）
     processSetupPrompt: function(fullSetup) {
-        if (!fullSetup || fullSetup.length < 100) return;
+        // 【修复BUG-15】原 100 字符阈值过高，简短世界描述会被判定为"未初始化"
+        // 只要是非空字符串（≥5 字符）就保存基础设定分层状态
+        if (!fullSetup || fullSetup.length < 5) return;
         var self = this;
         self._setupLayers.fullSetup = fullSetup;
         self._setupLayers.compressed = false;
@@ -2764,10 +2766,26 @@ var GameMemory = {
     _extractLocations: function(story) {
         var locations = [];
         if (!story) return locations;
-        [/在([^，。！？\s]{2,10})(?:里|内|中|上|下)/g, /来到([^，。！？\s]{2,10})/g, /前往([^，。！？\s]{2,10})/g, /进入([^，。！？\s]{2,10})/g].forEach(function(pattern) {
+        // 【修复BUG-12】扩展地点提取正则，覆盖更多常见句式
+        var patterns = [
+            /在([^，。！？\s]{2,10})(?:里|内|中|上|下|旁|边|外|前|后)/g,
+            /来到([^，。！？\s]{2,10})/g,
+            /前往([^，。！？\s]{2,10})/g,
+            /进入([^，。！？\s]{2,10})/g,
+            /到达([^，。！？\s]{2,10})/g,
+            /离开([^，。！？\s]{2,10})/g,
+            /穿过([^，。！？\s]{2,10})/g,
+            /站在([^，。！？\s]{2,10})(?:里|内|中|上|下|旁|边|外|前|后|口)/g,
+            /([^，。！？\s]{2,10})(?:门口|前面|后面|里面|外面|旁边|附近|周围|区域)/g
+        ];
+        patterns.forEach(function(pattern) {
             pattern.lastIndex = 0;
             var match;
-            while ((match = pattern.exec(story)) !== null) { var loc = match[1].trim(); if (loc.length > 1 && loc.length < 15 && locations.indexOf(loc) === -1) locations.push(loc); if (match.index === pattern.lastIndex) pattern.lastIndex++; }
+            while ((match = pattern.exec(story)) !== null) {
+                var loc = match[1].trim();
+                if (loc.length > 1 && loc.length < 15 && locations.indexOf(loc) === -1) locations.push(loc);
+                if (match.index === pattern.lastIndex) pattern.lastIndex++;
+            }
         });
         return locations;
     },

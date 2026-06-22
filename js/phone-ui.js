@@ -1355,7 +1355,8 @@ function _applyLogPageStyle(content, type, html) {
         content.style.display = 'block';
     }
 
-    if (html !== null) {
+    // 【修复BUG-02】renderItemsPage 在缓存命中时返回 undefined，应跳过写入而非覆盖为 "undefined"
+    if (html !== null && html !== undefined) {
         if (html instanceof HTMLElement) {
             content.innerHTML = '';
             content.appendChild(html);
@@ -3054,10 +3055,44 @@ function renderPlayerPage() {
 }
 // --- 背包渲染 ---
 function renderBag(items) {
-    gameState.currentBag = items || [];
+    // 【修复BUG-08】renderBag 原用替换语义，AI 只返回本轮新物品时会清空旧物品
+    // 改为合并语义：以现有 currentBag 为基础，合并/覆盖 AI 返回的物品
+    if (items && Array.isArray(items)) {
+        var existingBag = Array.isArray(gameState.currentBag) ? gameState.currentBag : [];
+        var existingMap = {};
+        existingBag.forEach(function(it, idx) {
+            var key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
+            existingMap[key] = it;
+        });
+        items.forEach(function(it) {
+            if (!it) return;
+            var key = it.name || it.title || it.id;
+            if (!key) return;
+            if (existingMap[key]) {
+                // 保留原有字段，更新数量等可覆盖字段
+                existingMap[key].count = it.count !== undefined ? it.count : (existingMap[key].count || 1);
+                if (it.desc !== undefined) existingMap[key].desc = it.desc;
+                if (it.rarity !== undefined) existingMap[key].rarity = it.rarity;
+                if (it.rarityClass !== undefined) existingMap[key].rarityClass = it.rarityClass;
+                if (it.equipped !== undefined) existingMap[key].equipped = it.equipped;
+                if (it.usable !== undefined) existingMap[key].usable = it.usable;
+            } else {
+                existingBag.push(it);
+                existingMap[key] = it;
+            }
+        });
+        gameState.currentBag = existingBag;
+    }
+    // 【修复BUG-02】refreshAllPanels() 调用 renderBag() 不传参时，不要清空背包
+    // 不传参表示仅重绘当前背包
+    if (!Array.isArray(gameState.currentBag)) gameState.currentBag = [];
     // 【数据联通】同步写入权威源 gm.tables.items
     if (typeof _pushCurrentBagToGM === 'function') {
         try { _pushCurrentBagToGM(); } catch (e) { console.warn('[renderBag] push 失败:', e); }
+    }
+    // 重绘后修复 gameState.allCharacters 等引用别名（背包变更可能伴随角色变更）
+    if (typeof _ensureDataLinkage === 'function') {
+        try { _ensureDataLinkage(); } catch (e) { console.warn('[renderBag] 数据联动失败:', e); }
     }
     // 【修复】itemsGrid 是在 renderItemsPage() 中通过 innerHTML 动态创建到 logSubContent 里的，
     // 不存在时仅更新 gameState.currentBag，下次进入物品页会自动用最新数据渲染。

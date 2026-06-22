@@ -507,7 +507,7 @@ function buildSystemPrompt(includeFormatRules) {
         } else {
             // 【JSON模式】直接返回结构化数据，前端据此自动填充所有面板
             _formatAnchor = '\n\n【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。\n' +
-                '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
+                '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
                 '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
                 '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
                 '<giggle>心声(2-5个) 约' + _maxTokensForAnchor + 'tokens输出空间';
@@ -604,13 +604,18 @@ function _buildFormatRules(gs, _t) {
             + ' "player": {"name":"","identity":"","stats":[]}, '
             + '"characters": [{"name":"","relation":"","favorability":0}], '
             + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"","content":""}], '
-            + '"bag": [{"name":"","count":1}], "quests": [{"title":"","status":""}], '
+            + '"bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], '
             + '"gameTime": {"date":"","time":"","period":""} }\n'
             + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
             + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
     } else {
         // 第4轮起：保留关键字段提醒，防止模型遗忘
-        return '【格式·JSON模式】直接输出JSON（以{开头），不要前缀，空字段省略。必填：title、story。常用：choices、player、characters、bag、quests、gameTime、world。<giggle>心声可穿插';
+        // 【修复BUG-07/08/09】player/bag/quests/gameTime/currency 等字段不能降级为"常用"
+        // 否则 AI 在长对话中会逐渐省略这些字段，导致状态/物品/金币/任务不同步
+        return '【格式·JSON模式】直接输出JSON（以{开头），不要前缀，空字段省略。\n'
+            + '必填：title、story、player（含stats数组）、bag（完整库存）、gameTime。\n'
+            + '常用：choices、characters、world、quests、currency、currencyName、keyEvents、relationships、contextSummary。\n'
+            + 'player/bag/gameTime 每回合必须返回完整数据；<giggle>心声可穿插。';
     }
 }
 
@@ -996,6 +1001,10 @@ async function sendAIRequest(userMessage, isInit = false) {
     _streamModeLocked = false;
     _streamMode = null;
     TypewriterBuffer.stop();
+    // 【修复BUG-11】玩家每进行一次有效行动（非初始化），推进引导任务进度
+    if (!isInit && typeof QuestSystem !== 'undefined' && QuestSystem.advanceGuidanceQuest) {
+        QuestSystem.advanceGuidanceQuest();
+    }
     
     // 让浏览器先渲染 loading 动画，再执行重操作（避免点击后长时间无反馈）
     await new Promise(function(r) { requestAnimationFrame(r); });
@@ -1635,7 +1644,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     _rescuedData = robustParse(response);
                 }
             } catch (e) { console.warn('[sendAIRequest] robustParse 兜底失败:', e && e.message); }
-            if (_rescuedData && (_rescuedData.story || _rescuedData.gameTime || _rescuedData.choices || _rescuedData.bag)) {
+            if (_rescuedData && (_rescuedData.story || _rescuedData.gameTime || _rescuedData.choices || _rescuedData.bag || _rescuedData.player || _rescuedData.title)) {
                 console.log('[sendAIRequest] robustParse 兜底成功，已恢复结构化字段:', Object.keys(_rescuedData).join(','));
                 data = _rescuedData;
                 // 如果 storyText 为空但兜底 data 有 story，用兜底 story
@@ -1769,6 +1778,12 @@ async function sendAIRequest(userMessage, isInit = false) {
                 updateSceneTitle(data.title || data.scene);
                 // 保存到gameState，确保读档后能恢复
                 if (gameState) gameState._lastSceneTitle = data.title || data.scene;
+            } else if (gameState && storyText && storyText.trim()) {
+                // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
+                var turnNum = (gameState._stats && gameState._stats.totalTurns) || 1;
+                var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
+                updateSceneTitle(fallbackTurnTitle);
+                gameState._lastSceneTitle = fallbackTurnTitle;
             }
             // 保存HUD数据到gameState，确保读档后能恢复
             if (data.hud && gameState) {
@@ -1812,8 +1827,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             gameState._lastSceneTitle = fallbackTitle;
         }
 
-        // 【方案C】纯文本模式：AI没输出choices时，基于story末段自动生成3个选项
-        if (gameState && gameState.pureTextMode && gameState.generateChoices && (!data || !data.choices)) {
+        // 【方案C】AI没输出choices时，基于story末段自动生成3个选项
+        // 【修复BUG-05】原逻辑仅在 pureTextMode 下自动生成，JSON 模式下 choices 缺失会退化为硬编码通用选项
+        if (gameState && gameState.generateChoices && (!data || !data.choices)) {
             // 【P2优化】传入上一轮选项用于去重，避免套路化
             var autoChoices = _generateAutoChoices(storyText, gameState._lastChoices);
             if (autoChoices && autoChoices.length > 0) {
@@ -1831,10 +1847,9 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 处理增强记忆
         if (typeof EnhancedMemory !== 'undefined') {
-            EnhancedMemory.processMessage(
-                { role: 'assistant', content: response },
-                data
-            );
+            // 【修复BUG-12/13/14】processMessage 签名为 (role, content, gameData)
+            // 旧代码把 data 当第二个参数传入，导致 gameData 始终为空，地点/事件/角色无法提取
+            EnhancedMemory.processMessage('assistant', response, data || {});
         }
         // 成就系统检查
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) {
@@ -1846,6 +1861,14 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) {
                 if (data.currency !== undefined) gameState.currency = data.currency;
                 if (data.currencyName) gameState.currencyName = data.currencyName;
+                // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底
+                if (data.currency === undefined && storyText && typeof storyText === 'string') {
+                    var _moneyMatch = storyText.match(/(\d+(?:\.\d+)?)\s*(?:元|金币|块钱|现金|金钱|money|gold)/i);
+                    if (_moneyMatch) {
+                        gameState.currency = parseFloat(_moneyMatch[1]) || 0;
+                        console.log('[货币兜底] 从故事文本提取金额:', gameState.currency);
+                    }
+                }
             }
             // === 新增：提取并累积重要事件 ===
             if (data.keyEvents && Array.isArray(data.keyEvents)) {
@@ -1997,6 +2020,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 上限30条，防止占太多token
                 if (gameState.keyEvents.length > 30) {
                     gameState.keyEvents = gameState.keyEvents.slice(-30);
+                }
+                // 【修复BUG-13】兜底提取的 keyEvents 也要同步到 gm.events（记忆中心读取的是 gm.events）
+                if (typeof _pushKeyEventsToGM === 'function') {
+                    try { _pushKeyEventsToGM(); } catch (e) { console.warn('[pushKeyEvents] 兜底同步失败:', e); }
                 }
             }
         }
@@ -2591,7 +2618,8 @@ function extractStoryStreaming(text) {
                         result += String.fromCharCode(parseInt(hexStr, 16));
                         i += 4;
                     } else {
-                        result += ch;
+                        // 【修复BUG-04】不完整Unicode转义时保留反斜杠，等待后续字符到达
+                        result += '\\' + ch;
                     }
                     break;
                 default: result += ch;
@@ -2651,7 +2679,17 @@ function onStreamChunk(delta, fullText) {
         _streamModeLocked = true;
         TypewriterBuffer.push(story);
     } else if (streamBuffer.length > 50) {
-        // 累积超过50字符仍未检测到 "story" 字段，锁定为纯文本模式
+        // 【修复BUG-01】50字符阈值过低：AI先输出title时"story":尚未出现就被误判为plaintext
+        // 若响应以 { 开头（JSON模式），坚持等待story字段；否则才降级为纯文本
+        var isLikelyJSON = /^\s*\{/.test(streamBuffer);
+        if (isLikelyJSON) {
+            // JSON模式 but story 字段尚未到达，只记录调试日志，不锁定
+            if (streamBuffer.length > 200) {
+                console.warn('[onStreamChunk] JSON模式但 story 字段延迟出现，缓冲区长度:', streamBuffer.length);
+            }
+            return;
+        }
+        // 非JSON响应才锁定为纯文本模式
         _streamMode = 'plaintext';
         _streamModeLocked = true;
         TypewriterBuffer.push(streamBuffer);
@@ -2764,6 +2802,11 @@ function formatStory(text) {
         text = text.replace(_reGiggleCN, '<giggle>').replace(_reGiggleCNClose, '</giggle>');
     }
 
+    // 【修复BUG-03】将跨行 <giggle>...</giggle> 合并到单行，避免按段落分割后闭合标签残留为可见文本
+    text = text.replace(/<giggle>([\s\S]*?)<\/giggle>/gi, function(match, inner) {
+        return '<giggle>' + inner.replace(/\n/g, ' ').replace(/\r/g, '') + '</giggle>';
+    });
+
     // 【性能修复】打字机tick期间跳过PresetAppManager解析和标签移除
     // parseFromText 遍历所有装饰标签做正则匹配，stripDecorTags 做大量正则替换
     // 在打字机每25ms tick期间执行这些操作是巨大的浪费，因为文本还在变化
@@ -2779,10 +2822,15 @@ function formatStory(text) {
             text = PresetAppManager.stripDecorTags(text);
         }
     } else {
-        // 打字机tick期间：只做最基本的标签移除（giggle标签需要保留用于心声显示）
-        // 其他装饰标签在tick期间不影响显示，因为它们的内容不会渲染到storyText
+        // 打字机tick期间：移除装饰标签和 giggle 标签
+        // 【修复BUG-03】原代码保留 giggle 标签用于心声显示，但打字机 tick 期间 textContent 渲染会导致 <giggle> 可见
         _reDecorTagsTyping.lastIndex = 0;
         text = text.replace(_reDecorTagsTyping, '');
+        _reGiggleStrip.lastIndex = 0;
+        _reGiggleCNStrip.lastIndex = 0;
+        _reGiggleUnclosedStrip.lastIndex = 0;
+        _reGiggleCNUnclosedStrip.lastIndex = 0;
+        text = text.replace(_reGiggleStrip, '').replace(_reGiggleCNStrip, '').replace(_reGiggleUnclosedStrip, '').replace(_reGiggleCNUnclosedStrip, '');
     }
 
     // 清理 body 上的旧心声气泡（气泡是 fixed 定位在 body 上的，不在 storyEl 内）

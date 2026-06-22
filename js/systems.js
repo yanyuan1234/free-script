@@ -57,11 +57,28 @@ var QuestSystem = {
             rewards: [{
                 type: 'exp',
                 name: '经验值',
-                amount: '??'
+                amount: 50
                 }],
             timeLimit: null,
             priority: 999
             };
+    },
+    // 【修复BUG-11】更新引导任务进度：玩家每进行一次有效行动，进度+1
+    advanceGuidanceQuest() {
+        if (!QuestSystem._cachedGuidanceQuest) return;
+        var q = QuestSystem._cachedGuidanceQuest;
+        if (q.status !== QuestSystem.STATUS.ACTIVE) return;
+        var parts = (q.progress || '0/1').split('/');
+        var current = parseInt(parts[0]) || 0;
+        var total = parseInt(parts[1]) || 1;
+        if (current < total) {
+            current++;
+            q.progress = current + '/' + total;
+            if (current >= total) {
+                q.status = QuestSystem.STATUS.COMPLETED;
+                console.log('[任务系统] 引导任务完成:', q.title);
+            }
+        }
     },
     filterByType(quests, type) {
         return type === 'all' ? quests : quests.filter(function(q) {

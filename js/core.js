@@ -1964,6 +1964,11 @@ function resetRuntimeState(scope) {
     // full 模式：整体替换 gameState
     if (scope === 'full') {
         gameState = createDefaultGameState();
+        // 【修复BUG-14】clear() 重建 tables 后，gameState.allCharacters 等别名断裂
+        // 重新建立 gameState 与 GameMemory tables 之间的引用别名
+        if (typeof _ensureDataLinkage === 'function') {
+            try { _ensureDataLinkage(); } catch (e) { console.warn('[resetRuntimeState] 数据联动失败:', e); }
+        }
     }
 }
 
@@ -2002,11 +2007,17 @@ var TypewriterBuffer = {
         // 确保 queue 和 displayed 已初始化，防止 undefined 错误
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        if (newText.length > this.queue.length + this.displayed.length) {
-            var newPart = newText.substring(this.displayed.length + this.queue.length);
-            this.queue += newPart;
-            } else {
-            this.queue = newText.substring(this.displayed.length);
+        // 【修复BUG-04】newText 是完整文本（displayed + queue + 新增），不是增量
+        var newSuffix = newText.substring(this.displayed.length);
+        if (newSuffix.indexOf(this.queue) === 0) {
+            // 原 queue 是 newSuffix 前缀，只追加差异（最优路径）
+            this.queue += newSuffix.substring(this.queue.length);
+        } else if (this.queue.indexOf(newSuffix) === 0 && newSuffix.length > 0) {
+            // newSuffix 是原 queue 前缀：流式过程中文本被截短，保持 queue 不变等待恢复
+            // 避免覆盖导致闪烁或丢字
+        } else {
+            // 内容发生变化，用新的完整 suffix 替换 queue
+            this.queue = newSuffix;
         }
     if (!this.isTyping) this.start();
     },
@@ -2832,7 +2843,7 @@ if (!storyText || storyText.trim() === '') {
 }
 }
 
-// 【修复X8】裸文本思维链泄漏检测
+// 【修复X8/BUG-01】裸文本思维链泄漏检测
 // 某些模型在 JSON 解析失败后会把推理过程当剧情输出：
 //   "用户选择了选项A：打开门让苏小雨进来。我需要根据这个选择来推进故事。
 //    当前状态：- 时间：2024年10月15日 07:30 早晨 - 主角：大三学生..."
@@ -2840,8 +2851,8 @@ if (!storyText || storyText.trim() === '') {
 //   1. 含 "我需要"/"我应该"/"我来"/"让我" 等第一人称推理词
 //   2. 含 "当前状态"/"选择X的后果"/"分析" 等元叙述词
 //   3. 含 "- 时间：" / "- 主角：" 等状态清单格式
-// 触发条件：data 为空（JSON 解析失败）+ storyText 含明显推理特征
-if (!data && storyText && storyText.length > 0) {
+// 触发条件：storyText 含明显推理特征（无论 JSON 是否解析成功，都可能泄漏到 story 字段）
+if (storyText && storyText.length > 0) {
     var _leakPatterns = [
         /我需要根据[^。]*推进/,
         /我需要[^。]*分析/,
