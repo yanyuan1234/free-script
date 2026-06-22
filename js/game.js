@@ -427,8 +427,32 @@ function buildSystemPrompt(includeFormatRules) {
     // 存储世界书分组数据供 sendAIRequest 使用（不再拼入system prompt）
     gameState._wiPositionTexts = (typeof _wiResult === 'object' && _wiResult !== null && _wiResult.positionTexts) ? _wiResult.positionTexts : null;
 
-    // 【P0 token优化】玩家偏好：检测到任何一个偏好变量被设置时，才注入整段偏好章节
-    // 节省 ~380 token（玩家没设置偏好时的常见情况）
+    // 注入增强记忆
+    var _memoryText = '';
+    if (typeof EnhancedMemory !== 'undefined') {
+        _memoryText = EnhancedMemory.buildSmartInjection();
+        if (_memoryText) {
+            console.log('[buildSystemPrompt] 已注入增强记忆');
+        }
+    }
+
+    // 【修复A P1-4】对用户可控输入进行清理，防止prompt injection
+    var _safeUserPrompt = _sanitizePromptInput(gameState && gameState.userPrompt);
+
+    // 设定分层注入（Lorebook风格：核心常驻+按需加载）
+    var _setupText = _safeUserPrompt;
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.getSetupInjection) {
+        var _layeredSetup = EnhancedMemory.getSetupInjection();
+        if (_layeredSetup !== null) _setupText = _layeredSetup;
+    }
+
+    // 收集玩家最近与NPC的私聊记录
+    var _chatContextText = buildRecentChatContext();
+
+    // 酒馆预设融合层
+    var _narrativeEnhancement = buildNarrativeEnhancement();
+
+    // 玩家偏好章节
     var _PREF_KEYS = ['字数总要求','单段落字数','叙述视角','char代词','user代词','演绎授权','转述授权','推进节奏','文风指导','起始标签'];
     var _hasAnyPref = false;
     if (typeof MacroEngine !== 'undefined' && MacroEngine.getGlobalVar) {
@@ -449,164 +473,116 @@ function buildSystemPrompt(includeFormatRules) {
           '- 节奏：{{getglobalvar::推进节奏}}\n' +
           '- 文风：{{getglobalvar::文风指导}}\n' +
           '- 思维链：{{getglobalvar::起始标签}}\n' +
-          '当上述变量为空时，你根据世界观和场景自行选择最合适的方案。\n\n'
+          '当上述变量为空时，你根据世界观和场景自行选择最合适的方案。'
         : '';
 
-    // 注入增强记忆
-    var _memoryText = '';
-    if (typeof EnhancedMemory !== 'undefined') {
-        _memoryText = EnhancedMemory.buildSmartInjection();
-        if (_memoryText) {
-            console.log('[buildSystemPrompt] 已注入增强记忆');
-        }
-    }
-
-    // 【修复A P1-4】对用户可控输入进行清理，防止prompt injection
-    var _safeUserPrompt = _sanitizePromptInput(gameState && gameState.userPrompt);
-    // 【优化】移除 customStyle 死字段读取——全项目无 UI 输入框，默认空字符串
-    // 旧存档若带 customStyle，由文风选择（writingStyle）统一接管，避免双重风格注入冲突
-
-    // 设定分层注入（Lorebook风格：核心常驻+按需加载）
-    var _setupText = _safeUserPrompt;
-    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.getSetupInjection) {
-        var _layeredSetup = EnhancedMemory.getSetupInjection();
-        if (_layeredSetup !== null) _setupText = _layeredSetup;
-    }
-
-    // 收集玩家最近与NPC的私聊记录，注入到剧情提示词中，让剧情能感知私聊
-    var _chatContextText = buildRecentChatContext();
-
-    // === 酒馆预设融合层 ===
-    // 来自酒馆大佬们的「世界之眼/章节模式/缄默法则/NPC准则」按 gameState 字段动态注入
-    // 核心原则：如果已加载酒馆预设（main 长度>50），本层退位
-    var _narrativeEnhancement = buildNarrativeEnhancement();
-
-    // 【关键】有预设时，只返回纯游戏数据（设定/记忆/私聊），不包含任何默认身份定义和指导性文字
-    // 预设的 system_prompt=true 条目会提供自己的身份定义和格式规则，预设才是最高优先级
-    // 【注意】格式锚点是游戏运行的硬性要求（不是"默认设置"），必须始终存在
-    // 即使酒馆预设不知道JSON格式，AI也必须输出JSON，否则前端无法解析
-    var _formatAnchor = '';
-    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || 4096;
-    var _hasChoicesForAnchor = gameState && gameState.generateChoices;
-    // 检测当前是否有预设——内置预设的main prompt已包含格式说明，不需要重复注入
+    // 检测当前是否有内置预设
     var _hasNativePreset = false;
     if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
         var _curP = PresetManager.presets[PresetManager.currentPresetIndex];
         if (_curP && _curP._isBuiltin) _hasNativePreset = true;
     }
-    if (!_hasNativePreset) {
-        // 非内置预设（酒馆导入的或无预设）：注入格式引导
-        // 【方案C】双模式：按次计费时优先用纯文本模式（story质量优先）
-        var _pureTextMode = gameState && gameState.pureTextMode;
-        if (_pureTextMode) {
-            // 【纯文本模式】AI只输出纯文本story + <mem> + <giggle>，无需JSON
-            // 节省的tokens全部用于story，story字数从739字提升到2500+字
-            _formatAnchor = '\n\n【输出要求·纯文本模式】\n' +
-                '**直接输出纯文本剧情**，不要任何JSON包裹，不要```json```代码块，不要"{"或"}"符号。\n' +
-                '格式：纯叙事文本，对话用「」包裹，换行用\\n。\n' +
-                '当状态变化时，在剧情中穿插<mem>标签：\n' +
-                '- 事件：<mem type="event" action="add">陈墨获得雷引玉简</mem>\n' +
-                '- 物品：<mem type="item" name="雷令" qty="1" action="add"/>\n' +
-                '- 角色：<mem type="character" name="林婉" field="favorability" value="70"/>\n' +
-                '- 任务：<mem type="quest" action="add">明日卯时去后山找清虚</mem>\n' +
-                '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
-                '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
-                '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
-        } else {
-            // 【JSON模式】直接返回结构化数据，前端据此自动填充所有面板
-            _formatAnchor = '\n\n【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。\n' +
-                '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
-                '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
-                '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
-                '<giggle>心声(2-5个) 约' + _maxTokensForAnchor + 'tokens输出空间';
-        }
-    }
 
-    if (!includeFormatRules) {
-        return `${_setupText}
-${_narrativeEnhancement}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}${_formatAnchor}`;
-    }
-
-    var _maxTokens = (gameState && gameState.maxTokens) || 4096;
+    // 术语与世界规则
     var _terms = getCurrentWorldTerms();
     var _termsPrompt = buildWorldTermsPrompt(_terms);
-    // 安全取术语，null 时用通用词
     var _t = function(key, fallback) { return (_terms && _terms[key]) ? _terms[key] : fallback; };
     var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
-    _prompt = `你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。
 
-【关键】${(gameState && gameState.pureTextMode) ?
-'【纯文本模式】**直接输出纯文本剧情**，不要任何JSON包裹、不要```json```代码块、不要"{"或"}"符号。\n' +
-'你只需要写出剧情本身——状态变化用<mem>标签穿插在剧情中（前端自动提取维护结构化数据），心声用<giggle>标签。' :
-'你的回复将直接被前端JSON解析器读取。**不要输出任何思考过程、计划、解释、前缀**。每次回复都以 { 开头，以 } 结尾，中间是合法的JSON。'}
+    // 格式规则（内置预设已有格式说明时跳过重复锚点）
+    var _formatAnchor = '';
+    if (!_hasNativePreset) {
+        _formatAnchor = _buildFormatAnchor();
+    }
+    var _formatRules = includeFormatRules ? _buildFormatRules(gameState, _t, turn) : '';
 
-${_setupText}
-${_narrativeEnhancement}${buildProtagonistPrompt()}${_memoryText ? '\n【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText + '\n' : ''}${_chatContextText}
+    // 主角设定
+    var _protagonist = buildProtagonistPrompt();
 
-${_termsPrompt}
+    // 使用 AI 契约层 PromptBuilder 组装最终 system prompt
+    if (typeof PromptBuilder !== 'undefined' && PromptBuilder.buildSystemPrompt) {
+        PromptBuilder.setMode((gameState && gameState.pureTextMode) ? 'pureText' : 'json');
+        var ctx = {
+            setupText: _setupText,
+            userPrompt: _safeUserPrompt,
+            player: (gameState && gameState.playerData) || {},
+            playerName: (gameState && gameState.playerName) || '',
+            playerIdentity: (gameState && gameState.playerIdentity) || '',
+            memoryText: _memoryText,
+            chatContextText: _chatContextText,
+            narrativeEnhancement: _narrativeEnhancement,
+            preferenceSection: _prefSection,
+            termsPrompt: _termsPrompt,
+            formatAnchor: _formatAnchor,
+            formatRules: _formatRules,
+            gameTime: (gameState && gameState.gameTime) || {},
+            pureTextMode: !!(gameState && gameState.pureTextMode),
+            generateChoices: !(gameState && gameState.generateChoices === false),
+            maxTokens: (gameState && gameState.maxTokens) || 4096,
+            worldTerms: _terms,
+            turn: turn
+        };
+        var prompt = PromptBuilder.buildSystemPrompt(ctx);
+        // 保持原有 includeFormatRules=false 时的简化行为：只要设定/记忆/格式锚点
+        if (!includeFormatRules) {
+            return [_setupText, _narrativeEnhancement, _protagonist,
+                _memoryText ? '【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText : '',
+                _chatContextText, _formatAnchor].filter(Boolean).join('\n\n');
+        }
+        // 补充原函数中 PromptBuilder 默认片段未覆盖的术语、格式锚点和主角信息
+        var extraParts = [];
+        if (_termsPrompt) extraParts.push(_termsPrompt);
+        if (_formatAnchor) extraParts.push(_formatAnchor);
+        if (extraParts.length > 0) {
+            return prompt + '\n\n' + extraParts.join('\n\n');
+        }
+        return prompt;
+    }
 
-【引导玩家输入】（提升剧情质量）
-- 好的输入：包含**动作+对象+意图**，如"我想去图书室查阅螺旋塔的资料"、"我假装不经意地绕到薇拉身后"
-- 避免空洞输入：单纯的"继续"、"嗯"、"好"等无法展开剧情
-- 鼓励玩家输入：行为描写/对话/内心活动/环境观察
-- 即便玩家输入简短，也**主动**丰富场景：补充NPC反应、环境细节、伏笔
-
-【你的工作方式】
-${(gameState && gameState.pureTextMode) ?
-'**直接输出纯文本剧情**。故事是核心，所有token预算都用在故事上。\\n\\n' +
-'对话用「」包裹，换行用\\n。\n' +
-'状态变化用<mem>穿插在剧情中（前端自动提取维护），心声用<giggle>穿插。\n' +
-'你大约有 ' + _maxTokens + ' tokens输出空间——把故事写完整、写精彩。' :
-'**直接输出JSON**（以 { 开头），不要任何前缀（不要"让我开始"、不要"title:"、不要"story:"等思考过程）。\n' +
-'story放第一个字段，用\\n换行，对话用「」。你大约有 ' + _maxTokens + ' tokens输出空间。\n' +
-'- story=叙事正文，choices=决策点，[章节结束|标题]=章节收尾\n' +
-'- **严禁回到故事开头或重复初始场景**：必须严格基于上文继续推进，title/gameTime 必须反映当前回合进度，不能回到“第1章/初始/苏醒/开局”等初始描述。'
+    // 兜底：原函数简化保留（PromptBuilder 不可用时）
+    var _legacyParts = [
+        '你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。',
+        _setupText,
+        _narrativeEnhancement,
+        _protagonist,
+        _memoryText ? '【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText : '',
+        _chatContextText,
+        _termsPrompt,
+        _formatAnchor,
+        _formatRules
+    ];
+    return _legacyParts.filter(Boolean).join('\n\n');
 }
 
-${turn <= 3 ?
-`【心声系统 <giggle>】
-每回合穿插 2-5 个 <giggle>角色名：心声</giggle>，散在不同段落。心声是"没说出口的话"——口是心非、潜台词、旁观者吐槽。
-
-${(gameState && gameState.pureTextMode) ?
-`【状态变化 <mem>】（纯文本模式核心）
-重要状态变化时必须用 <mem> 标签标记，前端自动提取：
-- <mem type="event" action="add">陈墨获得雷引玉简</mem>
-- <mem type="item" name="雷令" qty="1" action="add"/>
-- <mem type="character" name="林婉" field="favorability" value="70"/>
-- <mem type="quest" action="add">明日卯时去后山</mem>
-- <mem type="time" day="3" period="afternoon"/>
-【持续维护】你不需要输出player/characters/bag/quests/gameTime等结构化数据——前端会从剧情和<mem>标签中自动提取。` :
-`【JSON 字段维护】（JSON模式核心）
-把状态变化写进对应 JSON 字段，不要依赖 <mem> 标签：
-- 角色变化 → characters 数组
-- 物品变化 → bag 数组
-- 任务变化 → quests 数组
-- 时间变化 → gameTime 对象
-- 世界/设定 → world 数组
-【世界模块】world数组类型：text(描述)、list/ranking(清单)、key_value(属性)、cards(卡片)、comments(论坛)、moments(朋友圈)、mail(邮件)、shop(商店)、diary(日记)
-【持续维护】favorability随剧情更新，bag/quests实时同步，空字段省略不输出。`}
-` :
-`【工具】每回合2-5个<giggle>心声 | ${(gameState && gameState.pureTextMode) ? '状态变化用<mem>标记 | 纯文本模式：所有token用在story上 | **强制要求**：每回合至少1个<mem>标签' : 'JSON模式：维护title/story/choices/characters/bag/quests/gameTime等字段 | world类型:text/list/ranking/key_value/cards/comments/moments/mail/shop/diary | 空字段省略'}`
+// 格式锚点（硬性要求，始终存在）
+function _buildFormatAnchor() {
+    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || 4096;
+    var _hasChoicesForAnchor = gameState && gameState.generateChoices;
+    var _pureTextMode = gameState && gameState.pureTextMode;
+    if (_pureTextMode) {
+        return '【输出要求·纯文本模式】\n' +
+            '**直接输出纯文本剧情**，不要任何JSON包裹，不要```json```代码块，不要"{"或"}"符号。\n' +
+            '格式：纯叙事文本，对话用「」包裹，换行用\\n。\n' +
+            '当状态变化时，在剧情中穿插<mem>标签：\n' +
+            '- 事件：<mem type="event" action="add">陈墨获得雷引玉简</mem>\n' +
+            '- 物品：<mem type="item" name="雷令" qty="1" action="add"/>\n' +
+            '- 角色：<mem type="character" name="林婉" field="favorability" value="70"/>\n' +
+            '- 任务：<mem type="quest" action="add">明日卯时去后山找清虚</mem>\n' +
+            '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
+            '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
+            '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
+    }
+    return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。\n' +
+        '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status": ""}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
+        '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
+        '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
+        '<giggle>心声(2-5个) 约' + _maxTokensForAnchor + 'tokens输出空间';
 }
 
-【信息优先级】始终生效>本轮变化>旧记录>旧指令
-
-${_prefSection}
-${gameState.gameTime?.date ? '当前游戏时间：' + (gameState.gameTime.date || '') + ' ' + (gameState.gameTime.time || '') + ' ' + (gameState.gameTime.period || '') : '当前是游戏开始，请设定初始时间'}
-
-${_buildFormatRules(gameState, _t)}`;
-
-    return _prompt;
-}
-
-// 渐进式格式规则：前3轮注入完整JSON模板，后续只保留关键提醒
-// 按次计费优化：省下的token让给游戏数据
-function _buildFormatRules(gs, _t) {
-    var turn = (gs._stats && gs._stats.totalTurns) || 0;
+// 渐进式格式规则（原 _buildFormatRules 改名为公共函数，避免与旧引用冲突）
+function _buildFormatRules(gs, _t, turn) {
     var hasChoices = gs.generateChoices;
-
     if (turn <= 3) {
-        // 前3轮：精简JSON模板（只保留必填字段，可选字段用...省略）
         return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
             + '{ "title": "", "story": "", '
             + (hasChoices ? '"choices": [{"id":"A","text":""}],' : '')
@@ -618,9 +594,6 @@ function _buildFormatRules(gs, _t) {
             + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
             + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
     } else {
-        // 第4轮起：保留关键字段提醒，防止模型遗忘
-        // 【修复BUG-07/08/09】player/bag/quests/gameTime/currency 等字段不能降级为"常用"
-        // 否则 AI 在长对话中会逐渐省略这些字段，导致状态/物品/金币/任务不同步
         return '【格式·JSON模式】直接输出JSON（以{开头），不要前缀，空字段省略。\n'
             + '必填：title、story、player（含stats数组）、bag（完整库存）、gameTime。\n'
             + '常用：choices、characters、world、quests、currency、currencyName、keyEvents、relationships、contextSummary。\n'
@@ -1703,6 +1676,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【P0优化】成功收到有效剧情，清零流式失败计数
         if (gameState && gameState.streamFailCount && storyText && storyText.trim().length > 0) {
             gameState.streamFailCount = 0;
+        }
+
+        // 【阶段2·AI契约层】使用 AIResponseMutator 把解析结果标准化写入 StateManager
+        if (typeof AIResponseMutator !== 'undefined' && AIResponseMutator.apply && parseResult && parseResult.success) {
+            try {
+                AIResponseMutator.apply(parseResult, { silent: true });
+            } catch (e) {
+                console.warn('[sendAIRequest] AIResponseMutator 应用失败:', e && e.message);
+            }
         }
 
         // 【方案C】应用<mem>标签解析结果到gameState（自动维护结构化数据）

@@ -2404,6 +2404,11 @@ return -1;
 }
 function safeJSONParse(str) {
     if (!str || typeof str !== 'string') return null;
+    // 优先使用契约层解析器（更完善的 JSON 包字符串、代码块、状态机兜底）
+    if (typeof ResponseParser !== 'undefined' && ResponseParser._tryDirectJSON) {
+        var contractData = ResponseParser._tryDirectJSON(str);
+        if (contractData) return contractData;
+    }
     try {
         let s = str.trim();
         if (s.startsWith('```')) s = s.replace(/^```json\s*/i, '').replace(/^```/, '').trim();
@@ -2797,12 +2802,22 @@ function _applyMemsToGameState(mems) {
 function parseAIResponse(reply) {
     let data = null;
     let storyText = '';
-    // 【修复 P1-3 + 动态化】移除硬编码的"思考前缀剥离正则"——这是 API 游戏，AI 能理解输出格式
-    // 旧代码用 /^(?:让我|好的|首先|现在|继续|接下来|于是).../ 正则剥离前缀，
-    // 会误删以这些词开头的正文（如"让我带你看看..."、"好的，她说道"）
-    // 现在信任 AI 能正确输出，不再猜测和剥离"思考过程"
-    // 如果 AI 输出了思考前缀导致 JSON 解析失败，下方的 robustParse 状态机会处理
-    // 【方案C】<mem>标签解析 - 在JSON解析前先提取
+    let parsedByContract = null;
+    // 优先使用 AI 契约层统一解析（覆盖直接 JSON、代码块、状态机、<mem>、纯文本 5 层兜底）
+    if (typeof ResponseParser !== 'undefined' && ResponseParser.parse) {
+        parsedByContract = ResponseParser.parse(reply);
+        if (parsedByContract && parsedByContract.success) {
+            data = parsedByContract.data || null;
+            storyText = parsedByContract.storyText || '';
+            if (parsedByContract.mems && parsedByContract.mems.length > 0) {
+                if (typeof window !== 'undefined') window._lastParsedMems = parsedByContract.mems;
+            }
+            if (parsedByContract.warnings && parsedByContract.warnings.length > 0) {
+                parsedByContract.warnings.forEach(function(w) { console.warn('[ResponseParser]', w); });
+            }
+        }
+    }
+    // 【方案C】<mem>标签解析 - 在JSON解析前先提取（兼容旧路径）
     var memParseResult = _parseMemTags(reply);
     if (memParseResult.mems.length > 0) {
         console.log('[方案C] 检测到 ' + memParseResult.mems.length + ' 个 <mem> 标签');
@@ -2810,7 +2825,7 @@ function parseAIResponse(reply) {
         if (typeof window !== 'undefined') window._lastParsedMems = memParseResult.mems;
     }
     // 1. 先尝试直接解析纯JSON（新格式）
-    data = safeJSONParse(reply);
+    if (!data) data = safeJSONParse(reply);
     // 2. 如果失败，兼容旧的```json格式
     if (!data) {
         const jsonMatch = reply.match(/```json\n?([\s\S]*?)\n?```/);
@@ -2823,7 +2838,9 @@ if (!data) {
     data = robustParse(reply);
 }
 // 4. 提取剧情文本
-if (data && data.story) {
+if (storyText) {
+    // 契约层已提供清洗后的 storyText，直接使用
+} else if (data && data.story) {
     // 新格式：story在JSON里
     storyText = data.story;
 } else {
