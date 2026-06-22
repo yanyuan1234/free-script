@@ -45,7 +45,32 @@ var QuestSystem = {
     }
     return quests;
     },
+    // 动态计算引导任务奖励：基于玩家等级、回合进度和 AI 最近返回的任务奖励
+    _computeGuidanceReward: function() {
+        var base = 10;
+        var level = (gameState && gameState.playerData && gameState.playerData.level) || 1;
+        var turns = (gameState && gameState._stats && gameState._stats.totalTurns) || 1;
+        // 参考 AI 最近返回的任务奖励（避免硬编码）
+        var reference = 0;
+        var quests = gameState.currentQuests || [];
+        var rewardCount = 0;
+        quests.forEach(function(q) {
+            if (q && q.rewards && q.rewards.length > 0) {
+                q.rewards.forEach(function(r) {
+                    var amt = parseInt(r && r.amount);
+                    if (!isNaN(amt) && amt > 0) {
+                        reference += amt;
+                        rewardCount++;
+                    }
+                });
+            }
+        });
+        var avgReward = rewardCount > 0 ? Math.round(reference / rewardCount) : 0;
+        var dynamic = base + (level - 1) * 5 + Math.floor(turns / 2) * 3;
+        return avgReward > 0 ? Math.max(5, Math.round((avgReward + dynamic) / 2)) : Math.max(5, dynamic);
+    },
     createGuidanceQuest() {
+        var rewardAmount = this._computeGuidanceReward();
         return {
             id: 'guidance_' + Date.now(),
             title: '继续探索',
@@ -57,7 +82,7 @@ var QuestSystem = {
             rewards: [{
                 type: 'exp',
                 name: '经验值',
-                amount: 50
+                amount: rewardAmount
                 }],
             timeLimit: null,
             priority: 999
