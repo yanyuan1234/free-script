@@ -34,7 +34,7 @@ var QuestSystem = {
         return statuses;
     },
     getAllQuests() {
-        var quests = gameState.currentQuests || [];
+        var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.currentQuests || []));
         if (quests.filter(function(q) {
             return q.status === QuestSystem.STATUS.ACTIVE;
             }).length === 0 && (gameState.conversationHistory || []).length > 0) {
@@ -52,7 +52,7 @@ var QuestSystem = {
         var turns = (gameState && gameState._stats && gameState._stats.totalTurns) || 1;
         // 参考 AI 最近返回的任务奖励（避免硬编码）
         var reference = 0;
-        var quests = gameState.currentQuests || [];
+        var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.currentQuests || []));
         var rewardCount = 0;
         quests.forEach(function(q) {
             if (q && q.rewards && q.rewards.length > 0) {
@@ -720,6 +720,14 @@ var AchievementSystem = {
 
 function mergeQuests(newQuests) {
     if (!newQuests || !Array.isArray(newQuests)) return;
+    if (StateManager && QuestMutator) {
+        // 使用 QuestMutator 标准化并合并任务
+        newQuests.forEach(function(nq) {
+            if (!nq || !nq.title) return;
+            QuestMutator.addQuest(nq, { silent: true });
+        });
+        return;
+    }
     if (!gameState.currentQuests) gameState.currentQuests = [];
     // 【修复BUG-M4】状态/类型标准化映射：AI 可能返回英文状态，统一转中文
     var statusMap = {

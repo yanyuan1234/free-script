@@ -2766,24 +2766,77 @@ var GameMemory = {
     _extractLocations: function(story) {
         var locations = [];
         if (!story) return locations;
-        // 【修复BUG-12】扩展地点提取正则，覆盖更多常见句式
+        // 【修复BUG-12】扩展地点提取正则，覆盖常见句式
+        // 注意：捕获组只取强地点上下文，避免“停下脚步”等被误判
         var patterns = [
-            /在([^，。！？\s]{2,10})(?:里|内|中|上|下|旁|边|外|前|后)/g,
+            /在([^，。！？\s]{2,10})(?:里|内|中|旁|边|外|前|后|间|室|房|厅|楼|层)/g,
             /来到([^，。！？\s]{2,10})/g,
             /前往([^，。！？\s]{2,10})/g,
             /进入([^，。！？\s]{2,10})/g,
             /到达([^，。！？\s]{2,10})/g,
             /离开([^，。！？\s]{2,10})/g,
             /穿过([^，。！？\s]{2,10})/g,
-            /站在([^，。！？\s]{2,10})(?:里|内|中|上|下|旁|边|外|前|后|口)/g,
-            /([^，。！？\s]{2,10})(?:门口|前面|后面|里面|外面|旁边|附近|周围|区域)/g
+            /站在([^，。！？\s]{2,10})(?:里|内|中|旁|边|外|前|后|口|前|后)/g,
+            /([^，。！？\s]{2,10})(?:门口|前面|后面|里面|外面|旁边|附近|周围|区域|内部|外部)/g
         ];
+        // 常见非地点词黑名单（情绪、感官、时间、方位副词、抽象概念、动词短语等）
+        var blacklist = {
+            '清晨': true, '早晨': true, '上午': true, '中午': true, '下午': true, '傍晚': true,
+            '晚上': true, '夜晚': true, '深夜': true, '凌晨': true, '白天': true, '黑夜': true,
+            '阳光': true, '月光': true, '灯光': true, '火光': true, '阴影': true, '黑暗': true,
+            '光明': true, '夜色': true, '晨光': true, '暮光': true, '曙光': true, '余晖': true,
+            '瞬间': true, '时刻': true, '时候': true, '时间': true, '片刻': true, '刹那': true,
+            '眼前': true, '耳边': true, '身后': true, '背后': true, '身旁': true, '周围': true,
+            '附近': true, '这里': true, '那里': true, '别处': true, '原地': true, '远处': true,
+            '近处': true, '高空': true, '低空': true, '空中': true, '地上': true, '地下': true,
+            '室内': true, '室外': true, '户外': true, '屋里': true, '屋外': true,
+            '触觉': true, '听觉': true, '视觉': true, '嗅觉': true, '味觉': true,
+            '绝望': true, '恐惧': true, '惊慌': true, '冷静': true, '紧张': true, '疲惫': true,
+            '疼痛': true, '饥饿': true, '口渴': true, '寒冷': true, '炎热': true,
+            '心中': true, '脑海': true, '思绪': true, '意识': true, '记忆': true,
+            '下一秒': true, '下一刻': true, '片刻后': true, '不久后': true, '紧接着': true,
+            '依靠': true, '深渊': true, '绝境': true, '危墙': true, '边缘': true,
+            '脚步': true, '步子': true, '手中': true, '怀里': true, '面前': true, '跟前': true,
+            '一路上': true, '一路': true, '原地': true, '当场': true, '暗自': true, '猛然': true,
+            '缓缓': true, '慢慢': true, '迅速': true, '立刻': true, '随即': true, '忽然': true,
+            '突然': true, '不禁': true, '不由': true, '心中': true, '心底': true
+        };
+        // 地点特征后缀白名单
+        var locSuffixes = ['室', '房', '厅', '楼', '层', '间', '店', '铺', '库', '仓',
+            '场', '馆', '园', '院', '所', '站', '口', '门', '窗', '梯', '台', '阶',
+            '道', '路', '街', '巷', '桥', '洞', '穴', '窟', '牢', '狱', '塔', '堡',
+            '镇', '城', '村', '区', '域', '带', '角', '边', '侧', '处', '地', '方'];
+        // 常见动词/助词后缀：若捕获结果以这些结尾，大概率不是地点
+        var verbSuffixes = ['停', '站', '坐', '躺', '蹲', '趴', '走', '跑', '跳', '追',
+            '赶', '看', '望', '盯', '瞧', '听', '闻', '摸', '拿', '抓', '握', '抱',
+            '举', '抬', '低', '转', '回', '过', '来', '去', '上', '下', '进', '出',
+            '开', '关', '说', '喊', '叫', '笑', '哭', '想', '觉', '感', '知', '会',
+            '能', '要', '想', '着', '了', '过', '得', '地', '的', '个', '位', '种'];
         patterns.forEach(function(pattern) {
             pattern.lastIndex = 0;
             var match;
             while ((match = pattern.exec(story)) !== null) {
                 var loc = match[1].trim();
-                if (loc.length > 1 && loc.length < 15 && locations.indexOf(loc) === -1) locations.push(loc);
+                // 基本长度过滤
+                if (!loc || loc.length < 2 || loc.length >= 15) continue;
+                // 黑名单过滤
+                if (blacklist[loc]) continue;
+                // 纯数字/纯英文过滤
+                if (/^\d+$/.test(loc) || /^[a-zA-Z]+$/.test(loc)) continue;
+                // 含有明显非地点后缀过滤
+                if (/[呢吗吧啊嘛矣呵哼]$/.test(loc)) continue;
+                // 若以常见动词/助词结尾，过滤
+                var lastChar = loc.charAt(loc.length - 1);
+                if (verbSuffixes.indexOf(lastChar) !== -1) continue;
+                // 若包含明显的人称/动作词，过滤
+                if (/[你我他她它咱们他们她们它们]$/.test(loc)) continue;
+                // 优先保留带地点特征后缀的词
+                var hasLocSuffix = locSuffixes.some(function(suffix) {
+                    return loc.indexOf(suffix) !== -1;
+                });
+                // 短词（2字）没有地点后缀，过滤
+                if (loc.length <= 2 && !hasLocSuffix) continue;
+                if (locations.indexOf(loc) === -1) locations.push(loc);
                 if (match.index === pattern.lastIndex) pattern.lastIndex++;
             }
         });

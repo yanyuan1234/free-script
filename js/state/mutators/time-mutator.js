@@ -1,0 +1,58 @@
+// ========================================
+// 时间变更器 - TimeMutator
+// ========================================
+var TimeMutator = {
+    // 设置完整时间
+    setTime: function(time, options) {
+        if (!time || typeof time !== 'object') {
+            var empty = { date: '', time: '', period: '' };
+            StateManager.set('time', empty, { silent: true });
+            return StateManager.set('gameTime', empty, options);
+        }
+        var normalized = {
+            date: String(time.date || '').trim(),
+            time: String(time.time || '').trim(),
+            period: String(time.period || time.phase || '').trim()
+        };
+        // 同时写入新路径和旧路径，保持兼容性
+        StateManager.set('time', normalized, { silent: true });
+        return StateManager.set('gameTime', normalized, options);
+    },
+
+    // 推进时间
+    advance: function(options) {
+        options = options || {};
+        var current = StateManager.get('time') || {};
+        var periodMap = {
+            '清晨': '上午',
+            '上午': '中午',
+            '中午': '下午',
+            '下午': '傍晚',
+            '傍晚': '晚上',
+            '晚上': '深夜',
+            '深夜': '清晨'
+        };
+        var period = current.period || '清晨';
+        var nextPeriod = options.nextPeriod || periodMap[period] || '清晨';
+        var next = {
+            date: current.date || '',
+            time: '',
+            period: nextPeriod
+        };
+        // 如果是新的一天
+        if (period === '深夜' && nextPeriod === '清晨') {
+            next.date = this._nextDate(current.date);
+        }
+        return this.setTime(next, options);
+    },
+
+    // 简单日期推进（仅支持 "第N日" 或常见格式）
+    _nextDate: function(dateStr) {
+        if (!dateStr) return '第2日';
+        var match = dateStr.match(/第\s*(\d+)\s*日/);
+        if (match) {
+            return '第' + (parseInt(match[1]) + 1) + '日';
+        }
+        return dateStr;
+    }
+};

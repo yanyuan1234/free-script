@@ -13,6 +13,14 @@ async function initApp() {
     // 防止重复初始化
     if (initApp._initialized) return;
     initApp._initialized = true;
+        // 初始化统一状态层（接管全局 gameState）
+        if (typeof StateManager !== 'undefined') {
+            StateManager.init(typeof gameState !== 'undefined' ? gameState : null);
+        }
+        // 绑定 GameMemory 适配器
+        if (typeof GameMemoryAdapter !== 'undefined') {
+            GameMemoryAdapter.bind();
+        }
         // 初始化主题管理
         if (typeof ThemeManager !== 'undefined') ThemeManager.init();
         // 初始化世界书系统

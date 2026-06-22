@@ -2075,7 +2075,7 @@ function renderRankPage() {
         '</div>';
 }
 function renderItemsPage() {
-    var bag = (gameState.currentBag || []).filter(function(item) {
+    var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])).filter(function(item) {
         // 【修复BUG-M2】过滤占位/空值物品
         if (!item) return false;
         var name = String(item.name || item.title || '').trim();
@@ -2521,17 +2521,20 @@ function buyShopItem(index) {
     else if (gameState.money !== undefined) gameState.money -= price;
     else if (gameState.coins !== undefined) gameState.coins -= price;
     // 加入背包
-    if (!gameState.currentBag) gameState.currentBag = [];
     var bagItem = { name: item.name || '未知物品', icon: item.icon || '物', count: item.count || 1, desc: item.desc || item.description || '', rarity: item.rarity || '普通', rarityClass: item.rarityClass || 'common' };
-    // 检查背包是否已有同名物品
-    var found = false;
-    for (var i = 0; i < gameState.currentBag.length; i++) {
-        if (gameState.currentBag[i].name === bagItem.name) {
-            gameState.currentBag[i].count = (gameState.currentBag[i].count || 1) + (bagItem.count || 1);
-            found = true; break;
+    if (StateManager && BagMutator) {
+        BagMutator.addItem(bagItem, { silent: true });
+    } else {
+        if (!gameState.currentBag) gameState.currentBag = [];
+        var found = false;
+        for (var i = 0; i < gameState.currentBag.length; i++) {
+            if (gameState.currentBag[i].name === bagItem.name) {
+                gameState.currentBag[i].count = (gameState.currentBag[i].count || 1) + (bagItem.count || 1);
+                found = true; break;
+            }
         }
+        if (!found) gameState.currentBag.push(bagItem);
     }
-    if (!found) gameState.currentBag.push(bagItem);
     // 【数据联通】同步写入权威源 gm.tables.items
     if (typeof _pushCurrentBagToGM === 'function') {
         try { _pushCurrentBagToGM(); } catch (e) { console.warn('[buyShopItem] push 失败:', e); }
@@ -3083,34 +3086,43 @@ function renderBag(items) {
     // 【修复BUG-08】renderBag 原用替换语义，AI 只返回本轮新物品时会清空旧物品
     // 改为合并语义：以现有 currentBag 为基础，合并/覆盖 AI 返回的物品
     if (items && Array.isArray(items)) {
-        var existingBag = Array.isArray(gameState.currentBag) ? gameState.currentBag : [];
-        var existingMap = {};
-        existingBag.forEach(function(it, idx) {
-            var key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
-            existingMap[key] = it;
-        });
-        items.forEach(function(it) {
-            if (!it) return;
-            var key = it.name || it.title || it.id;
-            if (!key) return;
-            if (existingMap[key]) {
-                // 保留原有字段，更新数量等可覆盖字段
-                existingMap[key].count = it.count !== undefined ? it.count : (existingMap[key].count || 1);
-                if (it.desc !== undefined) existingMap[key].desc = it.desc;
-                if (it.rarity !== undefined) existingMap[key].rarity = it.rarity;
-                if (it.rarityClass !== undefined) existingMap[key].rarityClass = it.rarityClass;
-                if (it.equipped !== undefined) existingMap[key].equipped = it.equipped;
-                if (it.usable !== undefined) existingMap[key].usable = it.usable;
-            } else {
-                existingBag.push(it);
+        if (StateManager && BagMutator) {
+            BagMutator.mergeItems(items, { silent: true });
+        } else {
+            var existingBag = Array.isArray(gameState.currentBag) ? gameState.currentBag : [];
+            var existingMap = {};
+            existingBag.forEach(function(it, idx) {
+                var key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
                 existingMap[key] = it;
-            }
-        });
-        gameState.currentBag = existingBag;
+            });
+            items.forEach(function(it) {
+                if (!it) return;
+                var key = it.name || it.title || it.id;
+                if (!key) return;
+                if (existingMap[key]) {
+                    // 保留原有字段，更新数量等可覆盖字段
+                    existingMap[key].count = it.count !== undefined ? it.count : (existingMap[key].count || 1);
+                    if (it.desc !== undefined) existingMap[key].desc = it.desc;
+                    if (it.rarity !== undefined) existingMap[key].rarity = it.rarity;
+                    if (it.rarityClass !== undefined) existingMap[key].rarityClass = it.rarityClass;
+                    if (it.equipped !== undefined) existingMap[key].equipped = it.equipped;
+                    if (it.usable !== undefined) existingMap[key].usable = it.usable;
+                } else {
+                    existingBag.push(it);
+                    existingMap[key] = it;
+                }
+            });
+            gameState.currentBag = existingBag;
+        }
     }
     // 【修复BUG-02】refreshAllPanels() 调用 renderBag() 不传参时，不要清空背包
     // 不传参表示仅重绘当前背包
-    if (!Array.isArray(gameState.currentBag)) gameState.currentBag = [];
+    var currentBag = StateManager ? StateManager.get('entities.bag') : gameState.currentBag;
+    if (!Array.isArray(currentBag)) {
+        currentBag = [];
+        if (StateManager) StateManager.set('entities.bag', currentBag, { silent: true });
+        gameState.currentBag = currentBag;
+    }
     // 【数据联通】同步写入权威源 gm.tables.items
     if (typeof _pushCurrentBagToGM === 'function') {
         try { _pushCurrentBagToGM(); } catch (e) { console.warn('[renderBag] push 失败:', e); }
@@ -3125,20 +3137,20 @@ function renderBag(items) {
     if (!container) return;
     // 【性能优化】背包内容未变则跳过重绘
     try {
-        var bagKey = JSON.stringify(gameState.currentBag.map(function(it) {
+        var bagKey = JSON.stringify(currentBag.map(function(it) {
             return [it.id || it.name, it.count || it.amount || 1];
         }));
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderBag', bagKey)) return;
         if (typeof RenderCache !== 'undefined') RenderCache.mark('renderBag', bagKey);
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
-    if (gameState.currentBag.length === 0) {
+    if (currentBag.length === 0) {
         container.innerHTML =
             '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
         return;
     }
     // 【修复X3】物品数据需要转义；并使用与 renderItemsPage 一致的 items-box 结构，保证 filterBagItems 仍可工作
     // 【修复BUG-M2】同步过滤占位/空值物品，避免在物品网格中显示“无”等占位条目
-    container.innerHTML = gameState.currentBag.filter(function(item) {
+    container.innerHTML = currentBag.filter(function(item) {
         if (!item) return false;
         var name = String(item.name || item.title || '').trim();
         return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知' && name !== '未知物品';
@@ -7036,9 +7048,10 @@ function renderNpcPage() {
             // 添加好感度等级标签
             tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
 
+            var firstChar = (c.name && typeof c.name === 'string') ? c.name.charAt(0) : '?';
             return '<div class="character-card pearl-card" onclick="openNpcDetail(\'' + sn +
                 '\')">' +
-                '<div class="avatar avatar-md"><span>' + c.name.charAt(0) + '</span></div>' +
+                '<div class="avatar avatar-md"><span>' + escapeHtml(firstChar) + '</span></div>' +
                 '<div class="char-info">' +
                 '<div class="char-name">' + escapeHtml(c.name) + '</div>' +
                 (c.title ? '<div class="char-meta">' + escapeHtml(c.title) + '</div>' : '') +

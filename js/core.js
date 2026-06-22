@@ -2296,35 +2296,53 @@ var GameTimeSystem = {
         if (!gameState.gameTime) {
             gameState.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
         }
-    var gt = gameState.gameTime;
-    // 记录初始时间，用于后续检测剧情回退
-    if (!gameState._initialGameTime && (gt.time || gt.period || gt.date)) {
-        gameState._initialGameTime = JSON.parse(JSON.stringify(gt));
-    }
-    // AI在JSON中返回 gameTime 字段
-    if (data && data.gameTime) {
-        if (data.gameTime.date) gt.date = data.gameTime.date;
-        if (data.gameTime.time) gt.time = data.gameTime.time;
-        if (data.gameTime.period) gt.period = data.gameTime.period;
-        if (data.gameTime.weather) gt.weather = data.gameTime.weather;
-        if (data.gameTime.era) gt.era = data.gameTime.era;
-    }
-    // 兜底：没有gameTime或全部为空时，从story中提取
-    if ((!gt.date && !gt.time && !gt.period) && data && data.story) {
-        var extracted = this._extractTimeFromStory(data.story);
-        if (extracted) {
-            if (extracted.date) gt.date = extracted.date;
-            if (extracted.time) gt.time = extracted.time;
-            if (extracted.period) gt.period = extracted.period;
+        var gt = gameState.gameTime;
+        // 记录初始时间，用于后续检测剧情回退
+        if (!gameState._initialGameTime && (gt.time || gt.period || gt.date)) {
+            gameState._initialGameTime = JSON.parse(JSON.stringify(gt));
         }
-    }
-    // 【修复X10】data 为 null 时也要给默认时间，避免 UI 显示 "--"
-    // 旧代码在 data 为 null 时直接 return，导致 gameTime 一直为空
-    // 最终兜底：游戏开局给一个默认时间，避免UI显示"--"
-    if (!gt.date && !gt.time && !gt.period) {
-        gt.date = '游戏开始';
-        gt.period = '初始时刻';
-    }
+        // AI在JSON中返回 gameTime 字段
+        if (data && data.gameTime) {
+            if (data.gameTime.date) gt.date = data.gameTime.date;
+            if (data.gameTime.time) gt.time = data.gameTime.time;
+            if (data.gameTime.period) gt.period = data.gameTime.period;
+            if (data.gameTime.weather) gt.weather = data.gameTime.weather;
+            if (data.gameTime.era) gt.era = data.gameTime.era;
+        }
+        // 兜底：没有gameTime或全部为空时，从story中提取
+        if ((!gt.date && !gt.time && !gt.period) && data && data.story) {
+            var extracted = this._extractTimeFromStory(data.story);
+            if (extracted) {
+                if (extracted.date) gt.date = extracted.date;
+                if (extracted.time) gt.time = extracted.time;
+                if (extracted.period) gt.period = extracted.period;
+            }
+        }
+        // 【修复X10】data 为 null 时也要给默认时间，避免 UI 显示 "--"
+        // 旧代码在 data 为 null 时直接 return，导致 gameTime 一直为空
+        // 最终兜底：游戏开局给一个默认时间，避免UI显示"--"
+        if (!gt.date && !gt.time && !gt.period) {
+            gt.date = '游戏开始';
+            gt.period = '初始时刻';
+        }
+        // 【状态层同步】将 gameTime 同步到 StateManager.time
+        if (StateManager && TimeMutator) {
+            TimeMutator.setTime({
+                date: gt.date,
+                time: gt.time,
+                period: gt.period,
+                weather: gt.weather,
+                era: gt.era
+            }, { silent: true });
+        } else if (StateManager) {
+            StateManager.set('time', {
+                date: gt.date,
+                time: gt.time,
+                period: gt.period,
+                weather: gt.weather,
+                era: gt.era
+            }, { silent: true });
+        }
     },
 
     // 格式化时间显示（用于UI）
@@ -2398,7 +2416,12 @@ function safeJSONParse(str) {
         }
 };
 let r = tryP(s);
-if (r) return r;
+// 【修复】某些模型会把 JSON 再包一层字符串返回，需要二次解析
+if (typeof r === 'string' && r.trim().startsWith('{')) {
+    let r2 = tryP(r);
+    if (r2) r = r2;
+}
+if (r && typeof r === 'object') return r;
 // 状态机找第一个完整 {}
 const fb = s.indexOf('{');
     if (fb !== -1) {
@@ -3538,19 +3561,19 @@ if (relations.length === 0) {
 
 // 将提取的关系注入到游戏系统
 if (relations.length > 0 && gameState.allCharacters) {
-    relations.forEach(function(rel) {
-        // 更新"from"角色的关系描述
-        if (gameState.allCharacters[rel.from]) {
-            gameState.allCharacters[rel.from].relation = rel.relation;
-        }
-    // 确保"to"角色也存在
-    if (!gameState.allCharacters[rel.to]) {
-        gameState.allCharacters[rel.to] = { name: rel.to, relation: '' };
+        relations.forEach(function(rel) {
+            // 更新"from"角色的关系描述
+            if (rel.from && gameState.allCharacters[rel.from]) {
+                gameState.allCharacters[rel.from].relation = rel.relation;
+            }
+            // 确保"to"角色也存在（必须有名有姓）
+            if (rel.to && typeof rel.to === 'string' && rel.to.trim() && !gameState.allCharacters[rel.to]) {
+                gameState.allCharacters[rel.to] = { name: rel.to, relation: '' };
+            }
+        });
+        if (typeof renderNpcList === 'function') renderNpcList();
+        console.log('[深度融合] 已将 ' + relations.length + ' 条角色关系桥接到NPC系统');
     }
-});
-if (typeof renderNpcList === 'function') renderNpcList();
-console.log('[深度融合] 已将 ' + relations.length + ' 条角色关系桥接到NPC系统');
-}
 }
 
 // 【小剧场融合】解析论坛内容

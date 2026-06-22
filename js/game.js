@@ -36,6 +36,14 @@ function detectWorldTheme() {
     return 'other';
 }
 
+// 【修复】提供全局地点提取辅助函数，委托给 EnhancedMemory 的实现
+function _extractLocations(text) {
+    if (typeof EnhancedMemory !== 'undefined' && typeof EnhancedMemory._extractLocations === 'function') {
+        return EnhancedMemory._extractLocations(text);
+    }
+    return [];
+}
+
 /**
  * 获取当前世界观的术语（缓存版，避免重复检测）
  * 根据 theme/genre/userPrompt/setupText 自动推断世界观并返回对应术语
@@ -1014,13 +1022,20 @@ async function sendAIRequest(userMessage, isInit = false) {
     saveUndoState();
     // 【修复BUG-C1/C2】记录AI请求前的关键状态，用于检测并恢复剧情回退
     if (gameState) {
-        gameState._preAIState = {
-            title: gameState._lastSceneTitle || '',
-            gameTime: gameState.gameTime ? JSON.parse(JSON.stringify(gameState.gameTime)) : null,
-            turn: (gameState._stats && gameState._stats.totalTurns) || 0,
+        var preTitle = StateManager ? StateManager.get('progress.lastSceneTitle') : (gameState._lastSceneTitle || '');
+        var preGameTime = StateManager ? StateManager.get('time') : (gameState.gameTime || null);
+        var preTurn = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
+        var preAIState = {
+            title: preTitle,
+            gameTime: preGameTime ? JSON.parse(JSON.stringify(preGameTime)) : null,
+            turn: preTurn,
             storySnapshot: (gameState.conversationHistory && gameState.conversationHistory.length > 0) ?
                 gameState.conversationHistory.filter(function(m) { return m.role === 'assistant'; }).slice(-1)[0] : null
         };
+        if (StateManager) {
+            StateManager.set('progress.preAIState', preAIState, { silent: true });
+        }
+        gameState._preAIState = preAIState;
     }
     // 应用正则脚本到用户输入
     if (userMessage) {
@@ -1790,26 +1805,36 @@ async function sendAIRequest(userMessage, isInit = false) {
                 var incomingTitle = data.title || data.scene;
                 // 【修复BUG-C1】防御性检查：若 AI 返回的标题与初始场景关键词高度重合，
                 // 说明模型可能 confused 回退了，沿用上一回合标题或回合递增标题
-                if (gameState && gameState.userPrompt && _looksLikeInitialScene(incomingTitle, gameState.userPrompt)) {
+                var userPrompt = StateManager ? StateManager.get('world.userPrompt') : (gameState && gameState.userPrompt);
+                if (userPrompt && _looksLikeInitialScene(incomingTitle, userPrompt)) {
                     _aiTitleReset = true;
-                    var preTitle = gameState._preAIState && gameState._preAIState.title;
-                    var turnNumC = (gameState._stats && gameState._stats.totalTurns) || 1;
+                    var preTitle = StateManager ? StateManager.get('progress.preAIState.title') : (gameState._preAIState && gameState._preAIState.title);
+                    var turnNumC = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 1);
                     incomingTitle = preTitle || ('第 ' + turnNumC + ' 回合');
                     console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
                 }
                 updateSceneTitle(incomingTitle);
                 // 保存到gameState，确保读档后能恢复
                 if (gameState) gameState._lastSceneTitle = incomingTitle;
+                if (StateManager) {
+                    StateManager.set('progress.lastSceneTitle', incomingTitle, { silent: true });
+                }
             } else if (gameState && storyText && storyText.trim()) {
                 // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
-                var turnNum = (gameState._stats && gameState._stats.totalTurns) || 1;
+                var turnNum = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 1);
                 var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
                 updateSceneTitle(fallbackTurnTitle);
                 gameState._lastSceneTitle = fallbackTurnTitle;
+                if (StateManager) {
+                    StateManager.set('progress.lastSceneTitle', fallbackTurnTitle, { silent: true });
+                }
             }
             // 保存HUD数据到gameState，确保读档后能恢复
             if (data.hud && gameState) {
                 gameState._lastHUD = data.hud;
+                if (StateManager) {
+                    StateManager.set('ui.lastHUD', data.hud, { silent: true });
+                }
             }
             // 兜底：就算AI没返回characters，也尝试从原文提取
             if (!data.characters) {
@@ -1833,16 +1858,33 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 【修复】AI 没返回 relationships 但返回了角色时，自动推断关系网
                 _inferRelationshipsFromCharacters();
             }
-            if (data.contextSummary) gameState.rollingSummary = data.contextSummary;
+            if (data.contextSummary) {
+                gameState.rollingSummary = data.contextSummary;
+                if (StateManager) {
+                    StateManager.set('progress.rollingSummary', data.contextSummary, { silent: true });
+                }
+            }
+            // 从 AI 返回的 title/story 中提取地点
+            if (StateManager && (data.title || storyText)) {
+                var extractedLocations = _extractLocations(String(data.title || '') + ' ' + String(storyText || ''));
+                if (extractedLocations.length > 0) {
+                    StateManager.set('entities.locations', extractedLocations, { silent: true });
+                }
+            }
         }
 
         // 时间系统：从AI返回的JSON中解析gameTime字段（纯文本模式下 data 为 null 也尝试更新UI）
         // 【修复BUG-C2】若标题已被判定为回退，则禁止 gameTime 覆盖为更早/初始时间
         if (typeof GameTimeSystem !== 'undefined') {
-            var _preGameTime = gameState && gameState._preAIState && gameState._preAIState.gameTime;
+            var _preGameTime = StateManager ? StateManager.get('progress.preAIState.gameTime') : (gameState && gameState._preAIState && gameState._preAIState.gameTime);
             if (_aiTitleReset && _preGameTime) {
-                gameState.gameTime = JSON.parse(JSON.stringify(_preGameTime));
-                console.warn('[时间防御] AI 标题疑似回退，已沿用上一回合时间:', gameState.gameTime);
+                var restoredTime = JSON.parse(JSON.stringify(_preGameTime));
+                if (StateManager && TimeMutator) {
+                    TimeMutator.setTime(restoredTime, { silent: true });
+                } else {
+                    gameState.gameTime = restoredTime;
+                }
+                console.warn('[时间防御] AI 标题疑似回退，已沿用上一回合时间:', restoredTime);
             } else {
                 GameTimeSystem.parseFromAI(data);
             }
@@ -2019,7 +2061,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 更新统计数据
         if (!gameState) return;
         if (!gameState._stats) gameState._stats = {};
-        gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
+        var newTurn = (gameState._stats.totalTurns || 0) + 1;
+        gameState._stats.totalTurns = newTurn;
+        if (StateManager) {
+            StateManager.set('progress.turn', newTurn, { silent: true });
+        }
         // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（与 utils.js estimateTokensUtil 一致）
         var currentTokens = response ? Math.round(response.length / 1.7) : 0;
         gameState._stats.totalTokens = (gameState._stats.totalTokens || 0) + currentTokens;
@@ -3266,24 +3312,26 @@ function mergeCharacters(chars) {
         if (cleanKey) _charKeyIndex[cleanKey] = key;
     });
     chars.forEach(function(c) {
-        if (!c || !c.name) return;
+        if (!c || !c.name || typeof c.name !== 'string') return;
+        var name = c.name.trim();
+        if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return;
         // 跳过主角
-        if (playerName && (c.name === playerName || c.name.includes(playerName) || playerName
-                .includes(c.name))) {
+        if (playerName && (name === playerName || name.includes(playerName) || playerName
+                .includes(name))) {
             return;
         }
         // 严格匹配：只清理括号备注
-        var cleanName = c.name.replace(/[（(].*?[）)]/g, '').trim();
+        var cleanName = name.replace(/[（(].*?[）)]/g, '').trim();
         // 【优化】O(n²) → O(n)：预构建 cleanKey → originalKey 的索引，避免每次都遍历全部角色
         var existingKey = _charKeyIndex[cleanName] || null;
-        if (existingKey && existingKey !== c.name) {
+        if (existingKey && existingKey !== name) {
             if (gameState && gameState.allCharacters) {
                 delete gameState.allCharacters[existingKey];
                 delete _charKeyIndex[cleanName];
             }
         }
         // ★ 合并而非覆盖：AI返回了什么就更新什么，没返回的保留
-        var existing = gameState && gameState.allCharacters ? gameState.allCharacters[c.name] : undefined;
+        var existing = gameState && gameState.allCharacters ? gameState.allCharacters[name] : undefined;
         if (existing) {
             if (c.title) existing.title = c.title;
             if (c.relation) existing.relation = c.relation;
@@ -3292,12 +3340,19 @@ function mergeCharacters(chars) {
             if (c.details) existing.details = c.details;
         } else {
             if (gameState && gameState.allCharacters) {
-                gameState.allCharacters[c.name] = c;
-                _charKeyIndex[cleanName] = c.name;
+                gameState.allCharacters[name] = c;
+                _charKeyIndex[cleanName] = name;
             }
         }
     });
     renderNpcList();
+    // 【状态层同步】将 allCharacters 同步到 StateManager.entities.characters
+    if (StateManager) {
+        var charList = Object.values((gameState && gameState.allCharacters) || {}).filter(function(c) {
+            return c && c.name && typeof c.name === 'string' && c.name.trim();
+        });
+        StateManager.set('entities.characters', charList, { silent: true });
+    }
     // 联动：广播角色数据变更，刷新其他依赖页面
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('allCharacters');
