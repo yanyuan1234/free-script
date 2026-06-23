@@ -156,6 +156,94 @@ function estimateTokensForMessagesUtil(messages) {
     }
     return Math.ceil(total / 1.7);
 }
+
+// ========================================
+// 货币解析与 reconciliation 工具
+// ========================================
+var CurrencyReconciler = {
+    // 中文数字映射
+    _cnNums: {
+        '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
+        '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+        '百': 100, '千': 1000, '万': 10000, '亿': 100000000
+    },
+
+    // 中文数字串转阿拉伯数字（支持"二十""一百零五""两千"）
+    chineseToNumber: function(str) {
+        if (!str) return NaN;
+        var s = String(str).trim();
+        // 先尝试直接解析阿拉伯数字
+        var direct = parseFloat(s);
+        if (!isNaN(direct)) return direct;
+        var total = 0;
+        var section = 0;
+        var number = 0;
+        var secUnit = 1;
+        var lastWasUnit = false;
+        for (var i = s.length - 1; i >= 0; i--) {
+            var c = s[i];
+            var v = this._cnNums[c];
+            if (v === undefined) continue;
+            if (v >= 10) {
+                if (number === 0) {
+                    if (lastWasUnit) number = 1;
+                    else number = 0;
+                }
+                section += number * v;
+                number = 0;
+                secUnit = v;
+                lastWasUnit = true;
+            } else {
+                number = v;
+                lastWasUnit = false;
+            }
+        }
+        if (number > 0) section += number;
+        total += section;
+        return total;
+    },
+
+    // 从文本中提取金额与操作方向
+    extractMoneyChanges: function(text) {
+        if (!text) return [];
+        var result = [];
+        var lower = String(text).toLowerCase();
+        // 模式：动词 + 数量 + 货币单位
+        var patterns = [
+            { regex: /(?:获得|得到|领取|收到|拿到|奖励|补贴|赠予|送|加|增加|入账)\s*([\d一二两三四五六七八九十百千万亿]+)\s*(?:枚|个|块|张|颗|把|件)?\s*(?:元|金币|块钱|现金|金钱|money|gold|灵石|银两|积分|信用点|星币)/gi, dir: 1 },
+            { regex: /(?:花费|支付|付出|失去|扣除|消耗|花掉|用掉|减去|扣掉)\s*([\d一二两三四五六七八九十百千万亿]+)\s*(?:枚|个|块|张|颗|把|件)?\s*(?:元|金币|块钱|现金|金钱|money|gold|灵石|银两|积分|信用点|星币)/gi, dir: -1 },
+            { regex: /([\d一二两三四五六七八九十百千万亿]+)\s*(?:枚|个|块|张|颗|把|件)?\s*(?:元|金币|块钱|现金|金钱|money|gold|灵石|银两|积分|信用点|星币)/gi, dir: 0 }
+        ];
+        patterns.forEach(function(p) {
+            var m;
+            while ((m = p.regex.exec(lower)) !== null) {
+                var n = CurrencyReconciler.chineseToNumber(m[1]);
+                if (!isNaN(n) && n > 0) {
+                    result.push({ amount: n, dir: p.dir, raw: m[0] });
+                }
+            }
+        });
+        return result;
+    },
+
+    // 根据剧情文本与当前余额，推断新的余额
+    reconcileFromStory: function(text, currentBalance) {
+        var changes = this.extractMoneyChanges(text);
+        if (changes.length === 0) return { balance: currentBalance, changed: false, changes: [] };
+        var knownDir = changes.filter(function(c) { return c.dir !== 0; });
+        if (knownDir.length > 0) {
+            var delta = knownDir.reduce(function(sum, c) { return sum + c.amount * c.dir; }, 0);
+            return { balance: Math.max(0, currentBalance + delta), changed: true, changes: knownDir };
+        }
+        // 无法判断方向时，取最大金额作为兜底（通常剧情提到金钱奖励时金额最大）
+        var maxAmount = changes.reduce(function(max, c) { return Math.max(max, c.amount); }, 0);
+        if (maxAmount > currentBalance) {
+            return { balance: maxAmount, changed: true, changes: changes };
+        }
+        return { balance: currentBalance, changed: false, changes: [] };
+    }
+};
+
 function safeSetItem(key, value) {
     try {
         var dataSize = (key.length + value.length) * 2;

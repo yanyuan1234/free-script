@@ -2201,6 +2201,10 @@ var TypewriterBuffer = {
             // 当前段落清空：清掉元素引用，下一次会创建新的
             this._currentParaEl = null;
         }
+        // 【修复】非打字状态时清理残留光标
+        if (!this.isTyping && this.queue.length === 0) {
+            this.cleanCursor();
+        }
     },
     _renderCached() {
         // 渲染已完成的段落
@@ -2210,6 +2214,16 @@ var TypewriterBuffer = {
         // 渲染当前段落（与原版保持一致：每 tick 直接 render，不做 80ms 节流）
         // 之前用 rAF + 80ms 节流反而让文本以 3 字/80ms 的节奏跳动，用户感觉"卡"
         this.render();
+    },
+    // 【修复】渲染前清理打字光标，防止生成结束后"▌"残留
+    cleanCursor() {
+        if (typeof document === 'undefined') return;
+        var storyEl = DOMCache.get('storyText', true);
+        if (!storyEl) return;
+        var cursors = storyEl.querySelectorAll('.typing-cursor');
+        for (var i = 0; i < cursors.length; i++) {
+            cursors[i].remove();
+        }
     }
 };
 const MAX_HISTORY = 20;

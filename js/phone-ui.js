@@ -642,19 +642,21 @@ function buildModuleHTML(mod) {
 }
 function renderWorldModules(modules) {
     modules = modules || [];
-    // 增量更新：保留旧模块，用新模块替换同类型的
+    // 增量更新：保留旧模块。
+    // 历史型模块（聊天/论坛/朋友圈/邮件/日记/成就）追加，不替换；状态型模块（排行/商店/文本/列表等）按类型替换。
     if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-    var existingTypes = {};
+    var accumulateTypes = { 'chat': true, 'comments': true, 'moments': true, 'mail': true, 'diary': true, 'achievements': true, 'achievement': true };
+    var replaceTypes = {};
     gameState._worldModules.forEach(function(mod, idx) {
-        if (mod && mod.type) existingTypes[mod.type] = idx;
+        if (mod && mod.type && !accumulateTypes[mod.type]) replaceTypes[mod.type] = idx;
     });
     modules.forEach(function(newMod) {
         if (!newMod || !newMod.type) return;
-        if (existingTypes.hasOwnProperty(newMod.type)) {
+        if (!accumulateTypes[newMod.type] && replaceTypes.hasOwnProperty(newMod.type)) {
             // 替换同类型旧模块
-            gameState._worldModules[existingTypes[newMod.type]] = newMod;
+            gameState._worldModules[replaceTypes[newMod.type]] = newMod;
         } else {
-            // 新增模块
+            // 新增模块（历史型追加）
             gameState._worldModules.push(newMod);
         }
     });
@@ -3023,6 +3025,11 @@ function renderPlayerPage() {
 
     // 关系网
     var rels = gameState.relationships || [];
+    // 【修复】关系网为空但已有角色时，自动从角色推断关系，避免"关系摘要"已列出角色而关系网仍显示空状态
+    if (rels.length === 0 && Object.keys(gameState.allCharacters || {}).length > 0 && typeof _inferRelationshipsFromCharacters === 'function') {
+        _inferRelationshipsFromCharacters();
+        rels = gameState.relationships || [];
+    }
     var relNetEl = document.getElementById('relationNet');
     if (relNetEl) {
         if (rels.length > 0) {

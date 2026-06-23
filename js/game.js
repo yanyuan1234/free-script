@@ -573,8 +573,10 @@ function _buildFormatAnchor() {
             '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
     }
     return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。\n' +
-        '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status": ""}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
+        '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":"","progress":"当前/总数，如1/1"}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
         '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
+        'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n' +
+        'currency 字段必须准确反映剧情中的金钱变化：**若剧情提到获得/花费金币，必须返回更新后的准确余额，禁止与剧情矛盾。**\n' +
         '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
         '<giggle>心声(2-5个) 约' + _maxTokensForAnchor + 'tokens输出空间';
 }
@@ -589,9 +591,11 @@ function _buildFormatRules(gs, _t, turn) {
             + ' "player": {"name":"","identity":"","stats":[]}, '
             + '"characters": [{"name":"","relation":"","favorability":0}], '
             + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"","content":""}], '
-            + '"bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], '
+            + '"bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":"","progress":"当前/总数"}], '
             + '"gameTime": {"date":"","time":"","period":""} }\n'
             + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
+            + 'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n'
+            + 'currency 必须准确反映剧情中的金钱变化，禁止与剧情矛盾。\n'
             + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
     } else {
         return '【格式·JSON模式】直接输出JSON（以{开头），不要前缀，空字段省略。\n'
@@ -1902,7 +1906,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (typeof EnhancedMemory !== 'undefined') {
             // 【修复BUG-12/13/14】processMessage 签名为 (role, content, gameData)
             // 旧代码把 data 当第二个参数传入，导致 gameData 始终为空，地点/事件/角色无法提取
-            EnhancedMemory.processMessage('assistant', response, data || {});
+            // 【修复近期记忆JSON】使用清洗后的 storyText 作为 assistant 内容，避免把原始 JSON 塞进工作记忆
+            var assistantContent = storyText && String(storyText).trim() ? String(storyText) : response;
+            EnhancedMemory.processMessage('assistant', assistantContent, data || {});
         }
         // 成就系统检查
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) {
@@ -1914,12 +1920,13 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) {
                 if (data.currency !== undefined) gameState.currency = data.currency;
                 if (data.currencyName) gameState.currencyName = data.currencyName;
-                // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底
-                if (data.currency === undefined && storyText && typeof storyText === 'string') {
-                    var _moneyMatch = storyText.match(/(\d+(?:\.\d+)?)\s*(?:元|金币|块钱|现金|金钱|money|gold)/i);
-                    if (_moneyMatch) {
-                        gameState.currency = parseFloat(_moneyMatch[1]) || 0;
-                        console.log('[货币兜底] 从故事文本提取金额:', gameState.currency);
+                // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
+                if (storyText && typeof storyText === 'string') {
+                    var currentBalance = parseFloat(gameState.currency || gameState.money || gameState.coins || 0) || 0;
+                    var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
+                    if (recon.changed) {
+                        gameState.currency = recon.balance;
+                        console.log('[货币兜底] 从故事文本提取金额:', recon.balance, recon.changes);
                     }
                 }
             }
@@ -2020,6 +2027,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 先设置 onComplete 回调（在 push 之前，防止时序竞争）
         TypewriterBuffer.onComplete = function() {
+            // 【修复】渲染最终剧情前清理残留光标，防止"▌"残留
+            if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
             var st = document.getElementById('storyText');
             if (st) st.innerHTML = formatStory(finalStory);
             _hideSkipButton();
@@ -2033,6 +2042,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 如果打字机已完成，直接最终渲染
         if (TypewriterBuffer.isFinished()) {
+            if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
             var st2 = document.getElementById('storyText');
             if (st2) st2.innerHTML = formatStory(finalStory);
             _hideSkipButton();
@@ -3239,16 +3249,34 @@ function renderChoices(choices) {
     }).join('');
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
     // 【修复X5】用事件代理绑定点击，避免内联 onclick
+    // 【修复选项提交】点击选项直接发送，不再仅填入输入框
     var btns = container.querySelectorAll('.option-btn[data-choice-text]');
     btns.forEach(function(btn) {
         btn.addEventListener('click', function() {
-            fillChoiceToInput(this.getAttribute('data-choice-text'));
+            var text = this.getAttribute('data-choice-text');
+            var input = document.getElementById('customAction');
+            if (input) {
+                input.value = '';
+                input.focus();
+            }
+            if (typeof sendAIRequest === 'function') {
+                sendAIRequest(text);
+            } else {
+                fillChoiceToInput(text);
+            }
         });
     });
     // 【修复X6】选项面板默认展开：AI 生成新选项后玩家应能直接看到，无需手动点击
     // 旧代码面板初始 max-height:0px，许多玩家不知道要点击 "选项 (N个) ▶" 标题
     var panel = document.getElementById('choicesPanel');
-    if (panel) panel.style.maxHeight = '2000px';
+    if (panel) {
+        // 【修复】同步展开：先禁用过渡再设置高度，避免长生成后选项看起来"延迟出现"
+        panel.style.transition = 'none';
+        panel.style.maxHeight = '2000px';
+        // 强制回流后立即恢复过渡，保证后续手动折叠/展开仍有动画
+        void panel.offsetHeight;
+        panel.style.transition = '';
+    }
     var icon = document.getElementById('choicesToggleIcon');
     if (icon) icon.style.transform = 'rotate(0deg)';
 }
@@ -3893,4 +3921,120 @@ function refreshAllPanels() {
     try { renderBag(); } catch (e) { console.warn('renderBag error:', e); }
     try { if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) AchievementSystem.checkAchievements(); } catch (e) { console.warn('AchievementSystem error:', e); }
     UI.toast('面板已刷新');
+}
+
+// ========================================
+// 日志子系统兜底生成器
+// 当 AI 未返回对应 world 模块时，从现有游戏状态生成基础内容，避免空白占位。
+// ========================================
+function ensureLogFallbacks(storyText) {
+    if (!gameState) return;
+    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+    var modules = gameState._worldModules;
+    var hasType = function(t) { return modules.some(function(m) { return m && m.type === t; }); };
+    var playerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '主角';
+    var chars = gameState.allCharacters || {};
+    var charList = Object.keys(chars).map(function(k) { return chars[k]; }).filter(Boolean);
+    var bag = gameState.currentBag || gameState.bag || [];
+    var quests = gameState.currentQuests || [];
+    var events = gameState.keyEvents || [];
+    var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
+
+    // 排行榜：按好感度排序的角色榜
+    if (!hasType('ranking') && charList.length > 0) {
+        var ranked = charList.slice().sort(function(a, b) { return (b.favorability || 0) - (a.favorability || 0); }).slice(0, 5);
+        modules.push({
+            type: 'ranking',
+            title: '角色好感度榜',
+            items: ranked.map(function(c) { return { name: c.name || '未知', value: (c.favorability || 0) + ' 好感' }; })
+        });
+    }
+
+    // 商店：从背包物品 + 默认商品生成
+    if (!hasType('shop')) {
+        var goods = [];
+        if (bag.length > 0) {
+            bag.slice(0, 5).forEach(function(it) {
+                goods.push({ name: it.name || it.title || '物品', price: Math.max(1, Math.round((it.value || it.price || 5) * 0.8)), count: it.count || 1 });
+            });
+        }
+        if (goods.length === 0) {
+            goods = [
+                { name: '面包', price: 2, count: 10 },
+                { name: '药水', price: 5, count: 5 },
+                { name: '地图', price: 3, count: 3 }
+            ];
+        }
+        modules.push({ type: 'shop', title: '杂货铺', goods: goods });
+    }
+
+    // 朋友圈：从最近事件/角色生成
+    if (!hasType('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
+        var posts = [];
+        if (storyText) {
+            var sentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 10; }).slice(0, 2);
+            sentences.forEach(function(s) {
+                posts.push({ author: playerName, text: s.trim().slice(0, 60) });
+            });
+        }
+        charList.slice(0, 2).forEach(function(c) {
+            posts.push({ author: c.name || '匿名', text: (c.mood || '今天也是平静的一天。').slice(0, 60) });
+        });
+        if (posts.length > 0) {
+            modules.push({ type: 'moments', title: '朋友圈', posts: posts });
+        }
+    }
+
+    // 邮件：从任务/事件生成系统通知
+    if (!hasType('mail') && (quests.length > 0 || events.length > 0 || turn > 0)) {
+        var mails = [];
+        if (turn > 0) {
+            mails.push({ from: '系统', subject: '第 ' + turn + ' 轮冒险记录', content: '你的旅程已进入第 ' + turn + ' 轮，世界正因你的选择而改变。', read: false, time: new Date().toLocaleString() });
+        }
+        quests.slice(0, 2).forEach(function(q) {
+            if (q && q.title) mails.push({ from: '任务委员会', subject: q.title, content: q.desc || '请查看任务详情并尽快完成。', read: false, time: new Date().toLocaleString() });
+        });
+        modules.push({ type: 'mail', title: '收件箱', items: mails });
+    }
+
+    // 日记：从剧情文本生成摘要
+    if (!hasType('diary') && storyText) {
+        var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
+        modules.push({ type: 'diary', title: '冒险日记', entries: [{ npc: playerName, date: new Date().toLocaleDateString(), content: summary, mood: '平静', memos: [] }] });
+    }
+
+    // 论坛：从事件生成帖子
+    if (!hasType('comments') && events.length > 0) {
+        var posts = events.slice(0, 2).map(function(ev) {
+            var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '发生了什么');
+            return { title: content.slice(0, 20), author: '路人', main: content, comments: [] };
+        });
+        if (posts.length > 0) modules.push({ type: 'comments', title: '世界论坛', posts: posts });
+    }
+
+    // 成就：注入默认成就，确保成就页有内容
+    if (typeof AchievementSystem !== 'undefined' && !hasType('achievements') && !hasType('achievement')) {
+        var defaultAchievements = [
+            { id: 'ach_first_step', name: '踏上旅程', desc: '完成第一轮剧情', category: 'STORY', rarity: 'common', condition: 'storyCount >= 1', icon: '👣' },
+            { id: 'ach_meet_npc', name: '初次相识', desc: '结识第一位 NPC', category: 'SOCIAL', rarity: 'common', condition: 'npcCount >= 1', icon: '🤝' },
+            { id: 'ach_complete_quest', name: '任务达人', desc: '完成一个任务', category: 'STORY', rarity: 'rare', condition: 'storyCount >= 3', icon: '📜' },
+            { id: 'ach_explore', name: '初探世界', desc: '推进 5 轮剧情', category: 'EXPLORE', rarity: 'rare', condition: 'storyCount >= 5', icon: '🗺️' }
+        ];
+        modules.push({ type: 'achievements', title: '成就', items: defaultAchievements });
+    }
+
+    // 聊天：若没有任何私聊记录，把剧情中出现过的 NPC 列为可聊天对象
+    if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
+    if (!gameState._chatLogs) gameState._chatLogs = {};
+    if (Object.keys(gameState._chattedNpcs).length === 0 && charList.length > 0) {
+        charList.slice(0, 3).forEach(function(c) {
+            var name = c.name;
+            if (!name) return;
+            gameState._chattedNpcs[name] = true;
+            gameState._chatLogs[name] = gameState._chatLogs[name] || [];
+            if (gameState._chatLogs[name].length === 0 && c.desc) {
+                gameState._chatLogs[name].push({ role: 'npc', from: name, text: (c.desc || '你好，我是' + name + '。').slice(0, 40) });
+            }
+        });
+    }
 }

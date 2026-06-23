@@ -47,7 +47,9 @@ var StateSchema = {
                 bag: [],
                 quests: [],
                 locations: [],
-                events: []
+                events: [],
+                currency: 0,
+                currencyName: '金币'
             },
             time: {
                 date: '',
@@ -83,6 +85,8 @@ var StateSchema = {
         'allCharacters': 'entities.characters',
         'currentBag': 'entities.bag',
         'currentQuests': 'entities.quests',
+        'currency': 'entities.currency',
+        'currencyName': 'entities.currencyName',
         'keyEvents': 'entities.events',
         'gameTime': 'time',
         '_lastChoices': 'ui.lastChoices',

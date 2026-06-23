@@ -2716,8 +2716,13 @@ var GameMemory = {
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         var currentTurn = self.workingMemory.turns[self.workingMemory.turns.length - 1];
         if (!currentTurn || currentTurn.assistant !== null) { currentTurn = { user: null, assistant: null, turn: self.currentTurn + 1, timestamp: Date.now() }; self.workingMemory.turns.push(currentTurn); }
-        if (message && message.role === 'user') currentTurn.user = message.content;
-        else if (message && message.role === 'assistant') currentTurn.assistant = message.content;
+        // 确保内容永远是字符串，防止对象被直接显示成 [object Object] 或 JSON
+        var content = '';
+        if (message && message.content !== undefined && message.content !== null) {
+            content = typeof message.content === 'string' ? message.content : (typeof message.content === 'object' ? JSON.stringify(message.content) : String(message.content));
+        }
+        if (message && message.role === 'user') currentTurn.user = content;
+        else if (message && message.role === 'assistant') currentTurn.assistant = content;
         while (self.workingMemory.turns.length > MAX_TURNS) self.workingMemory.turns.shift();
         self.workingMemory.messages = [];
         for (var i = 0; i < self.workingMemory.turns.length; i++) { var t = self.workingMemory.turns[i]; if (t && t.user !== null && t.user !== undefined) self.workingMemory.messages.push({ role: 'user', content: t.user, timestamp: t.timestamp, turn: t.turn }); if (t && t.assistant !== null && t.assistant !== undefined) self.workingMemory.messages.push({ role: 'assistant', content: t.assistant, timestamp: t.timestamp, turn: t.turn }); }
@@ -2746,7 +2751,20 @@ var GameMemory = {
                 if (!char || !char.name) return;
                 var key = char.name;
                 var existing = self.tables.characters[key];
+                var isNew = !existing;
                 self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
+                // 【修复】新角色首次出现时加入永久事实-关键角色，确保记忆面板及时更新
+                if (isNew || (typeof char.favorability === 'number' && char.favorability > 0)) {
+                    self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
+                    var profileContent = char.name + '：' + (char.desc || char.title || char.relation || '新遇见的角色');
+                    var alreadyExists = self.permanentFacts.npcProfiles.some(function(a) {
+                        return a && a.content && a.content.indexOf(char.name + '：') === 0;
+                    });
+                    if (!alreadyExists) {
+                        self.permanentFacts.npcProfiles.push({ content: profileContent, locked: false, source: 'runtime', createdTurn: turn });
+                        console.log('[记忆系统] 新角色加入永久事实:', char.name);
+                    }
+                }
             });
         }
         if (extractedInfo.items && extractedInfo.items.length > 0) {

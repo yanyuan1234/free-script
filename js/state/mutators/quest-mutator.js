@@ -33,12 +33,70 @@ var QuestMutator = {
         'canceled': '已放弃'
     },
 
-    // 设置任务列表
+    // 设置任务列表（智能合并，不直接覆盖）
     setQuests: function(quests, options) {
-        var normalized = (quests || []).map(this.normalizeQuest.bind(this)).filter(Boolean);
+        var incoming = (quests || []).map(this.normalizeQuest.bind(this)).filter(Boolean);
+        var existing = (StateManager.get('entities.quests') || []);
+        var merged = this._smartMerge(existing, incoming);
         // 同时写入新路径和旧路径，保持兼容性
-        StateManager.set('entities.quests', normalized, { silent: true });
-        return StateManager.set('currentQuests', normalized, options);
+        StateManager.set('entities.quests', merged, { silent: true });
+        return StateManager.set('currentQuests', merged, options);
+    },
+
+    // 智能合并：保留已完成的进度、取最新进度、防止 AI 回退进度
+    _smartMerge: function(existing, incoming) {
+        var map = {};
+        var result = [];
+        existing.forEach(function(q) {
+            if (!q || !q.title) return;
+            map[q.title] = q;
+            result.push(q);
+        });
+        incoming.forEach(function(q) {
+            if (!q || !q.title) return;
+            var old = map[q.title];
+            if (old) {
+                // 保留已完成/失败状态，防止 AI 回退
+                if (old.status === QuestMutator.STATUS.COMPLETED || old.status === QuestMutator.STATUS.FAILED) {
+                    q.status = old.status;
+                }
+                // 取更高的进度
+                q.progress = QuestMutator._pickHigherProgress(old.progress, q.progress);
+                // 合并描述、提示等字段（新值优先，但若为空则保留旧值）
+                if (!q.desc && old.desc) q.desc = old.desc;
+                if (!q.hint && old.hint) q.hint = old.hint;
+                if (!q.rewards || q.rewards.length === 0) q.rewards = old.rewards || [];
+                // 保留 id
+                if (old.id && !q.id) q.id = old.id;
+                var idx = result.indexOf(old);
+                if (idx !== -1) result[idx] = q;
+            } else {
+                result.push(q);
+            }
+            map[q.title] = q;
+        });
+        return result;
+    },
+
+    // 选择更高的进度字符串
+    _pickHigherProgress: function(a, b) {
+        var pa = this._parseProgressParts(a);
+        var pb = this._parseProgressParts(b);
+        // 若分子分母相同，取分母大的（更细粒度）
+        if (pa.current === pb.current) return pb.total >= pa.total ? b : a;
+        return pa.current >= pb.current ? a : b;
+    },
+
+    // 解析进度为 {current, total}
+    _parseProgressParts: function(progress) {
+        if (!progress) return { current: 0, total: 1 };
+        var parts = String(progress).split('/');
+        if (parts.length === 2) {
+            return { current: parseInt(parts[0]) || 0, total: parseInt(parts[1]) || 1 };
+        }
+        // 纯数字视为 current
+        var n = parseInt(progress);
+        return { current: isNaN(n) ? 0 : n, total: 1 };
     },
 
     // 添加任务
@@ -50,7 +108,11 @@ var QuestMutator = {
             return q.id === normalized.id || q.title === normalized.title;
         });
         if (existing) {
-            // 合并更新
+            // 合并更新（同 setQuests 的智能逻辑）
+            normalized.progress = this._pickHigherProgress(existing.progress, normalized.progress);
+            if (existing.status === this.STATUS.COMPLETED || existing.status === this.STATUS.FAILED) {
+                normalized.status = existing.status;
+            }
             Object.assign(existing, normalized);
         } else {
             quests.push(normalized);
@@ -71,20 +133,76 @@ var QuestMutator = {
         return this.setQuests(updated, options);
     },
 
+    // 根据剧情文本自动推进任务进度
+    autoAdvanceByStory: function(storyText, options) {
+        if (!storyText) return { changed: false };
+        var quests = StateManager.get('entities.quests') || [];
+        var changed = false;
+        var self = this;
+        var lowerStory = String(storyText).toLowerCase();
+        var completionKeywords = /完成|办完|搞定|结束|达成|通过|领取|收到|获得|入学|报到|注册|签到|了解|查明|探明|解决|击败|战胜|说服|答应|同意|邀请/;
+        quests.forEach(function(q) {
+            if (!q || q.status === self.STATUS.COMPLETED || q.status === self.STATUS.FAILED) return;
+            var title = String(q.title || '');
+            if (!title) return;
+            // 任务标题关键词在剧情中出现，且伴随完成类动词，则标记完成
+            var titleKeywords = self._extractKeywords(title);
+            var matched = titleKeywords.some(function(kw) {
+                return lowerStory.indexOf(kw) !== -1;
+            });
+            if (matched && completionKeywords.test(lowerStory)) {
+                q.status = self.STATUS.COMPLETED;
+                var parts = self._parseProgressParts(q.progress);
+                if (parts.total > 0) {
+                    q.progress = parts.total + '/' + parts.total;
+                } else {
+                    q.progress = '1/1';
+                }
+                changed = true;
+                console.log('[任务系统] 剧情触发任务完成:', q.title);
+            }
+        });
+        if (changed) {
+            this.setQuests(quests, options);
+        }
+        return { changed: changed };
+    },
+
+    // 从任务标题提取关键词（中文按词/字，英文按词）
+    _extractKeywords: function(title) {
+        var t = String(title).toLowerCase().trim();
+        if (!t) return [];
+        // 去掉常见虚词
+        var stopWords = /的|了|和|与|或|在|到|去|了|个|件|项|等|之|后|前|中|上|下/;
+        var parts = t.split(/[\s·，,、；;:!?！？()（）\[\]【】]+/).filter(function(s) {
+            return s.length >= 2 && !stopWords.test(s);
+        });
+        if (parts.length === 0 && t.length >= 2) parts = [t];
+        return parts;
+    },
+
     // 标准化任务
     normalizeQuest: function(raw) {
         if (!raw) return null;
-        var title = String(raw.title || raw.name || raw.quest || '').trim();
+        var title = String(raw.title || raw.name || raw.quest || raw.content || '').trim();
         if (!title) return null;
         var status = this.normalizeStatus(raw.status);
         var type = this.normalizeType(raw.type);
+        var progress = raw.progress || '0/1';
+        // 若状态为已完成但进度未满，自动补齐
+        if (status === this.STATUS.COMPLETED) {
+            var parts = this._parseProgressParts(progress);
+            if (parts.current < parts.total) {
+                progress = parts.total + '/' + parts.total;
+            }
+        }
         return {
             id: raw.id || ('quest_' + title + '_' + Date.now()),
             title: title,
             type: type,
             status: status,
             desc: raw.desc || raw.description || '',
-            progress: raw.progress || '0/1',
+            progress: progress,
             hint: raw.hint || '',
             rewards: this.normalizeRewards(raw.rewards),
             deadline: raw.deadline || raw.timeLimit || null,

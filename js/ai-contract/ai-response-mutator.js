@@ -71,13 +71,26 @@ var AIResponseMutator = {
         var player = data.player || data.protagonist || data.hero;
         if (!player || typeof player !== 'object') return;
         var current = StateManager.get('entities.player') || {};
+        // 玩家设定的主角名优先级最高，禁止 AI 覆盖
+        var lockedName = current.name || '';
+        if (!lockedName && typeof gameState !== 'undefined') {
+            lockedName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
+        }
+        var aiName = String(player.name || '').trim();
+        if (aiName && aiName !== lockedName) {
+            console.warn('[AIResponseMutator] AI 尝试覆盖主角名 "' + lockedName + '" 为 "' + aiName + '"，已拦截');
+        }
         var normalized = {
-            name: String(player.name || current.name || '').trim(),
+            name: lockedName || aiName || '主角',
             identity: String(player.identity || current.identity || '').trim(),
             stats: Array.isArray(player.stats) ? player.stats : (current.stats || [])
         };
         StateManager.set('entities.player', normalized, { silent: true });
         StateManager.setLegacy('playerData', normalized, { silent: true });
+        // 同步到 playerName，确保全项目读取一致
+        if (typeof gameState !== 'undefined') {
+            gameState.playerName = normalized.name;
+        }
     },
 
     // NPC / 角色
@@ -114,17 +127,28 @@ var AIResponseMutator = {
         if (data.currencyName) {
             StateManager.set('entities.currencyName', String(data.currencyName), { silent: true });
         }
+        // 同步到旧字段，确保 phone-ui 等读取 gameState.currency 的模块一致
+        if (typeof gameState !== 'undefined') {
+            gameState.currency = num;
+            if (data.currencyName) gameState.currencyName = String(data.currencyName);
+        }
     },
 
     // 任务
     _applyQuests: function(data) {
         var quests = data.quests || data.missions || data.tasks;
-        if (!quests || !Array.isArray(quests) || quests.length === 0) return;
-        if (typeof QuestMutator !== 'undefined' && QuestMutator.setQuests) {
-            QuestMutator.setQuests(quests, { silent: true });
-        } else {
-            StateManager.set('entities.quests', quests, { silent: true });
-            StateManager.setLegacy('currentQuests', quests, { silent: true });
+        if (quests && Array.isArray(quests) && quests.length > 0) {
+            if (typeof QuestMutator !== 'undefined' && QuestMutator.setQuests) {
+                QuestMutator.setQuests(quests, { silent: true });
+            } else {
+                StateManager.set('entities.quests', quests, { silent: true });
+                StateManager.setLegacy('currentQuests', quests, { silent: true });
+            }
+        }
+        // 【修复任务进度】根据剧情文本自动推进任务进度
+        var story = data.story || '';
+        if (story && typeof QuestMutator !== 'undefined' && QuestMutator.autoAdvanceByStory) {
+            QuestMutator.autoAdvanceByStory(story, { silent: true });
         }
     },
 
