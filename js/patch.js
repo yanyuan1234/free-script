@@ -205,47 +205,11 @@
     // 1. 内存泄漏修复 - 定时器管理器
     // ============================================================================
     // TimerManager 已在 utils.js 中统一定义（带ID管理），此处不再重复声明
-    
+
     // ============================================================================
     // 2. 安全的状态访问工具
     // ============================================================================
-    if (!window.StateUtils) {
-        window.StateUtils = {
-            get(path, defaultValue = null) {
-                if (typeof gameState === 'undefined') return defaultValue;
-                
-                const keys = String(path).split('.');
-                let current = gameState;
-                
-                for (const key of keys) {
-                    if (current == null || typeof current !== 'object') {
-                        return defaultValue;
-                    }
-                    current = current[key];
-                }
-                
-                return current !== undefined ? current : defaultValue;
-            },
-            
-            set(path, value) {
-                if (typeof gameState === 'undefined') return false;
-                
-                const keys = String(path).split('.');
-                let current = gameState;
-                
-                for (let i = 0; i < keys.length - 1; i++) {
-                    const key = keys[i];
-                    if (!(key in current) || typeof current[key] !== 'object' || current[key] === null) {
-                        current[key] = {};
-                    }
-                    current = current[key];
-                }
-                
-                current[keys[keys.length - 1]] = value;
-                return true;
-            }
-        };
-    }
+    // StateUtils 已移除——StateManager.get/set 提供相同能力且支持路径翻译与通知
     
     // ============================================================================
     // 3. 防抖/节流工具

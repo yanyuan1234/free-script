@@ -5,9 +5,9 @@ var CharacterMutator = {
     // 设置角色列表
     setCharacters: function(characters, options) {
         var normalized = (characters || []).map(this.normalizeCharacter.bind(this)).filter(Boolean);
-        // 同时写入新路径和旧路径（旧路径为对象格式）
+        // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.characters'，确保通知路径匹配
         StateManager.set('entities.characters', normalized, { silent: true });
-        return StateManager.set('allCharacters', this._arrayToObject(normalized), options);
+        return StateManager.setLegacy('allCharacters', this._arrayToObject(normalized), options);
     },
 
     // 合并角色：同名更新，新名追加
@@ -69,7 +69,7 @@ var CharacterMutator = {
             name: name,
             identity: raw.identity || raw.role || '',
             desc: raw.desc || raw.description || '',
-            favor: parseInt(raw.favor || raw.friendship || raw.relationship || 0) || 0,
+            favor: parseInt(raw.favor !== undefined ? raw.favor : (raw.friendship !== undefined ? raw.friendship : (raw.relationship !== undefined ? raw.relationship : 0)), 10) || 0,
             tags: Array.isArray(raw.tags) ? raw.tags : [],
             stats: this.normalizeStats(raw.stats),
             notes: raw.notes || ''

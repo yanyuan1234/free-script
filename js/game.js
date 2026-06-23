@@ -3126,7 +3126,8 @@ function formatStory(text) {
     });
 
     var finalOutput = result.join('') + chapterEndHtml;
-    return finalOutput;
+    // 【P0修复】最终输出前过白名单 sanitizeHtml，防止 AI 输出中的恶意 HTML/JS 执行
+    return sanitizeHtml(finalOutput);
 }
 function createThoughtTriggerHTML(id, thoughts) {
     var count = thoughts.length;
@@ -3154,7 +3155,7 @@ function createThoughtTriggerHTML(id, thoughts) {
     }
 
     return '<span class="thought-trigger" data-target="thought-' + id +
-        '" onclick="toggleThought(this)" title="查看心声">' +
+        '" data-action="toggle-thought" title="查看心声">' +
         '<svg viewBox="0 0 24 24"><path d="M12 2a7 7 0 0 0-7 7c0 2.38 1.19 4.47 3 5.74V17a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1v-2.26c1.81-1.27 3-3.36 3-5.74a7 7 0 0 0-7-7z"/><line x1="9" y1="21" x2="15" y2="21"/></svg>' +
         countBadge + '</span>';
 }

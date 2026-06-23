@@ -343,8 +343,6 @@ function _pushKeyEventsToGM() {
  * 修改本常量即可全局生效。新增弹窗必须使用本常量，禁用硬编码 3000
  */
 var POPUP_DURATION_MS = 3000;
-// 兼容旧代码：UI.TOAST_DURATION 是 POPUP_DURATION_MS 的别名
-var TOAST_DURATION_MS = POPUP_DURATION_MS;
 var UI = {
     // 【全游戏弹窗策略】常量对外暴露（约定：3 秒 = 3000ms）
     TOAST_DURATION: POPUP_DURATION_MS,
@@ -3982,48 +3980,102 @@ function escapeHtml(text) {
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// 轻量级HTML净化（防止XSS）
-// 允许基本格式标签，移除危险属性和事件处理器
-// 【性能优化】预编译 sanitizeHtml 中所有正则，避免每次调用都重新编译
-var _reSanScript = new RegExp('<script[\\s\\S]*?<\\/script>', 'gi');
-var _reSanEventAttr1 = /\/?on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>\/]+)/gi;
-var _reSanEventAttr2 = /\s+on\w+\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi;
-var _reSanJsHref = /href\s*=\s*["']?\s*javascript\s*:[^"'>]*/gi;
-var _reSanJsSrc = /src\s*=\s*["']?\s*javascript\s*:[^"'>]*/gi;
-var _reSanVbsHref = /href\s*=\s*["']?\s*vbscript\s*:[^"'>]*/gi;
-var _reSanDataSrc = /src\s*=\s*["']?\s*data\s*:[^"'>]*/gi;
-var _reSanDangerTag = /<(iframe|object|embed|form|meta|link|base|svg)[^>]*>/gi;
-var _reSanDangerTagClose = new RegExp('<\\/(iframe|object|embed|form|meta|link|base|svg)>', 'gi');
-var _reSanExpression = /expression\s*\([^)]*\)/gi;
+// ========================================
+// 【P0修复】白名单 HTML 净化（替代黑名单正则方案）
+// 基于 DOMParser 解析 + 白名单标签/属性过滤
+// 安全保证：不在白名单的标签被移除（保留内容），所有事件属性和危险协议被清除
+// ========================================
+
+// 允许的标签白名单及其允许的属性
+var SANITIZE_WHITELIST = {
+    // 文本格式
+    'p': ['class'], 'br': [], 'span': ['class', 'data-target', 'data-action', 'title'],
+    'strong': [], 'em': [], 'b': [], 'i': [],
+    'div': ['class'], 'hr': [],
+    // 标题
+    'h1': ['class'], 'h2': ['class'], 'h3': ['class'], 'h4': ['class'], 'h5': ['class'], 'h6': ['class'],
+    // 列表
+    'ul': ['class'], 'ol': ['class'], 'li': ['class'],
+    // 引用
+    'blockquote': ['class'],
+    // SVG（心声图标用）
+    'svg': ['viewbox', 'width', 'height'], 'path': ['d'], 'line': ['x1', 'y1', 'x2', 'y2'],
+    'circle': ['cx', 'cy', 'r'], 'rect': ['x', 'y', 'width', 'height'],
+    // 图片（仅允许安全协议）
+    'img': ['src', 'alt', 'class'],
+    // 链接（仅允许安全协议）
+    'a': ['href', 'title']
+};
+
+// 检查 URL 是否安全（阻止 javascript:/vbscript:/data: 协议）
+function _isSafeUrl(url) {
+    if (!url) return false;
+    var v = String(url).trim().toLowerCase();
+    // 允许相对路径、锚点
+    if (v.charAt(0) === '/' || v.charAt(0) === '#' || v.charAt(0) === '.') return true;
+    // 允许 http/https
+    if (v.indexOf('http://') === 0 || v.indexOf('https://') === 0) return true;
+    // 阻止危险协议
+    if (v.indexOf('javascript:') === 0) return false;
+    if (v.indexOf('vbscript:') === 0) return false;
+    if (v.indexOf('data:') === 0) return false;
+    // 其他协议默认阻止
+    return false;
+}
+
+// 递归净化 DOM 节点
+function _sanitizeDOMNode(node) {
+    var children = node.childNodes;
+    for (var i = children.length - 1; i >= 0; i--) {
+        var child = children[i];
+        if (child.nodeType === 1) { // Element 节点
+            var tag = child.tagName.toLowerCase();
+            if (!SANITIZE_WHITELIST[tag]) {
+                // 不在白名单的标签：用子节点替换（保留文本内容），移除标签本身
+                var parent = child.parentNode;
+                while (child.firstChild) {
+                    parent.insertBefore(child.firstChild, child);
+                }
+                parent.removeChild(child);
+                continue;
+            }
+            // 清理属性：只保留白名单中的属性
+            var allowedAttrs = SANITIZE_WHITELIST[tag];
+            var attrs = child.attributes;
+            for (var j = attrs.length - 1; j >= 0; j--) {
+                var attrName = attrs[j].name.toLowerCase();
+                var attrValue = attrs[j].value;
+                if (allowedAttrs.indexOf(attrName) === -1) {
+                    // 移除不在白名单的属性（包括所有 on* 事件属性）
+                    child.removeAttribute(attrName);
+                } else if ((attrName === 'src' || attrName === 'href') && !_isSafeUrl(attrValue)) {
+                    // 移除危险 URL
+                    child.removeAttribute(attrName);
+                }
+            }
+            // 递归处理子节点
+            _sanitizeDOMNode(child);
+        } else if (child.nodeType === 8) {
+            // 注释节点：移除
+            node.removeChild(child);
+        }
+        // 文本节点（nodeType 3）安全，保留
+    }
+}
 
 function sanitizeHtml(html) {
     if (!html) return '';
     var str = String(html);
-    // 重置所有正则的 lastIndex
-    _reSanScript.lastIndex = 0; _reSanEventAttr1.lastIndex = 0;
-    _reSanEventAttr2.lastIndex = 0; _reSanJsHref.lastIndex = 0;
-    _reSanJsSrc.lastIndex = 0; _reSanVbsHref.lastIndex = 0;
-    _reSanDataSrc.lastIndex = 0; _reSanDangerTag.lastIndex = 0;
-    _reSanDangerTagClose.lastIndex = 0; _reSanExpression.lastIndex = 0;
-    // 移除script标签及其内容
-    str = str.replace(_reSanScript, '');
-    // 移除SVG事件（onload, onerror等，包括无空格分隔的情况）
-    str = str.replace(_reSanEventAttr1, '');
-    // 移除所有事件属性（onclick, onerror, onload 等）
-    str = str.replace(_reSanEventAttr2, '');
-    // 移除 javascript: 协议（包括大小写变体和编码变体）
-    str = str.replace(_reSanJsHref, 'href="#"');
-    str = str.replace(_reSanJsSrc, 'src=""');
-    // 移除 vbscript: 协议
-    str = str.replace(_reSanVbsHref, 'href="#"');
-    // 移除 data: 协议（防止base64注入）
-    str = str.replace(_reSanDataSrc, 'src=""');
-    // 移除危险标签
-    str = str.replace(_reSanDangerTag, '');
-    str = str.replace(_reSanDangerTagClose, '');
-    // 移除 style 标签中的 expression 和 url()
-    str = str.replace(_reSanExpression, '');
-    return str;
+    // 用 DOMParser 解析为 DOM（不会执行脚本/加载图片）
+    var doc;
+    try {
+        doc = new DOMParser().parseFromString(str, 'text/html');
+    } catch (e) {
+        // DOMParser 不可用时，退回到全量转义（最安全）
+        return escapeHtml(str);
+    }
+    _sanitizeDOMNode(doc.body);
+    return doc.body.innerHTML;
 }
 // 页面关闭前保存
 // 【统一管理】走 GlobalCleanup，页面卸载时统一移除

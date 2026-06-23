@@ -100,15 +100,36 @@ var ResponseParser = {
 
     _tryRobustJSON: function(raw) {
         if (!raw || typeof raw !== 'string') return null;
-        var fb = raw.indexOf('{');
-        while (fb !== -1) {
-            var end = this._findMatching(raw, '{', '}', fb);
+        var firstBrace = raw.indexOf('{');
+        if (firstBrace === -1) return null;
+        var lastBrace = raw.lastIndexOf('}');
+        if (lastBrace === -1 || lastBrace < firstBrace) return null;
+
+        // 【P2优化】快速路径：尝试 first{ ... last} 的最大切片（覆盖 99% 场景）
+        var candidate = raw.slice(firstBrace, lastBrace + 1);
+        var r = this._tryDirectJSON(candidate);
+        if (r) return r;
+
+        // 回退1：用括号匹配找第一个完整 JSON 对象
+        var end = this._findMatching(raw, '{', '}', firstBrace);
+        if (end !== -1 && end !== lastBrace) {
+            candidate = raw.slice(firstBrace, end + 1);
+            r = this._tryDirectJSON(candidate);
+            if (r) return r;
+        }
+
+        // 回退2：从后续 { 开始尝试，限制最多 5 次以防 O(n²)
+        var fb = raw.indexOf('{', firstBrace + 1);
+        var attempts = 0;
+        while (fb !== -1 && attempts < 5) {
+            end = this._findMatching(raw, '{', '}', fb);
             if (end !== -1) {
-                var candidate = raw.slice(fb, end + 1);
-                var r = this._tryDirectJSON(candidate);
+                candidate = raw.slice(fb, end + 1);
+                r = this._tryDirectJSON(candidate);
                 if (r) return r;
             }
             fb = raw.indexOf('{', fb + 1);
+            attempts++;
         }
         return null;
     },
@@ -149,12 +170,23 @@ var ResponseParser = {
         return { storyText: cleaned };
     },
 
+    // 【P2修复】字符串感知的括号匹配，避免 JSON 字符串内的大括号干扰
     _findMatching: function(str, open, close, start) {
         var depth = 0;
+        var inString = false;
+        var escape = false;
         for (var i = start; i < str.length; i++) {
-            if (str[i] === open) depth++;
-            else if (str[i] === close) depth--;
-            if (depth === 0) return i;
+            var ch = str[i];
+            if (inString) {
+                if (escape) { escape = false; }
+                else if (ch === '\\') { escape = true; }
+                else if (ch === '"') { inString = false; }
+            } else {
+                if (ch === '"') { inString = true; }
+                else if (ch === open) { depth++; }
+                else if (ch === close) { depth--; }
+                if (depth === 0) return i;
+            }
         }
         return -1;
     }

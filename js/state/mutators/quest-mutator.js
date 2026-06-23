@@ -39,8 +39,9 @@ var QuestMutator = {
         var existing = (StateManager.get('entities.quests') || []);
         var merged = this._smartMerge(existing, incoming);
         // 同时写入新路径和旧路径，保持兼容性
+        // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.quests'，确保通知路径匹配
         StateManager.set('entities.quests', merged, { silent: true });
-        return StateManager.set('currentQuests', merged, options);
+        return StateManager.setLegacy('currentQuests', merged, options);
     },
 
     // 智能合并：保留已完成的进度、取最新进度、防止 AI 回退进度
@@ -79,12 +80,16 @@ var QuestMutator = {
     },
 
     // 选择更高的进度字符串
+    // 【P1修复】比较比率（current/total）而非仅比较分子，防止进度倒退
     _pickHigherProgress: function(a, b) {
         var pa = this._parseProgressParts(a);
         var pb = this._parseProgressParts(b);
-        // 若分子分母相同，取分母大的（更细粒度）
-        if (pa.current === pb.current) return pb.total >= pa.total ? b : a;
-        return pa.current >= pb.current ? a : b;
+        var ratioA = pa.total > 0 ? pa.current / pa.total : 0;
+        var ratioB = pb.total > 0 ? pb.current / pb.total : 0;
+        // 比率高的优先；比率相同时取分母大的（更细粒度）
+        if (ratioB > ratioA) return b;
+        if (ratioA > ratioB) return a;
+        return pb.total >= pa.total ? b : a;
     },
 
     // 解析进度为 {current, total}
@@ -169,13 +174,16 @@ var QuestMutator = {
     },
 
     // 从任务标题提取关键词（中文按词/字，英文按词）
+    // 【P1修复】stopWords 改为整词匹配，避免子串误过滤（如"前进"含"前"被误删）
     _extractKeywords: function(title) {
         var t = String(title).toLowerCase().trim();
         if (!t) return [];
-        // 去掉常见虚词
-        var stopWords = /的|了|和|与|或|在|到|去|了|个|件|项|等|之|后|前|中|上|下/;
+        // 停用词列表（整词匹配，非子串）
+        var stopWords = ['的', '了', '和', '与', '或', '在', '到', '去', '个', '件', '项', '等', '之', '后', '前', '中', '上', '下'];
         var parts = t.split(/[\s·，,、；;:!?！？()（）\[\]【】]+/).filter(function(s) {
-            return s.length >= 2 && !stopWords.test(s);
+            if (s.length < 2) return false;
+            // 整词匹配停用词
+            return stopWords.indexOf(s) === -1;
         });
         if (parts.length === 0 && t.length >= 2) parts = [t];
         return parts;

@@ -5,9 +5,10 @@ var BagMutator = {
     // 设置整个物品列表（标准化后）
     setItems: function(items, options) {
         var normalized = (items || []).map(this.normalizeItem.bind(this)).filter(Boolean);
-        // 同时写入新路径和旧路径，保持兼容性
+        // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.bag'，确保通知路径与订阅路径匹配
+        // 新路径 silent 写入保持数据一致，旧路径带通知写入触发 GameMemoryAdapter 同步
         StateManager.set('entities.bag', normalized, { silent: true });
-        return StateManager.set('currentBag', normalized, options);
+        return StateManager.setLegacy('currentBag', normalized, options);
     },
 
     // 合并物品：保留已有，更新/插入新物品（同 renderBag 语义）

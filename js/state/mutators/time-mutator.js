@@ -7,7 +7,8 @@ var TimeMutator = {
         if (!time || typeof time !== 'object') {
             var empty = { date: '', time: '', period: '' };
             StateManager.set('time', empty, { silent: true });
-            return StateManager.set('gameTime', empty, options);
+            // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'time'，确保通知路径匹配
+            return StateManager.setLegacy('gameTime', empty, options);
         }
         var normalized = {
             date: String(time.date || '').trim(),
@@ -16,7 +17,7 @@ var TimeMutator = {
         };
         // 同时写入新路径和旧路径，保持兼容性
         StateManager.set('time', normalized, { silent: true });
-        return StateManager.set('gameTime', normalized, options);
+        return StateManager.setLegacy('gameTime', normalized, options);
     },
 
     // 推进时间

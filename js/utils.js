@@ -51,14 +51,6 @@ _evictIfNeeded() {
 }
 };
 
-var Logger = {
-    DEBUG: false, INFO: false, WARN: true, ERROR: true,
-    debug: function() { if (this.DEBUG && console && console.log) console.log.apply(console, ['[DEBUG]'].concat(Array.from(arguments))); },
-    info: function() { if (this.INFO && console && console.info) console.info.apply(console, ['[INFO]'].concat(Array.from(arguments))); },
-    warn: function() { if (this.WARN && console && console.warn) console.warn.apply(console, ['[WARN]'].concat(Array.from(arguments))); },
-    error: function() { if (this.ERROR && console && console.error) console.error.apply(console, ['[ERROR]'].concat(Array.from(arguments))); }
-};
-
 var TimerManager = {
     _intervals: {}, _timeouts: {},
     setInterval: function(id, fn, delay) { this.clearInterval(id); this._intervals[id] = setInterval(fn, delay); },

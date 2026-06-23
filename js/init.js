@@ -55,6 +55,10 @@ async function initApp() {
         // 绑定事件
         bindEvents();
 
+        // 【P0修复】全局事件委托：替代内联 onclick，配合白名单 sanitizeHtml
+        // 所有 data-action 属性的点击事件通过委托处理，避免内联事件被 XSS 利用
+        _setupGlobalEventDelegation();
+
         // 设置菜单顶部日期为当天
         try {
             var now = new Date();
@@ -163,4 +167,32 @@ if (document.readyState === 'loading') {
     GlobalCleanup.registerListener(window, 'DOMContentLoaded', function() { initApp(); });
 } else {
     initApp();
+}
+
+// 【P0修复】全局事件委托：替代内联 onclick
+// 通过 data-action 属性路由点击事件，避免内联事件处理器被 XSS 利用
+function _setupGlobalEventDelegation() {
+    // 事件路由表：data-action 值 -> 处理函数
+    var actionHandlers = {
+        'toggle-thought': function(el) {
+            if (typeof toggleThought === 'function') toggleThought(el);
+        }
+    };
+
+    GlobalCleanup.registerListener(document, 'click', function(e) {
+        var el = e.target;
+        // 向上查找带 data-action 的元素
+        while (el && el !== document) {
+            var action = el.getAttribute && el.getAttribute('data-action');
+            if (action) {
+                var handler = actionHandlers[action];
+                if (handler) {
+                    e.preventDefault();
+                    handler(el);
+                    return;
+                }
+            }
+            el = el.parentNode;
+        }
+    });
 }

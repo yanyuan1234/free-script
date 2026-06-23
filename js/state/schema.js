@@ -1,12 +1,15 @@
 // ========================================
 // 状态数据模型 - State Schema
 // ========================================
-var StateSchema = {
+const StateSchema = {
     // 当前存档格式版本，用于未来迁移
     VERSION: '1.0.0-state-layer',
 
+    // 危险键名黑名单（防止原型污染）
+    _DANGEROUS_KEYS: { '__proto__': 1, 'constructor': 1, 'prototype': 1 },
+
     // 获取默认状态
-    getDefaultState: function() {
+    getDefaultState() {
         return {
             meta: {
                 version: this.VERSION,
@@ -98,52 +101,58 @@ var StateSchema = {
     _pathToLegacy: {},
 
     // 初始化反向映射
-    _buildReverseMap: function() {
+    _buildReverseMap() {
         if (Object.keys(this._pathToLegacy).length > 0) return;
-        for (var key in this._legacyToPath) {
+        for (const key in this._legacyToPath) {
             this._pathToLegacy[this._legacyToPath[key]] = key;
         }
     },
 
     // 旧字段名转新路径
-    getPath: function(legacyName) {
+    getPath(legacyName) {
         return this._legacyToPath[legacyName] || legacyName;
     },
 
     // 新路径转旧字段名
-    getLegacyName: function(path) {
+    getLegacyName(path) {
         this._buildReverseMap();
         return this._pathToLegacy[path] || path;
     },
 
     // 判断路径是否为 world 域（初始化后只读）
-    isReadOnly: function(path) {
+    isReadOnly(path) {
         if (!path) return false;
         return path.indexOf('world.') === 0 || path === 'world';
     },
 
     // 判断路径是否有效（简单实现：允许任意点分路径）
-    validatePath: function(path) {
+    validatePath(path) {
         if (typeof path !== 'string' || path.length === 0) return false;
         return /^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(path);
     },
 
     // 标准化状态：把旧格式数据迁移到新 schema
-    normalizeState: function(state) {
+    normalizeState(state) {
         if (!state || typeof state !== 'object') {
             return this.getDefaultState();
         }
-        var result = this.getDefaultState();
+        const result = this.getDefaultState();
         // 递归合并，优先保留已有值
         this._deepMerge(result, state);
         // 处理旧字段映射：把旧字段迁移到新路径
-        for (var legacyName in this._legacyToPath) {
+        for (const legacyName in this._legacyToPath) {
             if (legacyName.indexOf('.') !== -1) {
-                // 暂不处理嵌套旧字段，靠 _deepMerge 保留
+                // 【P1修复】嵌套旧字段（如 _stats.totalTurns）需特殊处理
+                // _deepMerge 会把 _stats 原样保留到 result._stats，但新代码读 progress.turn
+                if (legacyName === '_stats.totalTurns') {
+                    if (state._stats && state._stats.totalTurns !== undefined) {
+                        this._setByPath(result, 'progress.turn', state._stats.totalTurns);
+                    }
+                }
                 continue;
             }
             if (state[legacyName] !== undefined) {
-                var newPath = this._legacyToPath[legacyName];
+                const newPath = this._legacyToPath[legacyName];
                 this._setByPath(result, newPath, state[legacyName]);
             }
         }
@@ -153,31 +162,37 @@ var StateSchema = {
     },
 
     // 深拷贝
-    deepClone: function(obj) {
+    // 【P1修复】防止原型污染：跳过 __proto__/constructor/prototype 键
+    deepClone(obj) {
         if (obj === null || typeof obj !== 'object') return obj;
         if (Array.isArray(obj)) {
-            var arr = [];
-            for (var i = 0; i < obj.length; i++) {
+            const arr = [];
+            for (let i = 0; i < obj.length; i++) {
                 arr.push(this.deepClone(obj[i]));
             }
             return arr;
         }
-        var cloned = {};
-        for (var key in obj) {
-            if (obj.hasOwnProperty(key)) {
-                cloned[key] = this.deepClone(obj[key]);
-            }
+        const cloned = {};
+        // 使用 Object.keys 避免遍历原型链
+        const keys = Object.keys(obj);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (this._DANGEROUS_KEYS[key]) continue;  // 跳过危险键
+            cloned[key] = this.deepClone(obj[key]);
         }
         return cloned;
     },
 
     // 深合并（source 覆盖 target）
-    _deepMerge: function(target, source) {
+    // 【P1修复】防止原型污染：跳过 __proto__/constructor/prototype 键
+    _deepMerge(target, source) {
         if (!source || typeof source !== 'object') return target;
-        for (var key in source) {
-            if (!source.hasOwnProperty(key)) continue;
-            var sv = source[key];
-            var tv = target[key];
+        const keys = Object.keys(source);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
+            if (this._DANGEROUS_KEYS[key]) continue;  // 跳过危险键
+            const sv = source[key];
+            const tv = target[key];
             if (sv !== null && typeof sv === 'object' && !Array.isArray(sv) &&
                 tv !== null && typeof tv === 'object' && !Array.isArray(tv)) {
                 this._deepMerge(tv, sv);
@@ -189,17 +204,23 @@ var StateSchema = {
     },
 
     // 按点分路径设置值
-    _setByPath: function(obj, path, value) {
+    // 【P1修复】防止原型污染：跳过危险键
+    _setByPath(obj, path, value) {
         if (!path) return;
-        var parts = path.split('.');
-        var current = obj;
-        for (var i = 0; i < parts.length - 1; i++) {
-            var p = parts[i];
+        const parts = path.split('.');
+        let current = obj;
+        for (let i = 0; i < parts.length - 1; i++) {
+            const p = parts[i];
+            if (this._DANGEROUS_KEYS[p]) return;  // 跳过危险键
             if (!current[p] || typeof current[p] !== 'object') {
                 current[p] = {};
             }
             current = current[p];
         }
-        current[parts[parts.length - 1]] = this.deepClone(value);
+        const lastKey = parts[parts.length - 1];
+        if (this._DANGEROUS_KEYS[lastKey]) return;  // 跳过危险键
+        current[lastKey] = this.deepClone(value);
     }
 };
+
+if (typeof module !== 'undefined' && module.exports) module.exports = StateSchema;

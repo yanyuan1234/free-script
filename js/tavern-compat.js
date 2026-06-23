@@ -1,5 +1,4 @@
 var TavernHelperCompat = {
-    _context: null,
     _slashCommands: {},
     _pipeValue: '',
     _scripts: [],
@@ -17,9 +16,17 @@ var TavernHelperCompat = {
     
     // 1. getContext() 兼容层
     // 返回与SillyTavern一致的数据格式
+    // 【P1-mem修复】缓存加入版本校验，state 变化时自动失效
+    _context: null,
+    _contextVersion: '',
     getContext: function() {
-        if (this._context) return this._context;
-        
+        // 计算当前状态版本：聊天长度 + 存档key + 角色数量
+        var chatLen = (typeof gameState !== 'undefined' && gameState && Array.isArray(gameState.conversationHistory)) ? gameState.conversationHistory.length : 0;
+        var saveKey = (typeof gameState !== 'undefined' && gameState && gameState.saveKey) ? gameState.saveKey : '';
+        var charLen = (typeof gameState !== 'undefined' && gameState && gameState.worldSnapshot && Array.isArray(gameState.worldSnapshot.characters)) ? gameState.worldSnapshot.characters.length : 0;
+        var version = chatLen + '|' + saveKey + '|' + charLen;
+        if (this._context && this._contextVersion === version) return this._context;
+        this._contextVersion = version;
         // 构建聊天消息列表（与酒馆格式一致）
         var chat = [];
         // 修复：检查 conversationHistory 是数组（防御旧存档/损坏数据）
@@ -578,6 +585,10 @@ _renderQuickReplyButtons: function() {
                                 prompt: promptText,
                                 time: new Date().toLocaleTimeString()
                             });
+                            // 【P1-mem修复】限制日志长度，防止无限增长
+                            if (gameState._quickReplyLog.length > 50) {
+                                gameState._quickReplyLog = gameState._quickReplyLog.slice(-50);
+                            }
                         }
                         // 发送消息
                         var inputEl = document.getElementById('userInput') || document.getElementById('customAction');
@@ -656,13 +667,14 @@ _executeScriptCode: function(code, sourceName) {
         console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: 代码长度超过限制 (100KB)');
         return '';
     }
+    // 【P0修复】加强危险模式检测：覆盖更多绕过手法
     var dangerousPatterns = [
         /\beval\s*\(/,
         /\bFunction\s*\(/,
         /\bnew\s+Function\s*\(/,
         /\bdocument\.write\s*\(/,
         /\bdocument\.writeln\s*\(/,
-        // 【优化】补充间接调用检测——旧代码可被 window['eval']()、(0,eval)()、globalThis.eval 等绕过
+        // 间接 eval 调用
         /\bwindow\s*\[\s*['"]eval['"]\s*\]/,
         /\bglobalThis\s*\.\s*eval\b/,
         /\bself\s*\.\s*eval\b/,
@@ -671,8 +683,19 @@ _executeScriptCode: function(code, sourceName) {
         /\bframes\s*\[\s*['"]eval['"]\s*\]/,
         /\(\s*0\s*,\s*eval\s*\)/,
         /\bReflect\s*\.\s*apply\s*\(\s*eval\b/,
-        /\bsetTimeout\s*\(\s*['"]/,  // setTimeout('eval(...)') 字符串形式
-        /\bsetInterval\s*\(\s*['"]/   // setInterval('eval(...)') 字符串形式
+        // 字符串形式的定时器调用
+        /\bsetTimeout\s*\(\s*['"]/,
+        /\bsetInterval\s*\(\s*['"]/,
+        // 【新增】constructor/prototype 绕过
+        /\bconstructor\s*\[\s*['"]constructor['"]\s*\]/,
+        /\b__proto__\b/,
+        // 【新增】window.Function / globalThis.Function 间接调用
+        /\bwindow\s*\.\s*Function\b/,
+        /\bglobalThis\s*\.\s*Function\b/,
+        // 【新增】document.cookie / localStorage 直接访问
+        /\bdocument\s*\.\s*cookie\b/,
+        // 【新增】XMLHttpRequest 直接构造
+        /\bnew\s+XMLHttpRequest\b/
     ];
     for (var i = 0; i < dangerousPatterns.length; i++) {
         if (dangerousPatterns[i].test(code)) {
@@ -684,9 +707,13 @@ _executeScriptCode: function(code, sourceName) {
         var sandbox = this._createSandbox();
         code = code.replace(/^import\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?\s*$/gm, '// [import 已被兼容层替换]');
         code = code.replace(/window\.SillyTavern/g, 'window.TavernHelperCompat');
-        var preamble = 'var getContext=arguments[0],triggerSlash=arguments[1],toastr=arguments[2],eventSource=arguments[3];\n';
-        var fn = new Function('getContext','triggerSlash','toastr','eventSource','console','setTimeout','setInterval','clearTimeout','clearInterval','Promise','fetch', preamble+code);
-        fn(sandbox.getContext, sandbox.triggerSlash, sandbox.toastr, sandbox.eventSource, console, setTimeout, setInterval, clearTimeout, clearInterval, Promise, fetch);
+        // 【P0修复】添加 'use strict' 阻止 this 指向 window
+        // 移除 fetch 注入（沙箱不应有任意网络请求能力）
+        // this 绑定为 null（严格模式下不会回退到 window）
+        var preamble = "'use strict';\nvar getContext=arguments[0],triggerSlash=arguments[1],toastr=arguments[2],eventSource=arguments[3];\n";
+        var fn = new Function('getContext','triggerSlash','toastr','eventSource','console','setTimeout','setInterval','clearTimeout','clearInterval','Promise', preamble+code);
+        // 严格模式下 this=null，不会泄漏到 window
+        fn.call(null, sandbox.getContext, sandbox.triggerSlash, sandbox.toastr, sandbox.eventSource, console, setTimeout, setInterval, clearTimeout, clearInterval, Promise);
         return '';
     } catch(e) {
         console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: ' + e.message);
@@ -1120,6 +1147,11 @@ var GameMemory = {
             var edit = { type: type, attrs: attrs, raw: full };
             if (type === 'character' && attrs.name) {
                 var charName = attrs.name;
+                // 【P1-mem修复】防止原型污染：charName 和 field 都不能是危险 key
+                if (!self._isSafeKey(charName) || !self._isSafeKey(attrs.field)) {
+                    edit.skipped = true; edit.reason = 'unsafe_key';
+                    edits.push(edit); return '';
+                }
                 var char = self.tables.characters[charName];
                 if (attrs.field && attrs.value !== undefined) {
                     var oldValue = char ? char[attrs.field] : undefined;
@@ -1140,6 +1172,11 @@ var GameMemory = {
                 }
             } else if (type === 'item' && attrs.name) {
                 var itemName = attrs.name;
+                // 【P1-mem修复】防止原型污染
+                if (!self._isSafeKey(itemName)) {
+                    edit.skipped = true; edit.reason = 'unsafe_key';
+                    edits.push(edit); return '';
+                }
                 var action = attrs.action || 'add';
                 var qty = parseInt(attrs.qty) || 1;
                 var item = self.tables.items[itemName];
@@ -1150,6 +1187,11 @@ var GameMemory = {
                 else if (action === 'change' && item) { var oldQty3 = item.qty; item.qty = qty; item.lastChangedTurn = self.currentTurn; if (!item.history) item.history = []; item.history.push({ turn: self.currentTurn, from: oldQty3, to: qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty3, newValue: qty }); }
             } else if (type === 'location' && attrs.name) {
                 var locName = attrs.name;
+                // 【P1-mem修复】防止原型污染
+                if (!self._isSafeKey(locName) || !self._isSafeKey(attrs.field)) {
+                    edit.skipped = true; edit.reason = 'unsafe_key';
+                    edits.push(edit); return '';
+                }
                 var loc = self.tables.locations[locName];
                 if (attrs.field && attrs.value !== undefined) {
                     if (loc) { if (loc.locked) { edit.skipped = true; edit.reason = 'locked'; } else { var oldVal = loc[attrs.field]; loc[attrs.field] = attrs.value; loc.lastChangedTurn = self.currentTurn; self._changeLog.push({ turn: self.currentTurn, type: 'location', key: locName, field: attrs.field, oldValue: oldVal, newValue: attrs.value }); } }
@@ -1185,8 +1227,20 @@ var GameMemory = {
         if (!attrsStr) return attrs;
         var re = /(\w+)\s*=\s*(?:"([^"]*?)"|'([^']*?)')/g;
         var m;
-        while ((m = re.exec(attrsStr)) !== null) { attrs[m[1]] = m[2] !== undefined ? m[2] : m[3]; }
+        // 【P1-mem修复】过滤危险 key，防止原型污染
+        var DANGEROUS = { '__proto__': 1, 'constructor': 1, 'prototype': 1 };
+        while ((m = re.exec(attrsStr)) !== null) {
+            var key = m[1];
+            if (DANGEROUS[key]) continue;
+            attrs[key] = m[2] !== undefined ? m[2] : m[3];
+        }
         return attrs;
+    },
+
+    // 【P1-mem修复】检查 key 是否安全（防止原型污染）
+    _isSafeKey: function(key) {
+        if (!key || typeof key !== 'string') return false;
+        return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
     },
 
     // ===== AI Plan 标签解析：让AI能表达剧情意图 =====
@@ -1409,11 +1463,41 @@ var GameMemory = {
         });
 
         // 更新伏笔休眠计数
-        Object.keys(self._dormantTracking.foreshadowings || {}).forEach(function(fsId) {
+        // 【P1-mem修复】同时淘汰过期的已触发/低优先级伏笔，防止无限增长
+        var MAX_FORESHADOWINGS = 100;
+        var FORESHADOW_EXPIRE_TURNS = 50;
+        var fsKeys = Object.keys(self._dormantTracking.foreshadowings || {});
+        fsKeys.forEach(function(fsId) {
             var fs = self._dormantTracking.foreshadowings[fsId];
-            if (!fs || fs.triggered) return;
+            if (!fs) return;
+            if (fs.triggered) {
+                // 已触发的伏笔，超过阈值轮次后删除
+                if (currentTurn - (fs.triggeredTurn || 0) > FORESHADOW_EXPIRE_TURNS) {
+                    delete self._dormantTracking.foreshadowings[fsId];
+                }
+                return;
+            }
             fs.dormantRounds = currentTurn - fs.createdTurn;
+            // 未触发但休眠过久的低优先级伏笔，删除
+            if (fs.dormantRounds > FORESHADOW_EXPIRE_TURNS && (fs.priority || 0) < 5) {
+                delete self._dormantTracking.foreshadowings[fsId];
+            }
         });
+        // 硬上限：超过 100 条时，按优先级+创建时间淘汰最旧的
+        var remaining = Object.keys(self._dormantTracking.foreshadowings || {});
+        if (remaining.length > MAX_FORESHADOWINGS) {
+            remaining.sort(function(a, b) {
+                var fa = self._dormantTracking.foreshadowings[a];
+                var fb = self._dormantTracking.foreshadowings[b];
+                var pa = (fa.priority || 0), pb = (fb.priority || 0);
+                if (pa !== pb) return pa - pb; // 优先级低的排前面（先删）
+                return (fa.createdTurn || 0) - (fb.createdTurn || 0); // 旧的排前面
+            });
+            var toRemove = remaining.length - MAX_FORESHADOWINGS;
+            for (var i = 0; i < toRemove; i++) {
+                delete self._dormantTracking.foreshadowings[remaining[i]];
+            }
+        }
     },
 
     // 关键词激活：更新记忆条目的访问计数（含衰减机制）
@@ -5362,38 +5446,11 @@ if (!global.stscriptEngine) {
     };
 
     // ============================================================================
-    // 增强的API构建器 v2.0
-    // ============================================================================
-    var EnhancedAPIBuilder = {
-    buildRequest(messages, params = {}) {
-        return {
-            messages,
-            temperature: 1.3,
-            top_p: 0.91,
-            top_k: 64,
-            frequency_penalty: 0,
-            presence_penalty: 0,
-            max_tokens: 3000,
-            ...params
-            };
-    },
-    estimateTokens(messages) {
-        let total = 0;
-        messages.forEach(msg => {
-            const c = msg.content || '';
-            const cn = (c.match(/[\u4e00-\u9fa5]/g) || []).length;
-            const other = c.length - cn;
-            total += Math.ceil(cn / 1.5) + Math.ceil(other / 4);
-            });
-        return total;
-    }
-    };
-
-    // ============================================================================
     // 导出
     // ============================================================================
+    // 【清理】移除未使用的 EnhancedAPIBuilder（buildRequest/estimateTokens 从未被调用，
+    //        且 estimateTokens 与 utils.js 的 estimateTokensForMessagesUtil 重复）
     global.GameAdapter = GameAdapter;
-    global.EnhancedAPIBuilder = EnhancedAPIBuilder;
     global.gameAdapter = GameAdapter;
 
     if (typeof document !== 'undefined') {
