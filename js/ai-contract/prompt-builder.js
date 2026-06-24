@@ -164,11 +164,13 @@ const PromptBuilder = {
             const json = '【输出要求·JSON模式】直接输出JSON（以 { 开头），不要任何前缀说明。\n' +
                 '{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' +
                 (hasChoices ? ', "choices": [{"id":"A","text":""}]' : '') +
-                ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], ' +
+                ', "player": {"name":"角色名","age":"年龄","identity":"身份","personality":"性格特点","title":"称号","stats":[{"label":"属性名","value":"属性值0-100"}]},' +
+                ' "characters": [{"name":"角色名","title":"身份","relation":"关系","favorability":50,"desc":"状态描述","details":[{"key":"字段","value":"值"}]}], ' +
                 '"world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], ' +
                 '"currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], ' +
                 '"gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
                 '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
+                'player.stats 的 value 必须是0-100的数字，根据世界观生成3-6项核心属性（如修仙世界返回灵力/境界/神识等）。\n' +
                 '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（空字段省略）';
             return json;
         }, { order: 70 });

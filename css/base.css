@@ -477,7 +477,7 @@ input:checked + .slider:before {
     height: 100%;
     background: var(--text);
     border-radius: 3px;
-    transition: max-width .5s ease
+    transition: width .5s ease
 }
 
 .badge {

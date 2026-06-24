@@ -853,8 +853,8 @@
     margin-bottom: 6px
 }
 
-.player-field-warning .progress-fill.warning {
-        background: var(--danger)
+.player-field-warning .progress-fill {
+        background: var(--danger) !important
     }
 
 .player-field-warning .player-field-value {
