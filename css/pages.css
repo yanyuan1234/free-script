@@ -836,7 +836,8 @@
 .relation-item {
     padding: 10px 14px;
     background: var(--card);
-    border-radius: var(--radius-sm)
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border)
 }
 
 .player-field-rich {
