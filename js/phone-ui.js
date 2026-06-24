@@ -7184,27 +7184,6 @@ function openNpcDetail(name) {
     document.getElementById('npcDetailBody').innerHTML = html;
     UI.showModal('npcDetailModal');
 
-    // 绑定聊天按钮
-    var chatBtn = document.getElementById('btnNpcChat');
-    if (chatBtn) {
-        var newChatBtn = chatBtn.cloneNode(true);
-        chatBtn.parentNode.replaceChild(newChatBtn, chatBtn);
-        var safeName = name.replace(/'/g, "\'");
-        newChatBtn.addEventListener('click', function() {
-            UI.hideModal('npcDetailModal');
-            openNpcChat(name);
-        });
-    }
-    // 绑定日记按钮
-    var diaryBtn = document.getElementById('btnNpcDiary');
-    if (diaryBtn) {
-        var newDiaryBtn = diaryBtn.cloneNode(true);
-        diaryBtn.parentNode.replaceChild(newDiaryBtn, diaryBtn);
-        newDiaryBtn.addEventListener('click', function() {
-            UI.hideModal('npcDetailModal');
-            viewNpcDiary(name);
-        });
-    }
     // 绑定编辑按钮
     var editBtn = document.getElementById('btnNpcEdit');
     if (editBtn) {

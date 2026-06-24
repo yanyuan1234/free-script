@@ -4017,10 +4017,23 @@ function ensureLogFallbacks(storyText) {
         modules.push({ type: 'mail', title: '收件箱', items: mails });
     }
 
-    // 日记：从剧情文本生成摘要
+    // 日记：从剧情文本生成摘要 + 为每个 NPC 生成日记条目
     if (!hasType('diary') && storyText) {
         var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
-        modules.push({ type: 'diary', title: '冒险日记', entries: [{ npc: playerName, date: new Date().toLocaleDateString(), content: summary, mood: '平静', memos: [] }] });
+        var diaryEntries = [{ npc: playerName, date: new Date().toLocaleDateString(), content: summary, mood: '平静', memos: [] }];
+        // 为每个 NPC 也生成日记条目（用 desc/mood 作为内容）
+        charList.forEach(function(c) {
+            if (!c.name) return;
+            var npcContent = c.desc || c.mood || ('今天遇到了' + playerName + '。');
+            diaryEntries.push({
+                npc: c.name,
+                date: new Date().toLocaleDateString(),
+                content: npcContent.slice(0, 80),
+                mood: c.mood || '平静',
+                memos: []
+            });
+        });
+        modules.push({ type: 'diary', title: '冒险日记', entries: diaryEntries });
     }
 
     // 论坛：从事件生成帖子
@@ -4043,18 +4056,24 @@ function ensureLogFallbacks(storyText) {
         modules.push({ type: 'achievements', title: '成就', items: defaultAchievements });
     }
 
-    // 聊天：若没有任何私聊记录，把剧情中出现过的 NPC 列为可聊天对象
+    // 聊天：为所有角色自动生成初始聊天消息（AI 未主动发消息时兜底）
     if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
     if (!gameState._chatLogs) gameState._chatLogs = {};
-    if (Object.keys(gameState._chattedNpcs).length === 0 && charList.length > 0) {
-        charList.slice(0, 3).forEach(function(c) {
-            var name = c.name;
-            if (!name) return;
-            gameState._chattedNpcs[name] = true;
-            gameState._chatLogs[name] = gameState._chatLogs[name] || [];
-            if (gameState._chatLogs[name].length === 0 && c.desc) {
-                gameState._chatLogs[name].push({ role: 'npc', from: name, text: (c.desc || '你好，我是' + name + '。').slice(0, 40) });
-            }
-        });
-    }
+    charList.forEach(function(c) {
+        var name = c.name;
+        if (!name) return;
+        // 将角色标记为可聊天对象
+        gameState._chattedNpcs[name] = true;
+        if (!gameState._chatLogs[name]) gameState._chatLogs[name] = [];
+        // 若该角色没有任何聊天记录，用 desc 作为初始消息
+        if (gameState._chatLogs[name].length === 0) {
+            var greetText = c.desc || ('你好，我是' + name + '。');
+            gameState._chatLogs[name].push({
+                role: 'npc',
+                from: name,
+                text: greetText.slice(0, 60),
+                time: new Date().toLocaleTimeString()
+            });
+        }
+    });
 }
