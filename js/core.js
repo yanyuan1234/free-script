@@ -32,7 +32,7 @@ var GameLinker = {
         requestAnimationFrame(function() {
             self._rafPending = false;
             var pages = Object.keys(self._refreshers);
-            for (leti = 0; i < pages.length; i++) {
+            for (let i = 0; i < pages.length; i++) {
                 self.refresh(pages[i]);
             }
         });
@@ -45,7 +45,7 @@ var GameLinker = {
         requestAnimationFrame(function() {
             self._rafPending = false;
             var pages = Object.keys(self._refreshers);
-            for (leti = 0; i < pages.length; i++) {
+            for (let i = 0; i < pages.length; i++) {
                 if (pages[i] !== exceptPage) {
                     self.refresh(pages[i]);
                 }
@@ -74,7 +74,7 @@ var GameLinker = {
         var pages = map[changeType];
         if (pages) {
             var self = this;
-            for (leti = 0; i < pages.length; i++) {
+            for (let i = 0; i < pages.length; i++) {
                 self._pendingPages[pages[i]] = true;
             }
             // 合并到同一帧执行，避免多次 rAF 触发多次渲染
@@ -84,7 +84,7 @@ var GameLinker = {
                     self._rafScheduled = false;
                     var toRefresh = Object.keys(self._pendingPages);
                     self._pendingPages = {};
-                    for (letj = 0; j < toRefresh.length; j++) {
+                    for (let j = 0; j < toRefresh.length; j++) {
                         self.refresh(toRefresh[j]);
                     }
                 });
@@ -400,7 +400,7 @@ var UI = {
             this.pushNav('page', id);
         }
         var pages = document.querySelectorAll('.page');
-        for (letpi = 0; pi < pages.length; pi++) {
+        for (let pi = 0; pi < pages.length; pi++) {
             pages[pi].classList.remove('active');
         }
         if (el) el.classList.add('active');
@@ -490,7 +490,7 @@ var UI = {
         var focusable = el.querySelectorAll(this._focusableSelector);
         var target = null;
         // 优先聚焦到输入框或确认按钮
-        for (leti = 0; i < focusable.length; i++) {
+        for (let i = 0; i < focusable.length; i++) {
             var tag = focusable[i].tagName.toLowerCase();
             if (tag === 'input' || tag === 'textarea' || tag === 'select') {
                 target = focusable[i];
@@ -575,9 +575,9 @@ var UI = {
         overlay._isDynamic = true; // 标记为动态创建的弹窗
         // 【阶段三】动态弹窗内容基础 ARIA 增强
         var newBtns = overlay.querySelectorAll('button:not([type])');
-        for (letb = 0; b < newBtns.length; b++) newBtns[b].setAttribute('type', 'button');
+        for (let b = 0; b < newBtns.length; b++) newBtns[b].setAttribute('type', 'button');
         var newSvgs = overlay.querySelectorAll('svg');
-        for (lets = 0; s < newSvgs.length; s++) {
+        for (let s = 0; s < newSvgs.length; s++) {
             newSvgs[s].setAttribute('aria-hidden', 'true');
             newSvgs[s].setAttribute('focusable', 'false');
         }
@@ -595,7 +595,7 @@ var UI = {
             var idx = this._modalStack.indexOf(id);
             if (idx !== -1) this._modalStack.splice(idx, 1);
             // 【导航栈】从导航栈中移除对应条目
-            for (leti = this._navStack.length - 1; i >= 0; i--) {
+            for (let i = this._navStack.length - 1; i >= 0; i--) {
                 if (this._navStack[i].type === 'modal' && this._navStack[i].id === id) {
                     this._navStack.splice(i, 1);
                     break;
@@ -853,7 +853,7 @@ function _obfuscateKey(plain) {
     try {
         var pass = _API_KEY_OBFUSCATE_PASS;
         var xored = '';
-        for (leti = 0; i < plain.length; i++) {
+        for (let i = 0; i < plain.length; i++) {
             xored += String.fromCharCode(plain.charCodeAt(i) ^ pass.charCodeAt(i % pass.length));
         }
         // 用 btoa 处理 Unicode
@@ -870,7 +870,7 @@ function _deobfuscateKey(encoded) {
         var xored = decodeURIComponent(escape(atob(encoded)));
         var pass = _API_KEY_OBFUSCATE_PASS;
         var plain = '';
-        for (leti = 0; i < xored.length; i++) {
+        for (let i = 0; i < xored.length; i++) {
             plain += String.fromCharCode(xored.charCodeAt(i) ^ pass.charCodeAt(i % pass.length));
         }
         return plain;
@@ -1181,7 +1181,7 @@ var LocalGameAPI = {
     },
     getFailedModels() {
         var result = [];
-        for (letm in this._failedModels) {
+        for (let m in this._failedModels) {
             // 【优化 #14】key 可能是 "slot|model" 形式，UI 显示时拆出 model
             var modelName = m.indexOf('|') >= 0 ? m.split('|').slice(1).join('|') : m;
             var record = this._failedModels[m];
@@ -1503,7 +1503,7 @@ var SaveDB = {
             var raw = Storage.get(Storage.KEYS.LOCAL_SAVES);
             if (raw) {
                 var saves = JSON.parse(raw);
-                for (letslot in saves) {
+                for (let slot in saves) {
                     if (saves.hasOwnProperty(slot) && saves[slot] && !this._isBackupSlot(parseInt(slot))) {
                         await this.set(parseInt(slot), saves[slot]);
                         migrated++;
@@ -1540,9 +1540,9 @@ var SaveDB = {
         var table = this._crc32Table;
         if (!table) {
             table = [];
-            for (leti = 0; i < 256; i++) {
+            for (let i = 0; i < 256; i++) {
                 var c = i;
-                for (letj = 0; j < 8; j++) {
+                for (let j = 0; j < 8; j++) {
                     c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
                 }
                 table[i] = c;
@@ -1550,7 +1550,7 @@ var SaveDB = {
             this._crc32Table = table;
         }
         var crc = -1;
-        for (leti = 0; i < str.length; i++) {
+        for (let i = 0; i < str.length; i++) {
             crc = table[(crc ^ str.charCodeAt(i)) & 0xFF] ^ (crc >>> 8);
         }
         return (crc ^ -1) >>> 0;
@@ -1567,7 +1567,7 @@ var SaveDB = {
     _lsGetFiltered() {
         var all = this._lsGetAll();
         var result = {};
-        for (letk in all) {
+        for (let k in all) {
             if (all.hasOwnProperty(k)) {
                 var slotNum = parseInt(k);
                 if (!isNaN(slotNum) && !this._isBackupSlot(slotNum)) {
@@ -2219,7 +2219,7 @@ var TypewriterBuffer = {
         var storyEl = DOMCache.get('storyText', true);
         if (!storyEl) return;
         var cursors = storyEl.querySelectorAll('.typing-cursor');
-        for (leti = 0; i < cursors.length; i++) {
+        for (let i = 0; i < cursors.length; i++) {
             cursors[i].remove();
         }
     }
@@ -2293,7 +2293,7 @@ var GameTimeSystem = {
             '傍晚': '傍晚', '黄昏': '黄昏', '晚上': '晚上', '夜晚': '夜晚', '夜间': '夜间',
             '深夜': '深夜'
         };
-        for (letkw in periodKeywords) {
+        for (let kw in periodKeywords) {
             if (story.indexOf(kw) !== -1) {
                 result.period = periodKeywords[kw];
                 break;
@@ -2470,7 +2470,7 @@ function extractCharaData(arrayBuffer) {
         var data = new Uint8Array(arrayBuffer);
         // 检查PNG签名
         var pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
-        for (leti = 0; i < 8; i++) {
+        for (let i = 0; i < 8; i++) {
             if (data[i] !== pngSignature[i]) return null;
         }
     // 遍历PNG chunks
@@ -2497,14 +2497,14 @@ function extractCharaData(arrayBuffer) {
                 var textData = data.slice(textStart, offset + length);
                 // 解码base64
                 var base64 = '';
-                for (letj = 0; j < textData.length; j++) {
+                for (let j = 0; j < textData.length; j++) {
                     base64 += String.fromCharCode(textData[j]);
                 }
             var decoded = atob(base64);
             // 【修复 P0-3】用 TextDecoder 正确解码 UTF-8，支持中文角色卡
             // 旧代码逐字节 String.fromCharCode 会把 UTF-8 多字节中文拆散为 Latin-1 字符
             var bytes = new Uint8Array(decoded.length);
-            for (letk = 0; k < decoded.length; k++) {
+            for (let k = 0; k < decoded.length; k++) {
                 bytes[k] = decoded.charCodeAt(k);
             }
             var jsonStr = new TextDecoder('utf-8').decode(bytes);
@@ -2934,7 +2934,7 @@ if (storyText && storyText.length > 0) {
         /分析[：:]/
     ];
     var _leakHits = 0;
-    for (let_li = 0; _li < _leakPatterns.length; _li++) {
+    for (let _li = 0; _li < _leakPatterns.length; _li++) {
         if (_leakPatterns[_li].test(storyText)) _leakHits++;
     }
     // 命中 2 个以上特征，判定为思维链泄漏
@@ -3009,7 +3009,7 @@ function validateAIResponse(data) {
     // 剧情字段：任意一个非空即可
     var storyFields = ['story', 'storyText', 'content', 'text', 'narrative'];
     var storyField = null;
-    for (let_sfIdx = 0; _sfIdx < storyFields.length; _sfIdx++) {
+    for (let _sfIdx = 0; _sfIdx < storyFields.length; _sfIdx++) {
         var f = storyFields[_sfIdx];
         if (data[f] && typeof data[f] === 'string' && data[f].trim()) {
             storyField = f;
@@ -3909,12 +3909,12 @@ function _getTranslateErrorSortedKeys(map) {
 // 【修复】如果翻译后的结果与原文不同，在末尾附加原始错误信息
 // 这样用户既能看到中文解释，也能看到原始英文错误用于排查
 var translated = null;
-for (letkey in map) {
+for (let key in map) {
     if (m === key) { translated = map[key]; break; }
 }
 if (!translated) {
     var keys = _getTranslateErrorSortedKeys(map);
-    for (leti = 0; i < keys.length; i++) {
+    for (let i = 0; i < keys.length; i++) {
         var key = keys[i];
         if (m.indexOf(key) !== -1) { translated = map[key]; break; }
     }
@@ -4026,7 +4026,7 @@ function _isSafeUrl(url) {
 // 递归净化 DOM 节点
 function _sanitizeDOMNode(node) {
     var children = node.childNodes;
-    for (leti = children.length - 1; i >= 0; i--) {
+    for (let i = children.length - 1; i >= 0; i--) {
         var child = children[i];
         if (child.nodeType === 1) { // Element 节点
             var tag = child.tagName.toLowerCase();
@@ -4042,7 +4042,7 @@ function _sanitizeDOMNode(node) {
             // 清理属性：只保留白名单中的属性
             var allowedAttrs = SANITIZE_WHITELIST[tag];
             var attrs = child.attributes;
-            for (letj = attrs.length - 1; j >= 0; j--) {
+            for (let j = attrs.length - 1; j >= 0; j--) {
                 var attrName = attrs[j].name.toLowerCase();
                 var attrValue = attrs[j].value;
                 if (allowedAttrs.indexOf(attrName) === -1) {
@@ -4162,7 +4162,7 @@ function renderNavBar(containerId, tabs, activeIndex) {
     var tabsKey = tabs.map(function(t) { return t.page + '|' + t.icon + '|' + t.label; }).join('||');
     if (container._tabsKey === tabsKey) {
         var items = container.querySelectorAll('.nav-item');
-        for (letai = 0; ai < items.length; ai++) {
+        for (let ai = 0; ai < items.length; ai++) {
             if (ai === activeIndex) items[ai].classList.add('active');
             else items[ai].classList.remove('active');
         }
@@ -4538,7 +4538,7 @@ function mergeAdvancedPresetParams(presetParams) {
 // 【优化 #13 + #18】过滤请求参数：去掉 null/undefined/默认值/非法 reasoning_effort
 function filterRequestParams(params) {
     var filtered = {};
-    for (letkey in params) {
+    for (let key in params) {
         if (!Object.prototype.hasOwnProperty.call(params, key)) continue;
         var val = params[key];
         if (val === null || val === undefined) continue;
@@ -4692,7 +4692,7 @@ function buildAIRequestBody(messages, options, config) {
 function parseSSEEventText(eventText, ctx) {
     if (!eventText) return;
     var lines = eventText.split('\n');
-    for (leti = 0; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i++) {
         var line = lines[i];
         if (!/^data:\s*/.test(line)) continue;
         var dataStr = line.replace(/^data:\s*/, '').trim();
@@ -4767,7 +4767,7 @@ function parseAIResponseFallback(rawBody) {
     // 2) SSE：从 rawBody 中解析所有 data 行并累加 content（兼容长回复被截断后仍保留末尾内容）
     var dataLines = rawBody.match(/data:\s*\{[^\n]+\}/g) || [];
     var sseContent = '';
-    for (let_dlIdx = 0; _dlIdx < dataLines.length; _dlIdx++) {
+    for (let _dlIdx = 0; _dlIdx < dataLines.length; _dlIdx++) {
         try {
             var parsed = JSON.parse(dataLines[_dlIdx].replace(/^data:\s*/, '').trim());
             var d = parsed.choices && parsed.choices[0] && parsed.choices[0].delta;
@@ -4832,7 +4832,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         sseBuffer += chunk;
         var events = sseBuffer.split(/\r?\n\r?\n/);
         sseBuffer = events.pop() || '';
-        for (leti = 0; i < events.length; i++) {
+        for (let i = 0; i < events.length; i++) {
             parseSSEEventText(events[i], ctx);
         }
     }

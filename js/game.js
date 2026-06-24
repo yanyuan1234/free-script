@@ -185,7 +185,7 @@ function _applyUseSysprompt(messages) {
     if (!Array.isArray(messages)) return messages;
     if (gameState && gameState._useSysprompt === false) {
         var converted = [];
-        for (leti = 0; i < messages.length; i++) {
+        for (let i = 0; i < messages.length; i++) {
             var m = messages[i];
             if (m && m.role === 'system' && m.content) {
                 converted.push({ role: 'user', content: m.content });
@@ -284,7 +284,7 @@ function buildNarrativeEnhancement() {
             balanced:     '[戏剧平衡] 维持戏剧性与合理性的动态平衡，高张力桥段后必须补足逻辑落点',
             mystery:      '[超自然] 现实与超常边界长期模糊，线索常以象征、传闻与错觉出现'
         };
-        for (letk in eyeMap) {
+        for (let k in eyeMap) {
             if (gs.narrativeEyes[k]) eyes.push(eyeMap[k]);
         }
         if (eyes.length > 0) {
@@ -363,7 +363,7 @@ function _generateAutoChoices(storyText, lastChoices) {
                 // 简单相似度：检查是否有>=60%的字符重叠
                 var minLen = Math.min(prev.length, _cur.length);
                 var overlap = 0;
-                for (leti = 0; i < minLen; i++) {
+                for (let i = 0; i < minLen; i++) {
                     if (prev.indexOf(_cur[i]) !== -1) overlap++;
                 }
                 return minLen > 4 && (overlap / minLen) >= 0.6;
@@ -456,7 +456,7 @@ function buildSystemPrompt(includeFormatRules) {
     var _PREF_KEYS = ['字数总要求','单段落字数','叙述视角','char代词','user代词','演绎授权','转述授权','推进节奏','文风指导','起始标签'];
     var _hasAnyPref = false;
     if (typeof MacroEngine !== 'undefined' && MacroEngine.getGlobalVar) {
-        for (let_pki = 0; _pki < _PREF_KEYS.length; _pki++) {
+        for (let _pki = 0; _pki < _PREF_KEYS.length; _pki++) {
             var _pv = MacroEngine.getGlobalVar(_PREF_KEYS[_pki]);
             if (_pv && String(_pv).trim()) { _hasAnyPref = true; break; }
         }
@@ -624,7 +624,7 @@ function buildRecentChatContext() {
         var MAX_NPCS = 4;
         var blocks = [];
         var n = 0;
-        for (leti = 0; i < names.length && n < MAX_NPCS; i++) {
+        for (let i = 0; i < names.length && n < MAX_NPCS; i++) {
             var npcName = names[i];
             var msgs = logs[npcName] || [];
             if (msgs.length === 0) continue;
@@ -898,7 +898,7 @@ function injectPresetGlobalVars() {
     // user_input: 用户最新输入内容
     var lastUserInput = '';
     var history = (gameState && gameState.conversationHistory) || [];
-    for (leti = history.length - 1; i >= 0; i--) {
+    for (let i = history.length - 1; i >= 0; i--) {
         if (history[i] && history[i].role === 'user') {
             lastUserInput = history[i].content || '';
             break;
@@ -1138,7 +1138,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             var SLIM_THRESHOLD = 6; // 最近3轮(6条消息)保留完整JSON
             if (recent.length > SLIM_THRESHOLD) {
                 var slimStart = recent.length - SLIM_THRESHOLD;
-                for (let_si = 0; _si < slimStart; _si++) {
+                for (let _si = 0; _si < slimStart; _si++) {
                     var _sMsg = recent[_si];
                     if (_sMsg.role === 'assistant' && _sMsg.content) {
                         var _slimResult = _slimAssistantMessage(_sMsg.content);
@@ -1371,7 +1371,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 果实预设要求将所有相邻的 system 消息合并为一条
         if (gameState && gameState._squashSystemMessages === true) {
             var squashed = [];
-            for (letsi = 0; si < messages.length; si++) {
+            for (let si = 0; si < messages.length; si++) {
                 if (messages[si].role === 'system' && squashed.length > 0 && squashed[squashed.length - 1].role === 'system') {
                     squashed[squashed.length - 1].content += '\n\n' + messages[si].content;
                 } else {
@@ -1386,7 +1386,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState._impersonationPrompt && gameState._impersonationPrompt.trim()) {
             // 找到最后一条 assistant 消息的位置，在其后插入
             var lastAssistantIdx = -1;
-            for (let_impIdx = messages.length - 1; _impIdx >= 0; _impIdx--) {
+            for (let _impIdx = messages.length - 1; _impIdx >= 0; _impIdx--) {
                 if (messages[_impIdx].role === 'assistant') {
                     lastAssistantIdx = _impIdx;
                     break;
@@ -1437,7 +1437,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (msg.content && typeof msg.content === 'string' && msg.role === 'assistant') {
                 // 只清理历史消息（非最后一条assistant消息）
                 var isLastAssistant = false;
-                for (let_chk = messages.length - 1; _chk >= 0; _chk--) {
+                for (let _chk = messages.length - 1; _chk >= 0; _chk--) {
                     if (messages[_chk].role === 'assistant') {
                         isLastAssistant = (_chk === idx);
                         break;
@@ -1529,11 +1529,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             
             // 第一阶段：先瘦身旧AI回复（比直接删除更省，保留story内容）
             var lastAssistantIdx = -1;
-            for (let_laIdx = messages.length - 1; _laIdx >= 0; _laIdx--) {
+            for (let _laIdx = messages.length - 1; _laIdx >= 0; _laIdx--) {
                 if (messages[_laIdx].role === 'assistant') { lastAssistantIdx = _laIdx; break; }
             }
             var slimmedCount = 0;
-            for (let_slIdx = chatHistoryStart; _slIdx < messages.length && currentTokens > maxInputTokens; _slIdx++) {
+            for (let _slIdx = chatHistoryStart; _slIdx < messages.length && currentTokens > maxInputTokens; _slIdx++) {
                 if (_slIdx === lastAssistantIdx) continue; // 不瘦身最新AI回复
                 var _slMsg = messages[_slIdx];
                 if (_slMsg.role === 'assistant' && _slMsg.content && !_slMsg._slimmed) {
@@ -1555,7 +1555,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 第二阶段：瘦身还不够，从最旧的聊天历史开始淘汰
             var removedCount = 0;
             var lastUserIdx = -1;
-            for (let_rIdx = messages.length - 1; _rIdx >= 0; _rIdx--) {
+            for (let _rIdx = messages.length - 1; _rIdx >= 0; _rIdx--) {
                 if (messages[_rIdx].role === 'user') { lastUserIdx = _rIdx; break; }
             }
             // 【修复】至少保留上一轮完整对话（1 user + 1 assistant），避免 AI 只看到孤立用户消息
@@ -1570,7 +1570,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     }
                 }
             }
-            for (let_rIdx2 = chatHistoryStart; _rIdx2 < messages.length && currentTokens > maxInputTokens; _rIdx2++) {
+            for (let _rIdx2 = chatHistoryStart; _rIdx2 < messages.length && currentTokens > maxInputTokens; _rIdx2++) {
                 if (_rIdx2 === lastUserIdx || protectedIdx[_rIdx2]) continue;
                 var msg = messages[_rIdx2];
                 if (msg._pinned) continue;
@@ -1918,14 +1918,30 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (data) {
             // === 货币系统 ===
             if (gameState) {
-                if (data.currency !== undefined) gameState.currency = data.currency;
-                if (data.currencyName) gameState.currencyName = data.currencyName;
+                // 【数据断层修复】通过 StateManager 写入，确保新旧路径同步
+                if (data.currency !== undefined) {
+                    if (typeof StateManager !== 'undefined') {
+                        StateManager.set('entities.currency', Number(data.currency) || 0, { silent: true });
+                    } else {
+                        gameState.currency = data.currency;
+                    }
+                }
+                if (data.currencyName) {
+                    if (typeof StateManager !== 'undefined') {
+                        StateManager.set('entities.currencyName', data.currencyName, { silent: true });
+                    } else {
+                        gameState.currencyName = data.currencyName;
+                    }
+                }
                 // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
                 if (storyText && typeof storyText === 'string') {
-                    var currentBalance = parseFloat(gameState.currency || gameState.money || gameState.coins || 0) || 0;
+                    var currentBalance = parseFloat(gameState.currency || gameState.money || gameState.coins || (typeof StateManager !== 'undefined' ? StateManager.get('entities.currency') : 0) || 0) || 0;
                     var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
                     if (recon.changed) {
-                        gameState.currency = recon.balance;
+                        if (typeof StateManager !== 'undefined') {
+                            StateManager.set('entities.currency', recon.balance, { silent: true });
+                        }
+                        gameState.currency = recon.balance; // 兜底直接写
                         console.log('[货币兜底] 从故事文本提取金额:', recon.balance, recon.changes);
                     }
                 }
@@ -2142,6 +2158,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 timestamp: Date.now()
             });
         }
+        // 【修复日志空白】在 autoSave 前调用 ensureLogFallbacks，确保日志功能有兜底内容
+        // AI 未生成 theater 模块时，从角色/物品/任务/事件/剧情文本生成兜底内容
+        try { ensureLogFallbacks(finalStory); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
         autoSave();
         // 传入当前响应长度更新Token计数
         updateTokenCount(response ? response.length : 0);
@@ -2247,7 +2266,7 @@ function exportAsNovel() {
     var chapterCount = 1;
     var messageCount = 0;
 
-    for (leti = 0; i < history.length; i++) {
+    for (let i = 0; i < history.length; i++) {
         var msg = history[i];
         if (msg.role === 'system') continue;
 
@@ -2311,7 +2330,7 @@ async function _compressConversation(removed, sys) {
             isImportant = true;
         } else if (hasKeyEvents && content) {
             // 命中任意一条 keyEvent 子串（取 8 字以上避免误命中"我"等单字）
-            for (leti = 0; i < keyEventStrs.length; i++) {
+            for (let i = 0; i < keyEventStrs.length; i++) {
                 var ev = String(keyEventStrs[i] || '').trim();
                 if (ev.length >= 6 && content.indexOf(ev) !== -1) {
                     isImportant = true;
@@ -2511,7 +2530,7 @@ async function autoCompressContext() {
         // 【阶段四】合并多次 slice/filter 为单次遍历，减少大数组重复扫描
         var dialogOnly = [];
         var conv = gameState.conversationHistory || [];
-        for (leti = 1; i < conv.length; i++) {
+        for (let i = 1; i < conv.length; i++) {
             var m = conv[i];
             if (m.role === 'system') {
                 var c = m.content || '';
@@ -2528,7 +2547,7 @@ async function autoCompressContext() {
         // 消息上有 _pinned=true 标记的，即使在前30条之外也要保留
         var pinnedMessages = [];
         var nonPinnedRemoved = [];
-        for (letj = 0; j < removed.length; j++) {
+        for (let j = 0; j < removed.length; j++) {
             if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
             else nonPinnedRemoved.push(removed[j]);
         }
@@ -2606,7 +2625,7 @@ async function manualCompress(btn) {
         // 【阶段四】合并多次 slice/filter 为单次遍历
         var dialogOnly = [];
         var conv = gameState.conversationHistory || [];
-        for (leti = 1; i < conv.length; i++) {
+        for (let i = 1; i < conv.length; i++) {
             var m = conv[i];
             if (m.role === 'system') {
                 var c = m.content || '';
@@ -2621,7 +2640,7 @@ async function manualCompress(btn) {
         // 【酒馆特性】消息Pinning：固定消息不被压缩
         var pinnedMessages = [];
         var nonPinnedRemoved = [];
-        for (letj = 0; j < removed.length; j++) {
+        for (let j = 0; j < removed.length; j++) {
             if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
             else nonPinnedRemoved.push(removed[j]);
         }
@@ -2844,7 +2863,7 @@ function _looksLikeInitialScene(title, userPrompt) {
     var promptHead = p.substring(0, 30);
     var hasPromptKeyword = false;
     // 提取 prompt 前30字符中所有连续的2字子串（中文语义下2字词覆盖度更高）
-    for (leti = 0; i + 2 <= promptHead.length; i++) {
+    for (let i = 0; i + 2 <= promptHead.length; i++) {
         var seg = promptHead.substring(i, i + 2);
         if (/[\u4e00-\u9fa5]{2}/.test(seg) && t.indexOf(seg) !== -1) {
             hasPromptKeyword = true;
@@ -2972,7 +2991,7 @@ function formatStory(text) {
     // 【阶段四】快速跳过：绝大多数剧情不含心声标签，直接跳过整段扫描
     var allThoughts = [];
     if (text.indexOf('<giggle>') !== -1 || text.indexOf('【giggle】') !== -1) {
-        for (letpI = 0; pI < paragraphs.length; pI++) {
+        for (let pI = 0; pI < paragraphs.length; pI++) {
             var pp = paragraphs[pI];
             _reGiggleOpen.lastIndex = 0;
             var tmatch;
@@ -3053,7 +3072,7 @@ function formatStory(text) {
         // 检查这个段落是否有对应的心声
         var hasThoughtInThisPara = false;
         var thoughtId = -1;
-        for (lettI = 0; tI < allThoughts.length; tI++) {
+        for (let tI = 0; tI < allThoughts.length; tI++) {
             if (allThoughts[tI].paragraphIdx === pIdx && !allThoughts[tI].used) {
                 hasThoughtInThisPara = true;
                 thoughtId = tI;
@@ -3473,7 +3492,7 @@ var SaveMigrator = {
     migrate: function(parsed, fromVersion) {
         if (!parsed) parsed = {};
         var start = (fromVersion || 0) + 1;
-        for (letv = start; v <= this.CURRENT_SCHEMA_VERSION; v++) {
+        for (let v = start; v <= this.CURRENT_SCHEMA_VERSION; v++) {
             var m = this._migrations[v];
             if (m) {
                 console.log('[SaveMigrator] 应用迁移 v' + v + ': ' + m.desc);

@@ -38,10 +38,8 @@ const QuestMutator = {
         const incoming = (quests || []).map(this.normalizeQuest.bind(this)).filter(Boolean);
         const existing = (StateManager.get('entities.quests') || []);
         const merged = this._smartMerge(existing, incoming);
-        // 同时写入新路径和旧路径，保持兼容性
-        // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.quests'，确保通知路径匹配
-        StateManager.set('entities.quests', merged, { silent: true });
-        return StateManager.setLegacy('currentQuests', merged, options);
+        // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 currentQuests
+        return StateManager.set('entities.quests', merged, options);
     },
 
     // 智能合并：保留已完成的进度、取最新进度、防止 AI 回退进度

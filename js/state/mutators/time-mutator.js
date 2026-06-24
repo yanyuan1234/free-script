@@ -4,20 +4,15 @@
 const TimeMutator = {
     // 设置完整时间
     setTime(time, options) {
-        if (!time || typeof time !== 'object') {
-            const empty = { date: '', time: '', period: '' };
-            StateManager.set('time', empty, { silent: true });
-            // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'time'，确保通知路径匹配
-            return StateManager.setLegacy('gameTime', empty, options);
-        }
-        const normalized = {
-            date: String(time.date || '').trim(),
-            time: String(time.time || '').trim(),
-            period: String(time.period || time.phase || '').trim()
-        };
-        // 同时写入新路径和旧路径，保持兼容性
-        StateManager.set('time', normalized, { silent: true });
-        return StateManager.setLegacy('gameTime', normalized, options);
+        const normalized = (!time || typeof time !== 'object')
+            ? { date: '', time: '', period: '' }
+            : {
+                date: String(time.date || '').trim(),
+                time: String(time.time || '').trim(),
+                period: String(time.period || time.phase || '').trim()
+            };
+        // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 gameTime
+        return StateManager.set('time', normalized, options);
     },
 
     // 推进时间

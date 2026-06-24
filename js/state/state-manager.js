@@ -70,6 +70,8 @@ const StateManager = {
         // 写入时深拷贝，防止调用方保留引用导致状态被静默篡改
         const clonedValue = StateSchema.deepClone(value);
         this._setRaw(path, clonedValue);
+        // 【数据断层修复】同步镜像到旧字段名，保证 UI 直接读 gameState.xxx 时不为空
+        this._syncLegacyMirror(path, clonedValue);
         const change = {
             path: path,
             oldValue: StateSchema.deepClone(oldValue),
@@ -174,6 +176,26 @@ const StateManager = {
                 self.set(op.path, op.value, { silent: true });
             });
         });
+    },
+
+    // 内部：同步镜像到旧字段名（数据断层修复）
+    // 新路径写入后，同时写入对应的旧顶层字段，保证 UI 直接读 gameState.xxx 不为空
+    _syncLegacyMirror(path, value) {
+        const legacyName = StateSchema.getLegacyName(path);
+        if (legacyName === path) return; // 无对应旧字段
+        // 特殊转换：entities.characters（数组）→ allCharacters（对象）
+        if (path === 'entities.characters' && Array.isArray(value)) {
+            const obj = {};
+            for (let i = 0; i < value.length; i++) {
+                const c = value[i];
+                if (c && c.name) obj[c.name] = c;
+            }
+            this._state[legacyName] = obj;
+            return;
+        }
+        // time → gameTime：新结构 {date,time,period} 直接兼容旧 gameTime
+        // 其他路径直接镜像
+        this._state[legacyName] = StateSchema.deepClone(value);
     },
 
     // 内部：按路径读取原始值（不拷贝，仅内部使用）

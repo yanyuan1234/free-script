@@ -5,10 +5,8 @@ const BagMutator = {
     // 设置整个物品列表（标准化后）
     setItems(items, options) {
         const normalized = (items || []).map(this.normalizeItem.bind(this)).filter(Boolean);
-        // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.bag'，确保通知路径与订阅路径匹配
-        // 新路径 silent 写入保持数据一致，旧路径带通知写入触发 GameMemoryAdapter 同步
-        StateManager.set('entities.bag', normalized, { silent: true });
-        return StateManager.setLegacy('currentBag', normalized, options);
+        // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 currentBag
+        return StateManager.set('entities.bag', normalized, options);
     },
 
     // 合并物品：保留已有，更新/插入新物品（同 renderBag 语义）

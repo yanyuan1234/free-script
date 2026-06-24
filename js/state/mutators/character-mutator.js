@@ -5,9 +5,8 @@ const CharacterMutator = {
     // 设置角色列表
     setCharacters(characters, options) {
         const normalized = (characters || []).map(this.normalizeCharacter.bind(this)).filter(Boolean);
-        // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.characters'，确保通知路径匹配
-        StateManager.set('entities.characters', normalized, { silent: true });
-        return StateManager.setLegacy('allCharacters', this._arrayToObject(normalized), options);
+        // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 allCharacters
+        return StateManager.set('entities.characters', normalized, options);
     },
 
     // 合并角色：同名更新，新名追加
