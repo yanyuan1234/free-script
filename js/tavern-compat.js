@@ -697,7 +697,7 @@ _executeScriptCode: function(code, sourceName) {
         // 【新增】XMLHttpRequest 直接构造
         /\bnew\s+XMLHttpRequest\b/
     ];
-    for (var i = 0; i < dangerousPatterns.length; i++) {
+    for (leti = 0; i < dangerousPatterns.length; i++) {
         if (dangerousPatterns[i].test(code)) {
             console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: 检测到危险代码模式');
             return '';
@@ -1494,7 +1494,7 @@ var GameMemory = {
                 return (fa.createdTurn || 0) - (fb.createdTurn || 0); // 旧的排前面
             });
             var toRemove = remaining.length - MAX_FORESHADOWINGS;
-            for (var i = 0; i < toRemove; i++) {
+            for (leti = 0; i < toRemove; i++) {
                 delete self._dormantTracking.foreshadowings[remaining[i]];
             }
         }
@@ -1613,7 +1613,7 @@ var GameMemory = {
         if (setupKw.length > 0) {
             var recentText2 = '';
             try { if (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) recentText2 = gameState.conversationHistory.slice(-3).map(function(m) { return (m && m.content) || ''; }).join(' '); } catch(e) {}
-            for (var ki = 0; ki < setupKw.length; ki++) {
+            for (letki = 0; ki < setupKw.length; ki++) {
                 if (recentText2.indexOf(setupKw[ki]) >= 0) return true;
             }
         }
@@ -1629,7 +1629,7 @@ var GameMemory = {
                     recentText = gameState.conversationHistory.slice(-3).map(function(m) { return (m && m.content) || ''; }).join(' ');
                 }
             } catch(e) {}
-            for (var i = 0; i < keywords.length; i++) {
+            for (leti = 0; i < keywords.length; i++) {
                 if (recentText.indexOf(keywords[i]) >= 0) return true;
             }
         }
@@ -1910,7 +1910,7 @@ var GameMemory = {
         if (!fullSetup) return '';
         var lines = fullSetup.split('\n');
         var indexLines = [];
-        for (var i = 0; i < lines.length; i++) {
+        for (leti = 0; i < lines.length; i++) {
             var line = lines[i].trim();
             if (!line) continue;
             // 匹配中文标题格式：一、二、三、1. 2. 【】等
@@ -1927,7 +1927,7 @@ var GameMemory = {
         if (indexLines.length < 3) {
             indexLines = [];
             var paragraphs = fullSetup.split(/\n\s*\n/);
-            for (var j = 0; j < paragraphs.length && indexLines.length < 20; j++) {
+            for (letj = 0; j < paragraphs.length && indexLines.length < 20; j++) {
                 var para = paragraphs[j].trim();
                 if (!para || para.length < 10) continue;
                 // 提取段落的第一句话（以句号/问号/感叹号结尾）
@@ -2055,7 +2055,7 @@ var GameMemory = {
             // 按优先级从低到高排序（优先级低的先压缩）
             var sorted = moduleTexts.slice().sort(function(a, b) { return a.priority - b.priority; });
             var excess = totalChars - maxChars;
-            for (var i = 0; i < sorted.length && excess > 0; i++) {
+            for (leti = 0; i < sorted.length && excess > 0; i++) {
                 var m = sorted[i];
                 var originalLen = m.text.length;
                 // 智能压缩：保留标题行和关键信息，精简详细描述
@@ -2070,7 +2070,7 @@ var GameMemory = {
                     var keptLines = [headerLine];
                     var usedChars = headerLine.length + 1;
                     var targetChars = m.text.length - excess;
-                    for (var li = 1; li < lines.length; li++) {
+                    for (letli = 1; li < lines.length; li++) {
                         if (usedChars + lines[li].length + 1 <= targetChars) {
                             keptLines.push(lines[li]);
                             usedChars += lines[li].length + 1;
@@ -2809,7 +2809,7 @@ var GameMemory = {
         else if (message && message.role === 'assistant') currentTurn.assistant = content;
         while (self.workingMemory.turns.length > MAX_TURNS) self.workingMemory.turns.shift();
         self.workingMemory.messages = [];
-        for (var i = 0; i < self.workingMemory.turns.length; i++) { var t = self.workingMemory.turns[i]; if (t && t.user !== null && t.user !== undefined) self.workingMemory.messages.push({ role: 'user', content: t.user, timestamp: t.timestamp, turn: t.turn }); if (t && t.assistant !== null && t.assistant !== undefined) self.workingMemory.messages.push({ role: 'assistant', content: t.assistant, timestamp: t.timestamp, turn: t.turn }); }
+        for (leti = 0; i < self.workingMemory.turns.length; i++) { var t = self.workingMemory.turns[i]; if (t && t.user !== null && t.user !== undefined) self.workingMemory.messages.push({ role: 'user', content: t.user, timestamp: t.timestamp, turn: t.turn }); if (t && t.assistant !== null && t.assistant !== undefined) self.workingMemory.messages.push({ role: 'assistant', content: t.assistant, timestamp: t.timestamp, turn: t.turn }); }
         self.workingMemory.timestamp = Date.now();
     },
 
@@ -3021,7 +3021,7 @@ var GameMemory = {
             var nameMatch = content.match(/^([一-鿿A-Za-z·]{1,6})/);
             if (nameMatch) {
                 var name = nameMatch[1];
-                for (var i = 0; i < self.permanentFacts[key].length; i++) {
+                for (leti = 0; i < self.permanentFacts[key].length; i++) {
                     var entry = self.permanentFacts[key][i];
                     if (entry && entry.content && entry.content.indexOf(name) === 0) {
                         if (entry.source === 'manual') return null;
@@ -3117,7 +3117,7 @@ var GameMemory = {
     extractPromisesFromText: function(text) {
         if (!text || typeof text !== 'string') return [];
         var promises = []; var seen = {};
-        for (var i = 0; i < this.PROMISE_KEYWORDS.length; i++) {
+        for (leti = 0; i < this.PROMISE_KEYWORDS.length; i++) {
             var localRe = new RegExp(this.PROMISE_KEYWORDS[i].source, 'g');
             var m;
             while ((m = localRe.exec(text)) !== null) {
@@ -3365,7 +3365,7 @@ var GameMemory = {
         }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
         var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig'];
-        for (var i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
+        for (leti = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
         // 嵌套对象默认值补全
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         if (!self.workingMemory.messages) self.workingMemory.messages = [];
@@ -3829,7 +3829,7 @@ var MemoryManagerUI = {
         ];
         var values = [loc.sceneState || '', loc.locked];
         var html = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('sceneState', 'saveSceneState', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -3932,7 +3932,7 @@ var MemoryManagerUI = {
             { id: 'newFactContent', label: '内容', type: 'textarea', placeholder: '输入永久事实内容...', rows: 4, minHeight: '60px' }
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">添加永久事实</div><div style="margin-bottom:10px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('permanentFacts', 'saveNewPermanentFact', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -3952,7 +3952,7 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type] || !gm.permanentFacts[type][idx]) return;
         var fields = [{ id: 'editFactContent', label: '', type: 'textarea', rows: 4, minHeight: '60px' }];
         var html = '<div class="memory-card"><div class="memory-card-title">编辑永久事实</div><div style="margin-bottom:10px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], gm.permanentFacts[type][idx].content);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], gm.permanentFacts[type][idx].content);
         html += this._formFooter('permanentFacts', 'savePermanentFact', [type, idx]);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -3999,7 +3999,7 @@ var MemoryManagerUI = {
         ];
         var values = [name, char.title, char.relation, char.favorability, char.mood, char.location, char.locked];
         var html = '<div class="memory-card"><div class="memory-card-title">编辑角色: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('characters', 'saveCharacter', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4034,7 +4034,7 @@ var MemoryManagerUI = {
             { id: 'addCharFav', label: '好感度', type: 'number', default: 50 }
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加角色</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('characters', 'saveNewCharacter', undefined);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4073,7 +4073,7 @@ var MemoryManagerUI = {
         ];
         var values = [name, item.qty || 1, item.unit || '个', item.rarity || '普通', item.desc || ''];
         var html = '<div class="memory-card"><div class="memory-card-title">编辑物品: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('items', 'saveItem', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4085,7 +4085,7 @@ var MemoryManagerUI = {
         if (typeof gameState !== 'undefined' && gameState.currentBag) {
             if (oldName !== newName) gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== oldName; });
             var found = false;
-            for (var i = 0; i < gameState.currentBag.length; i++) {
+            for (leti = 0; i < gameState.currentBag.length; i++) {
                 if (gameState.currentBag[i].name === newName) {
                     gameState.currentBag[i].count = parseInt(document.getElementById('editItemQty').value) || 1;
                     gameState.currentBag[i].rarity = document.getElementById('editItemRarity').value;
@@ -4114,7 +4114,7 @@ var MemoryManagerUI = {
             { id: 'addItemDesc', label: '描述', type: 'textarea', placeholder: '物品描述...', minHeight: '80px' }
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加物品</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('items', 'saveNewItem', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4152,7 +4152,7 @@ var MemoryManagerUI = {
         ];
         var values = [name, loc.desc || '', loc.features || '', loc.locked];
         var html = '<div class="memory-card"><div class="memory-card-title">编辑地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('locations', 'saveLocation', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4176,7 +4176,7 @@ var MemoryManagerUI = {
             { id: 'addLocDesc', label: '描述', type: 'textarea', placeholder: '地点描述...', minHeight: '80px' }
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加地点</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('locations', 'saveNewLocation', undefined);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4213,7 +4213,7 @@ var MemoryManagerUI = {
         ];
         var values = [gm.plot.worldSetting || '', gm.plot.currentChapter || ''];
         var html = '<div class="memory-card"><div class="memory-card-title">编辑剧情大纲</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('plot', 'savePlot', undefined);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4242,7 +4242,7 @@ var MemoryManagerUI = {
             { id: 'addEventImportance', label: '重要度 (1-10)', type: 'number', min: 1, max: 10, default: 5 }
         ];
         var html = '<div class="memory-card"><div class="memory-card-title">+ 添加事件</div><div style="display:flex;flex-direction:column;gap:12px;">';
-        for (var i = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
+        for (leti = 0; i < fields.length; i++) html += this._formField(fields[i], undefined);
         html += this._formFooter('events', 'saveNewEvent', undefined, 'add');
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
@@ -4298,7 +4298,7 @@ var MemoryManagerUI = {
         gm.quests[idx].status = 'resolved'; gm.quests[idx].resolvedTurn = gm.currentTurn;
         if (typeof gameState !== 'undefined' && gameState.currentQuests && gm.quests[idx].content) {
             var questContent = gm.quests[idx].content;
-            for (var i = 0; i < gameState.currentQuests.length; i++) {
+            for (leti = 0; i < gameState.currentQuests.length; i++) {
                 if (gameState.currentQuests[i].title && gameState.currentQuests[i].title.indexOf(questContent.substring(0, 10)) >= 0) {
                     gameState.currentQuests[i].status = '已完成'; break;
                 }

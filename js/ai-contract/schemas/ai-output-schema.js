@@ -2,12 +2,12 @@
 // AI 输出标准 schema
 // 定义 AI 回复的字段、别名、normalize、validate
 // ========================================
-var AIOutputSchema = {
+const AIOutputSchema = {
     REQUIRED_FIELDS: ['story'],
     STORY_ALIASES: ['story', 'storyText', 'content', 'text', 'narrative'],
     TITLE_ALIASES: ['title', 'scene', 'sceneTitle', 'chapterTitle'],
 
-    getDefaultOutput: function() {
+    getDefaultOutput() {
         return {
             story: '',
             title: '',
@@ -28,23 +28,23 @@ var AIOutputSchema = {
         };
     },
 
-    normalize: function(raw) {
+    normalize(raw) {
         if (!raw || typeof raw !== 'object') return this.getDefaultOutput();
-        var out = this.getDefaultOutput();
-        var storyField = this._pickField(raw, this.STORY_ALIASES);
+        const out = this.getDefaultOutput();
+        const storyField = this._pickField(raw, this.STORY_ALIASES);
         if (storyField) out.story = String(storyField).trim();
-        var titleField = this._pickField(raw, this.TITLE_ALIASES);
+        const titleField = this._pickField(raw, this.TITLE_ALIASES);
         if (titleField) out.title = String(titleField).trim();
         // 【P1修复】choices 含 null/非对象元素时加守卫，防止 TypeError
         if (raw.choices && Array.isArray(raw.choices)) {
-            out.choices = raw.choices.map(function(c) {
+            out.choices = raw.choices.map(c => {
                 if (!c || typeof c !== 'object') {
                     // 字符串或 null/undefined 转为 {text}
                     if (typeof c === 'string') return { id: '', text: c };
                     return { id: '', text: '' };
                 }
                 return { id: c.id || '', text: c.text || c.label || '' };
-            }).filter(function(c) { return c.text; });
+            }).filter(c => c.text);
         }
         // 【P1修复】深拷贝防止共享引用，调用方修改 raw 不影响 normalized 结果
         if (raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player)) out.player = this._shallowClone(raw.player);
@@ -65,33 +65,33 @@ var AIOutputSchema = {
     },
 
     // 浅拷贝对象（防止共享引用）
-    _shallowClone: function(obj) {
-        var clone = {};
-        var keys = Object.keys(obj);
-        for (var i = 0; i < keys.length; i++) {
-            var key = keys[i];
+    _shallowClone(obj) {
+        const clone = {};
+        const keys = Object.keys(obj);
+        for (let i = 0; i < keys.length; i++) {
+            const key = keys[i];
             if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
             clone[key] = obj[key];
         }
         return clone;
     },
 
-    validate: function(data) {
-        var errors = [];
+    validate(data) {
+        const errors = [];
         if (!data || typeof data !== 'object') {
             errors.push('data is not an object');
             return { valid: false, errors: errors };
         }
-        var storyField = this._pickField(data, this.STORY_ALIASES);
+        const storyField = this._pickField(data, this.STORY_ALIASES);
         if (!storyField || !String(storyField).trim()) {
             errors.push('missing required field: story');
         }
         return { valid: errors.length === 0, errors: errors };
     },
 
-    _pickField: function(obj, aliases) {
-        for (var i = 0; i < aliases.length; i++) {
-            var key = aliases[i];
+    _pickField(obj, aliases) {
+        for (let i = 0; i < aliases.length; i++) {
+            const key = aliases[i];
             if (obj[key] !== undefined && obj[key] !== null) return obj[key];
         }
         return null;

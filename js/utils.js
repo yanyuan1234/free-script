@@ -2,16 +2,16 @@
 * 安全工具函数 - 2026-06-01
 * 仅新增工具，不修改任何原有逻辑
 */
-var DOMCache = {
+const DOMCache = {
     _cache: {},
     _permanent: {},
     _maxAge: 30000,
     _maxSize: 100, // 【性能优化】限制缓存条目数，防止内存泄漏
     get(id, permanent) {
         if (permanent && this._permanent[id]) return this._permanent[id];
-        var c = this._cache[id];
+        const c = this._cache[id];
         if (c && (Date.now() - c.t < this._maxAge)) return c.el;
-        var el = document.getElementById(id);
+        const el = document.getElementById(id);
         if (el) {
             if (permanent) this._permanent[id] = el;
             else {
@@ -23,9 +23,9 @@ var DOMCache = {
 },
 query(sel, permanent) {
     if (permanent && this._permanent[sel]) return this._permanent[sel];
-    var c = this._cache[sel];
+    const c = this._cache[sel];
     if (c && (Date.now() - c.t < this._maxAge)) return c.el;
-    var el = document.querySelector(sel);
+    const el = document.querySelector(sel);
     if (el) {
         if (permanent) this._permanent[sel] = el;
         else {
@@ -40,38 +40,38 @@ clear() { this._cache = {}; },
 clearAll() { this._cache = {}; this._permanent = {}; },
 // 【性能优化】超出容量时淘汰最旧的条目
 _evictIfNeeded() {
-    var keys = Object.keys(this._cache);
+    const keys = Object.keys(this._cache);
     if (keys.length <= this._maxSize) return;
     // 按时间排序，移除最旧的
-    var sorted = keys.sort(function(a, b) { return this._cache[a].t - this._cache[b].t; }.bind(this));
-    var removeCount = keys.length - this._maxSize + 10; // 多移除10个，减少频繁淘汰
-    for (var i = 0; i < removeCount && i < sorted.length; i++) {
+    const sorted = keys.sort((a, b) => this._cache[a].t - this._cache[b].t);
+    const removeCount = keys.length - this._maxSize + 10; // 多移除10个，减少频繁淘汰
+    for (let i = 0; i < removeCount && i < sorted.length; i++) {
         delete this._cache[sorted[i]];
     }
 }
 };
 
-var TimerManager = {
+const TimerManager = {
     _intervals: {}, _timeouts: {},
-    setInterval: function(id, fn, delay) { this.clearInterval(id); this._intervals[id] = setInterval(fn, delay); },
-    setTimeout: function(id, fn, delay) { this.clearTimeout(id); var self = this; this._timeouts[id] = setTimeout(function() { fn(); delete self._timeouts[id]; }, delay); },
-    clearInterval: function(id) { if (this._intervals[id]) { clearInterval(this._intervals[id]); delete this._intervals[id]; } },
-    clearTimeout: function(id) { if (this._timeouts[id]) { clearTimeout(this._timeouts[id]); delete this._timeouts[id]; } },
-    clearAll: function() { for (var i in this._intervals) clearInterval(this._intervals[i]); for (var i in this._timeouts) clearTimeout(this._timeouts[i]); this._intervals = {}; this._timeouts = {}; }
+    setInterval(id, fn, delay) { this.clearInterval(id); this._intervals[id] = setInterval(fn, delay); },
+    setTimeout(id, fn, delay) { this.clearTimeout(id); var self = this; this._timeouts[id] = setTimeout(function() { fn(); delete self._timeouts[id]; }, delay); },
+    clearInterval(id) { if (this._intervals[id]) { clearInterval(this._intervals[id]); delete this._intervals[id]; } },
+    clearTimeout(id) { if (this._timeouts[id]) { clearTimeout(this._timeouts[id]); delete this._timeouts[id]; } },
+    clearAll() { for (let i in this._intervals) clearInterval(this._intervals[i]); for (let i in this._timeouts) clearTimeout(this._timeouts[i]); this._intervals = {}; this._timeouts = {}; }
 };
 
-var GlobalCleanup = {
+const GlobalCleanup = {
     _listeners: [],
-    registerListener: function(target, type, handler, options) { target.addEventListener(type, handler, options); this._listeners.push({target:target,type:type,handler:handler,options:options}); },
-    cleanup: function() { for (var i = 0; i < this._listeners.length; i++) { try { this._listeners[i].target.removeEventListener(this._listeners[i].type, this._listeners[i].handler, this._listeners[i].options); } catch(e) {} } this._listeners = []; TimerManager.clearAll(); DOMCache.clear(); }
+    registerListener(target, type, handler, options) { target.addEventListener(type, handler, options); this._listeners.push({target:target,type:type,handler:handler,options:options}); },
+    cleanup() { for (let i = 0; i < this._listeners.length; i++) { try { this._listeners[i].target.removeEventListener(this._listeners[i].type, this._listeners[i].handler, this._listeners[i].options); } catch(e) {} } this._listeners = []; TimerManager.clearAll(); DOMCache.clear(); }
 };
 
 window.addEventListener('beforeunload', function() { GlobalCleanup.cleanup(); });
 
 // escapeHTML / sanitizeHTML 已统一到 core.js 的 escapeHtml，此处不再重复定义
 
-function debounce(fn, delay) { var t = null; return function() { var a = arguments, c = this; if (t) clearTimeout(t); t = setTimeout(function() { fn.apply(c, a); t = null; }, delay); }; }
-function throttle(fn, interval) { var last = 0, t = null; return function() { var a = arguments, c = this, now = Date.now(), r = interval - (now - last); if (r <= 0) { if (t) { clearTimeout(t); t = null; } last = now; fn.apply(c, a); } else if (!t) { t = setTimeout(function() { last = Date.now(); t = null; fn.apply(c, a); }, r); } }; }
+function debounce(fn, delay) { let t = null; return function() { const a = arguments, c = this; if (t) clearTimeout(t); t = setTimeout(function() { fn.apply(c, a); t = null; }, delay); }; }
+function throttle(fn, interval) { let last = 0, t = null; return function() { const a = arguments, c = this, now = Date.now(), r = interval - (now - last); if (r <= 0) { if (t) { clearTimeout(t); t = null; } last = now; fn.apply(c, a); } else if (!t) { t = setTimeout(function() { last = Date.now(); t = null; fn.apply(c, a); }, r); } }; }
 
 function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fallback; } }
 
@@ -82,21 +82,21 @@ function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fall
 // 基准值以 8K context 为1.0x，按比例缩放，无上限
 // 8K→1x, 32K→4x, 128K→16x, 256K→32x, 512K→64x, 1M→128x
 function getContextScale() {
-    var ctx = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+    const ctx = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
     return Math.max(0.5, ctx / 8000);
 }
 
 // 动态截断：根据 context 大小自动计算截断长度
 // baseLen 是 8K context 下的基准长度，实际长度 = baseLen * scale，无上限
 function dynamicTruncateLen(baseLen) {
-    var scale = getContextScale();
+    const scale = getContextScale();
     return Math.max(baseLen, Math.round(baseLen * scale));
 }
 
 // 获取各层的动态截断配置（供记忆系统使用）
 // 无上限：256K/512K/1M 的模型会自动获得更大的截断空间
 function getDynamicTruncationConfig() {
-    var scale = getContextScale();
+    const scale = getContextScale();
     return {
         // 对话摘要层
         nearTurnChars: Math.max(150, Math.round(300 * scale)),
@@ -121,10 +121,10 @@ function getDynamicTruncationConfig() {
 // maxChars 是"可见字符数"，CJK/全角按 1 算，emoji/组合字符按 1 算
 function truncateByChars(text, maxChars, suffix) {
     if (text === null || text === undefined) return '';
-    var s = String(text);
+    const s = String(text);
     suffix = suffix || '';
     // Array.from 能正确按 code point 切，emoji 和 CJK 都安全
-    var arr = Array.from(s);
+    const arr = Array.from(s);
     if (arr.length <= maxChars) return s;
     if (maxChars <= 0) return suffix;
     return arr.slice(0, maxChars).join('') + suffix;
@@ -142,8 +142,8 @@ function estimateTokensUtil(text) {
 // 且代码中大量地方会原地修改 message.content（宏处理、加前缀、编辑消息等），缓存会导致 token 估算错误。
 function estimateTokensForMessagesUtil(messages) {
     if (!messages) return 0;
-    var total = 0;
-    for (var i = 0; i < messages.length; i++) {
+    let total = 0;
+    for (let i = 0; i < messages.length; i++) {
         total += (messages[i].content || '').length;
     }
     return Math.ceil(total / 1.7);
@@ -152,7 +152,7 @@ function estimateTokensForMessagesUtil(messages) {
 // ========================================
 // 货币解析与 reconciliation 工具
 // ========================================
-var CurrencyReconciler = {
+const CurrencyReconciler = {
     // 中文数字映射
     _cnNums: {
         '零': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
@@ -161,20 +161,20 @@ var CurrencyReconciler = {
     },
 
     // 中文数字串转阿拉伯数字（支持"二十""一百零五""两千"）
-    chineseToNumber: function(str) {
+    chineseToNumber(str) {
         if (!str) return NaN;
-        var s = String(str).trim();
+        const s = String(str).trim();
         // 先尝试直接解析阿拉伯数字
-        var direct = parseFloat(s);
+        const direct = parseFloat(s);
         if (!isNaN(direct)) return direct;
-        var total = 0;
-        var section = 0;
-        var number = 0;
-        var secUnit = 1;
-        var lastWasUnit = false;
-        for (var i = s.length - 1; i >= 0; i--) {
-            var c = s[i];
-            var v = this._cnNums[c];
+        let total = 0;
+        let section = 0;
+        let number = 0;
+        let secUnit = 1;
+        let lastWasUnit = false;
+        for (let i = s.length - 1; i >= 0; i--) {
+            const c = s[i];
+            const v = this._cnNums[c];
             if (v === undefined) continue;
             if (v >= 10) {
                 if (number === 0) {
@@ -196,20 +196,20 @@ var CurrencyReconciler = {
     },
 
     // 从文本中提取金额与操作方向
-    extractMoneyChanges: function(text) {
+    extractMoneyChanges(text) {
         if (!text) return [];
-        var result = [];
-        var lower = String(text).toLowerCase();
+        const result = [];
+        const lower = String(text).toLowerCase();
         // 模式：动词 + 数量 + 货币单位
-        var patterns = [
+        const patterns = [
             { regex: /(?:获得|得到|领取|收到|拿到|奖励|补贴|赠予|送|加|增加|入账)\s*([\d一二两三四五六七八九十百千万亿]+)\s*(?:枚|个|块|张|颗|把|件)?\s*(?:元|金币|块钱|现金|金钱|money|gold|灵石|银两|积分|信用点|星币)/gi, dir: 1 },
             { regex: /(?:花费|支付|付出|失去|扣除|消耗|花掉|用掉|减去|扣掉)\s*([\d一二两三四五六七八九十百千万亿]+)\s*(?:枚|个|块|张|颗|把|件)?\s*(?:元|金币|块钱|现金|金钱|money|gold|灵石|银两|积分|信用点|星币)/gi, dir: -1 },
             { regex: /([\d一二两三四五六七八九十百千万亿]+)\s*(?:枚|个|块|张|颗|把|件)?\s*(?:元|金币|块钱|现金|金钱|money|gold|灵石|银两|积分|信用点|星币)/gi, dir: 0 }
         ];
         patterns.forEach(function(p) {
-            var m;
+            let m;
             while ((m = p.regex.exec(lower)) !== null) {
-                var n = CurrencyReconciler.chineseToNumber(m[1]);
+                const n = CurrencyReconciler.chineseToNumber(m[1]);
                 if (!isNaN(n) && n > 0) {
                     result.push({ amount: n, dir: p.dir, raw: m[0] });
                 }
@@ -219,16 +219,16 @@ var CurrencyReconciler = {
     },
 
     // 根据剧情文本与当前余额，推断新的余额
-    reconcileFromStory: function(text, currentBalance) {
-        var changes = this.extractMoneyChanges(text);
+    reconcileFromStory(text, currentBalance) {
+        const changes = this.extractMoneyChanges(text);
         if (changes.length === 0) return { balance: currentBalance, changed: false, changes: [] };
-        var knownDir = changes.filter(function(c) { return c.dir !== 0; });
+        const knownDir = changes.filter((c) => c.dir !== 0);
         if (knownDir.length > 0) {
-            var delta = knownDir.reduce(function(sum, c) { return sum + c.amount * c.dir; }, 0);
+            const delta = knownDir.reduce((sum, c) => sum + c.amount * c.dir, 0);
             return { balance: Math.max(0, currentBalance + delta), changed: true, changes: knownDir };
         }
         // 无法判断方向时，取最大金额作为兜底（通常剧情提到金钱奖励时金额最大）
-        var maxAmount = changes.reduce(function(max, c) { return Math.max(max, c.amount); }, 0);
+        const maxAmount = changes.reduce((max, c) => Math.max(max, c.amount), 0);
         if (maxAmount > currentBalance) {
             return { balance: maxAmount, changed: true, changes: changes };
         }
@@ -238,8 +238,8 @@ var CurrencyReconciler = {
 
 function safeSetItem(key, value) {
     try {
-        var dataSize = (key.length + value.length) * 2;
-        var capacity = StorageMonitor.checkCapacity();
+        const dataSize = (key.length + value.length) * 2;
+        const capacity = StorageMonitor.checkCapacity();
         if (capacity.percentage > 90) {
             Logger.warn('localStorage接近满载:', capacity.percentage.toFixed(1) + '%');
         }
@@ -259,14 +259,14 @@ Logger.error('localStorage写入失败:', e.message);
 return { success: false, error: 'write_error', message: e.message, key: key };
 }
 }
-function safeGetItem(key, defaultValue) { try { var v = localStorage.getItem(key); return v !== null ? v : defaultValue; } catch(e) { return defaultValue; } }
+function safeGetItem(key, defaultValue) { try { const v = localStorage.getItem(key); return v !== null ? v : defaultValue; } catch(e) { return defaultValue; } }
 
 // ========================================
 // 【统一管理】Storage 命名空间：集中声明所有 localStorage key 常量
 // 所有读写 localStorage 的代码都应通过 Storage.KEYS.XXX 引用 key，
 // 避免拼写错误（之前 freeScript_ / free_script_ / fs_ 三种风格混用）
 // ========================================
-var Storage = {
+const Storage = {
     KEYS: {
         // —— API 配置与错误 ——
         API_CONFIG: 'free_script_api_config',          // API 端点配置（多槽位）
@@ -294,47 +294,47 @@ var Storage = {
         REGEX_SCRIPTS: 'freeScript_regexScripts'       // 正则脚本
     },
     // 读取（带默认值，吞异常）
-    get: function(key, defaultValue) {
+    get(key, defaultValue) {
         try {
-            var v = localStorage.getItem(key);
+            const v = localStorage.getItem(key);
             return v !== null ? v : defaultValue;
         } catch (e) { return defaultValue; }
     },
     // 读取并 JSON.parse（带默认值，吞异常）
-    getJSON: function(key, defaultValue) {
+    getJSON(key, defaultValue) {
         try {
-            var v = localStorage.getItem(key);
+            const v = localStorage.getItem(key);
             return v !== null ? JSON.parse(v) : defaultValue;
         } catch (e) { return defaultValue; }
     },
     // 写入（走 safeSetItem，带容量检查）
-    set: function(key, value) {
+    set(key, value) {
         return safeSetItem(key, value);
     },
     // 写入 JSON（自动 stringify）
-    setJSON: function(key, value) {
+    setJSON(key, value) {
         return safeSetItem(key, JSON.stringify(value));
     },
     // 删除
-    remove: function(key) {
+    remove(key) {
         try { localStorage.removeItem(key); } catch (e) {}
     }
 };
 
-var StorageMonitor = {
+const StorageMonitor = {
     DEFAULT_LIMIT: 5 * 1024 * 1024,
     MAX_LIMIT: 10 * 1024 * 1024,
     // 【性能优化】缓存容量检查结果，避免每次写入都遍历整个localStorage
     _capacityCache: null,
     _capacityCacheTime: 0,
     _CAPACITY_CACHE_TTL: 30000, // 30秒缓存
-    getUsedSpace: function() {
-        var used = 0;
+    getUsedSpace() {
+        let used = 0;
         try {
-            for (var i = 0; i < localStorage.length; i++) {
-                var key = localStorage.key(i);
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
                 if (key) {
-                    var value = localStorage.getItem(key);
+                    const value = localStorage.getItem(key);
                     used += (key.length + (value ? value.length : 0)) * 2;
                 }
         }
@@ -343,54 +343,54 @@ Logger.error('计算localStorage使用量失败:', e.message);
 }
 return used;
 },
-getRemainingSpace: function() {
-    var used = this.getUsedSpace();
-    var total = this._estimateTotalSpace();
+getRemainingSpace() {
+    const used = this.getUsedSpace();
+    const total = this._estimateTotalSpace();
     return Math.max(0, total - used);
 },
-checkCapacity: function() {
+checkCapacity() {
     // 【性能优化】使用缓存的容量检查结果
-    var now = Date.now();
+    const now = Date.now();
     if (this._capacityCache && (now - this._capacityCacheTime < this._CAPACITY_CACHE_TTL)) {
         return this._capacityCache;
     }
-    var used = this.getUsedSpace();
-    var total = this._estimateTotalSpace();
+    const used = this.getUsedSpace();
+    const total = this._estimateTotalSpace();
     this._capacityCache = { used: used, total: total, percentage: (used / total) * 100 };
     this._capacityCacheTime = now;
     return this._capacityCache;
 },
 // 【性能优化】写入后使缓存失效
-invalidateCache: function() {
+invalidateCache() {
     this._capacityCache = null;
     this._capacityCacheTime = 0;
 },
-warnIfFull: function(threshold) {
+warnIfFull(threshold) {
     threshold = threshold !== undefined ? threshold : 80;
-    var capacity = this.checkCapacity();
+    const capacity = this.checkCapacity();
     if (capacity.percentage >= threshold) {
         Logger.warn('localStorage使用率已达 ' + capacity.percentage.toFixed(1) + '%，建议清理旧数据');
         return true;
     }
 return false;
 },
-cleanupOldData: function() {
-    var suggestions = [];
-    var capacity = this.checkCapacity();
+cleanupOldData() {
+    const suggestions = [];
+    const capacity = this.checkCapacity();
     if (capacity.percentage < 50) {
         return { needed: false, message: '存储空间充足', suggestions: suggestions };
     }
-var keys = [];
-for (var i = 0; i < localStorage.length; i++) {
+const keys = [];
+for (let i = 0; i < localStorage.length; i++) {
     keys.push(localStorage.key(i));
 }
-var tempData = keys.filter(function(k) {
+const tempData = keys.filter((k) => {
     return k.indexOf('temp_') === 0 || k.indexOf('cache_') === 0 || k.indexOf('_tmp') === k.length - 4;
 });
 if (tempData.length > 0) {
     suggestions.push({ type: 'temp_data', keys: tempData, message: '发现临时数据，可考虑清理' });
 }
-var oldBackups = keys.filter(function(k) {
+const oldBackups = keys.filter((k) => {
     return k.indexOf('backup_') === 0 || k.indexOf('_backup') === k.length - 7;
 });
 if (oldBackups.length > 3) {
@@ -399,13 +399,13 @@ if (oldBackups.length > 3) {
 suggestions.push({ type: 'general', message: '建议清理不再需要的缓存数据或旧版本数据' });
 return { needed: true, currentUsage: capacity, suggestions: suggestions };
 },
-_estimateTotalSpace: function() {
-    var testKey = '__storage_test_' + Date.now();
-    var testValue = 'x';
+_estimateTotalSpace() {
+    const testKey = '__storage_test_' + Date.now();
+    const testValue = 'x';
     try {
-        var low = this.DEFAULT_LIMIT;
-        var high = this.MAX_LIMIT;
-        var mid;
+        let low = this.DEFAULT_LIMIT;
+        let high = this.MAX_LIMIT;
+        let mid;
         while (low < high - 1024) {
             mid = Math.floor((low + high) / 2);
             try {
@@ -428,11 +428,11 @@ try { localStorage.removeItem(testKey); } catch(e) {}
 GlobalCleanup.registerListener(window, 'error', function(event) { if (console && console.error) console.error('[全局错误]', event.message); });
 GlobalCleanup.registerListener(window, 'unhandledrejection', function(event) { if (console && console.error) console.error('[Promise错误]', event.reason); });
 
-var ThemeManager = {
+const ThemeManager = {
     _current: 'light',
 
-    init: function() {
-        var saved = Storage.get(Storage.KEYS.THEME);
+    init() {
+        const saved = Storage.get(Storage.KEYS.THEME);
         if (saved === 'dark' || saved === 'light') {
             this._current = saved;
         } else {
@@ -450,7 +450,7 @@ var ThemeManager = {
         });
     },
 
-    apply: function() {
+    apply() {
         if (this._current === 'dark') {
             document.documentElement.setAttribute('data-theme', 'dark');
         } else {
@@ -458,15 +458,15 @@ var ThemeManager = {
         }
     },
 
-    toggle: function() {
+    toggle() {
         this._current = this._current === 'dark' ? 'light' : 'dark';
         this.apply();
         this._updateStar();
         Storage.set(Storage.KEYS.THEME, this._current);
     },
 
-    _updateStar: function() {
-        var star = document.getElementById('menuTopStar');
+    _updateStar() {
+        const star = document.getElementById('menuTopStar');
         if (!star) return;
         if (this._current === 'dark') {
             star.textContent = '☀';
@@ -483,8 +483,8 @@ function toggleTheme() {
 }
 
 (function() {
-    var saved = Storage.get(Storage.KEYS.THEME);
-    var isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const saved = Storage.get(Storage.KEYS.THEME);
+    const isDark = saved === 'dark' || (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
     if (isDark) {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
@@ -493,33 +493,33 @@ function toggleTheme() {
 // ========================================
 // DOM批量更新工具 - 减少重排重绘
 // ========================================
-var DOMBatch = {
+const DOMBatch = {
     _queue: [],
     _scheduled: false,
 
     // 批量设置 innerHTML
-    setHTML: function(el, html) {
+    setHTML(el, html) {
         if (!el) return;
         this._queue.push({ el: el, type: 'html', value: html });
         this._schedule();
     },
 
     // 批量设置 textContent
-    setText: function(el, text) {
+    setText(el, text) {
         if (!el) return;
         this._queue.push({ el: el, type: 'text', value: text });
         this._schedule();
     },
 
     // 批量设置样式
-    setStyle: function(el, prop, value) {
+    setStyle(el, prop, value) {
         if (!el) return;
         this._queue.push({ el: el, type: 'style', prop: prop, value: value });
         this._schedule();
     },
 
     // 调度批量刷新
-    _schedule: function() {
+    _schedule() {
         if (this._scheduled) return;
         this._scheduled = true;
         var self = this;
@@ -529,17 +529,17 @@ var DOMBatch = {
     },
 
     // 执行所有排队的更新
-    _flush: function() {
-        var queue = this._queue;
+    _flush() {
+        const queue = this._queue;
         this._queue = [];
         this._scheduled = false;
 
         // 去重：同一元素同类型操作只保留最后一个
-        var seen = {};
-        var deduped = [];
-        for (var i = queue.length - 1; i >= 0; i--) {
-            var item = queue[i];
-            var key = item.type === 'style' 
+        const seen = {};
+        const deduped = [];
+        for (let i = queue.length - 1; i >= 0; i--) {
+            const item = queue[i];
+            const key = item.type === 'style' 
                 ? (item.el._domBatchId || (item.el._domBatchId = 'el_' + Math.random().toString(36).slice(2))) + '_' + item.type + '_' + item.prop
                 : (item.el._domBatchId || (item.el._domBatchId = 'el_' + Math.random().toString(36).slice(2))) + '_' + item.type;
             if (!seen[key]) {
@@ -549,8 +549,8 @@ var DOMBatch = {
         }
 
         // 批量应用
-        for (var j = 0; j < deduped.length; j++) {
-            var d = deduped[j];
+        for (let j = 0; j < deduped.length; j++) {
+            const d = deduped[j];
             try {
                 if (d.type === 'html') d.el.innerHTML = d.value;
                 else if (d.type === 'text') d.el.textContent = d.value;
@@ -559,7 +559,7 @@ var DOMBatch = {
         }
 
         // 清理临时ID
-        for (var k = 0; k < deduped.length; k++) {
+        for (let k = 0; k < deduped.length; k++) {
             delete deduped[k].el._domBatchId;
         }
     }
@@ -571,20 +571,20 @@ var DOMBatch = {
 // 用法：Logger.info('xxx') / Logger.warn('xxx') / Logger.error('xxx')
 // 后续可平滑替换零散的 console.* 调用；不会影响线上默认行为。
 // 通过 localStorage('free_script_log_level') 可临时调节：'debug' | 'info' | 'warn' | 'error'
-var Logger = (function() {
-    var LEVELS = { debug: 0, info: 1, warn: 2, error: 3, silent: 4 };
+const Logger = (function() {
+    const LEVELS = { debug: 0, info: 1, warn: 2, error: 3, silent: 4 };
     function currentLevel() {
         try {
-            var v = (typeof Storage !== 'undefined') ? Storage.get(Storage.KEYS.LOG_LEVEL) : null;
+            const v = (typeof Storage !== 'undefined') ? Storage.get(Storage.KEYS.LOG_LEVEL) : null;
             if (v && LEVELS[v] !== undefined) return LEVELS[v];
         } catch (e) {}
         // 默认：线上静默 info，只保留 warn / error；用户手动改为 debug 即可看全部
         return LEVELS.warn;
     }
     function fmt() {
-        var parts = [];
-        for (var i = 0; i < arguments.length; i++) {
-            var a = arguments[i];
+        const parts = [];
+        for (let i = 0; i < arguments.length; i++) {
+            const a = arguments[i];
             if (a instanceof Error) parts.push(a.message);
             else if (typeof a === 'object') {
                 try { parts.push(JSON.stringify(a)); } catch (e) { parts.push(String(a)); }
@@ -595,16 +595,16 @@ var Logger = (function() {
     return {
         LEVELS: LEVELS,
         getLevel: currentLevel,
-        setLevel: function(name) {
+        setLevel(name) {
             if (LEVELS[name] === undefined) return;
             Storage.set(Storage.KEYS.LOG_LEVEL, name);
         },
-        debug: function() { if (currentLevel() <= LEVELS.debug) { try { console.debug.apply(console, ['[DBG]'].concat([].slice.call(arguments))); } catch(e) {} } },
-        info:  function() { if (currentLevel() <= LEVELS.info)  { try { console.info.apply(console,  ['[INF]'].concat([].slice.call(arguments))); } catch(e) {} } },
-        warn:  function() { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
-        error: function() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} },
+        debug() { if (currentLevel() <= LEVELS.debug) { try { console.debug.apply(console, ['[DBG]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        info()  { if (currentLevel() <= LEVELS.info)  { try { console.info.apply(console,  ['[INF]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        warn()  { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        error() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} },
         // 直接调用 Logger.log('msg', 'info') 走级别路由
-        log: function(msg, level) {
+        log(msg, level) {
             level = level || 'info';
             if (this[level]) this[level](msg);
             else this.info(msg);
@@ -620,17 +620,17 @@ var Logger = (function() {
 //   if (RenderCache.same('renderFoo', key)) return;
 //   // ... 实际渲染逻辑
 //   RenderCache.mark('renderFoo', key);
-var RenderCache = {
+const RenderCache = {
     _keys: {},
-    same: function(name, key) {
+    same(name, key) {
         if (this._keys[name] === key) return true;
         return false;
     },
-    mark: function(name, key) {
+    mark(name, key) {
         this._keys[name] = key;
     },
     // 某些数据变化后（如存档切换、删除消息），需手动失效
-    invalidate: function(name) {
+    invalidate(name) {
         if (name) delete this._keys[name];
         else this._keys = {};
     }

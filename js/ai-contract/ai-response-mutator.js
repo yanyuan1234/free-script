@@ -2,17 +2,17 @@
 // AI 响应变更器
 // 将 ResponseParser 解析结果写入 StateManager
 // ========================================
-var AIResponseMutator = {
+const AIResponseMutator = {
     // 应用解析结果到状态
-    apply: function(parsed, options) {
+    apply(parsed, options) {
         options = options || {};
         if (!parsed || !parsed.success) {
             console.warn('[AIResponseMutator] 解析未成功，跳过状态写入');
             return { success: false, changes: [] };
         }
-        var data = parsed.data || {};
+        const data = parsed.data || {};
         var self = this;
-        var result = { success: true, changes: [] };
+        const result = { success: true, changes: [] };
 
         try {
             if (typeof StateManager !== 'undefined' && StateManager.transaction) {
@@ -32,7 +32,7 @@ var AIResponseMutator = {
     },
 
     // 统一写入所有字段
-    _applyAll: function(data, result, options) {
+    _applyAll(data, result, options) {
         this._applyStoryAndTitle(data);
         this._applyTurn(data);
         this._applyPlayer(data);
@@ -50,9 +50,9 @@ var AIResponseMutator = {
     },
 
     // 剧情与标题
-    _applyStoryAndTitle: function(data) {
-        var story = OutputSanitizer ? OutputSanitizer.sanitizeStory(data.story || '') : (data.story || '');
-        var title = String(data.title || data.sceneTitle || data.chapterTitle || '').trim();
+    _applyStoryAndTitle(data) {
+        const story = OutputSanitizer ? OutputSanitizer.sanitizeStory(data.story || '') : (data.story || '');
+        const title = String(data.title || data.sceneTitle || data.chapterTitle || '').trim();
         if (story) {
             StateManager.set('progress.sceneTitle', title || StateManager.get('progress.sceneTitle') || '', { silent: true });
             StateManager.set('progress.lastSceneTitle', title || StateManager.get('progress.sceneTitle') || '', { silent: true });
@@ -60,27 +60,27 @@ var AIResponseMutator = {
     },
 
     // 回合数推进
-    _applyTurn: function(data) {
-        var currentTurn = parseInt(StateManager.get('progress.turn') || 0) || 0;
+    _applyTurn(data) {
+        const currentTurn = parseInt(StateManager.get('progress.turn') || 0) || 0;
         StateManager.set('progress.turn', currentTurn + 1, { silent: true });
         StateManager.setLegacy('_stats.totalTurns', currentTurn + 1, { silent: true });
     },
 
     // 主角信息
-    _applyPlayer: function(data) {
-        var player = data.player || data.protagonist || data.hero;
+    _applyPlayer(data) {
+        const player = data.player || data.protagonist || data.hero;
         if (!player || typeof player !== 'object') return;
-        var current = StateManager.get('entities.player') || {};
+        const current = StateManager.get('entities.player') || {};
         // 玩家设定的主角名优先级最高，禁止 AI 覆盖
-        var lockedName = current.name || '';
+        let lockedName = current.name || '';
         if (!lockedName && typeof gameState !== 'undefined') {
             lockedName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
         }
-        var aiName = String(player.name || '').trim();
+        const aiName = String(player.name || '').trim();
         if (aiName && aiName !== lockedName) {
             console.warn('[AIResponseMutator] AI 尝试覆盖主角名 "' + lockedName + '" 为 "' + aiName + '"，已拦截');
         }
-        var normalized = {
+        const normalized = {
             name: lockedName || aiName || '主角',
             identity: String(player.identity || current.identity || '').trim(),
             stats: Array.isArray(player.stats) ? player.stats : (current.stats || [])
@@ -94,8 +94,8 @@ var AIResponseMutator = {
     },
 
     // NPC / 角色
-    _applyCharacters: function(data) {
-        var characters = data.characters || data.npcs;
+    _applyCharacters(data) {
+        const characters = data.characters || data.npcs;
         if (!characters || !Array.isArray(characters) || characters.length === 0) return;
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
             CharacterMutator.mergeCharacters(characters, { silent: true });
@@ -106,8 +106,8 @@ var AIResponseMutator = {
     },
 
     // 物品
-    _applyBag: function(data) {
-        var bag = data.bag || data.items || data.inventory;
+    _applyBag(data) {
+        const bag = data.bag || data.items || data.inventory;
         if (!bag || !Array.isArray(bag) || bag.length === 0) return;
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
             BagMutator.mergeItems(bag, { silent: true });
@@ -118,10 +118,10 @@ var AIResponseMutator = {
     },
 
     // 货币
-    _applyCurrency: function(data) {
+    _applyCurrency(data) {
         if (data.currency === undefined && data.money === undefined && data.gold === undefined) return;
-        var currency = data.currency !== undefined ? data.currency : (data.money !== undefined ? data.money : data.gold);
-        var num = parseInt(currency);
+        const currency = data.currency !== undefined ? data.currency : (data.money !== undefined ? data.money : data.gold);
+        const num = parseInt(currency);
         if (isNaN(num)) return;
         StateManager.set('entities.currency', num, { silent: true });
         if (data.currencyName) {
@@ -135,8 +135,8 @@ var AIResponseMutator = {
     },
 
     // 任务
-    _applyQuests: function(data) {
-        var quests = data.quests || data.missions || data.tasks;
+    _applyQuests(data) {
+        const quests = data.quests || data.missions || data.tasks;
         if (quests && Array.isArray(quests) && quests.length > 0) {
             if (typeof QuestMutator !== 'undefined' && QuestMutator.setQuests) {
                 QuestMutator.setQuests(quests, { silent: true });
@@ -146,15 +146,15 @@ var AIResponseMutator = {
             }
         }
         // 【修复任务进度】根据剧情文本自动推进任务进度
-        var story = data.story || '';
+        const story = data.story || '';
         if (story && typeof QuestMutator !== 'undefined' && QuestMutator.autoAdvanceByStory) {
             QuestMutator.autoAdvanceByStory(story, { silent: true });
         }
     },
 
     // 游戏时间
-    _applyGameTime: function(data) {
-        var time = data.gameTime || data.time || {};
+    _applyGameTime(data) {
+        const time = data.gameTime || data.time || {};
         if (!time || typeof time !== 'object') return;
         if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
             TimeMutator.setTime(time, { silent: true });
@@ -165,40 +165,40 @@ var AIResponseMutator = {
     },
 
     // 地点
-    _applyLocations: function(data) {
-        var locations = data.locations || data.places;
+    _applyLocations(data) {
+        const locations = data.locations || data.places;
         if (!locations || !Array.isArray(locations) || locations.length === 0) return;
-        var normalized = locations.map(function(loc) {
+        const normalized = locations.map(function(loc) {
             if (typeof loc === 'string') return { name: loc.trim(), desc: '' };
             return {
                 name: String(loc.name || loc.title || '').trim(),
                 desc: String(loc.desc || loc.description || '').trim()
             };
-        }).filter(function(loc) { return loc.name && loc.name.length > 1 && !/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(loc.name); });
+        }).filter(loc => loc.name && loc.name.length > 1 && !/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(loc.name));
         if (normalized.length === 0) return;
         StateManager.set('entities.locations', normalized, { silent: true });
     },
 
     // 关键事件
-    _applyKeyEvents: function(data) {
-        var events = data.keyEvents || data.events || data.plotEvents;
+    _applyKeyEvents(data) {
+        const events = data.keyEvents || data.events || data.plotEvents;
         if (!events || !Array.isArray(events) || events.length === 0) return;
-        var normalized = events.map(function(ev) {
+        const normalized = events.map(function(ev) {
             if (typeof ev === 'string') return { title: ev.trim(), desc: '', turn: StateManager.get('progress.turn') || 0 };
             return {
                 title: String(ev.title || ev.name || '').trim(),
                 desc: String(ev.desc || ev.description || '').trim(),
                 turn: ev.turn || StateManager.get('progress.turn') || 0
             };
-        }).filter(function(ev) { return ev.title; });
+        }).filter(ev => ev.title);
         if (normalized.length === 0) return;
         StateManager.set('entities.events', normalized, { silent: true });
         StateManager.setLegacy('keyEvents', normalized, { silent: true });
     },
 
     // 关系变化（简化合并到角色）
-    _applyRelationships: function(data) {
-        var relationships = data.relationships || data.relations;
+    _applyRelationships(data) {
+        const relationships = data.relationships || data.relations;
         if (!relationships || !Array.isArray(relationships) || relationships.length === 0) return;
         var self = this;
         relationships.forEach(function(r) {
@@ -206,10 +206,10 @@ var AIResponseMutator = {
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
                 CharacterMutator.updateRelationship(r.name, parseInt(r.delta || r.change || r.favor || 0) || 0, { silent: true });
             } else {
-                var list = StateManager.get('entities.characters') || [];
-                var updated = list.map(function(c) {
+                const list = StateManager.get('entities.characters') || [];
+                const updated = list.map(function(c) {
                     if (c.name !== r.name) return c;
-                    var clone = StateSchema.deepClone ? StateSchema.deepClone(c) : Object.assign({}, c);
+                    const clone = StateSchema.deepClone ? StateSchema.deepClone(c) : Object.assign({}, c);
                     clone.favor = (clone.favor || 0) + (parseInt(r.delta || r.change || r.favor || 0) || 0);
                     return clone;
                 });
@@ -219,23 +219,23 @@ var AIResponseMutator = {
     },
 
     // HUD 信息
-    _applyHUD: function(data) {
-        var hud = data.hud || data.status || {};
+    _applyHUD(data) {
+        const hud = data.hud || data.status || {};
         if (!hud || typeof hud !== 'object') return;
         StateManager.set('ui.lastHUD', hud, { silent: true });
         StateManager.setLegacy('_lastHUD', hud, { silent: true });
     },
 
     // 上下文摘要
-    _applyContextSummary: function(data) {
-        var summary = data.contextSummary || data.summary || '';
+    _applyContextSummary(data) {
+        const summary = data.contextSummary || data.summary || '';
         if (!summary) return;
         StateManager.set('progress.rollingSummary', summary, { silent: true });
         StateManager.setLegacy('rollingSummary', summary, { silent: true });
     },
 
     // 收集变更路径（用于测试/调试）
-    _collectChanges: function() {
+    _collectChanges() {
         return [
             'progress.turn',
             'progress.sceneTitle',

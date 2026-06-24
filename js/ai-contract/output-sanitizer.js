@@ -2,10 +2,10 @@
 // 输出清理器
 // 清理 AI 输出中的思维链、HTML、光标符号、JSON 前缀等噪声
 // ========================================
-var OutputSanitizer = {
-    sanitizeStory: function(text) {
+const OutputSanitizer = {
+    sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
-        var s = text;
+        let s = text;
         s = this.stripThinking(s);
         s = this.stripHTMLAndCursors(s);
         s = this.stripJSONArtifacts(s);
@@ -14,9 +14,9 @@ var OutputSanitizer = {
         return s.trim();
     },
 
-    sanitizeJSON: function(raw) {
+    sanitizeJSON(raw) {
         if (!raw || typeof raw !== 'string') return '';
-        var s = raw.trim();
+        let s = raw.trim();
         if (s.startsWith('```')) {
             s = s.replace(/^```json\s*/i, '').replace(/^```/, '').trim();
             if (s.endsWith('```')) s = s.slice(0, -3).trim();
@@ -25,7 +25,7 @@ var OutputSanitizer = {
         return s;
     },
 
-    stripThinking: function(text) {
+    stripThinking(text) {
         if (!text || typeof text !== 'string') return '';
         return text
             .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
@@ -34,7 +34,7 @@ var OutputSanitizer = {
             .replace(/💭[\s\S]*?💭/g, '');
     },
 
-    stripHTMLAndCursors: function(text) {
+    stripHTMLAndCursors(text) {
         if (!text || typeof text !== 'string') return '';
         return text
             .replace(/<br\s*\/?>/gi, '\n')
@@ -43,7 +43,7 @@ var OutputSanitizer = {
             .replace(/▌|⎸/g, '');
     },
 
-    stripJSONArtifacts: function(text) {
+    stripJSONArtifacts(text) {
         if (!text || typeof text !== 'string') return '';
         return text
             .replace(/^\s*"story"\s*:\s*"/i, '')

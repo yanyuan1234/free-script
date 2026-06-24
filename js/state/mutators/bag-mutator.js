@@ -1,10 +1,10 @@
 // ========================================
 // 物品变更器 - BagMutator
 // ========================================
-var BagMutator = {
+const BagMutator = {
     // 设置整个物品列表（标准化后）
-    setItems: function(items, options) {
-        var normalized = (items || []).map(this.normalizeItem.bind(this)).filter(Boolean);
+    setItems(items, options) {
+        const normalized = (items || []).map(this.normalizeItem.bind(this)).filter(Boolean);
         // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.bag'，确保通知路径与订阅路径匹配
         // 新路径 silent 写入保持数据一致，旧路径带通知写入触发 GameMemoryAdapter 同步
         StateManager.set('entities.bag', normalized, { silent: true });
@@ -12,17 +12,17 @@ var BagMutator = {
     },
 
     // 合并物品：保留已有，更新/插入新物品（同 renderBag 语义）
-    mergeItems: function(items, options) {
+    mergeItems(items, options) {
         if (!items || !Array.isArray(items)) return false;
-        var bag = StateManager.get('entities.bag') || [];
-        var existingMap = {};
+        const bag = StateManager.get('entities.bag') || [];
+        const existingMap = {};
         bag.forEach(function(it, idx) {
-            var key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
+            const key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
             existingMap[key] = it;
         });
         items.forEach(function(it) {
             if (!it) return;
-            var key = it.name || it.title || it.id;
+            const key = it.name || it.title || it.id;
             if (!key) return;
             if (existingMap[key]) {
                 existingMap[key].count = it.count !== undefined ? it.count : (existingMap[key].count || 1);
@@ -40,13 +40,11 @@ var BagMutator = {
     },
 
     // 添加单个物品
-    addItem: function(item, options) {
-        var normalized = this.normalizeItem(item);
+    addItem(item, options) {
+        const normalized = this.normalizeItem(item);
         if (!normalized) return false;
-        var bag = StateManager.get('entities.bag') || [];
-        var existing = bag.find(function(it) {
-            return it.name === normalized.name;
-        });
+        const bag = StateManager.get('entities.bag') || [];
+        const existing = bag.find((it) => it.name === normalized.name);
         if (existing) {
             existing.count = (existing.count || 1) + (normalized.count || 1);
         } else {
@@ -56,20 +54,18 @@ var BagMutator = {
     },
 
     // 移除物品
-    removeItem: function(name, options) {
-        var bag = StateManager.get('entities.bag') || [];
-        var filtered = bag.filter(function(it) {
-            return it.name !== name;
-        });
+    removeItem(name, options) {
+        const bag = StateManager.get('entities.bag') || [];
+        const filtered = bag.filter((it) => it.name !== name);
         return this.setItems(filtered, options);
     },
 
     // 更新物品
-    updateItem: function(name, updater, options) {
-        var bag = StateManager.get('entities.bag') || [];
-        var updated = bag.map(function(it) {
+    updateItem(name, updater, options) {
+        const bag = StateManager.get('entities.bag') || [];
+        const updated = bag.map(function(it) {
             if (it.name === name) {
-                var clone = StateSchema.deepClone(it);
+                const clone = StateSchema.deepClone(it);
                 return updater(clone) || clone;
             }
             return it;
@@ -78,9 +74,9 @@ var BagMutator = {
     },
 
     // 标准化物品格式
-    normalizeItem: function(raw) {
+    normalizeItem(raw) {
         if (!raw) return null;
-        var name = '';
+        let name = '';
         if (typeof raw === 'string') {
             name = raw.trim();
         } else {
@@ -91,12 +87,12 @@ var BagMutator = {
             name.toLowerCase() === 'null' || name === '未知') {
             return null;
         }
-        var count = 1;
+        let count = 1;
         if (raw.count !== undefined) {
-            var parsed = parseInt(raw.count);
+            const parsed = parseInt(raw.count);
             if (!isNaN(parsed) && parsed > 0) count = parsed;
         }
-        var unit = raw.unit || '个';
+        const unit = raw.unit || '个';
         return {
             id: raw.id || ('item_' + name + '_' + Date.now()),
             name: name,

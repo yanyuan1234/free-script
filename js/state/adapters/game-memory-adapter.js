@@ -2,34 +2,34 @@
 // GameMemory 适配器 - GameMemoryAdapter
 // 维护 StateManager 与 GameMemory 之间的同步
 // ========================================
-var GameMemoryAdapter = {
+const GameMemoryAdapter = {
     _syncLock: false,
 
     // 绑定：订阅 StateManager 变更，自动同步到 GameMemory
-    bind: function() {
+    bind() {
         var self = this;
-        StateManager.subscribe('entities.**', function() {
+        StateManager.subscribe('entities.**', () => {
             self.syncToGameMemory();
         });
-        StateManager.subscribe('progress.**', function() {
+        StateManager.subscribe('progress.**', () => {
             self.syncToGameMemory();
         });
-        StateManager.subscribe('time', function() {
+        StateManager.subscribe('time', () => {
             self.syncToGameMemory();
         });
     },
 
     // StateManager -> GameMemory
-    syncToGameMemory: function() {
+    syncToGameMemory() {
         if (this._syncLock) return;
         if (typeof GameMemory === 'undefined') return;
         this._syncLock = true;
         try {
-            var bag = StateManager.get('entities.bag') || [];
-            var quests = StateManager.get('entities.quests') || [];
-            var characters = StateManager.get('entities.characters') || [];
-            var locations = StateManager.get('entities.locations') || [];
-            var events = StateManager.get('entities.events') || [];
+            const bag = StateManager.get('entities.bag') || [];
+            const quests = StateManager.get('entities.quests') || [];
+            const characters = StateManager.get('entities.characters') || [];
+            const locations = StateManager.get('entities.locations') || [];
+            const events = StateManager.get('entities.events') || [];
 
             if (GameMemory.tables) {
                 GameMemory.tables.items = bag;
@@ -55,7 +55,7 @@ var GameMemoryAdapter = {
     },
 
     // GameMemory -> StateManager（用于初始化或手动同步）
-    syncFromGameMemory: function() {
+    syncFromGameMemory() {
         if (typeof GameMemory === 'undefined') return;
         this._syncLock = true;
         try {

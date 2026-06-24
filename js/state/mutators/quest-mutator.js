@@ -1,7 +1,7 @@
 // ========================================
 // 任务变更器 - QuestMutator
 // ========================================
-var QuestMutator = {
+const QuestMutator = {
     // 内置状态映射
     STATUS: {
         ACTIVE: '进行中',
@@ -34,10 +34,10 @@ var QuestMutator = {
     },
 
     // 设置任务列表（智能合并，不直接覆盖）
-    setQuests: function(quests, options) {
-        var incoming = (quests || []).map(this.normalizeQuest.bind(this)).filter(Boolean);
-        var existing = (StateManager.get('entities.quests') || []);
-        var merged = this._smartMerge(existing, incoming);
+    setQuests(quests, options) {
+        const incoming = (quests || []).map(this.normalizeQuest.bind(this)).filter(Boolean);
+        const existing = (StateManager.get('entities.quests') || []);
+        const merged = this._smartMerge(existing, incoming);
         // 同时写入新路径和旧路径，保持兼容性
         // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.quests'，确保通知路径匹配
         StateManager.set('entities.quests', merged, { silent: true });
@@ -45,9 +45,9 @@ var QuestMutator = {
     },
 
     // 智能合并：保留已完成的进度、取最新进度、防止 AI 回退进度
-    _smartMerge: function(existing, incoming) {
-        var map = {};
-        var result = [];
+    _smartMerge(existing, incoming) {
+        const map = {};
+        const result = [];
         existing.forEach(function(q) {
             if (!q || !q.title) return;
             map[q.title] = q;
@@ -55,7 +55,7 @@ var QuestMutator = {
         });
         incoming.forEach(function(q) {
             if (!q || !q.title) return;
-            var old = map[q.title];
+            const old = map[q.title];
             if (old) {
                 // 保留已完成/失败状态，防止 AI 回退
                 if (old.status === QuestMutator.STATUS.COMPLETED || old.status === QuestMutator.STATUS.FAILED) {
@@ -69,7 +69,7 @@ var QuestMutator = {
                 if (!q.rewards || q.rewards.length === 0) q.rewards = old.rewards || [];
                 // 保留 id
                 if (old.id && !q.id) q.id = old.id;
-                var idx = result.indexOf(old);
+                const idx = result.indexOf(old);
                 if (idx !== -1) result[idx] = q;
             } else {
                 result.push(q);
@@ -81,11 +81,11 @@ var QuestMutator = {
 
     // 选择更高的进度字符串
     // 【P1修复】比较比率（current/total）而非仅比较分子，防止进度倒退
-    _pickHigherProgress: function(a, b) {
-        var pa = this._parseProgressParts(a);
-        var pb = this._parseProgressParts(b);
-        var ratioA = pa.total > 0 ? pa.current / pa.total : 0;
-        var ratioB = pb.total > 0 ? pb.current / pb.total : 0;
+    _pickHigherProgress(a, b) {
+        const pa = this._parseProgressParts(a);
+        const pb = this._parseProgressParts(b);
+        const ratioA = pa.total > 0 ? pa.current / pa.total : 0;
+        const ratioB = pb.total > 0 ? pb.current / pb.total : 0;
         // 比率高的优先；比率相同时取分母大的（更细粒度）
         if (ratioB > ratioA) return b;
         if (ratioA > ratioB) return a;
@@ -93,25 +93,23 @@ var QuestMutator = {
     },
 
     // 解析进度为 {current, total}
-    _parseProgressParts: function(progress) {
+    _parseProgressParts(progress) {
         if (!progress) return { current: 0, total: 1 };
-        var parts = String(progress).split('/');
+        const parts = String(progress).split('/');
         if (parts.length === 2) {
             return { current: parseInt(parts[0]) || 0, total: parseInt(parts[1]) || 1 };
         }
         // 纯数字视为 current
-        var n = parseInt(progress);
+        const n = parseInt(progress);
         return { current: isNaN(n) ? 0 : n, total: 1 };
     },
 
     // 添加任务
-    addQuest: function(quest, options) {
-        var normalized = this.normalizeQuest(quest);
+    addQuest(quest, options) {
+        const normalized = this.normalizeQuest(quest);
         if (!normalized) return false;
-        var quests = StateManager.get('entities.quests') || [];
-        var existing = quests.find(function(q) {
-            return q.id === normalized.id || q.title === normalized.title;
-        });
+        const quests = StateManager.get('entities.quests') || [];
+        const existing = quests.find((q) => q.id === normalized.id || q.title === normalized.title);
         if (existing) {
             // 合并更新（同 setQuests 的智能逻辑）
             normalized.progress = this._pickHigherProgress(existing.progress, normalized.progress);
@@ -126,11 +124,11 @@ var QuestMutator = {
     },
 
     // 更新任务
-    updateQuest: function(id, updater, options) {
-        var quests = StateManager.get('entities.quests') || [];
-        var updated = quests.map(function(q) {
+    updateQuest(id, updater, options) {
+        const quests = StateManager.get('entities.quests') || [];
+        const updated = quests.map(function(q) {
             if (q.id === id) {
-                var clone = StateSchema.deepClone(q);
+                const clone = StateSchema.deepClone(q);
                 return updater(clone) || clone;
             }
             return q;
@@ -139,25 +137,23 @@ var QuestMutator = {
     },
 
     // 根据剧情文本自动推进任务进度
-    autoAdvanceByStory: function(storyText, options) {
+    autoAdvanceByStory(storyText, options) {
         if (!storyText) return { changed: false };
-        var quests = StateManager.get('entities.quests') || [];
-        var changed = false;
+        const quests = StateManager.get('entities.quests') || [];
+        let changed = false;
         var self = this;
-        var lowerStory = String(storyText).toLowerCase();
-        var completionKeywords = /完成|办完|搞定|结束|达成|通过|领取|收到|获得|入学|报到|注册|签到|了解|查明|探明|解决|击败|战胜|说服|答应|同意|邀请/;
+        const lowerStory = String(storyText).toLowerCase();
+        const completionKeywords = /完成|办完|搞定|结束|达成|通过|领取|收到|获得|入学|报到|注册|签到|了解|查明|探明|解决|击败|战胜|说服|答应|同意|邀请/;
         quests.forEach(function(q) {
             if (!q || q.status === self.STATUS.COMPLETED || q.status === self.STATUS.FAILED) return;
-            var title = String(q.title || '');
+            const title = String(q.title || '');
             if (!title) return;
             // 任务标题关键词在剧情中出现，且伴随完成类动词，则标记完成
-            var titleKeywords = self._extractKeywords(title);
-            var matched = titleKeywords.some(function(kw) {
-                return lowerStory.indexOf(kw) !== -1;
-            });
+            const titleKeywords = self._extractKeywords(title);
+            const matched = titleKeywords.some((kw) => lowerStory.indexOf(kw) !== -1);
             if (matched && completionKeywords.test(lowerStory)) {
                 q.status = self.STATUS.COMPLETED;
-                var parts = self._parseProgressParts(q.progress);
+                const parts = self._parseProgressParts(q.progress);
                 if (parts.total > 0) {
                     q.progress = parts.total + '/' + parts.total;
                 } else {
@@ -175,12 +171,12 @@ var QuestMutator = {
 
     // 从任务标题提取关键词（中文按词/字，英文按词）
     // 【P1修复】stopWords 改为整词匹配，避免子串误过滤（如"前进"含"前"被误删）
-    _extractKeywords: function(title) {
-        var t = String(title).toLowerCase().trim();
+    _extractKeywords(title) {
+        const t = String(title).toLowerCase().trim();
         if (!t) return [];
         // 停用词列表（整词匹配，非子串）
-        var stopWords = ['的', '了', '和', '与', '或', '在', '到', '去', '个', '件', '项', '等', '之', '后', '前', '中', '上', '下'];
-        var parts = t.split(/[\s·，,、；;:!?！？()（）\[\]【】]+/).filter(function(s) {
+        const stopWords = ['的', '了', '和', '与', '或', '在', '到', '去', '个', '件', '项', '等', '之', '后', '前', '中', '上', '下'];
+        let parts = t.split(/[\s·，,、；;:!?！？()（）\[\]【】]+/).filter(function(s) {
             if (s.length < 2) return false;
             // 整词匹配停用词
             return stopWords.indexOf(s) === -1;
@@ -190,16 +186,16 @@ var QuestMutator = {
     },
 
     // 标准化任务
-    normalizeQuest: function(raw) {
+    normalizeQuest(raw) {
         if (!raw) return null;
-        var title = String(raw.title || raw.name || raw.quest || raw.content || '').trim();
+        const title = String(raw.title || raw.name || raw.quest || raw.content || '').trim();
         if (!title) return null;
-        var status = this.normalizeStatus(raw.status);
-        var type = this.normalizeType(raw.type);
-        var progress = raw.progress || '0/1';
+        const status = this.normalizeStatus(raw.status);
+        const type = this.normalizeType(raw.type);
+        let progress = raw.progress || '0/1';
         // 若状态为已完成但进度未满，自动补齐
         if (status === this.STATUS.COMPLETED) {
-            var parts = this._parseProgressParts(progress);
+            const parts = this._parseProgressParts(progress);
             if (parts.current < parts.total) {
                 progress = parts.total + '/' + parts.total;
             }
@@ -219,17 +215,17 @@ var QuestMutator = {
     },
 
     // 标准化状态
-    normalizeStatus: function(status) {
+    normalizeStatus(status) {
         if (!status) return this.STATUS.ACTIVE;
-        var key = String(status).toLowerCase().trim();
+        const key = String(status).toLowerCase().trim();
         return this._statusMap[key] || String(status);
     },
 
     // 标准化类型
-    normalizeType: function(type) {
+    normalizeType(type) {
         if (!type) return this.TYPE.SIDE;
-        var key = String(type).toLowerCase().trim();
-        var map = {
+        const key = String(type).toLowerCase().trim();
+        const map = {
             'main': this.TYPE.MAIN,
             '主线': this.TYPE.MAIN,
             'side': this.TYPE.SIDE,
@@ -241,7 +237,7 @@ var QuestMutator = {
     },
 
     // 标准化奖励
-    normalizeRewards: function(rewards) {
+    normalizeRewards(rewards) {
         if (!Array.isArray(rewards)) return [];
         return rewards.map(function(r) {
             if (!r) return null;

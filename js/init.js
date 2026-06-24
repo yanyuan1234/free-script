@@ -61,9 +61,9 @@ async function initApp() {
 
         // 设置菜单顶部日期为当天
         try {
-            var now = new Date();
-            var dateStr = (now.getMonth() + 1) + '/' + now.getDate();
-            var dateEl = document.getElementById('menuTopDate');
+            const now = new Date();
+            const dateStr = (now.getMonth() + 1) + '/' + now.getDate();
+            const dateEl = document.getElementById('menuTopDate');
             if (dateEl) dateEl.textContent = dateStr;
         } catch(e) { console.warn('[INIT] 设置菜单日期失败:', e); }
 
@@ -75,12 +75,10 @@ async function initApp() {
         }
 
         // 隐藏加载指示器
-        var loadingEl = document.getElementById('appLoading');
+        const loadingEl = document.getElementById('appLoading');
         if (loadingEl) {
             loadingEl.classList.add('hidden');
-            TimerManager.setTimeout('hideLoading', function() {
-                if (loadingEl.parentNode) loadingEl.remove();
-            }, 400);
+            TimerManager.setTimeout('hideLoading', () => { if (loadingEl.parentNode) loadingEl.remove(); }, 400);
         }
 
         // 【阶段三】运行时基础可访问性增强
@@ -101,14 +99,14 @@ async function initApp() {
 function enhanceAccessibility() {
     try {
         // 1. 所有无 type 的 button 默认设为 type="button"，避免表单默认提交
-        var buttons = document.querySelectorAll('button:not([type])');
-        for (var i = 0; i < buttons.length; i++) {
+        const buttons = document.querySelectorAll('button:not([type])');
+        for (let i = 0; i < buttons.length; i++) {
             buttons[i].setAttribute('type', 'button');
         }
 
         // 2. 图标 svg 对屏幕阅读器隐藏
-        var icons = document.querySelectorAll('svg.icon, .icon svg');
-        for (var j = 0; j < icons.length; j++) {
+        const icons = document.querySelectorAll('svg.icon, .icon svg');
+        for (let j = 0; j < icons.length; j++) {
             if (!icons[j].getAttribute('aria-hidden')) {
                 icons[j].setAttribute('aria-hidden', 'true');
                 icons[j].setAttribute('focusable', 'false');
@@ -116,9 +114,9 @@ function enhanceAccessibility() {
         }
 
         // 3. 图标按钮若无 aria-label，尝试推断
-        var iconBtns = document.querySelectorAll('button[class*="icon"], button[class*="circle"], [data-close]');
-        for (var k = 0; k < iconBtns.length; k++) {
-            var btn = iconBtns[k];
+        const iconBtns = document.querySelectorAll('button[class*="icon"], button[class*="circle"], [data-close]');
+        for (let k = 0; k < iconBtns.length; k++) {
+            const btn = iconBtns[k];
             if (btn.getAttribute('aria-label')) continue;
             if (btn.getAttribute('aria-labelledby')) continue;
             if (btn.textContent && btn.textContent.trim().length > 0) continue;
@@ -136,19 +134,19 @@ function enhanceAccessibility() {
         }
 
         // 4. 图片若无 alt 则补空 alt（装饰性图片）
-        var imgs = document.querySelectorAll('img:not([alt])');
-        for (var m = 0; m < imgs.length; m++) {
+        const imgs = document.querySelectorAll('img:not([alt])');
+        for (let m = 0; m < imgs.length; m++) {
             imgs[m].setAttribute('alt', '');
         }
 
         // 5. 为已有 modal-overlay 补充基础 ARIA（showModal 也会动态补充）
-        var overlays = document.querySelectorAll('.modal-overlay');
-        for (var n = 0; n < overlays.length; n++) {
-            var ov = overlays[n];
+        const overlays = document.querySelectorAll('.modal-overlay');
+        for (let n = 0; n < overlays.length; n++) {
+            const ov = overlays[n];
             if (!ov.getAttribute('role')) ov.setAttribute('role', 'dialog');
             ov.setAttribute('aria-modal', 'true');
             // 若内部有标题且未关联，则关联
-            var title = ov.querySelector('.modal-title');
+            const title = ov.querySelector('.modal-title');
             if (title && !ov.getAttribute('aria-labelledby')) {
                 if (!title.id) title.id = ov.id + '_title';
                 ov.setAttribute('aria-labelledby', title.id);
@@ -164,7 +162,7 @@ function enhanceAccessibility() {
 // 根据 DOM 就绪状态选择初始化时机
 // 某些浏览器环境中 DOMContentLoaded 可能不触发或已触发
 if (document.readyState === 'loading') {
-    GlobalCleanup.registerListener(window, 'DOMContentLoaded', function() { initApp(); });
+    GlobalCleanup.registerListener(window, 'DOMContentLoaded', () => initApp());
 } else {
     initApp();
 }
@@ -173,19 +171,19 @@ if (document.readyState === 'loading') {
 // 通过 data-action 属性路由点击事件，避免内联事件处理器被 XSS 利用
 function _setupGlobalEventDelegation() {
     // 事件路由表：data-action 值 -> 处理函数
-    var actionHandlers = {
-        'toggle-thought': function(el) {
+    const actionHandlers = {
+        'toggle-thought'(el) {
             if (typeof toggleThought === 'function') toggleThought(el);
         }
     };
 
     GlobalCleanup.registerListener(document, 'click', function(e) {
-        var el = e.target;
+        let el = e.target;
         // 向上查找带 data-action 的元素
         while (el && el !== document) {
-            var action = el.getAttribute && el.getAttribute('data-action');
+            const action = el.getAttribute && el.getAttribute('data-action');
             if (action) {
-                var handler = actionHandlers[action];
+                const handler = actionHandlers[action];
                 if (handler) {
                     e.preventDefault();
                     handler(el);

@@ -1,25 +1,23 @@
 // ========================================
 // 角色变更器 - CharacterMutator
 // ========================================
-var CharacterMutator = {
+const CharacterMutator = {
     // 设置角色列表
-    setCharacters: function(characters, options) {
-        var normalized = (characters || []).map(this.normalizeCharacter.bind(this)).filter(Boolean);
+    setCharacters(characters, options) {
+        const normalized = (characters || []).map(this.normalizeCharacter.bind(this)).filter(Boolean);
         // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'entities.characters'，确保通知路径匹配
         StateManager.set('entities.characters', normalized, { silent: true });
         return StateManager.setLegacy('allCharacters', this._arrayToObject(normalized), options);
     },
 
     // 合并角色：同名更新，新名追加
-    mergeCharacters: function(characters, options) {
+    mergeCharacters(characters, options) {
         var self = this;
-        var list = StateManager.get('entities.characters') || [];
+        const list = StateManager.get('entities.characters') || [];
         (characters || []).forEach(function(raw) {
-            var normalized = self.normalizeCharacter(raw);
+            const normalized = self.normalizeCharacter(raw);
             if (!normalized) return;
-            var idx = list.findIndex(function(c) {
-                return c.name === normalized.name;
-            });
+            const idx = list.findIndex((c) => c.name === normalized.name);
             if (idx >= 0) {
                 list[idx] = Object.assign({}, list[idx], normalized);
             } else {
@@ -30,8 +28,8 @@ var CharacterMutator = {
     },
 
     // 数组 -> 对象（兼容旧代码 allCharacters 格式）
-    _arrayToObject: function(characters) {
-        var obj = {};
+    _arrayToObject(characters) {
+        const obj = {};
         (characters || []).forEach(function(c) {
             if (c && c.name) obj[c.name] = c;
         });
@@ -39,7 +37,7 @@ var CharacterMutator = {
     },
 
     // 更新角色关系
-    updateRelationship: function(name, delta, options) {
+    updateRelationship(name, delta, options) {
         return this.updateCharacter(name, function(character) {
             character.favor = (character.favor || 0) + (delta || 0);
             return character;
@@ -47,11 +45,11 @@ var CharacterMutator = {
     },
 
     // 通用更新
-    updateCharacter: function(name, updater, options) {
-        var characters = StateManager.get('entities.characters') || [];
-        var updated = characters.map(function(c) {
+    updateCharacter(name, updater, options) {
+        const characters = StateManager.get('entities.characters') || [];
+        const updated = characters.map(function(c) {
             if (c.name === name) {
-                var clone = StateSchema.deepClone(c);
+                const clone = StateSchema.deepClone(c);
                 return updater(clone) || clone;
             }
             return c;
@@ -60,9 +58,9 @@ var CharacterMutator = {
     },
 
     // 标准化角色
-    normalizeCharacter: function(raw) {
+    normalizeCharacter(raw) {
         if (!raw) return null;
-        var name = String(raw.name || raw.title || raw.character || '').trim();
+        const name = String(raw.name || raw.title || raw.character || '').trim();
         if (!name) return null;
         return {
             id: raw.id || ('char_' + name + '_' + Date.now()),
@@ -77,7 +75,7 @@ var CharacterMutator = {
     },
 
     // 标准化状态值
-    normalizeStats: function(stats) {
+    normalizeStats(stats) {
         if (!stats) return [];
         if (Array.isArray(stats)) {
             return stats.map(function(s) {
@@ -86,11 +84,11 @@ var CharacterMutator = {
                     name: String(s.name || s.key || '').trim(),
                     value: parseInt(s.value !== undefined ? s.value : s.val) || 0
                 };
-            }).filter(function(s) { return s.name; });
+            }).filter((s) => s.name);
         }
         if (typeof stats === 'object') {
-            var result = [];
-            for (var key in stats) {
+            const result = [];
+            for (let key in stats) {
                 if (stats.hasOwnProperty(key)) {
                     result.push({ name: key, value: parseInt(stats[key]) || 0 });
                 }

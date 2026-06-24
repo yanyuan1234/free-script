@@ -15,17 +15,17 @@
 
         // ── Hook 1: PresetManager.loadPreset ──
         // 在预设加载后激活STscript引擎 + 清除变量缓存
-        var origLoadPreset = PresetManager.loadPreset;
+        const origLoadPreset = PresetManager.loadPreset;
         PresetManager.loadPreset = function(idx) {
             // 清除 injectPresetGlobalVars 的变量解析缓存
             _presetVarCacheKey = null;
             _presetVarParsed = false;
 
             // 调用原始加载
-            var result = origLoadPreset.call(this, idx);
+            const result = origLoadPreset.call(this, idx);
 
             // 激活STscript引擎
-            var preset = this.presets[idx];
+            const preset = this.presets[idx];
             if (preset && window.gameAdapter) {
                 window.gameAdapter.onPresetLoaded(preset);
 
@@ -56,7 +56,7 @@
         // 在全局变量注入时同时处理STscript变量
         // 性能优化：使用缓存，只在预设切换时重新解析，避免每次发消息都全量遍历
         if (typeof injectPresetGlobalVars === 'function') {
-            var origInject = injectPresetGlobalVars;
+            const origInject = injectPresetGlobalVars;
             var _presetVarCacheKey = null; // 缓存键：预设名称+prompt数量
             var _presetVarParsed = false;  // 是否已解析过
 
@@ -65,16 +65,16 @@
 
                 // 额外：处理当前预设中的 setvar/getvar（带缓存）
                 if (window.gameAdapter && window.gameAdapter.currentPreset) {
-                    var preset = window.gameAdapter.currentPreset;
-                    var prompts = preset.prompts || [];
-                    var cacheKey = (preset.name || '') + '_' + prompts.length;
+                    const preset = window.gameAdapter.currentPreset;
+                    const prompts = preset.prompts || [];
+                    const cacheKey = (preset.name || '') + '_' + prompts.length;
 
                     // 只在预设切换或首次时执行全量解析
                     if (_presetVarCacheKey !== cacheKey || !_presetVarParsed) {
                         _presetVarCacheKey = cacheKey;
                         _presetVarParsed = true;
 
-                        prompts.forEach(function(p) {
+                        prompts.forEach(p => {
                             if (p.enabled !== false && p.content) {
                                 // 解析并执行 setvar 等指令
                                 window.gameAdapter.parse(p.content);
@@ -96,7 +96,7 @@
         // ── Hook 6: 增强 RegexManager 支持月读/蛾摩拉正则格式 ──
         if (typeof RegexManager !== 'undefined') {
             // 保存原始 applyToOutput
-            var origApplyToOutput = RegexManager.applyToOutput;
+            const origApplyToOutput = RegexManager.applyToOutput;
             if (origApplyToOutput) {
                 RegexManager.applyToOutput = function(text) {
                     // 先用游戏原始正则处理
@@ -115,7 +115,7 @@
             }
 
             // 增强 applyToInput
-            var origApplyToInput = RegexManager.applyToInput;
+            const origApplyToInput = RegexManager.applyToInput;
             if (origApplyToInput) {
                 RegexManager.applyToInput = function(text) {
                     text = origApplyToInput.call(this, text);
@@ -132,7 +132,7 @@
         // ── Hook 7: 预设导入增强 ──
         // 当用户导入酒馆预设JSON时，自动标准化格式
         if (typeof PresetManager !== 'undefined' && PresetManager.importPreset) {
-            var origImport = PresetManager.importPreset;
+            const origImport = PresetManager.importPreset;
             PresetManager.importPreset = function(data) {
                 // 标准化预设格式
                 if (data && !data._stscriptNormalized) {
@@ -164,13 +164,9 @@
 
                     // 验证兼容性
                     if (window.PresetConfigManager) {
-                        var validation = PresetConfigManager.validatePreset(data);
-                        validation.info.forEach(function(msg) {
-                            console.log('[STscript] ' + msg);
-                        });
-                        validation.warnings.forEach(function(msg) {
-                            console.warn('[STscript] ⚠️ ' + msg);
-                        });
+                        const validation = PresetConfigManager.validatePreset(data);
+                        validation.info.forEach(msg => console.log('[STscript] ' + msg));
+                        validation.warnings.forEach(msg => console.warn('[STscript] ⚠️ ' + msg));
                     }
                 }
 

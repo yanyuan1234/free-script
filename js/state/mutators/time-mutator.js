@@ -1,16 +1,16 @@
 // ========================================
 // 时间变更器 - TimeMutator
 // ========================================
-var TimeMutator = {
+const TimeMutator = {
     // 设置完整时间
-    setTime: function(time, options) {
+    setTime(time, options) {
         if (!time || typeof time !== 'object') {
-            var empty = { date: '', time: '', period: '' };
+            const empty = { date: '', time: '', period: '' };
             StateManager.set('time', empty, { silent: true });
             // 【P1修复】用 setLegacy 写旧路径，经 getPath 翻译为 'time'，确保通知路径匹配
             return StateManager.setLegacy('gameTime', empty, options);
         }
-        var normalized = {
+        const normalized = {
             date: String(time.date || '').trim(),
             time: String(time.time || '').trim(),
             period: String(time.period || time.phase || '').trim()
@@ -21,10 +21,10 @@ var TimeMutator = {
     },
 
     // 推进时间
-    advance: function(options) {
+    advance(options) {
         options = options || {};
-        var current = StateManager.get('time') || {};
-        var periodMap = {
+        const current = StateManager.get('time') || {};
+        const periodMap = {
             '清晨': '上午',
             '上午': '中午',
             '中午': '下午',
@@ -33,9 +33,9 @@ var TimeMutator = {
             '晚上': '深夜',
             '深夜': '清晨'
         };
-        var period = current.period || '清晨';
-        var nextPeriod = options.nextPeriod || periodMap[period] || '清晨';
-        var next = {
+        const period = current.period || '清晨';
+        const nextPeriod = options.nextPeriod || periodMap[period] || '清晨';
+        const next = {
             date: current.date || '',
             time: '',
             period: nextPeriod
@@ -48,9 +48,9 @@ var TimeMutator = {
     },
 
     // 简单日期推进（仅支持 "第N日" 或常见格式）
-    _nextDate: function(dateStr) {
+    _nextDate(dateStr) {
         if (!dateStr) return '第2日';
-        var match = dateStr.match(/第\s*(\d+)\s*日/);
+        const match = dateStr.match(/第\s*(\d+)\s*日/);
         if (match) {
             return '第' + (parseInt(match[1]) + 1) + '日';
         }
