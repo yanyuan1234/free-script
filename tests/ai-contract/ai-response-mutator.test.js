@@ -51,7 +51,8 @@ var parsed = {
 };
 var result = AIResponseMutator.apply(parsed);
 assertEq(result.success, true, 'apply success');
-assertEq(StateManager.get('progress.turn'), 1, 'turn advanced');
+// 【阶段2】_applyTurn 不再递增（避免与 game.js legacy 路径双倍递增），仅同步镜像
+assertEq(StateManager.get('progress.turn'), 0, 'turn not advanced by mutator (legacy handles)');
 assertEq(StateManager.get('progress.sceneTitle'), '酒馆', 'scene title');
 assertEq(StateManager.get('entities.player').name, '艾文', 'player name');
 assertEq(StateManager.get('entities.bag')[0].name, '面包', 'bag item');

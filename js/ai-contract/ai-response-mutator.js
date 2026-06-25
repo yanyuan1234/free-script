@@ -60,10 +60,13 @@ const AIResponseMutator = {
     },
 
     // 回合数推进
+    // 【阶段2修复双倍递增】原 _applyTurn 会 +1，但 game.js:2099 的 legacy 路径也会 +1，
+    // 激活 AIResponseMutator 后会导致每轮 +2。现移除 _applyTurn 的递增逻辑，
+    // 回合数统一由 game.js legacy 路径（line 2099）唯一推进。
     _applyTurn(data) {
+        // 仅同步 progress.turn 与 _stats.totalTurns 的镜像一致性，不递增
         const currentTurn = parseInt(StateManager.get('progress.turn') || 0) || 0;
-        StateManager.set('progress.turn', currentTurn + 1, { silent: true });
-        StateManager.setLegacy('_stats.totalTurns', currentTurn + 1, { silent: true });
+        StateManager.setLegacy('_stats.totalTurns', currentTurn, { silent: true });
     },
 
     // 主角信息

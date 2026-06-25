@@ -1827,27 +1827,21 @@ async function sendAIRequest(userMessage, isInit = false) {
                     console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
                 }
                 updateSceneTitle(incomingTitle);
-                // 保存到gameState，确保读档后能恢复
+                // 【阶段2清理】AIResponseMutator._applyScene 已写 progress.lastSceneTitle，
+                // 此处仅保留 gameState 旧字段镜像（_syncLegacyMirror 已处理，无需手动写）
                 if (gameState) gameState._lastSceneTitle = incomingTitle;
-                if (StateManager) {
-                    StateManager.set('progress.lastSceneTitle', incomingTitle, { silent: true });
-                }
             } else if (gameState && storyText && storyText.trim()) {
                 // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
                 var turnNum = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 1);
                 var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
                 updateSceneTitle(fallbackTurnTitle);
                 gameState._lastSceneTitle = fallbackTurnTitle;
-                if (StateManager) {
-                    StateManager.set('progress.lastSceneTitle', fallbackTurnTitle, { silent: true });
-                }
             }
             // 保存HUD数据到gameState，确保读档后能恢复
+            // 【阶段2清理】AIResponseMutator._applyHUD 已写 ui.lastHUD，
+            // _syncLegacyMirror 自动同步到 _lastHUD，无需手动写 StateManager
             if (data.hud && gameState) {
                 gameState._lastHUD = data.hud;
-                if (StateManager) {
-                    StateManager.set('ui.lastHUD', data.hud, { silent: true });
-                }
             }
             // 兜底：就算AI没返回characters，也尝试从原文提取
             if (!data.characters) {
@@ -1872,10 +1866,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 _inferRelationshipsFromCharacters();
             }
             if (data.contextSummary) {
+                // 【阶段2清理】AIResponseMutator._applyContextSummary 已写 progress.rollingSummary，
+                // _syncLegacyMirror 自动同步到 gameState.rollingSummary，此处无需手动写
                 gameState.rollingSummary = data.contextSummary;
-                if (StateManager) {
-                    StateManager.set('progress.rollingSummary', data.contextSummary, { silent: true });
-                }
             }
             // 从 AI 返回的 title/story 中提取地点
             if (StateManager && (data.title || storyText)) {

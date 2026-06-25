@@ -3049,7 +3049,11 @@ if (Object.keys(theaterContent).length > 0) {
         data,
         storyText,
         mems: memParseResult.mems,
-        truncated: _truncated
+        truncated: _truncated,
+        // 【阶段2修复P0-1】添加 success 字段，激活 AIResponseMutator 状态层
+        // 原 parseAIResponse 不返回 success，导致 game.js:1712 的 parseResult.success 永远 undefined，
+        // AIResponseMutator.apply 从不执行（状态层是死代码）。
+        success: !!(data || storyText)
     };
 }
 
