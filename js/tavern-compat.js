@@ -3472,7 +3472,7 @@ var GameMemory = {
         try {
             var v = data.version || 1;
             // v1/v2 → v3：字段结构基本兼容，只需补全缺失字段并修正版本号
-            var migrated = JSON.parse(JSON.stringify(data));
+            var migrated = StateSchema.deepClone(data);
             // 补全 v3 新增字段
             if (!migrated.permanentFacts) migrated.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [], worldPlaces: [] };
             // 【P1修复BUG-010】补全 worldPlaces 字段（旧存档升级）
@@ -3675,7 +3675,6 @@ var MemoryManagerUI = {
     isVisible: false,
     currentTab: 'overview',
 
-    _esc: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); },
     _escAttr: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n').replace(/\r/g, '\\r'); },
 
     // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline/editOutline/refresh/detail/search/resolve
@@ -3726,19 +3725,19 @@ var MemoryManagerUI = {
         if (type === 'checkbox') {
             inputHtml = '<input id="' + id + '" type="checkbox"' + (val ? ' checked' : '') + ' style="width:auto;">';
         } else if (type === 'number') {
-            inputHtml = '<input id="' + id + '" type="number" value="' + this._esc(val) + '"' + (field.min !== undefined ? ' min="' + field.min + '"' : '') + (field.max !== undefined ? ' max="' + field.max + '"' : '') + ' style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
+            inputHtml = '<input id="' + id + '" type="number" value="' + escapeHtml(val) + '"' + (field.min !== undefined ? ' min="' + field.min + '"' : '') + (field.max !== undefined ? ' max="' + field.max + '"' : '') + ' style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
         } else if (type === 'textarea') {
             var minH = field.minHeight || '80px';
-            inputHtml = '<textarea id="' + id + '" rows="' + (field.rows || 4) + '"' + (field.placeholder ? ' placeholder="' + this._esc(field.placeholder) + '"' : '') + ' style="width:100%;min-height:' + minH + ';padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + this._esc(val) + '</textarea>';
+            inputHtml = '<textarea id="' + id + '" rows="' + (field.rows || 4) + '"' + (field.placeholder ? ' placeholder="' + escapeHtml(field.placeholder) + '"' : '') + ' style="width:100%;min-height:' + minH + ';padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + escapeHtml(val) + '</textarea>';
         } else if (type === 'select') {
             var opts = (field.options || []).map(function(o) {
                 var v = (typeof o === 'object' && o !== null) ? o.v : o;
                 var t = (typeof o === 'object' && o !== null) ? o.t : o;
-                return '<option value="' + this._esc(v) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + this._esc(t) + '</option>';
+                return '<option value="' + escapeHtml(v) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + escapeHtml(t) + '</option>';
             }, this).join('');
             inputHtml = '<select id="' + id + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">' + opts + '</select>';
         } else {
-            inputHtml = '<input id="' + id + '" value="' + this._esc(val) + '"' + (field.placeholder ? ' placeholder="' + this._esc(field.placeholder) + '"' : '') + ' style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
+            inputHtml = '<input id="' + id + '" value="' + escapeHtml(val) + '"' + (field.placeholder ? ' placeholder="' + escapeHtml(field.placeholder) + '"' : '') + ' style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
         }
         var labelHtml = label ? '<label style="font-size:12px;color:var(--text-tertiary);display:block;margin-bottom:4px;">' + label + (field.required ? ' *' : '') + '</label>' : '';
         return '<div>' + labelHtml + inputHtml + '</div>';
@@ -3829,7 +3828,7 @@ var MemoryManagerUI = {
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + (stats.memorySize / 1024).toFixed(1) + 'KB</div><div class="memory-stat-label">数据大小</div></div>'
             + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title">系统状态</div><div style="display:flex;gap:16px;">'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">游戏时间</div><div style="font-size:20px;font-weight:600;">' + this._esc(gm.getGameTimeStr()) + '</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">游戏时间</div><div style="font-size:20px;font-weight:600;">' + escapeHtml(gm.getGameTimeStr()) + '</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">永久事实</div><div style="font-size:20px;font-weight:600;">' + totalAnchors + ' 条</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">进行中约定</div><div style="font-size:20px;font-weight:600;">' + pendingQuests + ' 待办</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + gm.currentTurn + '</div></div>'
@@ -3853,21 +3852,21 @@ var MemoryManagerUI = {
         html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">近层保留详细对话，中层压缩摘要，远层只保留关键句。越远的记忆越精简，节省Token。</div>';
         html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--accent);">〔最近对话〕详细 · ' + (layers.near || []).length + ' 条</div>';
         if (layers.near && layers.near.length > 0) {
-            layers.near.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + self._esc(s) + '</div>'; });
+            layers.near.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + escapeHtml(s) + '</div>'; });
         } else {
             html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无近层摘要</div>';
         }
         html += '</div>';
         html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#ff9500;">〔近期摘要〕压缩 · ' + (layers.mid || []).length + ' 条</div>';
         if (layers.mid && layers.mid.length > 0) {
-            layers.mid.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + self._esc(s) + '</div>'; });
+            layers.mid.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + escapeHtml(s) + '</div>'; });
         } else {
             html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无中层摘要</div>';
         }
         html += '</div>';
         html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#999;">〔更早记忆〕关键句 · ' + (layers.far || []).length + ' 条</div>';
         if (layers.far && layers.far.length > 0) {
-            layers.far.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;color:var(--text-secondary);">' + self._esc(s) + '</div>'; });
+            layers.far.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;color:var(--text-secondary);">' + escapeHtml(s) + '</div>'; });
         } else {
             html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无远层摘要</div>';
         }
@@ -3888,11 +3887,11 @@ var MemoryManagerUI = {
                 var hasScene = !!loc.sceneState;
                 html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;">';
                 html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">';
-                html += '<div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' ◈' : '') + '</div>';
+                html += '<div style="font-weight:600;">' + escapeHtml(loc.name) + (loc.locked ? ' ◈' : '') + '</div>';
                 html += self._btn('edit', 'editSceneState', loc.name);
                 html += '</div>';
                 if (hasScene) {
-                    html += '<div style="font-size:13px;color:var(--text-secondary);padding:6px 8px;background:rgba(255,149,0,0.1);border-radius:4px;">' + self._esc(loc.sceneState) + '</div>';
+                    html += '<div style="font-size:13px;color:var(--text-secondary);padding:6px 8px;background:rgba(255,149,0,0.1);border-radius:4px;">' + escapeHtml(loc.sceneState) + '</div>';
                 } else {
                     html += '<div style="font-size:12px;color:var(--text-tertiary);">未设置场景状态</div>';
                 }
@@ -3913,7 +3912,7 @@ var MemoryManagerUI = {
             { id: 'editSceneLocked', label: '锁定场景 <span style="font-size:11px;">（锁定后状态不会自动清除）</span>', type: 'checkbox' }
         ];
         var values = [loc.sceneState || '', loc.locked];
-        var html = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑场景状态: ' + escapeHtml(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (let i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('sceneState', 'saveSceneState', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -3943,8 +3942,8 @@ var MemoryManagerUI = {
                 var dot = imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○');
                 var gameTime = e.gameTime || '';
                 html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">'
-                    + dot + ' ' + self._esc(e.content)
-                    + (gameTime ? '<span style="color:var(--text-tertiary);font-size:11px;margin-left:8px;">' + self._esc(gameTime) + '</span>' : '')
+                    + dot + ' ' + escapeHtml(e.content)
+                    + (gameTime ? '<span style="color:var(--text-tertiary);font-size:11px;margin-left:8px;">' + escapeHtml(gameTime) + '</span>' : '')
                     + '</div>';
             });
             html += '</div>';
@@ -3956,7 +3955,7 @@ var MemoryManagerUI = {
         var layers = gm._summaryLayers || { near: [], mid: [], far: [] };
         html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--accent);">〔最近对话〕详细 · ' + (layers.near || []).length + ' 条</div>';
         if (layers.near && layers.near.length > 0) {
-            layers.near.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + self._esc(s) + '</div>'; });
+            layers.near.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + escapeHtml(s) + '</div>'; });
         } else {
             html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无近层摘要</div>';
         }
@@ -3964,7 +3963,7 @@ var MemoryManagerUI = {
 
         html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#ff9500;">〔近期摘要〕压缩 · ' + (layers.mid || []).length + ' 条</div>';
         if (layers.mid && layers.mid.length > 0) {
-            layers.mid.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + self._esc(s) + '</div>'; });
+            layers.mid.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + escapeHtml(s) + '</div>'; });
         } else {
             html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无中层摘要</div>';
         }
@@ -3972,7 +3971,7 @@ var MemoryManagerUI = {
 
         html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#999;">〔更早记忆〕关键句 · ' + (layers.far || []).length + ' 条</div>';
         if (layers.far && layers.far.length > 0) {
-            layers.far.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;color:var(--text-secondary);">' + self._esc(s) + '</div>'; });
+            layers.far.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;color:var(--text-secondary);">' + escapeHtml(s) + '</div>'; });
         } else {
             html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无远层摘要</div>';
         }
@@ -4001,7 +4000,7 @@ var MemoryManagerUI = {
                 var editBtn = '<button onclick="MemoryManagerUI.editPermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
                 var delBtn  = '<button onclick="MemoryManagerUI.deletePermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
                 var btns = '<div style="display:flex;gap:6px;flex-shrink:0;">' + editBtn + delBtn + '</div>';
-                html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + self._esc(a.content) + sourceTag + '</div>' + btns + '</div>';
+                html += '<div style="padding:12px 14px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;font-size:14px;line-height:1.7;word-break:break-all;">' + escapeHtml(a.content) + sourceTag + '</div>' + btns + '</div>';
             });
             html += '</div>';
         });
@@ -4080,7 +4079,7 @@ var MemoryManagerUI = {
         if (chars.length === 0) html += '<div class="memory-empty-state"><div>暂无角色数据</div></div>';
         else chars.forEach(function(char) {
             var btns = '<div style="display:flex;flex-direction:column;gap:4px;">' + self._btn('edit', 'editCharacter', char.name) + self._btn('delete', 'deleteCharacter', char.name) + '</div>';
-            html += '<div class="memory-character-card"><div class="memory-character-avatar">◇</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(char.name) + (char.locked ? ' ◈' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(char.title || '') + ' | 关系: ' + self._esc(char.relation || '未知') + ' | 好感: ' + self._esc(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + self._esc(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + self._esc(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + self._esc(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div>' + btns + '</div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar">◇</div><div style="flex:1;"><div style="font-weight:600;">' + escapeHtml(char.name) + (char.locked ? ' ◈' : '') + '</div><div style="font-size:12px;color:var(--text-secondary);">' + escapeHtml(char.title || '') + ' | 关系: ' + escapeHtml(char.relation || '未知') + ' | 好感: ' + escapeHtml(char.favorability || 0) + '</div>' + (char.mood ? '<div style="font-size:11px;color:var(--text-tertiary);">心情: ' + escapeHtml(char.mood) + '</div>' : '') + (char.location ? '<div style="font-size:11px;color:var(--text-tertiary);">位置: ' + escapeHtml(char.location) + '</div>' : '') + (char.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + char.accessCount + '次</div>' : '') + (char.gameTime ? '<div style="font-size:11px;color:var(--text-tertiary);">上次变化: ' + escapeHtml(gm._calculateRelativeTime(char.gameTime)) + '</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -4097,7 +4096,7 @@ var MemoryManagerUI = {
             { id: 'editCharLocked', label: '锁定场景', type: 'checkbox' }
         ];
         var values = [name, char.title, char.relation, char.favorability, char.mood, char.location, char.locked];
-        var html = '<div class="memory-card"><div class="memory-card-title">编辑角色: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑角色: ' + escapeHtml(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (let i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('characters', 'saveCharacter', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -4184,7 +4183,7 @@ var MemoryManagerUI = {
         else items.forEach(function(item) {
             var rarityColor = { '普通': '#999', '精良': '#34c759', '珍稀': '#007aff', '传说': '#ff9500' }[item.rarity] || '#999';
             var btns = '<div style="display:flex;flex-direction:column;gap:4px;">' + self._btn('edit', 'editItem', item.name) + self._btn('delete', 'deleteItem', item.name) + '</div>';
-            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + self._esc(rarityColor) + '20;color:' + self._esc(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + self._esc(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + self._esc(item.qty) + (item.unit ? self._esc(item.unit) : '') + ' | 品质: <span style="color:' + self._esc(rarityColor) + ';">' + self._esc(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + self._esc(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
+            html += '<div class="memory-character-card"><div class="memory-character-avatar" style="background:' + escapeHtml(rarityColor) + '20;color:' + escapeHtml(rarityColor) + ';">📦</div><div style="flex:1;"><div style="font-weight:600;">' + escapeHtml(item.name) + '</div><div style="font-size:12px;color:var(--text-secondary);">数量: ' + escapeHtml(item.qty) + (item.unit ? escapeHtml(item.unit) : '') + ' | 品质: <span style="color:' + escapeHtml(rarityColor) + ';">' + escapeHtml(item.rarity || '普通') + '</span></div>' + (item.desc ? '<div style="font-size:11px;color:var(--text-tertiary);margin-top:4px;">' + escapeHtml(item.desc) + '</div>' : '') + (item.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + item.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -4199,7 +4198,7 @@ var MemoryManagerUI = {
             { id: 'editItemDesc', label: '描述', type: 'textarea', minHeight: '80px' }
         ];
         var values = [name, item.qty || 1, item.unit || '个', item.rarity || '普通', item.desc || ''];
-        var html = '<div class="memory-card"><div class="memory-card-title">编辑物品: ' + this._esc(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
+        var html = '<div class="memory-card"><div class="memory-card-title">编辑物品: ' + escapeHtml(name) + '</div><div style="display:flex;flex-direction:column;gap:12px;">';
         for (let i = 0; i < fields.length; i++) html += this._formField(fields[i], values[i]);
         html += this._formFooter('items', 'saveItem', name);
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
@@ -4279,7 +4278,7 @@ var MemoryManagerUI = {
         if (locs.length === 0) html += '<div class="memory-empty-state"><div>暂无地点数据</div></div>';
         else locs.forEach(function(loc) {
             var btns = '<div style="display:flex;gap:4px;">' + self._btn('edit', 'editLocation', loc.name) + self._btn('delete', 'deleteLocation', loc.name) + '</div>';
-            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + self._esc(loc.name) + (loc.locked ? ' ◈' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + self._esc(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + self._esc(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + self._esc(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
+            html += '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:flex-start;gap:10px;"><div style="flex:1;"><div style="font-weight:600;">' + escapeHtml(loc.name) + (loc.locked ? ' ◈' : '') + '</div>' + (loc.desc ? '<div style="font-size:12px;color:var(--text-secondary);">' + escapeHtml(loc.desc) + '</div>' : '') + (loc.features ? '<div style="font-size:11px;color:var(--text-tertiary);">特征: ' + escapeHtml(loc.features) + '</div>' : '') + (loc.sceneState ? '<div style="font-size:11px;color:#ff9500;">场景: ' + escapeHtml(loc.sceneState) + (loc.locked ? ' [锁定]' : '') + '</div>' : '') + (loc.accessCount ? '<div style="font-size:11px;color:var(--text-tertiary);">提及: ' + loc.accessCount + '次</div>' : '') + '</div>' + btns + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -4333,17 +4332,17 @@ var MemoryManagerUI = {
         var self = this; var rels = Object.values(gm.tables.relationships);
         var html = '<div class="memory-card"><div class="memory-card-title">关系网</div>';
         if (rels.length === 0) html += '<div class="memory-empty-state"><div>暂无关系数据</div></div>';
-        else rels.forEach(function(rel) { html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;"><div style="font-weight:600;">' + self._esc(rel.from) + ' → ' + self._esc(rel.to) + '</div><div style="font-size:12px;color:var(--text-secondary);">' + self._esc(rel.type || '') + (rel.desc ? ' - ' + self._esc(rel.desc) : '') + '</div></div>'; });
+        else rels.forEach(function(rel) { html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;"><div style="font-weight:600;">' + escapeHtml(rel.from) + ' → ' + escapeHtml(rel.to) + '</div><div style="font-size:12px;color:var(--text-secondary);">' + escapeHtml(rel.type || '') + (rel.desc ? ' - ' + escapeHtml(rel.desc) : '') + '</div></div>'; });
         html += '</div>'; return html;
     },
 
     renderPlot: function(gm) {
         var self = this;
         var html = '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>剧情大纲</span>' + this._btn('editOutline', 'editPlot', undefined) + '</div>';
-        if (gm.plot.worldSetting) html += '<div style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">世界观</div><div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.6;">' + self._esc(gm.plot.worldSetting) + '</div></div>';
-        if (gm.plot.chapters.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">章节</div>'; gm.plot.chapters.forEach(function(ch) { html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;"><div style="font-weight:600;">' + self._esc(ch.title) + ' <span style="font-size:11px;color:var(--text-tertiary);">回合 ' + ch.startTurn + '-' + ch.endTurn + '</span></div><div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;">' + self._esc(ch.summary) + '</div></div>'; }); }
-        if (gm.plot.currentChapter) html += '<div style="margin-top:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">当前进展</div><div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.6;max-height:200px;overflow-y:auto;">' + self._esc(gm.plot.currentChapter) + '</div></div>';
-        if (gm.plot.pendingMysteries && gm.plot.pendingMysteries.length > 0) { html += '<div style="margin-top:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">待解决悬念</div>'; gm.plot.pendingMysteries.forEach(function(m) { html += '<div style="padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">• ' + self._esc(m) + '</div>'; }); html += '</div>'; }
+        if (gm.plot.worldSetting) html += '<div style="margin-bottom:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">世界观</div><div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.6;">' + escapeHtml(gm.plot.worldSetting) + '</div></div>';
+        if (gm.plot.chapters.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">章节</div>'; gm.plot.chapters.forEach(function(ch) { html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;"><div style="font-weight:600;">' + escapeHtml(ch.title) + ' <span style="font-size:11px;color:var(--text-tertiary);">回合 ' + ch.startTurn + '-' + ch.endTurn + '</span></div><div style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;">' + escapeHtml(ch.summary) + '</div></div>'; }); }
+        if (gm.plot.currentChapter) html += '<div style="margin-top:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">当前进展</div><div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;line-height:1.6;max-height:200px;overflow-y:auto;">' + escapeHtml(gm.plot.currentChapter) + '</div></div>';
+        if (gm.plot.pendingMysteries && gm.plot.pendingMysteries.length > 0) { html += '<div style="margin-top:12px;"><div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">待解决悬念</div>'; gm.plot.pendingMysteries.forEach(function(m) { html += '<div style="padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">• ' + escapeHtml(m) + '</div>'; }); html += '</div>'; }
         html += '</div>'; return html;
     },
 
@@ -4373,7 +4372,7 @@ var MemoryManagerUI = {
         else events.forEach(function(event, idx) {
             var realIdx = gm.events.length - 1 - idx; var imp = event.importance || 5;
             var icon = imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○');
-            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + self._esc(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + self._esc(event.turn) + '回合 | ' + self._esc(event.gameTime || '') + (event.gameTime ? ' (' + self._esc(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + self._esc(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div>' + self._btn('delete', 'deleteEvent', realIdx) + '</div>';
+            html += '<div class="memory-event-item" style="display:flex;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;margin-bottom:4px;">' + icon + ' ' + escapeHtml(event.content) + '</div><div style="font-size:11px;color:var(--text-tertiary);">第' + escapeHtml(event.turn) + '回合 | ' + escapeHtml(event.gameTime || '') + (event.gameTime ? ' (' + escapeHtml(gm._calculateRelativeTime(event.gameTime)) + ')' : '') + ' | 重要度: ' + escapeHtml(imp) + '/10' + (event.accessCount ? ' | 提及' + event.accessCount + '次' : '') + '</div></div>' + self._btn('delete', 'deleteEvent', realIdx) + '</div>';
         });
         html += '</div>'; return html;
     },
@@ -4420,7 +4419,7 @@ var MemoryManagerUI = {
             pending.forEach(function(q, i) {
                 var icon = typeIcons[q.type] || '◇'; var age = gm.currentTurn - (q.createdTurn || 0);
                 var staleWarn = q.stale || age > 30 ? '<span style="color:#f44;font-size:11px;margin-left:6px;">[长期未兑现]</span>' : '';
-                html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + self._esc(q.content) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + self._esc(q.createdTurn || 0) + '回合</div></div>' + self._btn('resolve', 'resolveQuestByIndex', quests.indexOf(q)) + '</div>';
+                html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + escapeHtml(q.content) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + escapeHtml(q.createdTurn || 0) + '回合</div></div>' + self._btn('resolve', 'resolveQuestByIndex', quests.indexOf(q)) + '</div>';
             });
             html += '</div>';
         }
@@ -4428,7 +4427,7 @@ var MemoryManagerUI = {
             html += '<div class="memory-card"><div class="memory-card-title">已完成</div>';
             resolved.slice(-5).forEach(function(q) {
                 var icon = typeIcons[q.type] || '◇';
-                html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;opacity:0.6;"><div style="font-size:13px;">✓ ' + icon + ' ' + self._esc(q.content) + '</div></div>';
+                html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;opacity:0.6;"><div style="font-size:13px;">✓ ' + icon + ' ' + escapeHtml(q.content) + '</div></div>';
             });
             html += '</div>';
         }
@@ -4454,7 +4453,7 @@ var MemoryManagerUI = {
         var self = this; var tl = gm.timeline.slice(-20).reverse();
         var html = '<div class="memory-card"><div class="memory-card-title">时间线</div>';
         if (tl.length === 0) html += '<div class="memory-empty-state"><div>暂无时间线数据</div></div>';
-        else tl.forEach(function(t) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;display:flex;gap:10px;align-items:center;"><div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;">第' + self._esc(t.turn) + '回合</div><div style="font-size:11px;color:var(--accent);white-space:nowrap;">' + self._esc(t.gameTime || '') + '</div><div style="font-size:13px;flex:1;">' + self._esc(t.summary || '') + '</div></div>'; });
+        else tl.forEach(function(t) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;display:flex;gap:10px;align-items:center;"><div style="font-size:11px;color:var(--text-tertiary);white-space:nowrap;">第' + escapeHtml(t.turn) + '回合</div><div style="font-size:11px;color:var(--accent);white-space:nowrap;">' + escapeHtml(t.gameTime || '') + '</div><div style="font-size:13px;flex:1;">' + escapeHtml(t.summary || '') + '</div></div>'; });
         html += '</div>'; return html;
     },
 
@@ -4466,7 +4465,7 @@ var MemoryManagerUI = {
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;margin-bottom:12px;"><div style="font-size:11px;color:var(--text-secondary);">总字符: ' + (stats.totalChars || 0) + ' / 预算: ' + (stats.budget || 0) + '</div>'
             + (stats.skippedModules && stats.skippedModules.length > 0 ? '<div style="font-size:11px;color:#ff9500;margin-top:4px;">变化驱动跳过: ' + stats.skippedModules.join(', ') + ' (无变化，零Token)</div>' : '')
             + '</div>'
-            + '<div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;font-family:monospace;">' + self._esc(injection) + '</div></div>';
+            + '<div style="padding:12px;background:var(--bg);border-radius:8px;white-space:pre-wrap;font-size:13px;line-height:1.6;max-height:400px;overflow-y:auto;font-family:monospace;">' + escapeHtml(injection) + '</div></div>';
         return html;
     },
 
@@ -4488,10 +4487,10 @@ var MemoryManagerUI = {
         if (!container) return;
         var self = this;
         var html = '';
-        if (results.events.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">事件 (' + results.events.length + ')</div>'; results.events.forEach(function(e) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + self._esc(e.content) + '</div>'; }); }
-        if (results.characters.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;margin-top:8px;">角色 (' + results.characters.length + ')</div>'; results.characters.forEach(function(c) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + self._esc(c.name) + (c.relation ? ' - ' + self._esc(c.relation) : '') + '</div>'; }); }
-        if (results.items.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;margin-top:8px;">物品 (' + results.items.length + ')</div>'; results.items.forEach(function(it) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + self._esc(it.name) + ' x' + self._esc(it.qty) + '</div>'; }); }
-        if (results.summaries.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;margin-top:8px;">摘要 (' + results.summaries.length + ')</div>'; results.summaries.forEach(function(s) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + self._esc(s) + '</div>'; }); }
+        if (results.events.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;">事件 (' + results.events.length + ')</div>'; results.events.forEach(function(e) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + escapeHtml(e.content) + '</div>'; }); }
+        if (results.characters.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;margin-top:8px;">角色 (' + results.characters.length + ')</div>'; results.characters.forEach(function(c) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + escapeHtml(c.name) + (c.relation ? ' - ' + escapeHtml(c.relation) : '') + '</div>'; }); }
+        if (results.items.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;margin-top:8px;">物品 (' + results.items.length + ')</div>'; results.items.forEach(function(it) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + escapeHtml(it.name) + ' x' + escapeHtml(it.qty) + '</div>'; }); }
+        if (results.summaries.length > 0) { html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:4px;margin-top:8px;">摘要 (' + results.summaries.length + ')</div>'; results.summaries.forEach(function(s) { html += '<div style="padding:8px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;">' + escapeHtml(s) + '</div>'; }); }
         if (!html) html = '<div style="text-align:center;padding:20px;color:var(--text-tertiary);">未找到匹配结果</div>';
         container.innerHTML = html;
     }

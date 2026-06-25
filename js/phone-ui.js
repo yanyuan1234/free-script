@@ -909,7 +909,7 @@ function getStoryList() {
                 } catch (e) { /* 非 JSON 或解析失败，保留原文 */ }
             }
             // 2. 检测 AI 思考内容（BUG-04 残留 / 历史污染数据）
-            if (_isThinkingContentForRecap(story)) {
+            if (_isThinkingContent(story)) {
                 story = '【本回合 AI 回复异常，内容已隐藏】';
                 title = title || '— 解析失败 —';
             }
@@ -918,20 +918,6 @@ function getStoryList() {
             return { text: story || '', title: title || '', time: m.time || '', index: idx };
         });
     return list;
-}
-
-// 【修复BUG-03】回顾页思考内容检测（与 game.js _isThinkingContent 同源，避免跨文件依赖）
-function _isThinkingContentForRecap(text) {
-    if (!text || typeof text !== 'string' || text.length < 10) return false;
-    var patterns = [
-        /我需要根据[^。]*推进/, /我需要[：:]/, /分析[：:]/,
-        /用户.{0,5}选择了/, /玩家.{0,5}选择了/, /首先得/,
-        /这回合/, /本回合.{0,5}应该/, /当前状态[：:]/,
-        /- 时间[：:]/, /- 主角[：:]/
-    ];
-    var hits = 0;
-    for (var i = 0; i < patterns.length; i++) if (patterns[i].test(text)) hits++;
-    return hits >= 2;
 }
 
 // 【已禁用】本地模板生成的"假"朋友圈/日记已下线，全部由 API 动态生成。
@@ -4948,7 +4934,7 @@ function deleteLastTurn() {
                 Object.keys(gm.tables.characters).forEach(function(k) { delete gm.tables.characters[k]; });
                 Object.keys(_undoChars).forEach(function(k) {
                     try {
-                        gm.tables.characters[k] = JSON.parse(JSON.stringify(_undoChars[k]));
+                        gm.tables.characters[k] = StateSchema.deepClone(_undoChars[k]);
                     } catch(e) {
                         gm.tables.characters[k] = _undoChars[k];
                     }

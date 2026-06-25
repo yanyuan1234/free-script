@@ -1563,7 +1563,7 @@ var SaveDB = {
     },
     _attachChecksum(data) {
         if (!data || typeof data !== 'object') return data;
-        var clone = JSON.parse(JSON.stringify(data));
+        var clone = StateSchema.deepClone(data);
         var stateStr = typeof clone.state === 'string' ? clone.state : JSON.stringify(clone.state || {});
         clone._checksum = this._crc32(stateStr);
         clone._checksumTime = Date.now();
@@ -2375,7 +2375,7 @@ var GameTimeSystem = {
         var gt = gameState.gameTime;
         // 记录初始时间，用于后续检测剧情回退
         if (!gameState._initialGameTime && (gt.time || gt.period || gt.date)) {
-            gameState._initialGameTime = JSON.parse(JSON.stringify(gt));
+            gameState._initialGameTime = StateSchema.deepClone(gt);
         }
         // AI在JSON中返回 gameTime 字段
         if (data && data.gameTime) {

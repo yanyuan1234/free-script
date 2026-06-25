@@ -1038,7 +1038,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         var preTurn = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
         var preAIState = {
             title: preTitle,
-            gameTime: preGameTime ? JSON.parse(JSON.stringify(preGameTime)) : null,
+            gameTime: preGameTime ? StateSchema.deepClone(preGameTime) : null,
             turn: preTurn,
             storySnapshot: (gameState.conversationHistory && gameState.conversationHistory.length > 0) ?
                 gameState.conversationHistory.filter(function(m) { return m.role === 'assistant'; }).slice(-1)[0] : null
@@ -1919,7 +1919,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (typeof GameTimeSystem !== 'undefined') {
             var _preGameTime = StateManager ? StateManager.get('progress.preAIState.gameTime') : (gameState && gameState._preAIState && gameState._preAIState.gameTime);
             if (_aiTitleReset && _preGameTime) {
-                var restoredTime = JSON.parse(JSON.stringify(_preGameTime));
+                var restoredTime = StateSchema.deepClone(_preGameTime);
                 if (StateManager && TimeMutator) {
                     TimeMutator.setTime(restoredTime, { silent: true });
                 } else {
