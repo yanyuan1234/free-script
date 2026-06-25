@@ -388,11 +388,50 @@ function _generateAutoChoices(storyText, lastChoices) {
     return choices;
 }
 
+// 【修复BUG-04】检测文本是否为 AI 思考内容（推理过程而非剧情）
+// 触发条件：命中 2 个以上推理特征词，判定为思考泄漏
+// 用于拒绝把思考内容写入 conversationHistory，避免污染后续 prompt
+function _isThinkingContent(text) {
+    if (!text || typeof text !== 'string' || text.length < 10) return false;
+    var patterns = [
+        /我需要根据[^。]*推进/,
+        /我需要[^。]*分析/,
+        /我应该[^。]*描述/,
+        /让我[^。]*开始/,
+        /选择[A-Z]的后果分析/,
+        /当前状态[：:]/,
+        /- 时间[：:]/,
+        /- 主角[：:]/,
+        /- 已知NPC[：:]/,
+        /- 任务[：:]/,
+        /我需要[：:]/,
+        /分析[：:]/,
+        // 【NEW-BUG-5】扩展：覆盖实际泄漏文本特征
+        /用户.{0,5}选择了/,       // "用户现在选择了和莉瑞亚..."
+        /玩家.{0,5}选择了/,
+        /首先得/,                 // "首先得符合世界观"
+        /然后我得/,
+        /我来[^。]{0,10}推进/,
+        /接下来[^。]{0,10}描述/,
+        /根据.{0,10}设定/,
+        /根据.{0,10}世界观/,
+        /这回合/,
+        /本回合.{0,5}应该/
+    ];
+    var hits = 0;
+    for (var i = 0; i < patterns.length; i++) {
+        if (patterns[i].test(text)) hits++;
+    }
+    return hits >= 2;
+}
+
 function _slimAssistantMessage(content) {
     // 【修复X17】content 可能是 undefined/数组/对象（非字符串），需类型检查
     // 旧代码 !content 能挡住 undefined/null/''，但挡不住数组（truthy），数组.length 返回 undefined
     // undefined < 200 是 false，会走到 content.trim() 抛 TypeError
-    if (!content || typeof content !== 'string' || content.length < 200) return content;
+    // 【修复NEW-BUG-3】阈值从 200 降至 30：原值过大小短 JSON（如 {"title":"x","story":"y"}）
+    // 不被瘦身，原样写入历史导致回顾页显示 JSON 字符串。30 字足以覆盖最小 JSON 结构
+    if (!content || typeof content !== 'string' || content.length < 30) return content;
     // 尝试提取JSON中的story字段
     try {
         // 快速检测：不是JSON格式就直接返回
@@ -1917,7 +1956,9 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 【方案C】AI没输出choices时，基于story末段自动生成3个选项
         // 【修复BUG-05】原逻辑仅在 pureTextMode 下自动生成，JSON 模式下 choices 缺失会退化为硬编码通用选项
-        if (gameState && gameState.generateChoices && (!data || !data.choices)) {
+        // 【修复NEW-BUG-1】原条件 !data.choices 对空数组 [] 为 false（[] 是 truthy），
+        // ResponseParser 失败时 schema 默认返回 choices: []，导致自动生成永远不触发，回合 0 选项
+        if (gameState && gameState.generateChoices && (!data || !data.choices || data.choices.length === 0)) {
             // 【P2优化】传入上一轮选项用于去重，避免套路化
             var autoChoices = _generateAutoChoices(storyText, gameState._lastChoices);
             if (autoChoices && autoChoices.length > 0) {
@@ -2196,6 +2237,14 @@ async function sendAIRequest(userMessage, isInit = false) {
             historyAssistantContent = storyText || response;
         } else {
             historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
+        }
+        // 【修复BUG-04】拒绝把 AI 思考内容写入 conversationHistory
+        // ResponseParser 失败时，response/storyText 可能是 AI 的推理过程（"用户现在选择了..."）
+        // 直接入库会污染后续 prompt，导致 AI 混淆现实与推理、破第四面墙
+        if (_isThinkingContent(historyAssistantContent)) {
+            console.warn('[sendAIRequest] 检测到 AI 思考内容，拒绝写入历史，使用占位文本');
+            historyAssistantContent = '【本回合 AI 回复异常，已跳过存储。请重新生成或检查模型输出格式。】';
+            if (gameState) gameState._lastThinkingBlocked = true;
         }
         if (gameState && gameState.conversationHistory) {
             gameState.conversationHistory.push({

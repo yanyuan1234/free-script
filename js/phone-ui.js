@@ -888,12 +888,50 @@ function _extractKeywords(text) {
 }
 
 // 统一获取剧情列表的辅助函数（storyHistory 已合并到 conversationHistory）
+// 【修复BUG-03】历史消息可能是 JSON 字符串（_slimAssistantMessage 精简格式 {"title":"...","story":"..."}）
+// 旧实现直接返回 m.content，回顾页显示为原始 JSON 字符串，玩家无法阅读
+// 现解析 JSON 提取 title/story，并标记思考内容为隐藏（与 BUG-04 拦截呼应）
 function getStoryList() {
-    return (gameState.conversationHistory || [])
+    var list = (gameState.conversationHistory || [])
         .filter(function(m) { return m.role === 'assistant'; })
         .map(function(m, idx) {
-            return { text: m.content || '', time: '', index: idx };
+            var raw = m.content || '';
+            var title = '';
+            var story = raw;
+            // 1. 尝试解析 JSON 格式的历史消息
+            if (raw && typeof raw === 'string' && raw.trim().charAt(0) === '{') {
+                try {
+                    var parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        title = parsed.title || parsed.sceneTitle || parsed.scene || '';
+                        story = parsed.story || parsed.storyText || parsed.content || '';
+                    }
+                } catch (e) { /* 非 JSON 或解析失败，保留原文 */ }
+            }
+            // 2. 检测 AI 思考内容（BUG-04 残留 / 历史污染数据）
+            if (_isThinkingContentForRecap(story)) {
+                story = '【本回合 AI 回复异常，内容已隐藏】';
+                title = title || '— 解析失败 —';
+            }
+            // 3. 兜底：如果 story 为空但 raw 有内容（如纯文本模式），用 raw
+            if (!story && raw) story = raw;
+            return { text: story || '', title: title || '', time: m.time || '', index: idx };
         });
+    return list;
+}
+
+// 【修复BUG-03】回顾页思考内容检测（与 game.js _isThinkingContent 同源，避免跨文件依赖）
+function _isThinkingContentForRecap(text) {
+    if (!text || typeof text !== 'string' || text.length < 10) return false;
+    var patterns = [
+        /我需要根据[^。]*推进/, /我需要[：:]/, /分析[：:]/,
+        /用户.{0,5}选择了/, /玩家.{0,5}选择了/, /首先得/,
+        /这回合/, /本回合.{0,5}应该/, /当前状态[：:]/,
+        /- 时间[：:]/, /- 主角[：:]/
+    ];
+    var hits = 0;
+    for (var i = 0; i < patterns.length; i++) if (patterns[i].test(text)) hits++;
+    return hits >= 2;
 }
 
 // 【已禁用】本地模板生成的"假"朋友圈/日记已下线，全部由 API 动态生成。
@@ -3416,14 +3454,15 @@ function renderRecapPage() {
                 '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
         }
     } else {
-        // 【修复X7】剧情回顾摘要需要转义
+        // 【修复X7/BUG-03】剧情回顾摘要需要转义；卡片标题优先用 story title
         container.innerHTML = '<div class="recap-timeline">' + stories.map(function(s, i) {
             var isCurrent = i === stories.length - 1;
             var summary = (s.text || '').substring(0, 80);
+            var cardTitle = s.title || ('第' + (i + 1) + '段');
             return '<div class="timeline-item ' + (isCurrent ? 'current' : '') +
                 '" onclick="showRecapDetail(' + i + ')">' +
-                '<div class="timeline-item-head"><span class="timeline-item-title">第' + (i + 1) +
-                '段</span></div>' +
+                '<div class="timeline-item-head"><span class="timeline-item-title">' +
+                escapeHtml(cardTitle) + '</span></div>' +
                 '<div class="timeline-item-summary">' + escapeHtml(summary) + '...</div></div>';
         }).join('') + '</div>';
     }
@@ -3466,10 +3505,19 @@ function showRecapDetail(idx) {
     var titleEl = document.getElementById('recapDetailTitle');
     var bodyEl = document.getElementById('recapDetailBody');
     if (!titleEl || !bodyEl) return;
-    titleEl.textContent = '第' + (idx + 1) + '段';
-    // 先解析AI回复提取纯文本剧情，避免显示JSON格式
-    var parseResult = parseAIResponse(s.text);
-    var storyText = parseResult.storyText || s.text;
+    // 【修复BUG-03】使用 getStoryList 已解析的 title；若空则回退到"第N段"
+    titleEl.textContent = s.title || '第' + (idx + 1) + '段';
+    // s.text 已是 JSON 解析后的 story 字段（getStoryList 处理过），直接 formatStory 即可
+    // 仅在 s.text 仍是 JSON 字符串时（旧历史数据）兜底解析一次
+    var storyText = s.text || '';
+    if (storyText && storyText.trim().charAt(0) === '{') {
+        try {
+            var parsed = JSON.parse(storyText);
+            if (parsed && typeof parsed === 'object') {
+                storyText = parsed.story || parsed.storyText || parsed.content || storyText;
+            }
+        } catch (e) { /* 忽略，用原文 */ }
+    }
     bodyEl.innerHTML = formatStory(storyText);
     UI.showModal('recapDetailModal');
 }

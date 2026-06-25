@@ -50,10 +50,16 @@ const AIOutputSchema = {
         if (raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player)) {
             const playerClone = this._shallowClone(raw.player);
             // 【修复 P2】归一化 player.stats 字段名：prompt 要求 {label, value}，但 AI 可能返回 {name, value} 或 {key, value}
+            // 【修复BUG-09】空字符串/undefined/null value 归一化为 0，防止 UI 渲染为空白字段
             if (Array.isArray(playerClone.stats)) {
                 playerClone.stats = playerClone.stats.map(function(s) {
                     if (!s || typeof s !== 'object') return { label: '', value: 0 };
-                    return { label: s.label || s.name || s.key || '', value: s.value };
+                    var val = (s.value !== undefined ? s.value : s.val);
+                    if (val === '' || val === null || val === undefined) val = 0;
+                    // 字符串数字转 number
+                    var numVal = Number(val);
+                    if (!isNaN(numVal)) val = numVal;
+                    return { label: s.label || s.name || s.key || '', value: val };
                 }).filter(function(s) { return s.label; });
             }
             out.player = playerClone;
@@ -66,7 +72,18 @@ const AIOutputSchema = {
         if (raw.quests && Array.isArray(raw.quests)) out.quests = raw.quests.slice();
         if (raw.gameTime && typeof raw.gameTime === 'object' && !Array.isArray(raw.gameTime)) out.gameTime = this._shallowClone(raw.gameTime);
         if (raw.locations && Array.isArray(raw.locations)) out.locations = raw.locations.slice();
-        if (raw.keyEvents && Array.isArray(raw.keyEvents)) out.keyEvents = raw.keyEvents.slice();
+        // 【修复BUG-02】keyEvents 归一化为字符串数组：AI 可能返回 [{title:"..."}] 对象数组
+        // 直接 slice 会保留对象，下游字符串拼接时显示 [object Object]
+        // 统一提取为字符串，与 prompt-builder.js 约定的 ["事件1","事件2"] 格式一致
+        if (raw.keyEvents && Array.isArray(raw.keyEvents)) {
+            out.keyEvents = raw.keyEvents.map(function(ev) {
+                if (typeof ev === 'string') return ev.trim();
+                if (ev && typeof ev === 'object') {
+                    return String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '').trim();
+                }
+                return String(ev || '').trim();
+            }).filter(function(s) { return s; });
+        }
         if (raw.relationships && Array.isArray(raw.relationships)) out.relationships = raw.relationships.slice();
         if (raw.world && Array.isArray(raw.world)) out.world = raw.world.slice();
         if (raw.contextSummary) out.contextSummary = String(raw.contextSummary);

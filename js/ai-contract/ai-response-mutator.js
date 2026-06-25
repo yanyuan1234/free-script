@@ -422,17 +422,20 @@ const AIResponseMutator = {
     },
 
     // 关键事件
+    // 【修复NEW-BUG-2/4】事件存储统一为字符串数组：与 prompt-builder.js 约定一致
+    // 旧实现存为 {title,desc,turn} 对象数组，与 EnhancedMemory.events 的 {content,turn,...} 格式不通用，
+    // 下游按字符串读取会得到 [object Object]。现统一为字符串数组，让消费方自行包装。
     _applyKeyEvents(data) {
         const events = data.keyEvents || data.events || data.plotEvents;
         if (!events || !Array.isArray(events) || events.length === 0) return;
+        const turn = (StateManager.get && parseInt(StateManager.get('progress.turn') || 0)) || 0;
         const normalized = events.map(function(ev) {
-            if (typeof ev === 'string') return { title: ev.trim(), desc: '', turn: StateManager.get('progress.turn') || 0 };
-            return {
-                title: String(ev.title || ev.name || '').trim(),
-                desc: String(ev.desc || ev.description || '').trim(),
-                turn: ev.turn || StateManager.get('progress.turn') || 0
-            };
-        }).filter(ev => ev.title);
+            if (typeof ev === 'string') return ev.trim();
+            if (ev && typeof ev === 'object') {
+                return String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '').trim();
+            }
+            return String(ev || '').trim();
+        }).filter(function(s) { return s; });
         if (normalized.length === 0) return;
         StateManager.set('entities.events', normalized, { silent: true });
         StateManager.setLegacy('keyEvents', normalized, { silent: true });

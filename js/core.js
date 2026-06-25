@@ -2161,6 +2161,9 @@ var TypewriterBuffer = {
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';
         this._currentParaEl = null;
+        // 【修复BUG-05】异常路径强制清理光标，防止解析失败时光标 ▌ 残留
+        // stop() 会在 catch 块、renderStory 等多处被调用，统一在此清理覆盖所有路径
+        try { this.cleanCursor(); } catch (e) { /* ignore */ }
     },
     // 添加销毁方法，移除事件监听器防止内存泄漏
     destroy() {
@@ -3005,7 +3008,7 @@ if (!storyText || storyText.trim() === '') {
 }
 }
 
-// 【修复X8/BUG-01】裸文本思维链泄漏检测
+// 【修复X8/BUG-01/NEW-BUG-5】裸文本思维链泄漏检测
 // 某些模型在 JSON 解析失败后会把推理过程当剧情输出：
 //   "用户选择了选项A：打开门让苏小雨进来。我需要根据这个选择来推进故事。
 //    当前状态：- 时间：2024年10月15日 07:30 早晨 - 主角：大三学生..."
@@ -3013,6 +3016,7 @@ if (!storyText || storyText.trim() === '') {
 //   1. 含 "我需要"/"我应该"/"我来"/"让我" 等第一人称推理词
 //   2. 含 "当前状态"/"选择X的后果"/"分析" 等元叙述词
 //   3. 含 "- 时间：" / "- 主角：" 等状态清单格式
+//   4. 含 "用户现在选择了"/"首先得"/"然后我得" 等推理过程词（NEW-BUG-5 补充）
 // 触发条件：storyText 含明显推理特征（无论 JSON 是否解析成功，都可能泄漏到 story 字段）
 if (storyText && storyText.length > 0) {
     var _leakPatterns = [
@@ -3027,7 +3031,18 @@ if (storyText && storyText.length > 0) {
         /- 已知NPC[：:]/,
         /- 任务[：:]/,
         /我需要[：:]/,
-        /分析[：:]/
+        /分析[：:]/,
+        // 【NEW-BUG-5】扩展：覆盖实测泄漏文本特征（vb0e1ce05 R2/R4）
+        /用户.{0,5}选择了/,       // "用户现在选择了和莉瑞亚一起进去礼堂"
+        /玩家.{0,5}选择了/,
+        /首先得/,                 // "首先得符合世界观"
+        /然后我得/,
+        /我来[^。]{0,10}推进/,
+        /接下来[^。]{0,10}描述/,
+        /根据.{0,10}设定/,
+        /根据.{0,10}世界观/,
+        /这回合/,
+        /本回合.{0,5}应该/
     ];
     var _leakHits = 0;
     for (let _li = 0; _li < _leakPatterns.length; _li++) {
@@ -3074,26 +3089,22 @@ if (Object.keys(theaterContent).length > 0) {
 
  // 检测JSON是否被截断（不完整）
     var _truncated = false;
-    if (reply && typeof reply === 'string') {
+    // 【修复NEW-BUG-6】仅在 data 解析失败时才检测截断，避免 ResponseParser 已通过
+    // _repairTruncatedJSON 修复成功后仍打印"检测到JSON被截断：{=44, }=43"误导日志
+    if (reply && typeof reply === 'string' && !data) {
         var openBraces = (reply.match(/\{/g) || []).length;
         var closeBraces = (reply.match(/\}/g) || []).length;
         if (openBraces > 0 && openBraces > closeBraces) {
             _truncated = true;
             console.warn('[parseAIResponse] 检测到JSON被截断：{=' + openBraces + ', }=' + closeBraces);
-            // 【截断修复】如果 ResponseParser 已经通过 _repairTruncatedJSON 修复成功，
-            // data 会有值且 storyText 已提取。此时不应显示截断警告给用户。
-            if (data && data.story) {
-                console.log('[parseAIResponse] 截断 JSON 已自动修复，story 字段提取成功');
-            } else if (!data) {
-                // 解析完全失败的情况下，过滤掉原始 JSON 残骸，不显示给用户
-                var _cleanStory = (storyText || '').trim();
-                // 移除原始 JSON 片段（以 { 开头的部分）
-                _cleanStory = _cleanStory.replace(/\{[\s\S]*$/, '').trim();
-                if (!_cleanStory) {
-                    storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n💡 建议点击 🔄 重新生成，或增大 API 设置中的 max_tokens';
-                } else {
-                    storyText = _cleanStory;
-                }
+            // 解析完全失败的情况下，过滤掉原始 JSON 残骸，不显示给用户
+            var _cleanStory = (storyText || '').trim();
+            // 移除原始 JSON 片段（以 { 开头的部分）
+            _cleanStory = _cleanStory.replace(/\{[\s\S]*$/, '').trim();
+            if (!_cleanStory) {
+                storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n💡 建议点击 🔄 重新生成，或增大 API 设置中的 max_tokens';
+            } else {
+                storyText = _cleanStory;
             }
         }
     }

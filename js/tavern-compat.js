@@ -2310,9 +2310,23 @@ var GameMemory = {
 
     _buildPlotSection: function() {
         var lines = [];
+        var self = this;
         if (this.plot.worldSetting) lines.push('【世界观】' + this.plot.worldSetting);
         var chs = this.plot.chapters;
-        if (chs && chs.length > 0) { lines.push('【' + chs[0].title + '】' + chs[0].summary); if (chs.length > 1) chs.slice(-2).forEach(function(ch) { lines.push('【' + ch.title + '】' + ch.summary); }); }
+        // 【修复BUG-07】注入去重：前 3 回合 worldSetting 与 chapters[0].summary 来自同一 storySummary，
+        // 同一段文本若同时出现在【世界观】和【章节标题】段落会浪费 token 且语义重复
+        var seen = {};
+        if (this.plot.worldSetting) seen[this.plot.worldSetting] = true;
+        var pushChapter = function(ch) {
+            if (!ch || !ch.summary) return;
+            if (seen[ch.summary]) return;  // 与 worldSetting 或前一个 chapter 重复则跳过
+            seen[ch.summary] = true;
+            lines.push('【' + ch.title + '】' + ch.summary);
+        };
+        if (chs && chs.length > 0) {
+            pushChapter(chs[0]);
+            if (chs.length > 1) chs.slice(-2).forEach(pushChapter);
+        }
         if (this.plot.currentChapter) lines.push('【当前进展】' + this.plot.currentChapter);
         if (this.plot.pendingMysteries && this.plot.pendingMysteries.length > 0) { lines.push('【待解决悬念】'); this.plot.pendingMysteries.forEach(function(m) { lines.push('• ' + m); }); }
         return lines;
@@ -2471,11 +2485,20 @@ var GameMemory = {
         self._recalcEventDecayScores(self.currentTurn);
         // 按次计费：不硬限制事件数，让预算系统通过智能压缩自然控制
         self.events.slice().sort(function(a, b) { return (b && b.decayScore || 0) - (a && a.decayScore || 0); }).forEach(function(e) {
-            if (!e || !e.content) return;
+            if (!e) return;
+            // 【修复BUG-02】防御 content 为对象/非字符串：拼接前强制转字符串
+            var content = e.content;
+            if (content && typeof content === 'object') {
+                content = String(content.title || content.name || content.content || content.event || content.desc || '');
+            } else if (typeof content !== 'string') {
+                content = String(content || '');
+            }
+            content = (content || '').trim();
+            if (!content) return;
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
-            lines.push((imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○')) + '[重要度' + imp + ']' + timeTag + ' ' + e.content);
+            lines.push((imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○')) + '[重要度' + imp + ']' + timeTag + ' ' + content);
         });
         return lines;
     },
@@ -2825,7 +2848,18 @@ var GameMemory = {
         if (!gameData) return info;
         if (Array.isArray(gameData.characters)) gameData.characters.forEach(function(char) { if (char) info.characters.push({ name: char.name, title: char.title, relation: char.relation, favorability: char.favorability, desc: char.desc }); });
         if (Array.isArray(gameData.bag)) gameData.bag.forEach(function(item) { if (item) info.items.push({ name: item.name, count: item.count, desc: item.desc, rarity: item.rarity }); });
-        if (gameData.keyEvents && gameData.keyEvents.length > 0) { gameData.keyEvents.forEach(function(ev) { info.events.push({ content: ev, importance: self.scoreEventImportance(ev) }); }); var maxImp = 0; info.events.forEach(function(e) { if (e.importance > maxImp) maxImp = e.importance; }); info.importance = Math.max(info.importance, maxImp); }
+        if (gameData.keyEvents && gameData.keyEvents.length > 0) { gameData.keyEvents.forEach(function(ev) {
+            // 【修复BUG-02】防御事件为对象的情况：normalize 后可能仍残留对象，统一转字符串
+            var content = ev;
+            if (ev && typeof ev === 'object') {
+                content = String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '');
+            } else if (typeof ev !== 'string') {
+                content = String(ev || '');
+            }
+            content = (content || '').trim();
+            if (!content) return;
+            info.events.push({ content: content, importance: self.scoreEventImportance(content) });
+        }); var maxImp = 0; info.events.forEach(function(e) { if (e.importance > maxImp) maxImp = e.importance; }); info.importance = Math.max(info.importance, maxImp); }
         if (gameData.relationships) { info.relationships = gameData.relationships; info.importance += 1; }
         if (gameData.story) { if (gameData.story.length > 500) info.importance += 1; if (gameData.story.length > 1000) info.importance += 2; }
         return info;
