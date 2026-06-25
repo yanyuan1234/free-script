@@ -35,8 +35,11 @@ const QuestMutator = {
 
     // 设置任务列表（智能合并，不直接覆盖）
     setQuests(quests, options) {
-        const incoming = (quests || []).map(this.normalizeQuest.bind(this)).filter(Boolean);
-        const existing = (StateManager.get('entities.quests') || []);
+        // 【P0修复BUG-005】类型安全：quests 可能是单个对象，强制转为数组
+        const arr = Array.isArray(quests) ? quests : (quests ? [quests] : []);
+        const incoming = arr.map(this.normalizeQuest.bind(this)).filter(Boolean);
+        const rawExisting = StateManager.get('entities.quests');
+        const existing = Array.isArray(rawExisting) ? rawExisting : [];
         const merged = this._smartMerge(existing, incoming);
         // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 currentQuests
         return StateManager.set('entities.quests', merged, options);

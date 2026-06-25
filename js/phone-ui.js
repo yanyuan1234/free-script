@@ -1757,8 +1757,14 @@ function renderMomentsPage() {
     html += '<div class="date-header">' + dateStr + '</div>';
 
     if (posts.length === 0) {
+        // 【P2修复BUG-013】朋友圈缺失时显示"暂无动态"占位，而非使用故事文本填充
+        // 修复历史Bug：原"写 暂无朋友圈动态"包含残留的"写 "前缀字符
         html +=
-            '<div class="empty-state" style="padding:60px 20px;">写 暂无朋友圈动态<br><span style="font-size:12px;color:var(--text-tertiary);">游戏进行中会自动生成</span></div>';
+            '<div class="empty-state" style="padding:60px 20px;text-align:center;">' +
+            '<div style="font-size:36px;margin-bottom:12px;opacity:0.4;">○</div>' +
+            '<div style="font-size:14px;color:var(--text-secondary);">暂无朋友圈动态</div>' +
+            '<div style="font-size:12px;color:var(--text-tertiary);margin-top:6px;">游戏进行中会自动生成</div>' +
+            '</div>';
     } else {
         posts.forEach(function(post, idx) {
             var authorName = (post.author || '匿名').replace(/\n/g, '').replace(/\r/g, '').trim();

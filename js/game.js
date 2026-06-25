@@ -1817,7 +1817,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (userPrompt && _looksLikeInitialScene(incomingTitle, userPrompt)) {
                     _aiTitleReset = true;
                     var preTitle = StateManager ? StateManager.get('progress.preAIState.title') : (gameState._preAIState && gameState._preAIState.title);
-                    var turnNumC = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 1);
+                    // 【P1修复BUG-007】使用即将进入的回合数（当前 turn + 1），而非旧 turn
+                    // 旧实现使用旧 turn，导致初始生成显示"第 0 回合"（应为"第 1 回合"）
+                    var turnNumC = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
+                    turnNumC = (parseInt(turnNumC) || 0) + 1;
                     incomingTitle = preTitle || ('第 ' + turnNumC + ' 回合');
                     console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
                 }
@@ -1827,7 +1830,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (gameState) gameState._lastSceneTitle = incomingTitle;
             } else if (gameState && storyText && storyText.trim()) {
                 // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
-                var turnNum = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 1);
+                // 【P1修复BUG-007】使用即将进入的回合数（当前 turn + 1）
+                var turnNum = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
+                turnNum = (parseInt(turnNum) || 0) + 1;
                 var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
                 updateSceneTitle(fallbackTurnTitle);
                 gameState._lastSceneTitle = fallbackTurnTitle;
@@ -2078,6 +2083,17 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (st2) st2.innerHTML = formatStory(finalStory);
             _hideSkipButton();
         }
+        // 【P2修复BUG-012】安全网：流式结束后 30 秒强制清理光标
+        // 旧实现只依赖 TypewriterBuffer.onComplete 清理光标，但若打字机因故卡住
+        // （如 pause 后未 resume、异常退出）onComplete 不会触发，光标会永久残留
+        // 此安全网在 30 秒后无条件调用 cleanCursor，覆盖所有卡死场景
+        setTimeout(function() {
+            try {
+                if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.cleanCursor) {
+                    TypewriterBuffer.cleanCursor();
+                }
+            } catch (e) { /* 忽略 */ }
+        }, 30000);
         // 记录
         // storyHistory 已合并到 conversationHistory，不再单独存储
         
@@ -2089,6 +2105,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (StateManager) {
             StateManager.set('progress.turn', newTurn, { silent: true });
         }
+        // 【P1修复BUG-007】回合数递增后立即刷新标签显示
+        // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
+        if (typeof updateTurnLabel === 'function') updateTurnLabel();
         // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（与 utils.js estimateTokensUtil 一致）
         var currentTokens = response ? Math.round(response.length / 1.7) : 0;
         gameState._stats.totalTokens = (gameState._stats.totalTokens || 0) + currentTokens;

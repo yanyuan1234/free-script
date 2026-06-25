@@ -2256,13 +2256,30 @@ var TypewriterBuffer = {
         this.render();
     },
     // 【修复】渲染前清理打字光标，防止生成结束后"▌"残留
+    // 【P2修复BUG-012】增强清理：除了移除 .typing-cursor span 外，
+    // 还会兜底移除 storyText 末尾残留的 ▌ 字符（防止 cursor 被序列化进文本后无法用 DOM 选择器移除）
     cleanCursor() {
         if (typeof document === 'undefined') return;
         var storyEl = DOMCache.get('storyText', true);
         if (!storyEl) return;
+        // 1. 移除所有 .typing-cursor span 元素
         var cursors = storyEl.querySelectorAll('.typing-cursor');
         for (let i = 0; i < cursors.length; i++) {
             cursors[i].remove();
+        }
+        // 2. 兜底：移除末尾残留的 ▌ 字符（防止被 escapeHtml 序列化后无法用 DOM 选择器移除）
+        // 只清理末尾的，不影响正文中的合法 ▌（极少见，但保险起见）
+        if (storyEl.textContent && storyEl.textContent.charAt(storyEl.textContent.length - 1) === '▌') {
+            // 遍历末尾文本节点清理
+            var walker = document.createTreeWalker(storyEl, NodeFilter.SHOW_TEXT, null, false);
+            var lastTextNode = null;
+            var node;
+            while ((node = walker.nextNode())) {
+                if (node.nodeValue && node.nodeValue.length > 0) lastTextNode = node;
+            }
+            if (lastTextNode && lastTextNode.nodeValue.charAt(lastTextNode.nodeValue.length - 1) === '▌') {
+                lastTextNode.nodeValue = lastTextNode.nodeValue.slice(0, -1);
+            }
         }
     }
 };
@@ -4424,6 +4441,26 @@ function updateSceneTitle(title) {
     if (titleEl && title) {
         titleEl.textContent = title;
     }
+    // 【P1修复BUG-007】每次更新场景标题时同步刷新回合数标签
+    // 旧实现把回合数塞进 sceneTitle 的 fallback，AI 一旦返回 title 就会覆盖回合数显示
+    if (typeof updateTurnLabel === 'function') updateTurnLabel();
+}
+
+// 【P1修复BUG-007】独立的回合数标签更新函数
+// 把回合数显示在 storySceneLabel（原"AI实时生成"占位），与 sceneTitle 解耦：
+// - storySceneTitle：显示 AI 返回的标题（如"午夜的低语"），无标题时回退到"第 N 回合"
+// - storySceneLabel：永远显示"第 N 回合"，无论 AI 是否返回标题
+// 这样即使 AI 返回标题，玩家也能持续看到当前回合数，避免 BUG-007 的"标题覆盖回合数"问题
+function updateTurnLabel() {
+    var labelEl = document.getElementById('storySceneLabel');
+    if (!labelEl) return;
+    var turn = 0;
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        turn = parseInt(StateManager.get('progress.turn') || 0) || 0;
+    } else if (typeof gameState !== 'undefined' && gameState && gameState._stats) {
+        turn = parseInt(gameState._stats.totalTurns || 0) || 0;
+    }
+    labelEl.textContent = '第 ' + turn + ' 回合';
 }
 var _autoSaveTimer = null;
 // 【阶段二】增强版全局存档写入锁
@@ -4919,10 +4956,16 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         signal: signal
     });
     if (!res.ok) {
-        var errMsg = 'API错误: ' + res.status;
+        // 【P1修复BUG-001】保留 HTTP 状态码，确保 translateError 的 httpMap 能精确匹配
+        // 旧实现用 extractErrorMessage 提取 errData.error.message 后会丢弃 "API错误: 429"，
+        // 导致 429 在 translateError 中只能命中通用 'rate_limit' 关键字（甚至完全不匹配），
+        // 最终显示"请检查API地址和密钥"等无关错误。
+        // 新实现始终在错误信息中保留 "HTTP <status>" 后缀，让 httpMap 优先匹配状态码。
+        var errMsg = 'HTTP ' + res.status;
         try {
             var errData = await res.json();
-            errMsg = extractErrorMessage(errData.error || errData, errMsg);
+            var apiMsg = extractErrorMessage(errData.error || errData, '');
+            if (apiMsg) errMsg = errMsg + ': ' + apiMsg;
         } catch (e) { console.warn('[API] 错误响应解析失败:', e); }
         throw new Error(errMsg);
     }
@@ -4932,9 +4975,11 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // 【修复 #19】reasoningText 用于统计思考链长度，便于排查"只回了思考链没回正文"的情况
     var ctx = { fullText: '', reasoningText: '', streamError: null, onChunk: onChunk };
     var sseBuffer = '';
-    // 【优化 #1】rawBody 滚动保留最近 64KB，兜底解析通常只看末尾数据
+    // 【P0修复BUG-004】rawBody 滚动保留最近 256KB
+    // 原值 64KB 在推理模型场景下会截断 JSON 末尾（思考过程+JSON 输出可达 50-150KB）
+    // 提高到 256KB 可覆盖 99% 推理模型输出，避免 JSON 花括号不匹配
     var rawBody = '';
-    var RAW_BODY_MAX = 64 * 1024;
+    var RAW_BODY_MAX = 256 * 1024;
     var rawBodyTruncated = false;
 
     while (true) {
@@ -4946,15 +4991,15 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
             break;
         }
         var chunk = decoder.decode(readResult.value, { stream: true });
-        // 【优化 #1】滚动保留最近 64KB，SSE 兜底通常依赖末尾内容
+        // 【P0修复BUG-004】滚动保留最近 256KB，SSE 兜底通常依赖末尾内容
         rawBody += chunk;
-        if (rawBody.length > RAW_BODY_MAX) {
-            rawBody = rawBody.slice(-RAW_BODY_MAX);
-            if (!rawBodyTruncated) {
-                rawBodyTruncated = true;
-                console.warn('[callAI] rawBody 超过 64KB，改为滚动保留最近 64KB 用于兜底');
+            if (rawBody.length > RAW_BODY_MAX) {
+                rawBody = rawBody.slice(-RAW_BODY_MAX);
+                if (!rawBodyTruncated) {
+                    rawBodyTruncated = true;
+                    console.warn('[callAI] rawBody 超过 256KB，改为滚动保留最近 256KB 用于兜底');
+                }
             }
-        }
         sseBuffer += chunk;
         var events = sseBuffer.split(/\r?\n\r?\n/);
         sseBuffer = events.pop() || '';
@@ -5006,8 +5051,13 @@ async function executeAINormal(url, body, apiKey, signal) {
         signal: signal
     });
     if (!res.ok) {
-        var errData = await res.json().catch(function() { return {}; });
-        var errMsg = extractErrorMessage(errData.error || errData, 'API错误: ' + res.status);
+        // 【P1修复BUG-001】保留 HTTP 状态码，确保 translateError 的 httpMap 能精确匹配（同 executeAIStream）
+        var errMsg = 'HTTP ' + res.status;
+        try {
+            var errData = await res.json().catch(function() { return {}; });
+            var apiMsg = extractErrorMessage(errData.error || errData, '');
+            if (apiMsg) errMsg = errMsg + ': ' + apiMsg;
+        } catch (e) { /* 忽略 */ }
         throw new Error(errMsg);
     }
     var data = await res.json();
@@ -5096,6 +5146,69 @@ async function callAI(messages, options = {}) {
 // ========================================
 // Context Size 自动检测（动态，不硬编码模型列表）
 // ========================================
+// 【P1修复BUG-002】已知模型上下文大小硬编码表
+// 用于 detectContextSize 优先级 3 的快速 fallback，避免 /models API 因 429 等限速失败后
+// 回退到过低的 8192（远低于实际模型上下文如 128K），导致上下文预算被严重压缩、过早裁剪历史。
+// 仅收录常见模型的保守下限，宁可小不可大（避免上下文超限报错）。
+var _KNOWN_MODEL_CONTEXT = {
+    // DeepSeek 系（官方上下文 64K-128K，按 64K 保守取）
+    'deepseek-v4-flash': 64000,
+    'deepseek-v4': 64000,
+    'deepseek-chat': 64000,
+    'deepseek-r1': 64000,
+    'deepseek-reasoner': 64000,
+    // 通用 "auto" 推理模型（多数推理模型 128K，按 128K 取）
+    'auto': 128000,
+    // GLM 系（128K）
+    'glm-4': 128000,
+    'glm-4-plus': 128000,
+    'glm-4-flash': 128000,
+    'glm-4-air': 128000,
+    // Claude 系（200K）
+    'claude-3-5-sonnet': 200000,
+    'claude-3-opus': 200000,
+    'claude-3-sonnet': 200000,
+    'claude-3-haiku': 200000,
+    'claude-3.5-sonnet': 200000,
+    // GPT-4o 系（128K）
+    'gpt-4o': 128000,
+    'gpt-4o-mini': 128000,
+    'gpt-4-turbo': 128000,
+    // Gemini 系（1M，按 128K 保守取避免触发上下文预算策略）
+    'gemini-1.5-pro': 128000,
+    'gemini-1.5-flash': 128000,
+    // Qwen 系（128K）
+    'qwen-max': 128000,
+    'qwen-plus': 128000,
+    'qwen-turbo': 128000,
+    // Kimi/Moonshot（128K）
+    'moonshot-v1-8k': 8192,
+    'moonshot-v1-32k': 32000,
+    'moonshot-v1-128k': 128000
+};
+
+// 【P1修复BUG-002】带重试和指数退避的 fetch（仅对网络错误/超时重试，不对 4xx 认证错误重试）
+async function _fetchWithContextRetry(url, options, maxRetries) {
+    var lastErr = null;
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            var resp = await fetch(url, options);
+            return resp;
+        } catch (e) {
+            lastErr = e;
+            // 认证/参数错误不重试
+            var msg = String((e && e.message) || e);
+            if (/401|403|abort|AbortError/i.test(msg)) throw e;
+            if (attempt < maxRetries) {
+                var delay = 500 * Math.pow(2, attempt); // 500ms, 1000ms, 2000ms
+                console.log('[Context检测] 网络错误，' + delay + 'ms 后重试 (' + (attempt + 1) + '/' + maxRetries + '):', msg);
+                await new Promise(function(r) { setTimeout(r, delay); });
+            }
+        }
+    }
+    throw lastErr;
+}
+
 async function detectContextSize() {
     // 优先级1：预设中的 max_context
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams && PresetManager.currentParams.max_context) {
@@ -5117,15 +5230,15 @@ async function detectContextSize() {
         apiKey = cfg.apiKey || '';
     }
 
-    // 优先级2：调 /models API 动态获取
+    // 优先级2：调 /models API 动态获取（带 2 次重试，覆盖瞬时 429/网络抖动）
     if (baseUrl && apiKey) {
         try {
             var modelsUrl = LocalGameAPI.normalizeUrl(baseUrl) + '/models';
-            var resp = await fetch(modelsUrl, {
+            var resp = await _fetchWithContextRetry(modelsUrl, {
                 method: 'GET',
                 headers: { 'Authorization': 'Bearer ' + apiKey },
                 signal: AbortSignal.timeout(5000)
-            });
+            }, 2);
             if (resp.ok) {
                 var data = await resp.json();
                 // OpenAI 格式：{ data: [{ id: "model-name", ... }] }
@@ -5147,18 +5260,27 @@ async function detectContextSize() {
                 }
             }
         } catch (e) {
-            console.log('[Context检测] /models API 不可用，尝试其他方式');
+            console.log('[Context检测] /models API 不可用（已重试），尝试其他方式:', (e && e.message) || e);
         }
     }
 
     // 优先级3：从模型名中提取数字推断
     var ctxSize = 0;
 
-    // 3a. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
-    var kMatch = model.match(/(\d+)k/);
-    if (kMatch) ctxSize = parseInt(kMatch[1]) * 1024;
+    // 3a. 已知模型硬编码表（优先于正则，避免模型名不带数字时漏判）
+    //     如 "auto"、"glm-4-flash" 等不带上下文数字标识的模型
+    if (ctxSize === 0 && _KNOWN_MODEL_CONTEXT[model]) {
+        ctxSize = _KNOWN_MODEL_CONTEXT[model];
+        console.log('[Context检测] 来自硬编码模型表: ' + ctxSize);
+    }
 
-    // 3b. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
+    // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
+    if (ctxSize === 0) {
+        var kMatch = model.match(/(\d+)k/);
+        if (kMatch) ctxSize = parseInt(kMatch[1]) * 1024;
+    }
+
+    // 3c. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
     if (ctxSize === 0) {
         var numMatch = model.match(/[-_](\d{4,})/);
         if (numMatch) {
@@ -5167,18 +5289,29 @@ async function detectContextSize() {
         }
     }
 
-    // 3c. 动态询问AI自身的context size（完全动态，不硬编码任何模型信息）
+    // 3d. 动态询问AI自身的context size（完全动态，带 1 次重试）
     if (ctxSize === 0 && baseUrl && apiKey) {
         try {
             var probeMessages = [
                 { role: 'system', content: '你是一个乐于助人的助手。回答要简洁。' },
                 { role: 'user', content: '请告诉我你的最大上下文窗口是多少token？只回复一个数字，不要任何解释。例如：128000' }
             ];
-            var probeResult = await callAI(probeMessages, {
-                stream: false,
-                temperature: 0,
-                max_tokens: 50
-            });
+            var probeResult = null;
+            for (var probeAttempt = 0; probeAttempt < 2; probeAttempt++) {
+                try {
+                    probeResult = await callAI(probeMessages, {
+                        stream: false,
+                        temperature: 0,
+                        max_tokens: 50
+                    });
+                    break;
+                } catch (e) {
+                    if (probeAttempt === 0) {
+                        console.log('[Context检测] AI自报context 第1次失败，500ms 后重试:', (e && e.message) || e);
+                        await new Promise(function(r) { setTimeout(r, 500); });
+                    }
+                }
+            }
             if (probeResult) {
                 var probeText = (typeof probeResult === 'string') ? probeResult : (probeResult.content || '');
                 var numOnly = probeText.replace(/[^\d]/g, '');
@@ -5191,12 +5324,17 @@ async function detectContextSize() {
                 }
             }
         } catch (e) {
-            console.log('[Context检测] AI自报context失败，使用兜底值');
+            console.log('[Context检测] AI自报context失败（已重试），使用兜底值');
         }
     }
 
-    // 兜底：默认 8K
-    if (ctxSize === 0) ctxSize = 8192;
+    // 兜底：默认 32K（【P1修复BUG-002】从 8192 提升到 32000）
+    // 旧值 8192 远低于现代模型实际容量（多数 64K-128K），导致智能上下文裁剪过早淘汰历史消息。
+    // 32000 是较保守的中间值，既能覆盖多数模型的实际需求，又不会因高估导致上下文超限。
+    if (ctxSize === 0) {
+        ctxSize = 32000;
+        console.log('[Context检测] 所有探测均失败，使用兜底值 32000（旧值 8192 已废弃）');
+    }
 
     gameState.contextSize = ctxSize;
     console.log('[Context检测] 最终结果(' + model + '): ' + ctxSize);

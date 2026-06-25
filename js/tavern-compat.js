@@ -879,7 +879,7 @@ var GameMemory = {
     lastInjectionTurn: -1,
     gameClock: { day: 1, period: '早晨', lastUpdateTurn: 0 },
 
-    permanentFacts: { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [] },
+    permanentFacts: { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [], worldPlaces: [] },
     tables: { characters: {}, items: {}, locations: {}, relationships: {} },
     plot: { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] },
     events: [],
@@ -1017,7 +1017,7 @@ var GameMemory = {
         }
         var ltm = old.longTermMemory || {};
         if (ltm.worldAnchors && ltm.worldAnchors.length > 0) {
-            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises' };
+            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
             ltm.worldAnchors.forEach(function(a) {
                 var key = typeMap[a.type] || 'settings';
                 if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
@@ -1876,7 +1876,8 @@ var GameMemory = {
              (self.permanentFacts.npcProfiles && self.permanentFacts.npcProfiles.length > 0) ||
              (self.permanentFacts.settings && self.permanentFacts.settings.length > 0) ||
              (self.permanentFacts.pcIdentity && self.permanentFacts.pcIdentity.length > 0) ||
-             (self.permanentFacts.promises && self.permanentFacts.promises.length > 0)));
+             (self.permanentFacts.promises && self.permanentFacts.promises.length > 0) ||
+             (self.permanentFacts.worldPlaces && self.permanentFacts.worldPlaces.length > 0)));
 
         if (hasMemoryInjection) {
             // 记忆系统已有结构化数据 → 设定只注入叙述性内容（外貌、性格描写、背景故事）
@@ -2199,7 +2200,8 @@ var GameMemory = {
     _buildPermanentFactsSection: function() {
         var lines = [];
         var pf = this.permanentFacts;
-        var typeLabels = { pcIdentity: '主角身份', worldRules: '世界规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺' };
+        // 【P1修复BUG-010】新增 worldPlaces 类目，确保 AI 在后续回合能看到已确定的地名
+        var typeLabels = { pcIdentity: '主角身份', worldRules: '世界规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺', worldPlaces: '关键地点' };
         var topic = this.detectCurrentTopic();
         var topicKeywords = (topic && topic.keywords) ? topic.keywords : [];
         var topicChars = (topic && topic.characters) ? topic.characters : [];
@@ -2208,7 +2210,7 @@ var GameMemory = {
         // 避免同一条角色信息在【核心设定】和【角色近况】中重复出现
         var hasCharSection = Object.keys(this.tables.characters).length > 0;
 
-        ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'].forEach(function(t) {
+        ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises', 'worldPlaces'].forEach(function(t) {
             var list = pf[t];
             if (list && list.length > 0) {
                 lines.push('【' + typeLabels[t] + '】');
@@ -3019,7 +3021,7 @@ var GameMemory = {
 
     addWorldAnchor: function(type, content, source, createdTurn) {
         var self = this;
-        var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises' };
+        var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
         var key = typeMap[type] || type;
         if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
         if (self.permanentFacts[key].some(function(a) { return a && a.content === content; })) return null;
@@ -3405,7 +3407,9 @@ var GameMemory = {
             // v1/v2 → v3：字段结构基本兼容，只需补全缺失字段并修正版本号
             var migrated = JSON.parse(JSON.stringify(data));
             // 补全 v3 新增字段
-            if (!migrated.permanentFacts) migrated.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [] };
+            if (!migrated.permanentFacts) migrated.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [], worldPlaces: [] };
+            // 【P1修复BUG-010】补全 worldPlaces 字段（旧存档升级）
+            if (!migrated.permanentFacts.worldPlaces) migrated.permanentFacts.worldPlaces = [];
             if (!migrated.tables) migrated.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
             if (!migrated.plot) migrated.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
             if (!migrated.events) migrated.events = [];
@@ -3430,7 +3434,7 @@ var GameMemory = {
 
     clear: function() {
         this.currentTurn = 0; this.lastInjectionTurn = -1; this.gameClock = { day: 1, period: '早晨', lastUpdateTurn: 0 };
-        this.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [] };
+        this.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [], worldPlaces: [] };
         this.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
         this.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
         this.events = []; this.timeline = []; this.quests = [];
@@ -3463,7 +3467,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         var self = this;
         // worldAnchors: 从 permanentFacts 映射（只读快照）
         var worldAnchors = [];
-        var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise' };
+        var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
         Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; var list = self.permanentFacts[key]; if (Array.isArray(list)) list.forEach(function(a) { if (a) worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
         // itemTable: 直接引用 tables.items（允许旧代码写入，格式兼容）
         var itemTable = self.tables.items;
@@ -3500,7 +3504,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         var self = this;
         // 恢复永久事实
         if (val.worldAnchors && Array.isArray(val.worldAnchors)) {
-            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises' };
+            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
             val.worldAnchors.forEach(function(a) {
                 if (!a) return;
                 var key = typeMap[a.type] || 'settings';
@@ -3907,7 +3911,7 @@ var MemoryManagerUI = {
 
     renderPermanentFacts: function(gm) {
         var self = this;
-        var typeLabels = { pcIdentity: '◇ 主角身份', settings: '◇ 世界设定', worldRules: '◇ 设定规则', npcProfiles: '◇ 关键角色', promises: '◇ 玩家承诺' };
+        var typeLabels = { pcIdentity: '◇ 主角身份', settings: '◇ 世界设定', worldRules: '◇ 设定规则', npcProfiles: '◇ 关键角色', promises: '◇ 玩家承诺', worldPlaces: '◇ 关键地点' };
         var typeOrder = ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'];
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到</div>' + this._btn('add', 'addPermanentFact', undefined) + '</div>';
         var total = 0; Object.keys(gm.permanentFacts).forEach(function(k) { total += gm.permanentFacts[k].length; });
@@ -3935,7 +3939,8 @@ var MemoryManagerUI = {
                 { v: 'settings',   t: '◇ 世界设定' },
                 { v: 'worldRules', t: '◇ 设定规则' },
                 { v: 'npcProfiles',t: '◇ 关键角色' },
-                { v: 'promises',   t: '◇ 玩家承诺' }
+                { v: 'promises',   t: '◇ 玩家承诺' },
+                { v: 'worldPlaces',t: '◇ 关键地点' }
             ], default: 'promises' },
             { id: 'newFactContent', label: '内容', type: 'textarea', placeholder: '输入永久事实内容...', rows: 4, minHeight: '60px' }
         ];
@@ -3950,7 +3955,7 @@ var MemoryManagerUI = {
         var type = document.getElementById('newFactType').value;
         var content = (document.getElementById('newFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
-        var oldTypeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise' };
+        var oldTypeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
         var result = gm.addWorldAnchor(oldTypeMap[type] || type, content, 'manual', gm.currentTurn);
         if (result) { gm.saveToStorage(); UI.toast && UI.toast('已添加'); } else UI.toast && UI.toast('已存在（重复内容）');
         this.switchTab('permanentFacts');

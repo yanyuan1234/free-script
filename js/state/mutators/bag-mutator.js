@@ -4,21 +4,25 @@
 const BagMutator = {
     // 设置整个物品列表（标准化后）
     setItems(items, options) {
-        const normalized = (items || []).map(this.normalizeItem.bind(this)).filter(Boolean);
+        // 【P0修复BUG-005】类型安全：items 可能是单个对象，强制转为数组
+        const arr = Array.isArray(items) ? items : (items ? [items] : []);
+        const normalized = arr.map(this.normalizeItem.bind(this)).filter(Boolean);
         // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 currentBag
         return StateManager.set('entities.bag', normalized, options);
     },
 
     // 合并物品：保留已有，更新/插入新物品（同 renderBag 语义）
     mergeItems(items, options) {
-        if (!items || !Array.isArray(items)) return false;
-        const bag = StateManager.get('entities.bag') || [];
+        // 【P0修复BUG-005】类型安全：items 可能是单个对象，强制转为数组
+        const inputItems = Array.isArray(items) ? items : (items ? [items] : []);
+        const rawBag = StateManager.get('entities.bag');
+        const bag = Array.isArray(rawBag) ? rawBag : [];
         const existingMap = {};
         bag.forEach(function(it, idx) {
             const key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
             existingMap[key] = it;
         });
-        items.forEach(function(it) {
+        inputItems.forEach(function(it) {
             if (!it) return;
             const key = it.name || it.title || it.id;
             if (!key) return;
@@ -41,8 +45,9 @@ const BagMutator = {
     addItem(item, options) {
         const normalized = this.normalizeItem(item);
         if (!normalized) return false;
-        const bag = StateManager.get('entities.bag') || [];
-        const existing = bag.find((it) => it.name === normalized.name);
+        const rawBag = StateManager.get('entities.bag');
+        const bag = Array.isArray(rawBag) ? rawBag : [];
+        const existing = bag.find((it) => it && it.name === normalized.name);
         if (existing) {
             existing.count = (existing.count || 1) + (normalized.count || 1);
         } else {

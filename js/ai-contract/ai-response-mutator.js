@@ -32,21 +32,118 @@ const AIResponseMutator = {
     },
 
     // 统一写入所有字段
+    // 【P0修复BUG-006】best-effort 模式：每个 mutator 独立 try-catch 隔离，
+    // 单个 mutator 失败只跳过该步骤，不影响其他 mutator 已成功的状态变更。
+    // 原实现将 13 个 mutator 串行调用在 StateManager.transaction 内，
+    // 任一 mutator 抛错会冒泡到 transaction 的 catch，触发全量快照回滚，
+    // 导致已成功写入的角色/物品/任务/时间等数据全部丢失（BUG-006 链式故障）。
     _applyAll(data, result, options) {
-        this._applyStoryAndTitle(data);
-        this._applyTurn(data);
-        this._applyPlayer(data);
-        this._applyCharacters(data);
-        this._applyBag(data);
-        this._applyCurrency(data);
-        this._applyQuests(data);
-        this._applyGameTime(data);
-        this._applyLocations(data);
-        this._applyKeyEvents(data);
-        this._applyRelationships(data);
-        this._applyHUD(data);
-        this._applyContextSummary(data);
+        const steps = [
+            { name: 'storyAndTitle',    fn: () => this._applyStoryAndTitle(data) },
+            { name: 'turn',             fn: () => this._applyTurn(data) },
+            { name: 'player',           fn: () => this._applyPlayer(data) },
+            { name: 'characters',       fn: () => this._applyCharacters(data) },
+            { name: 'bag',              fn: () => this._applyBag(data) },
+            { name: 'currency',         fn: () => this._applyCurrency(data) },
+            { name: 'quests',           fn: () => this._applyQuests(data) },
+            { name: 'gameTime',         fn: () => this._applyGameTime(data) },
+            { name: 'locations',        fn: () => this._applyLocations(data) },
+            { name: 'keyEvents',        fn: () => this._applyKeyEvents(data) },
+            { name: 'relationships',    fn: () => this._applyRelationships(data) },
+            { name: 'hud',              fn: () => this._applyHUD(data) },
+            { name: 'contextSummary',   fn: () => this._applyContextSummary(data) },
+            // 【P1修复BUG-010/011】在所有 mutator 后收割关键信息到 permanentFacts
+            // 解决"学院名变化"和"角色描述矛盾"问题：AI 看不到上轮已确定的世界观，重新编造导致不一致
+            { name: 'permanentFacts',   fn: () => this._applyPermanentFacts(data) }
+        ];
+        const failed = [];
+        for (let i = 0; i < steps.length; i++) {
+            const step = steps[i];
+            try {
+                step.fn();
+            } catch (e) {
+                failed.push(step.name);
+                // best-effort：仅记录警告，不抛出，避免触发 StateManager.transaction 全量回滚
+                console.warn('[AIResponseMutator] 步骤 "' + step.name + '" 失败，已跳过（best-effort）:', e && e.message ? e.message : e);
+                if (result && Array.isArray(result.warnings)) {
+                    result.warnings.push('mutator ' + step.name + ' failed: ' + (e && e.message ? e.message : String(e)));
+                } else if (result) {
+                    if (!Array.isArray(result.warnings)) result.warnings = [];
+                    result.warnings.push('mutator ' + step.name + ' failed: ' + (e && e.message ? e.message : String(e)));
+                }
+            }
+        }
+        if (failed.length > 0) {
+            console.warn('[AIResponseMutator] best-effort 完成，失败步骤:', failed.join(', '));
+        }
+        // 【P2修复BUG-008】数据持久化校验：每回合结束后验证关键数据完整性
+        // 解决问题：BUG-006 全量回滚后所有结构化数据丢失，UI 显示"0角色/0物品/0任务"
+        // 策略：检测关键字段为零或缺失时发出控制台警告，便于排查链式故障
+        try {
+            this._validatePersistence(data, result);
+        } catch (e) {
+            console.warn('[AIResponseMutator] 数据持久化校验本身失败:', e && e.message ? e.message : e);
+        }
         result.changes = this._collectChanges();
+    },
+
+    // 【P2修复BUG-008】数据持久化校验
+    // 每回合结束后检查关键数据完整性，缺失时发出控制台警告
+    // 校验项：主角身份/属性、角色列表、货币/物品、任务列表
+    // 仅警告，不强制修复（修复由各 mutator 的 best-effort 处理）
+    _validatePersistence(data, result) {
+        if (typeof StateManager === 'undefined' || !StateManager.get) return;
+        const turn = parseInt(StateManager.get('progress.turn') || 0) || 0;
+        // 初始回合（turn 0）数据可能尚未建立，仅在 turn >= 1 时严格校验
+        const strictMode = turn >= 1;
+        const warnings = [];
+
+        // 1. 主角身份：turn >= 1 时应有 identity
+        const player = StateManager.get('entities.player') || {};
+        const playerIdentity = String(player.identity || '').trim();
+        if (strictMode && !playerIdentity) {
+            warnings.push('主角身份为空（identity 缺失），个人页将显示"身份待定"');
+        }
+        // 2. 主角属性：turn >= 1 时 stats 应非空
+        const playerStats = Array.isArray(player.stats) ? player.stats : [];
+        if (strictMode && playerStats.length === 0) {
+            warnings.push('主角属性为空（stats 缺失），个人页将显示"属性将由AI动态生成"');
+        }
+
+        // 3. 角色列表：turn >= 2 时应至少有 1 个 NPC
+        const characters = StateManager.get('entities.characters');
+        const charCount = Array.isArray(characters) ? characters.length : 0;
+        if (turn >= 2 && charCount === 0) {
+            warnings.push('角色列表为空（0 NPC），人际页将显示"暂无角色"');
+        }
+
+        // 4. 货币与物品：turn >= 2 时应至少有货币或物品
+        const currency = StateManager.get('entities.currency');
+        const bag = StateManager.get('entities.bag');
+        const bagCount = Array.isArray(bag) ? bag.length : 0;
+        const hasCurrency = (currency !== undefined && currency !== null && !isNaN(parseInt(currency)) && parseInt(currency) >= 0);
+        if (turn >= 2 && !hasCurrency && bagCount === 0) {
+            warnings.push('货币与物品均为空，背包页将显示"背包空空如也"');
+        }
+
+        // 5. 任务列表：turn >= 2 时应至少有 1 个任务
+        const quests = StateManager.get('entities.quests');
+        const questCount = Array.isArray(quests) ? quests.length : 0;
+        if (turn >= 2 && questCount === 0) {
+            warnings.push('任务列表为空（0 quests），任务页仅显示默认任务');
+        }
+
+        // 输出汇总警告
+        if (warnings.length > 0) {
+            const msg = '[数据持久化校验] turn=' + turn + ' 检测到 ' + warnings.length + ' 项数据缺失：\n  - ' + warnings.join('\n  - ');
+            console.warn(msg);
+            if (result) {
+                if (!Array.isArray(result.warnings)) result.warnings = [];
+                result.warnings.push.apply(result.warnings, warnings);
+            }
+        } else if (strictMode) {
+            console.log('[数据持久化校验] turn=' + turn + ' 关键数据完整性检查通过');
+        }
     },
 
     // 剧情与标题
@@ -198,6 +295,128 @@ const AIResponseMutator = {
         }).filter(loc => loc.name && loc.name.length > 1 && !/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(loc.name));
         if (normalized.length === 0) return;
         StateManager.set('entities.locations', normalized, { silent: true });
+    },
+
+    // 【P1修复BUG-010/011】收割关键世界观/角色信息到 permanentFacts
+    // 解决问题：
+    //   - BUG-010 学院名变化（"奥术学院" → "圣罗兰魔法学院"）：地名未持久化，AI 后续回合重新编造
+    //   - BUG-011 角色描述矛盾（苏菲身份）：npcProfiles 收割时 alreadyExists 检查会跳过更新，
+    //     导致初次描述永久固化，AI 后续给出的新信息无法反映到 prompt
+    // 策略：
+    //   1. 把 entities.locations 中所有地名收割到 permanentFacts.worldPlaces
+    //   2. 把 entities.characters 中所有角色收割到 permanentFacts.npcProfiles
+    //      - 新角色：追加（含 title/relation/desc）
+    //      - 已存在角色：合并新信息到已有 content（不覆盖，追加 "；" 分隔）
+    //   3. 主角身份同步到 permanentFacts.pcIdentity（仅当 player.identity 非空且与现有不同）
+    _applyPermanentFacts(data) {
+        if (typeof EnhancedMemory === 'undefined' || !EnhancedMemory.permanentFacts) return;
+        const pf = EnhancedMemory.permanentFacts;
+        const turn = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? (parseInt(StateManager.get('progress.turn') || 0) || 0)
+            : 0;
+
+        // === 1. 地名 → permanentFacts.worldPlaces ===
+        const locations = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? StateManager.get('entities.locations')
+            : null;
+        if (Array.isArray(locations) && locations.length > 0) {
+            if (!pf.worldPlaces) pf.worldPlaces = [];
+            locations.forEach(function(loc) {
+                if (!loc || !loc.name) return;
+                const name = String(loc.name).trim();
+                const desc = String(loc.desc || loc.description || '').trim();
+                if (name.length < 2) return;
+                // 跳过明显非地名（情绪/感觉词）
+                if (/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(name)) return;
+                const content = desc ? (name + '：' + desc) : name;
+                // 去重：同地名（content 以 name 开头）只保留一条，desc 更新时合并
+                const idx = pf.worldPlaces.findIndex(function(a) {
+                    return a && a.content && (a.content === name || a.content.indexOf(name + '：') === 0 || a.content === content);
+                });
+                if (idx === -1) {
+                    pf.worldPlaces.push({
+                        content: content,
+                        locked: false,
+                        source: 'runtime',
+                        createdTurn: turn
+                    });
+                } else if (desc && pf.worldPlaces[idx].content.indexOf(name + '：') !== 0) {
+                    // 旧条目只有名字，补充描述
+                    pf.worldPlaces[idx].content = content;
+                }
+            });
+        }
+
+        // === 2. 角色 → permanentFacts.npcProfiles（含已有角色信息合并）===
+        const characters = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? StateManager.get('entities.characters')
+            : null;
+        if (Array.isArray(characters) && characters.length > 0) {
+            if (!pf.npcProfiles) pf.npcProfiles = [];
+            characters.forEach(function(c) {
+                if (!c || !c.name) return;
+                const name = String(c.name).trim();
+                // 构造档案行：名字 + 身份/关系 + 描述
+                const parts = [name];
+                const title = String(c.title || c.identity || c.role || '').trim();
+                const relation = String(c.relation || '').trim();
+                const desc = String(c.desc || c.description || '').trim();
+                if (title) parts.push(title);
+                if (relation && relation !== title) parts.push(relation);
+                if (desc) parts.push(desc);
+                const content = parts.join('：');
+                // 查找已存在的同名档案
+                const idx = pf.npcProfiles.findIndex(function(a) {
+                    return a && a.content && a.content.split('：')[0] === name;
+                });
+                if (idx === -1) {
+                    // 新角色：追加
+                    pf.npcProfiles.push({
+                        content: content,
+                        locked: false,
+                        source: 'runtime',
+                        createdTurn: turn,
+                        keywords: [name]
+                    });
+                } else {
+                    // 已存在：合并新信息（仅追加旧档案中没有的字段，避免无限膨胀）
+                    const oldContent = pf.npcProfiles[idx].content;
+                    const oldParts = oldContent.split('：');
+                    let changed = false;
+                    const merged = oldParts.slice();
+                    parts.forEach(function(p, i) {
+                        if (i === 0) return; // 跳过名字
+                        if (p && oldParts.indexOf(p) === -1) {
+                            merged.push(p);
+                            changed = true;
+                        }
+                    });
+                    if (changed) {
+                        pf.npcProfiles[idx].content = merged.join('：');
+                    }
+                }
+            });
+        }
+
+        // === 3. 主角身份 → permanentFacts.pcIdentity（仅当 player.identity 非空且变化时）===
+        const player = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? StateManager.get('entities.player')
+            : null;
+        if (player && player.identity) {
+            const newIdentity = String(player.identity).trim();
+            if (newIdentity) {
+                if (!Array.isArray(pf.pcIdentity)) pf.pcIdentity = [];
+                const existing = pf.pcIdentity[0];
+                if (!existing || String(existing.content || '').trim() !== newIdentity) {
+                    pf.pcIdentity = [{
+                        content: newIdentity,
+                        locked: true,
+                        source: 'aiResponse',
+                        createdTurn: turn
+                    }];
+                }
+            }
+        }
     },
 
     // 关键事件

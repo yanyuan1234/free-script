@@ -19,8 +19,20 @@ const ResponseParser = {
             return result;
         }
 
+        // 【P0修复BUG-003】剥离推理模型思考过程（thinking tokens）
+        // 推理模型（如 DeepSeek-R1、auto）在正式输出 JSON 前会输出大量思考块，
+        // 形如 <think>...</think>、<reasoning>...</reasoning>、<thought>...</thought>、
+        // 或 ◀thinking▶...◀/thinking▶ 等标记。若不剥离，思考块内的 { 会被 _tryRobustJSON
+        // 误识别为 JSON 起点，导致解析失败；更糟糕的是整段思考过程会被当作 story 字段显示。
+        // 必须在任何解析层之前先剥离思考块，再处理剩余的 JSON。
+        const stripped = this._stripThinkingTokens(rawReply);
+        const effectiveReply = (stripped !== rawReply) ? stripped : rawReply;
+        if (stripped !== rawReply) {
+            result.warnings.push('thinking tokens stripped');
+        }
+
         // Level 0: direct JSON（先尝试原始字符串，避免 sanitizeJSON 破坏 JSON 字符串字面量）
-        let data = this._tryDirectJSON(rawReply);
+        let data = this._tryDirectJSON(effectiveReply);
         if (data) {
             result.success = true;
             result.data = AIOutputSchema ? AIOutputSchema.normalize(data) : data;
@@ -30,7 +42,7 @@ const ResponseParser = {
         }
 
         // Level 1: code block JSON
-        data = this._tryCodeBlockJSON(rawReply);
+        data = this._tryCodeBlockJSON(effectiveReply);
         if (data) {
             result.success = true;
             result.data = AIOutputSchema ? AIOutputSchema.normalize(data) : data;
@@ -41,7 +53,7 @@ const ResponseParser = {
         }
 
         // Level 2: 清理后 JSON + 状态机兜底
-        const sanitized = OutputSanitizer ? OutputSanitizer.sanitizeJSON(rawReply) : rawReply;
+        const sanitized = OutputSanitizer ? OutputSanitizer.sanitizeJSON(effectiveReply) : effectiveReply;
         data = this._tryDirectJSON(sanitized);
         if (!data) {
             data = this._tryRobustJSON(sanitized);
@@ -56,7 +68,7 @@ const ResponseParser = {
         }
 
         // Level 3: <mem> tags (pure text mode)
-        const memResult = this._tryMemTags(rawReply);
+        const memResult = this._tryMemTags(effectiveReply);
         if (memResult && memResult.storyText) {
             result.success = true;
             result.data = AIOutputSchema ? AIOutputSchema.normalize(memResult) : memResult;
@@ -68,13 +80,40 @@ const ResponseParser = {
         }
 
         // Level 4: plain text fallback
-        const plain = this._tryPlainText(rawReply);
+        const plain = this._tryPlainText(effectiveReply);
         result.success = !!plain.storyText;
         result.data = AIOutputSchema ? AIOutputSchema.normalize(plain) : plain;
         result.fallbackLevel = 4;
         result.storyText = plain.storyText;
         result.warnings.push('parsed as plain text');
         return result;
+    },
+
+    // 【P0修复BUG-003】剥离推理模型思考过程
+    // 支持的思考标记格式（大小写不敏感）：
+    //          DeepSeek-R1 系
+    //   <reasoning>...</reasoning>  通用
+    //   <thought>...</thought>      Anthropic Claude 系
+    //   <thinking>...</thinking>    OpenAI o1 系
+    //   <analysis>...</analysis>    部分模型
+    // 处理策略：先剥离配对的思考块；若只有开标签没有闭标签（如思考过程末尾被截断），
+    // 则保留开标签之后的内容（可能是 JSON），删除开标签及之前的全部思考文本。
+    _stripThinkingTokens(raw) {
+        if (!raw || typeof raw !== 'string') return raw;
+        let s = raw;
+        const tags = ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
+        for (let i = 0; i < tags.length; i++) {
+            const tag = tags[i];
+            const openRe = new RegExp('<' + tag + '>', 'gi');
+            const closeRe = new RegExp('</' + tag + '>', 'gi');
+            // 先处理配对块（贪婪匹配，跨多行）
+            const pairRe = new RegExp('<' + tag + '>[\\s\\S]*?</' + tag + '>', 'gi');
+            s = s.replace(pairRe, '');
+            // 再处理只有开标签的残余（如末尾被截断）
+            s = s.replace(openRe, '');
+            s = s.replace(closeRe, '');
+        }
+        return s;
     },
 
     _tryDirectJSON(raw) {

@@ -4,7 +4,9 @@
 const CharacterMutator = {
     // 设置角色列表
     setCharacters(characters, options) {
-        const normalized = (characters || []).map(this.normalizeCharacter.bind(this)).filter(Boolean);
+        // 【P0修复BUG-005】类型安全：characters 可能是单个对象或非数组，强制转为数组
+        const arr = Array.isArray(characters) ? characters : (characters ? [characters] : []);
+        const normalized = arr.map(this.normalizeCharacter.bind(this)).filter(Boolean);
         // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 allCharacters
         return StateManager.set('entities.characters', normalized, options);
     },
@@ -14,13 +16,20 @@ const CharacterMutator = {
     // 通过描述重叠识别为同一角色并合并，避免人际关系/聊天/排行榜出现重复条目。
     mergeCharacters(characters, options) {
         var self = this;
-        const list = StateManager.get('entities.characters') || [];
-        (characters || []).forEach(function(raw) {
+        // 【P0修复BUG-005】类型安全：
+        // 1. characters 可能是单个对象或非数组，强制转为数组
+        // 2. StateManager.get 返回值可能不是数组（脏数据），用 Array.isArray 兜底
+        const inputList = Array.isArray(characters) ? characters : (characters ? [characters] : []);
+        const list = (function() {
+            const v = StateManager.get('entities.characters');
+            return Array.isArray(v) ? v : [];
+        })();
+        inputList.forEach(function(raw) {
             const normalized = self.normalizeCharacter(raw);
             if (!normalized) return;
             // 1. 精确名称匹配（含括号清理）
             const cleanName = self._cleanName(normalized.name);
-            const idx = list.findIndex((c) => self._cleanName(c.name) === cleanName);
+            const idx = list.findIndex((c) => c && self._cleanName(c.name) === cleanName);
             if (idx >= 0) {
                 list[idx] = Object.assign({}, list[idx], normalized);
                 return;
