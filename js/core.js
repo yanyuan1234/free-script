@@ -4477,6 +4477,12 @@ function setWaiting(w) {
     var sendBtn = _setWaitingCache.sendBtn;
     if (input) input.disabled = w;
     if (sendBtn) sendBtn.disabled = w;
+    // 【修复BUG-006】AI 响应完成（w=false）时清空输入框残留文本，
+    // 确保用户不会看到上一轮未清空的输入。提交时的清空（input.value=''）
+    // 理论上已生效，此处作为防御性兜底，避免极端时序下文本残留导致误重复提交。
+    if (!w && input && input.value) {
+        input.value = '';
+    }
 
     // 【性能】不遍历所有 .option-btn 设内联样式——改为在 body 上加/去 .is-waiting
     // CSS 用 .is-waiting .option-btn { pointer-events: none; opacity: .5; } 接管
@@ -5363,14 +5369,30 @@ async function initializeGame() {
         await detectContextSize();
 
         // 收集主角设定
-        gameState.protagonistSetup = {};
-        var mcFields = ['mcName', 'mcGender', 'mcAge', 'mcIdentity', 'mcPersonality', 'mcAppearance',
-            'mcAbility', 'mcExtra'
-        ];
-    mcFields.forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el && el.value.trim()) gameState.protagonistSetup[id] = el.value.trim();
-    });
+        // 【修复BUG-002】startNewGame 已将主角设定写入 gameState.protagonistSetup（字段名 mcName 等），
+        // 此前这里用 gameState.protagonistSetup = {} 重置后再从 DOM 元素 id="mcName" 读取——
+        // 但 HTML 中输入框 id 是 "setupPlayerName"（非 "mcName"），导致重置后读取永远为空，
+        // 主角名丢失，个人页显示"未命名"。改为：仅在未预填时才从 DOM 收集，并同步 playerName。
+        if (!gameState.protagonistSetup || Object.keys(gameState.protagonistSetup).length === 0) {
+            gameState.protagonistSetup = {};
+            var mcFields = ['mcName', 'mcGender', 'mcAge', 'mcIdentity', 'mcPersonality', 'mcAppearance',
+                'mcAbility', 'mcExtra'
+            ];
+            mcFields.forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el && el.value.trim()) gameState.protagonistSetup[id] = el.value.trim();
+            });
+        }
+        // 【修复BUG-002】同步 playerName，确保全项目读取一致
+        // 此前新游戏流程从不设置 gameState.playerName，只有读档时（loadGameState）才同步，
+        // 导致新游戏个人页始终显示"未命名"
+        if (!gameState.playerName && gameState.protagonistSetup && gameState.protagonistSetup.mcName) {
+            gameState.playerName = gameState.protagonistSetup.mcName;
+        }
+        if (!gameState.playerData) gameState.playerData = {};
+        if (!gameState.playerData.name && gameState.playerName) {
+            gameState.playerData.name = gameState.playerName;
+        }
 gameState.systemPrompt = buildSystemPrompt();
 gameState.conversationHistory = [{
         role: 'system',

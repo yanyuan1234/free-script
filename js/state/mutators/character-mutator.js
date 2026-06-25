@@ -10,20 +10,75 @@ const CharacterMutator = {
     },
 
     // 合并角色：同名更新，新名追加
+    // 【修复BUG-005】增加模糊匹配：NPC 自报姓名时（如"补丁长袍女孩"→"莉莉安"），
+    // 通过描述重叠识别为同一角色并合并，避免人际关系/聊天/排行榜出现重复条目。
     mergeCharacters(characters, options) {
         var self = this;
         const list = StateManager.get('entities.characters') || [];
         (characters || []).forEach(function(raw) {
             const normalized = self.normalizeCharacter(raw);
             if (!normalized) return;
-            const idx = list.findIndex((c) => c.name === normalized.name);
+            // 1. 精确名称匹配（含括号清理）
+            const cleanName = self._cleanName(normalized.name);
+            const idx = list.findIndex((c) => self._cleanName(c.name) === cleanName);
             if (idx >= 0) {
                 list[idx] = Object.assign({}, list[idx], normalized);
-            } else {
-                list.push(normalized);
+                return;
             }
+            // 2. 【修复BUG-005】模糊匹配：通过描述重叠识别同一角色的不同名称
+            const fuzzyIdx = self._findFuzzyMatch(list, normalized);
+            if (fuzzyIdx >= 0) {
+                console.log('[CharacterMutator] 模糊匹配命中："' + list[fuzzyIdx].name + '" → "' + normalized.name + '"，合并为同一角色');
+                // 保留旧角色的累积数据（好感度等），用新名称作为正式名称
+                const merged = Object.assign({}, list[fuzzyIdx], normalized);
+                // 累加好感度：若双方都有好感度，取较大值（避免重置关系发展）
+                if (typeof list[fuzzyIdx].favorability === 'number' && typeof normalized.favorability === 'number') {
+                    merged.favorability = Math.max(list[fuzzyIdx].favorability, normalized.favorability);
+                    merged.favor = merged.favorability;
+                }
+                list[fuzzyIdx] = merged;
+                return;
+            }
+            // 3. 新角色追加
+            list.push(normalized);
         });
         return this.setCharacters(list, options);
+    },
+
+    // 清理角色名（去括号备注、去首尾空格）
+    _cleanName(name) {
+        if (!name) return '';
+        return String(name).replace(/[（(].*?[）)]/g, '').trim();
+    },
+
+    // 【修复BUG-005】模糊匹配：识别同一角色的不同名称
+    // 策略：新角色的 desc 包含现有角色名（或反之），且匹配片段≥3字，视为同一角色
+    _findFuzzyMatch(list, newChar) {
+        if (!list || list.length === 0 || !newChar) return -1;
+        const newName = this._cleanName(newChar.name) || '';
+        const newDesc = String(newChar.desc || newChar.description || '').trim();
+        if (!newName) return -1;
+        for (let i = 0; i < list.length; i++) {
+            const existing = list[i];
+            if (!existing || !existing.name) continue;
+            const existName = this._cleanName(existing.name) || '';
+            const existDesc = String(existing.desc || existing.description || '').trim();
+            if (!existName || existName === newName) continue;
+            // 策略A：新角色 desc 包含现有角色名（如 desc="穿着补丁长袍的女孩" 含 "补丁长袍女孩"）
+            if (existName.length >= 3 && newDesc.includes(existName)) {
+                return i;
+            }
+            // 策略B：现有角色 desc 包含新角色名（如旧 desc="自称为莉莉安" 含 "莉莉安"）
+            if (newName.length >= 3 && existDesc.includes(newName)) {
+                return i;
+            }
+            // 策略C：名称互为子串（如"莉莉安"含于"莉莉安·月影"）
+            if (newName.length >= 2 && existName.length >= 2 &&
+                (existName.includes(newName) || newName.includes(existName))) {
+                return i;
+            }
+        }
+        return -1;
     },
 
     // 数组 -> 对象（兼容旧代码 allCharacters 格式）

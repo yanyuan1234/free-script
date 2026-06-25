@@ -69,7 +69,18 @@ const AIResponseMutator = {
     // 主角信息
     _applyPlayer(data) {
         const player = data.player || data.protagonist || data.hero;
-        if (!player || typeof player !== 'object') return;
+        // 【修复BUG-003】AI 返回纯文本时，AIOutputSchema.normalize 会填充默认 player
+        // { name: '', identity: '', stats: [] }，此处若不拦截会用空 stats 覆盖已有属性，
+        // 导致个人页属性消失。判定为"空 player"（无 name 且无 identity 且 stats 为空数组）时直接跳过。
+        const _isEmptyPlayer = function(p) {
+            if (!p || typeof p !== 'object') return true;
+            const hasName = String(p.name || '').trim();
+            const hasIdentity = String(p.identity || '').trim();
+            const hasStats = Array.isArray(p.stats) ? p.stats.length > 0 : !!p.stats;
+            const hasOther = p.title || p.personality || p.level !== undefined || p.exp !== undefined;
+            return !hasName && !hasIdentity && !hasStats && !hasOther;
+        };
+        if (_isEmptyPlayer(player)) return;
         const current = StateManager.get('entities.player') || {};
         // 玩家设定的主角名优先级最高，禁止 AI 覆盖
         let lockedName = current.name || '';
@@ -83,7 +94,9 @@ const AIResponseMutator = {
         const normalized = {
             name: lockedName || aiName || '主角',
             identity: String(player.identity || current.identity || '').trim(),
-            stats: Array.isArray(player.stats) ? player.stats : (current.stats || []),
+            // 【修复BUG-003】仅在 AI 返回了非空 stats 数组时才覆盖，否则保留上一轮属性，
+            // 避免 AI 返回空 stats（或默认空数组）清空已生成的属性
+            stats: (Array.isArray(player.stats) && player.stats.length > 0) ? player.stats : (current.stats || []),
             // 【修复 P1】保留 current 上的 level/exp/title/personality，避免被 AI 返回的 3 字段覆盖丢失
             level: player.level !== undefined ? player.level : current.level,
             exp: player.exp !== undefined ? player.exp : current.exp,

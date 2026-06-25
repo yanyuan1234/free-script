@@ -1490,6 +1490,26 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             });
         }
+        // 【修复BUG-001】格式提醒注入：在用户最新消息之前注入精简的JSON格式要求
+        // 根因：system prompt 中的完整格式要求位于消息列表开头，随着聊天历史增长，
+        // AI 的注意力被近期对话吸引，丢失输出格式要求，导致返回纯文本而非结构化JSON。
+        // 此注入位于消息列表末尾（紧贴用户消息前），确保 AI 生成前始终看到格式要求。
+        // 连带修复 BUG-003/004/007/008/009/014（均由纯文本响应引发）。
+        if (gameState && gameState.pureTextMode !== true) {
+            var _curPlayerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
+            var _formatReminder = '【输出格式·必读】直接输出JSON（以 { 开头，以 } 结尾），禁止输出纯文本、思考过程或前缀说明。\n' +
+                '必填字段：title(章节标题)、story(叙事正文,\\n换行,「」对话)、gameTime({date,time,period})、keyEvents(本回合关键事件数组)。\n' +
+                '可选字段：choices([{id,text}])、player({name,identity,stats:[{label,value}]}——须包含完整属性数组)、characters([{name,title,relation,favorability,desc}])、bag、quests、world([聊天/论坛/排行榜/商店/日记/朋友圈/邮箱模块])。\n' +
+                '注意：player.stats 必须返回完整属性数组（参考上一轮），不要返回空数组。characters.favorability 须根据剧情动态变化。';
+            if (_curPlayerName) {
+                _formatReminder += '\n主角姓名固定为「' + _curPlayerName + '」，不得更改。';
+            }
+            _formatReminder += '\n始终使用第二人称（"你"）叙事。';
+            messages.splice(messages.length - 1, 0, {
+                role: 'system',
+                content: _formatReminder
+            });
+        }
         // 注入 assistant 角色的 prompt（以 assistant 角色注入）
         if (gameState && gameState._assistantPrompt && gameState._assistantPrompt.trim()) {
             messages.splice(messages.length - 1, 0, {
@@ -3354,6 +3374,8 @@ function mergeCharacters(chars) {
     var playerName = '';
     if (gameState && gameState.playerData && gameState.playerData.name) {
         playerName = gameState.playerData.name;
+    } else if (gameState && gameState.playerName) {
+        playerName = gameState.playerName;
     }
     // 【优化】预构建 cleanKey → originalKey 索引，将 O(n²) 匹配降为 O(n)
     var _charKeyIndex = {};
@@ -3389,7 +3411,22 @@ function mergeCharacters(chars) {
             if (c.desc) existing.desc = c.desc;
             if (c.details) existing.details = c.details;
         } else {
-            if (gameState && gameState.allCharacters) {
+            // 【修复BUG-005】模糊匹配：NPC 自报姓名时（如"补丁长袍女孩"→"莉莉安"），
+            // 通过描述重叠识别为同一角色，合并而非新建，避免重复条目
+            var fuzzyKey = _findFuzzyCharKey(gameState.allCharacters, name, c.desc || c.description || '');
+            if (fuzzyKey) {
+                var fuzzyExisting = gameState.allCharacters[fuzzyKey];
+                console.log('[mergeCharacters] 模糊匹配命中："' + fuzzyKey + '" → "' + name + '"，合并为同一角色');
+                // 迁移旧数据到新名称，保留累积好感度
+                var merged = Object.assign({}, fuzzyExisting, c);
+                if (typeof fuzzyExisting.favorability === 'number' && typeof c.favorability === 'number') {
+                    merged.favorability = Math.max(fuzzyExisting.favorability, c.favorability);
+                }
+                delete gameState.allCharacters[fuzzyKey];
+                delete _charKeyIndex[fuzzyKey.replace(/[（(].*?[）)]/g, '').trim()];
+                gameState.allCharacters[name] = merged;
+                _charKeyIndex[cleanName] = name;
+            } else if (gameState && gameState.allCharacters) {
                 gameState.allCharacters[name] = c;
                 _charKeyIndex[cleanName] = name;
             }
@@ -3407,6 +3444,29 @@ function mergeCharacters(chars) {
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('allCharacters');
     }
+}
+// 【修复BUG-005】模糊匹配辅助函数：在现有角色中查找与新角色描述重叠的条目
+function _findFuzzyCharKey(allChars, newName, newDesc) {
+    if (!allChars || !newName) return null;
+    newName = newName.replace(/[（(].*?[）)]/g, '').trim();
+    newDesc = String(newDesc || '').trim();
+    var keys = Object.keys(allChars);
+    for (var i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        var exist = allChars[key];
+        if (!exist || !exist.name) continue;
+        var existName = String(exist.name).replace(/[（(].*?[）)]/g, '').trim();
+        var existDesc = String(exist.desc || exist.description || '').trim();
+        if (!existName || existName === newName) continue;
+        // 策略A：新角色 desc 包含现有角色名
+        if (existName.length >= 3 && newDesc.indexOf(existName) !== -1) return key;
+        // 策略B：现有角色 desc 包含新角色名
+        if (newName.length >= 3 && existDesc.indexOf(newName) !== -1) return key;
+        // 策略C：名称互为子串
+        if (newName.length >= 2 && existName.length >= 2 &&
+            (existName.indexOf(newName) !== -1 || newName.indexOf(existName) !== -1)) return key;
+    }
+    return null;
 }
 function deleteCharacter(name) {
     UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？此操作不可撤回').then(function(ok) {

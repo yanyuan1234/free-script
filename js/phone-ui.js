@@ -2889,17 +2889,32 @@ function renderDefaultPage(type) {
 function renderPlayerStats(player) {
     // 如果AI返回了新数据，更新存储（使用Object.assign确保字段完整）
     if (player) {
-        var existing = gameState.playerData || { name: '', stats: [], details: [], bag: [] };
-        gameState.playerData = Object.assign({}, existing, player);
-        // stats 是数组格式 [{label, value}, ...]，直接替换而不是合并
-        if (player.stats && Array.isArray(player.stats)) {
-            gameState.playerData.stats = player.stats;
-        }
-        if (Array.isArray(player.details)) {
-            gameState.playerData.details = player.details;
-        }
-        if (Array.isArray(player.bag)) {
-            gameState.playerData.bag = player.bag;
+        // 【修复BUG-003】AI 返回纯文本时，AIOutputSchema.normalize 填充默认空 player
+        // { name: '', identity: '', stats: [] }，此处若不拦截会用空 stats 覆盖已有属性。
+        // 判定为"空 player"（无 name/identity 且 stats 为空数组）时跳过更新，仅刷新页面。
+        var _hasName = String(player.name || '').trim();
+        var _hasIdentity = String(player.identity || '').trim();
+        var _hasStats = Array.isArray(player.stats) ? player.stats.length > 0 : !!player.stats;
+        var _hasOther = player.title || player.personality || player.level !== undefined;
+        var _isEmpty = !_hasName && !_hasIdentity && !_hasStats && !_hasOther;
+        if (!_isEmpty) {
+            var existing = gameState.playerData || { name: '', stats: [], details: [], bag: [] };
+            gameState.playerData = Object.assign({}, existing, player);
+            // 【修复BUG-003】仅在 AI 返回了非空 stats 数组时才覆盖，避免空数组清空已生成的属性
+            if (player.stats && Array.isArray(player.stats) && player.stats.length > 0) {
+                gameState.playerData.stats = player.stats;
+            }
+            if (Array.isArray(player.details) && player.details.length > 0) {
+                gameState.playerData.details = player.details;
+            }
+            if (Array.isArray(player.bag) && player.bag.length > 0) {
+                gameState.playerData.bag = player.bag;
+            }
+            // 【修复BUG-002】锁定主角名：禁止 AI 用空名或不同名覆盖玩家设定的名字
+            var _lockedName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || gameState.playerName || existing.name;
+            if (_lockedName && gameState.playerData.name !== _lockedName) {
+                gameState.playerData.name = _lockedName;
+            }
         }
     }
     renderPlayerPage();
