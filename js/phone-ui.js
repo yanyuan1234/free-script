@@ -2927,7 +2927,7 @@ function renderPlayerPage() {
     } catch (e) { console.warn('[PlayerPage] 关系摘要渲染失败:', e); }
 
     if (!data) {
-        nameEl.textContent = '未命名';
+        nameEl.textContent = '主角';
         subEl.textContent = '等待AI分配...';
         avatarFallback.innerHTML =
             '<svg class="icon" style="width:36px;height:36px;stroke-width:1.5;"><use href="#icon-user"/></svg>';
@@ -2970,7 +2970,7 @@ function renderPlayerPage() {
         return;
     }
 
-    nameEl.textContent = data.name || '未命名';
+    nameEl.textContent = data.name || '主角';
     subEl.textContent = data.title || data.identity || '身份待定';
     avatarFallback.textContent = data.name ? data.name.charAt(0) : '?';
 

@@ -45,13 +45,23 @@ const OutputSanitizer = {
 
     stripJSONArtifacts(text) {
         if (!text || typeof text !== 'string') return '';
-        return text
-            .replace(/^\s*"story"\s*:\s*"/i, '')
+        let s = text;
+        // 移除开头的字段名前缀（如 "story": " 或 story: ）
+        s = s.replace(/^\s*"story"\s*:\s*"/i, '')
             .replace(/^\s*"title"\s*:\s*"/i, '')
             .replace(/^\s*story\s*:\s*/i, '')
             .replace(/^\s*title\s*:\s*/i, '')
             .replace(/\{\s*"story"\s*:\s*"/gi, '')
             .replace(/"\s*\}\s*$/g, '');
+        // 【修复】移除故事中间混入的 JSON 字段残片
+        // 场景：AI 把 "choices":[...]、"characters":[...] 等 JSON 片段写进了 story 字符串值
+        // 匹配 "字段名": 后跟 [ 或 { 的 JSON 结构残片（非剧情对话内容）
+        s = s.replace(/\\?"(?:choices|characters|player|bag|currency|currencyName|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages)\\?"\s*:\s*[\[{][\s\S]*?(?:\]|\})\s*,?/gi, '');
+        // 移除孤立的 JSON 结尾残片（如 ", "choices":[]}）
+        s = s.replace(/,\s*\\?"[a-zA-Z_]+\\?"\s*:\s*[\[{"][\s\S]*$/gi, '');
+        // 移除转义的 JSON 引号残片
+        s = s.replace(/\\+"/g, '"');
+        return s;
     }
 };
 

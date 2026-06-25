@@ -168,10 +168,18 @@ const PromptBuilder = {
                 ' "characters": [{"name":"角色名","title":"身份","relation":"关系","favorability":50,"desc":"状态描述","details":[{"key":"字段","value":"值"}]}], ' +
                 '"world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], ' +
                 '"currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], ' +
+                '"keyEvents": ["本回合关键事件1","关键事件2"], ' +
                 '"gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
                 '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
+                'keyEvents 为必填字段，每回合至少给出 1 条关键事件（影响后续剧情的节点）。\n' +
                 'player.stats 的 value 必须是0-100的数字，根据世界观生成3-6项核心属性（如修仙世界返回灵力/境界/神识等）。\n' +
-                '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（空字段省略）';
+                '可选字段：hud, relationships, npcMessages, contextSummary（空字段省略）\n' +
+                '【world 模块扩展】world 数组除世界设定外，还可包含以下 type 用于填充对应页面（按需生成，至少保证 diary 和 forum 有内容）：\n' +
+                '  - {"type":"forum","title":"板块名","items":[{"author":"角色名","content":"帖子内容","replies":[{"author":"角色名","content":"回复"}]}]}\n' +
+                '  - {"type":"rank","title":"排行榜名","items":[{"rank":1,"name":"角色名","score":100,"desc":"说明"}]}\n' +
+                '  - {"type":"shop","title":"商店名","items":[{"name":"商品名","price":10,"desc":"说明","count":1}]}\n' +
+                '  - {"type":"diary","title":"日记标题","items":[{"npc":"角色名","date":"日期","content":"日记正文","mood":"心情","memos":["备忘1"]}]}\n' +
+                '  - {"type":"setting","title":"世界设定标题","content":"设定内容"}';
             return json;
         }, { order: 70 });
 

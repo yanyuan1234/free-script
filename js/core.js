@@ -2809,6 +2809,17 @@ function _applyMemsToGameState(mems) {
             console.warn('[<mem>应用失败]', mem, e.message);
         }
     });
+    // 【数据断层修复】<mem> 直接写了 gameState.xxx，需同步回 StateManager，
+    // 否则 entities.* 为空但 gameState.* 有值，导致物品页/状态页数据不一致
+    if (typeof StateManager !== 'undefined') {
+        try {
+            if (gameState.bag) StateManager.set('entities.bag', gameState.bag, { silent: true });
+            if (gameState.allCharacters) StateManager.set('entities.characters', Object.values(gameState.allCharacters), { silent: true });
+            if (gameState.quests) StateManager.set('entities.quests', gameState.quests, { silent: true });
+            if (gameState.keyEvents) StateManager.set('entities.events', gameState.keyEvents, { silent: true });
+            if (gameState.gameTime) StateManager.set('time', gameState.gameTime, { silent: true });
+        } catch (e) { console.warn('[<mem>同步 StateManager 失败]', e.message); }
+    }
 }
 
 function parseAIResponse(reply) {

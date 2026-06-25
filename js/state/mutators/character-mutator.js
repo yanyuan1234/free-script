@@ -38,7 +38,9 @@ const CharacterMutator = {
     // 更新角色关系
     updateRelationship(name, delta, options) {
         return this.updateCharacter(name, function(character) {
-            character.favor = (character.favor || 0) + (delta || 0);
+            const newFav = (character.favorability || character.favor || 0) + (delta || 0);
+            character.favorability = newFav;
+            character.favor = newFav;  // 兼容旧字段
             return character;
         }, options);
     },
@@ -61,12 +63,23 @@ const CharacterMutator = {
         if (!raw) return null;
         const name = String(raw.name || raw.title || raw.character || '').trim();
         if (!name) return null;
+        // 【字段名修复】AI prompt 与 phone-ui.js 全部使用 favorability/title/relation，
+        // 但旧代码 normalize 成 favor/identity，导致 UI 读不到好感度/身份/关系。
+        // 现统一保留 AI 返回的字段名，同时兼容旧 favor/friendship 输入。
+        const favorability = parseInt(
+            raw.favorability !== undefined ? raw.favorability :
+            (raw.favor !== undefined ? raw.favor :
+            (raw.friendship !== undefined ? raw.friendship :
+            (raw.relationship !== undefined ? raw.relationship : 0))), 10) || 0;
         return {
             id: raw.id || ('char_' + name + '_' + Date.now()),
             name: name,
-            identity: raw.identity || raw.role || '',
+            title: raw.title || raw.identity || raw.role || '',
+            identity: raw.identity || raw.role || raw.title || '',
+            relation: raw.relation || '',
+            favorability: favorability,
+            favor: favorability,  // 兼容旧代码读 c.favor
             desc: raw.desc || raw.description || '',
-            favor: parseInt(raw.favor !== undefined ? raw.favor : (raw.friendship !== undefined ? raw.friendship : (raw.relationship !== undefined ? raw.relationship : 0)), 10) || 0,
             tags: Array.isArray(raw.tags) ? raw.tags : [],
             stats: this.normalizeStats(raw.stats),
             notes: raw.notes || ''
