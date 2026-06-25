@@ -3816,18 +3816,6 @@ function bindEvents() {
     bindEvent('btnSettingsHeader', 'click', function() {
         openSettingsModal();
     });
-    // 返回主页按钮（原通知中心按钮）
-    bindEvent('btnBackToMenu', 'click', async function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (await UI.confirm('返回主页', '确定要返回主页吗？当前进度会自动保存。')) {
-            try { await autoSave(); } catch(e) { console.error('[返回主页] 自动保存失败:', e); }
-            safeAbort();
-            window._currentAbort = null;
-            UI.showPage('menuPage');
-            UI.toast('已返回主页');
-        }
-    });
     // 世界书按钮（已由 WorldInfo.bindEvents 绑定，此处不再重复）
     // 预设按钮
     // 预设按钮（已由 PresetManager.bindEvents 绑定，此处不再重复）
