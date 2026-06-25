@@ -374,31 +374,6 @@ warnIfFull(threshold) {
     }
 return false;
 },
-cleanupOldData() {
-    const suggestions = [];
-    const capacity = this.checkCapacity();
-    if (capacity.percentage < 50) {
-        return { needed: false, message: '存储空间充足', suggestions: suggestions };
-    }
-const keys = [];
-for (let i = 0; i < localStorage.length; i++) {
-    keys.push(localStorage.key(i));
-}
-const tempData = keys.filter((k) => {
-    return k.indexOf('temp_') === 0 || k.indexOf('cache_') === 0 || k.indexOf('_tmp') === k.length - 4;
-});
-if (tempData.length > 0) {
-    suggestions.push({ type: 'temp_data', keys: tempData, message: '发现临时数据，可考虑清理' });
-}
-const oldBackups = keys.filter((k) => {
-    return k.indexOf('backup_') === 0 || k.indexOf('_backup') === k.length - 7;
-});
-if (oldBackups.length > 3) {
-    suggestions.push({ type: 'old_backups', keys: oldBackups, message: '发现多个备份数据，可保留最新的' });
-}
-suggestions.push({ type: 'general', message: '建议清理不再需要的缓存数据或旧版本数据' });
-return { needed: true, currentUsage: capacity, suggestions: suggestions };
-},
 _estimateTotalSpace() {
     const testKey = '__storage_test_' + Date.now();
     const testValue = 'x';
@@ -489,81 +464,6 @@ function toggleTheme() {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
 })();
-
-// ========================================
-// DOM批量更新工具 - 减少重排重绘
-// ========================================
-const DOMBatch = {
-    _queue: [],
-    _scheduled: false,
-
-    // 批量设置 innerHTML
-    setHTML(el, html) {
-        if (!el) return;
-        this._queue.push({ el: el, type: 'html', value: html });
-        this._schedule();
-    },
-
-    // 批量设置 textContent
-    setText(el, text) {
-        if (!el) return;
-        this._queue.push({ el: el, type: 'text', value: text });
-        this._schedule();
-    },
-
-    // 批量设置样式
-    setStyle(el, prop, value) {
-        if (!el) return;
-        this._queue.push({ el: el, type: 'style', prop: prop, value: value });
-        this._schedule();
-    },
-
-    // 调度批量刷新
-    _schedule() {
-        if (this._scheduled) return;
-        this._scheduled = true;
-        var self = this;
-        requestAnimationFrame(function() {
-            self._flush();
-        });
-    },
-
-    // 执行所有排队的更新
-    _flush() {
-        const queue = this._queue;
-        this._queue = [];
-        this._scheduled = false;
-
-        // 去重：同一元素同类型操作只保留最后一个
-        const seen = {};
-        const deduped = [];
-        for (let i = queue.length - 1; i >= 0; i--) {
-            const item = queue[i];
-            const key = item.type === 'style' 
-                ? (item.el._domBatchId || (item.el._domBatchId = 'el_' + Math.random().toString(36).slice(2))) + '_' + item.type + '_' + item.prop
-                : (item.el._domBatchId || (item.el._domBatchId = 'el_' + Math.random().toString(36).slice(2))) + '_' + item.type;
-            if (!seen[key]) {
-                seen[key] = true;
-                deduped.unshift(item);
-            }
-        }
-
-        // 批量应用
-        for (let j = 0; j < deduped.length; j++) {
-            const d = deduped[j];
-            try {
-                if (d.type === 'html') d.el.innerHTML = d.value;
-                else if (d.type === 'text') d.el.textContent = d.value;
-                else if (d.type === 'style') d.el.style[d.prop] = d.value;
-            } catch (e) { /* 忽略无效元素 */ }
-        }
-
-        // 清理临时ID
-        for (let k = 0; k < deduped.length; k++) {
-            delete deduped[k].el._domBatchId;
-        }
-    }
-};
 
 // ========================================
 // 【日志封装】统一日志入口，支持级别开关

@@ -40,14 +40,6 @@ const StateManager = {
         return StateSchema.deepClone(value);
     },
 
-    // 按路径数组读取
-    getIn(pathArray) {
-        if (!Array.isArray(pathArray) || pathArray.length === 0) {
-            return this.snapshot();
-        }
-        return this.get(pathArray.join('.'));
-    },
-
     // 兼容旧字段名读取
     getLegacy(name) {
         const path = StateSchema.getPath(name);
@@ -91,29 +83,6 @@ const StateManager = {
         return this.set(path, value, options);
     },
 
-    // 合并部分对象到指定路径
-    merge(path, partial, options) {
-        options = options || {};
-        const current = this.get(path);
-        if (!current || typeof current !== 'object' || Array.isArray(current)) {
-            // current 已是深拷贝，无需再 clone
-        }
-        const merged = StateSchema._deepMerge(
-            (current && typeof current === 'object' && !Array.isArray(current)) ? current : {},
-            partial
-        );
-        return this.set(path, merged, options);
-    },
-
-    // 使用 updater 函数更新指定路径
-    updateIn(pathArray, updater, options) {
-        const current = this.getIn(pathArray);
-        const updated = updater(StateSchema.deepClone(current));
-        // updater 返回 undefined 时保留原值
-        const finalValue = updated === undefined ? current : updated;
-        return this.set(pathArray.join('.'), finalValue, options);
-    },
-
     // 订阅变更
     // pattern 支持：'entities.bag' / 'entities.*' / 'entities.**' / '**'
     subscribe(pattern, callback) {
@@ -125,11 +94,6 @@ const StateManager = {
             callback: callback
         });
         return token;
-    },
-
-    // 取消订阅
-    unsubscribe(token) {
-        this._listeners = this._listeners.filter(l => l.token !== token);
     },
 
     // 事务：批量变更，结束时统一通知
@@ -166,16 +130,6 @@ const StateManager = {
             console.error('[StateManager] 事务执行失败，已回滚到事务前快照:', e);
             throw e;
         }
-    },
-
-    // 批量操作
-    batch(operations) {
-        const self = this;
-        return this.transaction(function() {
-            operations.forEach(op => {
-                self.set(op.path, op.value, { silent: true });
-            });
-        });
     },
 
     // 内部：同步镜像到旧字段名（数据断层修复）

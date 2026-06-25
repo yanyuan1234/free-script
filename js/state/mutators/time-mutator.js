@@ -76,42 +76,5 @@ const TimeMutator = {
             var m2 = d.match(/(\d{4})[-\/年](\d{1,2})[-\/月](\d{1,2})/);
             if (m2) return parseInt(m2[1], 10) * 10000 + parseInt(m2[2], 10) * 100 + parseInt(m2[3], 10);
             return null;
-        },
-
-    // 推进时间
-    advance(options) {
-        options = options || {};
-        const current = StateManager.get('time') || {};
-        const periodMap = {
-            '清晨': '上午',
-            '上午': '中午',
-            '中午': '下午',
-            '下午': '傍晚',
-            '傍晚': '晚上',
-            '晚上': '深夜',
-            '深夜': '清晨'
-        };
-        const period = current.period || '清晨';
-        const nextPeriod = options.nextPeriod || periodMap[period] || '清晨';
-        const next = {
-            date: current.date || '',
-            time: '',
-            period: nextPeriod
-        };
-        // 如果是新的一天
-        if (period === '深夜' && nextPeriod === '清晨') {
-            next.date = this._nextDate(current.date);
         }
-        return this.setTime(next, options);
-    },
-
-    // 简单日期推进（仅支持 "第N日" 或常见格式）
-    _nextDate(dateStr) {
-        if (!dateStr) return '第2日';
-        const match = dateStr.match(/第\s*(\d+)\s*日/);
-        if (match) {
-            return '第' + (parseInt(match[1]) + 1) + '日';
-        }
-        return dateStr;
-    }
 };
