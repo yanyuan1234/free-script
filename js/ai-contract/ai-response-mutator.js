@@ -93,7 +93,7 @@ const AIResponseMutator = {
     // 仅警告，不强制修复（修复由各 mutator 的 best-effort 处理）
     _validatePersistence(data, result) {
         if (typeof StateManager === 'undefined' || !StateManager.get) return;
-        const turn = parseInt(StateManager.get('progress.turn') || 0) || 0;
+        const turn = StateManager.get('progress.turn') || 0;
         // 初始回合（turn 0）数据可能尚未建立，仅在 turn >= 1 时严格校验
         const strictMode = turn >= 1;
         const warnings = [];
@@ -121,7 +121,7 @@ const AIResponseMutator = {
         const currency = StateManager.get('entities.currency');
         const bag = StateManager.get('entities.bag');
         const bagCount = Array.isArray(bag) ? bag.length : 0;
-        const hasCurrency = (currency !== undefined && currency !== null && !isNaN(parseInt(currency)) && parseInt(currency) >= 0);
+        const hasCurrency = (currency != null && !isNaN(currency) && currency >= 0);
         if (turn >= 2 && !hasCurrency && bagCount === 0) {
             warnings.push('货币与物品均为空，背包页将显示"背包空空如也"');
         }
@@ -162,7 +162,7 @@ const AIResponseMutator = {
     // 回合数统一由 game.js legacy 路径（line 2099）唯一推进。
     _applyTurn(data) {
         // 仅同步 progress.turn 与 _stats.totalTurns 的镜像一致性，不递增
-        const currentTurn = parseInt(StateManager.get('progress.turn') || 0) || 0;
+        const currentTurn = StateManager.get('progress.turn') || 0;
         StateManager.setLegacy('_stats.totalTurns', currentTurn, { silent: true });
     },
 
@@ -314,7 +314,7 @@ const AIResponseMutator = {
         if (typeof EnhancedMemory === 'undefined' || !EnhancedMemory.permanentFacts) return;
         const pf = EnhancedMemory.permanentFacts;
         const turn = (typeof StateManager !== 'undefined' && StateManager.get)
-            ? (parseInt(StateManager.get('progress.turn') || 0) || 0)
+            ? (StateManager.get('progress.turn') || 0)
             : 0;
 
         // === 1. 地名 → permanentFacts.worldPlaces ===

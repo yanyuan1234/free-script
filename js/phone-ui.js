@@ -2675,7 +2675,7 @@ function buyShopItem(index) {
     if (index < 0 || index >= allGoods.length) return;
     var item = allGoods[index];
     var price = parseInt(item.price) || 0;
-    var currency = parseInt(gameState.currency || gameState.money || gameState.coins || 0);
+    var currency = gameState.currency || gameState.money || gameState.coins || 0;
     var currencyName = gameState.currencyName || '金币';
     if (item.count !== undefined && item.count !== null && parseInt(item.count) <= 0) {
         UI.toast('该商品已售稀');
@@ -2715,7 +2715,7 @@ function buyShopItem(index) {
     }
     UI.toast('购买成功：' + bagItem.name);
     autoSave();
-    var newCurrency = parseInt(gameState.currency || gameState.money || gameState.coins || 0);
+    var newCurrency = gameState.currency || gameState.money || gameState.coins || 0;
     var content = document.getElementById('logSubContent');
     if (content) { content.innerHTML = renderShopPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
     var shopBal = document.getElementById('shopBalanceDisplay');

@@ -1855,7 +1855,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     // 【P1修复BUG-007】使用即将进入的回合数（当前 turn + 1），而非旧 turn
                     // 旧实现使用旧 turn，导致初始生成显示"第 0 回合"（应为"第 1 回合"）
                     var turnNumC = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
-                    turnNumC = (parseInt(turnNumC) || 0) + 1;
+                    turnNumC = (turnNumC || 0) + 1;
                     incomingTitle = preTitle || ('第 ' + turnNumC + ' 回合');
                     console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
                 }
@@ -1867,7 +1867,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
                 // 【P1修复BUG-007】使用即将进入的回合数（当前 turn + 1）
                 var turnNum = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
-                turnNum = (parseInt(turnNum) || 0) + 1;
+                turnNum = (turnNum || 0) + 1;
                 var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
                 updateSceneTitle(fallbackTurnTitle);
                 gameState._lastSceneTitle = fallbackTurnTitle;

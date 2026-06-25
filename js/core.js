@@ -4283,9 +4283,9 @@ function updateTurnLabel() {
     if (!labelEl) return;
     var turn = 0;
     if (typeof StateManager !== 'undefined' && StateManager.get) {
-        turn = parseInt(StateManager.get('progress.turn') || 0) || 0;
+        turn = StateManager.get('progress.turn') || 0;
     } else if (typeof gameState !== 'undefined' && gameState && gameState._stats) {
-        turn = parseInt(gameState._stats.totalTurns || 0) || 0;
+        turn = gameState._stats.totalTurns || 0;
     }
     labelEl.textContent = '第 ' + turn + ' 回合';
 }
