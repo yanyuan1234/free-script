@@ -2857,8 +2857,16 @@ function renderPlayerPage() {
     // 【性能优化】避免相同数据触发重绘（页面切回时尤其有用）
     try {
         var pd = gameState.playerData || {};
+        // 【修复】原 cacheKey 漏算 identity/title/stats/personality，
+        // 导致 AI 更新主角属性或身份后个人页不重绘
+        var statsSig = '';
+        if (Array.isArray(pd.stats)) {
+            statsSig = pd.stats.map(function(s) { return (s.label || '') + ':' + (s.value || ''); }).join(',');
+        }
         var cacheKey = JSON.stringify({
-            n: pd.name, lv: pd.level, exp: pd.exp,
+            n: pd.name, id: pd.identity, t: pd.title, p: pd.personality,
+            st: statsSig,
+            lv: pd.level, exp: pd.exp,
             favs: (gameState.relationships || []).length,
             inv: (gameState.currentBag || []).length,
             r: (gameState.conversationHistory || []).length
@@ -2917,7 +2925,14 @@ function renderPlayerPage() {
             var rsHtml = '💞 <b>最近的人际关系：</b><br>';
             topChars.forEach(function(c) {
                 var fav = Math.round(c.favorability || 0);
-                var emoji = fav >= 60 ? '♥' : (fav >= 30 ? '◇' : (fav <= -20 ? '✕' : '◇'));
+                // 【修复】原 emoji 分级有重叠 bug：30<=fav<60 和 -20<=fav<30 都返回◇
+                // 现按好感/中立/反感三档清晰划分
+                var emoji;
+                if (fav >= 60) emoji = '♥';        // 好感
+                else if (fav >= 15) emoji = '◇';   // 友善
+                else if (fav > -15) emoji = '○';   // 中立
+                else if (fav > -40) emoji = '▽';   // 疏远
+                else emoji = '✕';                   // 反感
                 rsHtml += emoji + ' ' + escapeHtml(c.name) + (c.relation ? '（' + escapeHtml(c.relation) + '）' : '') + ' 好感 ' + fav + '<br>';
             });
             relationSummaryEl.innerHTML = rsHtml;
@@ -6928,7 +6943,8 @@ function saveNpcEdit() {
     var favor = favorEl ? (parseInt(favorEl.value) || 50) : 50;
     var desc = descEl ? descEl.value.trim() : '';
     var extra = extraEl ? extraEl.value.trim() : '';
-    favor = Math.max(0, Math.min(100, favor));
+    // 【修复】好感度范围与渲染一致为 -100~100（原 0-100 无法表达反感）
+    favor = Math.max(-100, Math.min(100, favor));
     var details = [];
     if (extra) {
         extra.split('\n').forEach(function(line) {
@@ -6995,12 +7011,15 @@ function renderNpcPage() {
     var chars = Object.values((gameState && gameState.allCharacters) || {});
     // 【性能优化】数据未变时跳过整页重绘（每次点击导航栏都会触发此函数）
     try {
-        var totalFav = 0, lastName = '';
+        // 【修复】原 key 只算 length/totalFav/lastName，漏算 title/relation/desc/details，
+        // 导致 AI 更新角色状态描述或关系后人际页不重绘
+        var totalFav = 0, sigParts = [];
         for (var _ci = 0; _ci < chars.length; _ci++) {
-            totalFav += Number(chars[_ci].favorability) || 0;
-            lastName = chars[_ci].name;
+            var _c = chars[_ci];
+            totalFav += Number(_c.favorability) || 0;
+            sigParts.push(_c.name + ':' + (_c.favorability || 0) + ':' + (_c.title || '') + ':' + (_c.relation || '') + ':' + (_c.desc || '').length);
         }
-        var _key = chars.length + '|' + totalFav + '|' + lastName;
+        var _key = chars.length + '|' + totalFav + '|' + sigParts.join('|');
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderNpcPage', _key)) return;
         if (typeof RenderCache !== 'undefined') RenderCache.mark('renderNpcPage', _key);
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
@@ -7044,7 +7063,9 @@ function renderNpcPage() {
                 '<div class="char-tags">' + tagsHtml + '</div>' +
                 '<div class="char-stats">' +
                 '<div class="char-stat-row"><span>好感</span><div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' +
-                fav + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
+                // 【修复】好感度范围 -100~100，映射到 0~100% 宽度（0 为中点 50%）
+                // 原 width:fav% 对负值非法（如 -40%），浏览器忽略显示空条
+                Math.max(0, Math.min(100, 50 + fav / 2)) + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
                 (c.desc ?
                     '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
@@ -7157,12 +7178,24 @@ function openNpcDetail(name) {
             '<span style="display:flex;align-items:center;gap:8px;">' +
             '<span style="font-size:12px;color:#fff;background:' + favColor + ';padding:2px 8px;border-radius:10px;font-weight:500;">' + favLevel + '</span>' +
             '<span style="font-size:14px;color:var(--text);font-weight:600;">' + fav + '</span></span></div>' +
-            '<div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' + fav + '%;background:' + favColor + ';"></div></div></div>';
+            // 【修复】好感度 -100~100 映射到 0~100% 宽度（0 为中点 50%），原 width:fav% 对负值非法
+            '<div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' + Math.max(0, Math.min(100, 50 + fav / 2)) + '%;background:' + favColor + ';"></div></div></div>';
     }
 
     document.getElementById('npcDetailBody').innerHTML = html;
     UI.showModal('npcDetailModal');
 
+    // 绑定「找TA聊聊」按钮
+    var chatBtn = document.getElementById('btnNpcChat');
+    if (chatBtn) {
+        var newChatBtn = chatBtn.cloneNode(true);
+        chatBtn.parentNode.replaceChild(newChatBtn, chatBtn);
+        newChatBtn.addEventListener('click', function() {
+            if (typeof openNpcChat === 'function') {
+                openNpcChat(name);
+            }
+        });
+    }
     // 绑定编辑按钮
     var editBtn = document.getElementById('btnNpcEdit');
     if (editBtn) {
