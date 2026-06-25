@@ -1626,16 +1626,20 @@ var WorldInfo = {
 
         var text = caseSensitive ? haystack : haystack.toLowerCase();
 
-        return keys.some(function(key) {
-            if (!key) return false;
-            var k = caseSensitive ? key : key.toLowerCase();
-            if (matchWholeWords) {
-                var regex = new RegExp('(?:^|\\W)(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
-                return regex.test(haystack);
-                } else {
-                return text.indexOf(k) !== -1;
-            }
-        });
+        if (!matchWholeWords) {
+            return keys.some(function(key) {
+                if (!key) return false;
+                return text.indexOf(caseSensitive ? key : key.toLowerCase()) !== -1;
+            });
+        }
+
+        var escapedKeys = [];
+        for (var i = 0; i < keys.length; i++) {
+            if (keys[i]) escapedKeys.push(keys[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+        }
+        if (escapedKeys.length === 0) return false;
+        var combinedRegex = new RegExp('(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
+        return combinedRegex.test(haystack);
     },
 
     // triggers触发器匹配
