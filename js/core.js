@@ -1549,7 +1549,10 @@ var SaveDB = {
                     }
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            // 【I修复】迁移失败不再静默：记录警告，但仍置位 IDB_MIGRATED 避免每次启动无限重试
+            console.warn('[SaveDB.migrate] localStorage→IndexedDB 迁移失败，已跳过', migrated, '个存档:', e.message);
+        }
         Storage.set(Storage.KEYS.IDB_MIGRATED, '1');
     },
     // ── 备份与校验工具 ──

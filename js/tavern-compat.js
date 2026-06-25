@@ -3440,7 +3440,8 @@ var GameMemory = {
                 return false;
             }
             // 迁移成功后立即保存为新版本
-            try { this._migratedData = data; } catch(e) {}
+            // 【I修复】移除冗余 try/catch：简单属性赋值无抛错可能
+            this._migratedData = data;
             console.log('[GameMemory] 迁移到 v3 完成');
         }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
@@ -3782,7 +3783,11 @@ var MemoryManagerUI = {
         var summaryEl = document.getElementById('memorySummaryEdit');
         if (summaryEl && typeof gameState !== 'undefined') gameState.rollingSummary = summaryEl.value.trim();
         var worldEdit = document.getElementById('memoryWorldEdit');
-        if (worldEdit && typeof gameState !== 'undefined') { try { gameState.worldSnapshot = JSON.parse(worldEdit.value); } catch(e) {} }
+        // 【I修复】用户手编 JSON 非法时不再静默吞掉，提示用户
+        if (worldEdit && typeof gameState !== 'undefined') {
+            try { gameState.worldSnapshot = JSON.parse(worldEdit.value); }
+            catch(e) { console.warn('[saveMemoryEdits] worldSnapshot JSON 解析失败:', e.message); UI.toast('世界快照JSON格式错误，已忽略'); }
+        }
         if (typeof autoSave === 'function') autoSave();
         UI.toast('记忆已保存');
     },
