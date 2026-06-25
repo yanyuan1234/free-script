@@ -2005,26 +2005,17 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
             // === 新增：提取并累积重要事件 ===
             if (data.keyEvents && Array.isArray(data.keyEvents)) {
-                if (!gameState || !gameState.keyEvents) {
-                    if (gameState) gameState.keyEvents = [];
-                }
-                if (gameState) {
-                    data.keyEvents.forEach(function(evt) {
-                        if (evt && typeof evt === 'string' && evt.trim().length > 0) {
-                            // 去重：trim后匹配，避免空格差异导致重复
-                            if (!gameState.keyEvents.includes(evt.trim())) {
-                                gameState.keyEvents.push(evt.trim());
-                            }
-                        }
-                    });
-                    // 上限30条，防止占太多token
-                    if (gameState.keyEvents.length > 30) {
-                        gameState.keyEvents = gameState.keyEvents.slice(-30);
+                // 【H3修复】统一走 gm.addImportantEvents 批量入口
+                // 旧代码直接 push 到 gameState.keyEvents（字符串数组）+ 手动 slice(-30) + _pushKeyEventsToGM，
+                // 与 gm.events（对象数组）schema 冲突，且不触发 saveToStorage
+                var _gm = (typeof window !== 'undefined') ? window.GameMemory : null;
+                if (_gm && _gm.addImportantEvents) {
+                    var _keyEventObjs = data.keyEvents
+                        .filter(function(evt) { return evt && typeof evt === 'string' && evt.trim().length > 0; })
+                        .map(function(evt) { return { content: evt.trim(), importance: 7 }; });
+                    if (_keyEventObjs.length > 0) {
+                        try { _gm.addImportantEvents(_keyEventObjs); } catch (e) { console.warn('[keyEvents]', e); }
                     }
-                }
-                // 【数据联通】同步推送到权威源 gm.events
-                if (typeof _pushKeyEventsToGM === 'function') {
-                    try { _pushKeyEventsToGM(); } catch (e) { console.warn('[pushKeyEvents]', e); }
                 }
                 // 触发 UI 刷新
                 if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('keyEvents');
@@ -2171,20 +2162,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (!data || !data.keyEvents) {
             var extractedEvents = extractArr(response, 'keyEvents');
             if (extractedEvents && extractedEvents.length > 0) {
-                if (!gameState.keyEvents) gameState.keyEvents = [];
-                extractedEvents.forEach(function(evt) {
-                    if (evt && evt.trim().length > 0 && !gameState.keyEvents.includes(evt
-                        .trim())) {
-                        gameState.keyEvents.push(evt.trim());
+                // 【H3修复】统一走 gm.addImportantEvents 批量入口
+                var _gm2 = (typeof window !== 'undefined') ? window.GameMemory : null;
+                if (_gm2 && _gm2.addImportantEvents) {
+                    var _keyEventObjs2 = extractedEvents
+                        .filter(function(evt) { return evt && evt.trim().length > 0; })
+                        .map(function(evt) { return { content: evt.trim(), importance: 7 }; });
+                    if (_keyEventObjs2.length > 0) {
+                        try { _gm2.addImportantEvents(_keyEventObjs2); } catch (e) { console.warn('[pushKeyEvents] 兜底同步失败:', e); }
                     }
-                });
-                // 上限30条，防止占太多token
-                if (gameState.keyEvents.length > 30) {
-                    gameState.keyEvents = gameState.keyEvents.slice(-30);
-                }
-                // 【修复BUG-13】兜底提取的 keyEvents 也要同步到 gm.events（记忆中心读取的是 gm.events）
-                if (typeof _pushKeyEventsToGM === 'function') {
-                    try { _pushKeyEventsToGM(); } catch (e) { console.warn('[pushKeyEvents] 兜底同步失败:', e); }
                 }
             }
         }
