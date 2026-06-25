@@ -2553,27 +2553,13 @@ function _parseStructuredSummary(summary) {
     var eventMatch = summary.match(/【重要事件】\n([\s\S]*?)(?=【|$)/);
     if (eventMatch) {
         var events = eventMatch[1].split('\n').filter(function(l) { return l.trim(); });
-        var _hasNewEvent = false;
-        events.forEach(function(event) {
-            if (!gameState.keyEvents) gameState.keyEvents = [];
-            if (!gameState.keyEvents.includes(event.trim())) {
-                gameState.keyEvents.push(event.trim());
-                _hasNewEvent = true;
-            }
-            EnhancedMemory.longTermMemory.importantEvents.push({
-                time: Date.now(),
-                event: event.trim()
-            });
-            // 上限50条，防止内存无限增长
-            if (EnhancedMemory.longTermMemory.importantEvents.length > 50) {
-                EnhancedMemory.longTermMemory.importantEvents = EnhancedMemory.longTermMemory.importantEvents.slice(-50);
-            }
-        });
-        // 【阶段1-A2】摘要解析的 keyEvents 通过 _pushKeyEventsToGM 统一同步
-        // 旧代码 StateManager.set('entities.events', gameState.keyEvents) 写入字符串数组，
-        // 与 _applyKeyEvents 的对象数组 schema 冲突
-        if (_hasNewEvent && typeof _pushKeyEventsToGM === 'function') {
-            try { _pushKeyEventsToGM(); } catch (e) { console.warn('[pushKeyEvents] 摘要同步失败:', e); }
+        // 【C2修复】统一走 gm.addImportantEvents 批量入口
+        // 旧代码直接 push 到 EnhancedMemory.longTermMemory.importantEvents，schema 为 {time, event}，
+        // 与 gm.addImportantEvent 的 {content, turn, gameTime, importance, decayScore} schema 不一致，
+        // 导致 _syncEventsToKeyEvents 过滤掉这些事件（e.content 为 undefined），事件在 keyEvents 中消失
+        if (events.length > 0 && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.addImportantEvents) {
+            var _eventObjs = events.map(function(e) { return { content: e.trim(), importance: 5 }; });
+            try { EnhancedMemory.addImportantEvents(_eventObjs); } catch (err) { console.warn('[摘要事件写入失败]', err); }
         }
     }
     
@@ -3772,8 +3758,16 @@ async function loadFromSlot(slot) {
         // 关闭所有弹窗
         UI.hideModal('saveLoadModal');
         restoreGame();
-        // 【修复】读档后触发自动存档，确保数据被保存
-        autoSave();
+        // 【C3修复】读档后直接在 withSaveLock 内保存迁移后的状态
+        // 旧代码调用 autoSave()，会 setTimeout 2 秒后触发二次 withSaveLock，
+        // 期间 restoreGame 渲染可能修改 StateManager.entities，导致 buildSaveData 捕获中间态脏数据
+        try {
+            if (typeof SaveDB !== 'undefined') {
+                await SaveDB.set(0, buildSaveData('', true));
+            }
+        } catch (e) {
+            console.warn('[loadFromSlot] 读档后保存失败:', e);
+        }
 
         // 触发事件：CHAT_CHANGED（切换聊天）
         if (typeof TavernHelperCompat !== 'undefined') {

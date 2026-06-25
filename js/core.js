@@ -2704,21 +2704,23 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'item':
-                    if (!gameState.bag) gameState.bag = [];
-                    var qty = parseInt(mem.qty) || 1;
-                    if (mem.action === 'add') {
-                        var existItem = gameState.bag.find(function(b) { return b.name === mem.name; });
-                        if (existItem) {
-                            existItem.count = (existItem.count || 0) + qty;
-                        } else {
-                            gameState.bag.push({ name: mem.name, count: qty, desc: mem._content || '' });
-                        }
-                    } else if (mem.action === 'remove') {
-                        var rmItem = gameState.bag.find(function(b) { return b.name === mem.name; });
-                        if (rmItem) {
-                            rmItem.count = Math.max(0, (rmItem.count || 0) - qty);
-                            if (rmItem.count === 0) {
-                                gameState.bag = gameState.bag.filter(function(b) { return b.name !== mem.name; });
+                    // 【C1修复】委托 BagMutator，不再直接操作 gameState.bag（数据孤岛）
+                    // 旧代码写 gameState.bag（不在 _legacyToPath 映射中），_syncLegacyMirror 不镜像，
+                    // UI 读 gameState.currentBag 看不到 <mem> 添加的物品
+                    if (typeof BagMutator !== 'undefined') {
+                        var _itemQty = parseInt(mem.qty) || 1;
+                        if (mem.action === 'add') {
+                            BagMutator.mergeItems([{ name: mem.name, count: _itemQty, desc: mem._content || '' }]);
+                        } else if (mem.action === 'remove') {
+                            var _rawBag = StateManager.get('entities.bag');
+                            var _bag = Array.isArray(_rawBag) ? _rawBag : [];
+                            var _rmItem = _bag.find(function(b) { return b && b.name === mem.name; });
+                            if (_rmItem) {
+                                _rmItem.count = Math.max(0, (_rmItem.count || 0) - _itemQty);
+                                if (_rmItem.count === 0) {
+                                    _bag = _bag.filter(function(b) { return b && b.name !== mem.name; });
+                                }
+                                BagMutator.setItems(_bag);
                             }
                         }
                     }
@@ -2774,13 +2776,21 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'quest':
-                    if (!gameState.quests) gameState.quests = [];
-                    if (mem.action === 'add') {
-                        var newQuest = { title: mem._content || mem.name || '新任务', status: 'pending' };
-                        gameState.quests.push(newQuest);
-                    } else if (mem.action === 'resolve') {
-                        var q = gameState.quests.find(function(qq) { return qq.title === (mem._content || mem.name); });
-                        if (q) q.status = 'completed';
+                    // 【C1修复】委托 QuestMutator，不再直接操作 gameState.quests（数据孤岛）
+                    // 旧代码写 gameState.quests（不在 _legacyToPath 映射中），与 currentQuests 平行存在，
+                    // 下游 mergeQuests 只读 currentQuests，导致 <mem> 添加的任务丢失
+                    if (typeof QuestMutator !== 'undefined') {
+                        if (mem.action === 'add') {
+                            QuestMutator.addQuest({ title: mem._content || mem.name || '新任务', status: '进行中' });
+                        } else if (mem.action === 'resolve') {
+                            var _qTitle = mem._content || mem.name;
+                            var _rawQuests = StateManager.get('entities.quests') || [];
+                            var _q = _rawQuests.find(function(qq) { return qq && qq.title === _qTitle; });
+                            if (_q) {
+                                _q.status = QuestMutator.STATUS.COMPLETED;
+                                QuestMutator.setQuests(_rawQuests);
+                            }
+                        }
                     }
                     break;
                 case 'time':
@@ -2790,11 +2800,14 @@ function _applyMemsToGameState(mems) {
                     if (mem.period) gameState.gameTime.period = mem.period;
                     break;
                 case 'location':
-                    if (!gameState.world) gameState.world = [];
-                    if (mem.action === 'add' && mem.name) {
-                        var loc = gameState.world.find(function(w) { return w.type === 'location' && w.name === mem.name; });
-                        if (!loc) {
-                            gameState.world.push({ type: 'location', name: mem.name, desc: mem._content || '' });
+                    // 【C1修复】直接写 StateManager.entities.locations，不再操作 gameState.world（数据孤岛）
+                    // 旧代码写 gameState.world（schema 与 entities.locations 不同，且无任何读取点，是完全孤立的死字段）
+                    if (mem.action === 'add' && mem.name && typeof StateManager !== 'undefined') {
+                        var _rawLocs = StateManager.get('entities.locations') || [];
+                        var _locExists = _rawLocs.some(function(l) { return l && l.name === mem.name; });
+                        if (!_locExists) {
+                            _rawLocs.push({ name: mem.name, desc: mem._content || '' });
+                            StateManager.set('entities.locations', _rawLocs, { silent: true });
                         }
                     }
                     break;
@@ -2803,20 +2816,18 @@ function _applyMemsToGameState(mems) {
             console.warn('[<mem>应用失败]', mem, e.message);
         }
     });
-    // 【数据断层修复】<mem> 兜底分支直接写了 gameState.xxx，需同步回 StateManager
-    // 【阶段1统一】CharacterMutator 已直接写入 StateManager，characters 反向同步仅在兜底分支生效
+    // 【C1修复】反向同步清理：item/quest/location 分支已委托 mutator / 直接写 StateManager，
+    // 不再需要从 gameState.bag/quests/world 反向同步。仅保留：
+    // 1. characters 兜底分支（CharacterMutator 不可用时）的反向同步
+    // 2. time 分支的反向同步（gameTime 写入是 time 标准字段，需同步到 StateManager.time）
     if (typeof StateManager !== 'undefined') {
         try {
-            if (gameState.bag) StateManager.set('entities.bag', gameState.bag, { silent: true });
             // characters 仅在兜底分支（CharacterMutator 不可用）时需要反向同步
             if (typeof CharacterMutator === 'undefined' && gameState.allCharacters) {
                 StateManager.set('entities.characters', Object.values(gameState.allCharacters), { silent: true });
             }
-            if (gameState.quests) StateManager.set('entities.quests', gameState.quests, { silent: true });
             // 【阶段1-A2】keyEvents 不再直接写 StateManager——<mem> 事件已走 gm.addImportantEvent
             // 统一入口，由 _syncEventsToKeyEvents 写入对象数组到 StateManager.entities.events。
-            // 旧代码 StateManager.set('entities.events', gameState.keyEvents) 写入字符串数组，
-            // 会覆盖 _applyKeyEvents 的对象数组 schema，导致事件数据格式不一致。
             if (gameState.gameTime) StateManager.set('time', gameState.gameTime, { silent: true });
         } catch (e) { console.warn('[<mem>同步 StateManager 失败]', e.message); }
     }
