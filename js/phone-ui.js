@@ -4277,7 +4277,7 @@ function bindEvents() {
                     keysToRemove.push(key);
                 }
             }
-            keysToRemove.forEach(function(k) { localStorage.removeItem(k); });
+            keysToRemove.forEach(function(k) { Storage.remove(k); });
             try { indexedDB.deleteDatabase('BunnyGameDB'); } catch(e) { console.warn('删除IndexedDB失败:', e); }
             location.reload();
             return;
@@ -4297,7 +4297,7 @@ function bindEvents() {
                     keysToRemove2.push(key2);
                 }
             }
-            keysToRemove2.forEach(function(k) { localStorage.removeItem(k); });
+            keysToRemove2.forEach(function(k) { Storage.remove(k); });
             try { indexedDB.deleteDatabase('BunnyGameDB'); } catch(e) { console.warn('删除IndexedDB失败:', e); }
             location.reload();
         }
