@@ -229,12 +229,26 @@ const ResponseParser = {
         if (!raw || typeof raw !== 'string') return null;
         const mems = [];
         const story = raw.replace(/<mem\b[^>]*?(?:>([\s\S]*?)<\/mem>|\/>)/gi, function(tag, inner) {
-            const type = (tag.match(/type=["']([^"']+)["']/) || [])[1] || '';
-            const action = (tag.match(/action=["']([^"']+)["']/) || [])[1] || '';
-            const name = (tag.match(/name=["']([^"']+)["']/) || [])[1] || '';
-            const qty = (tag.match(/qty=["']([^"']+)["']/) || [])[1] || '';
+            // 【修复 P2】提取全部属性，而非仅 type/action/name/qty/content
+            // prompt 指示 AI 使用 field/value/day/period 等属性，旧代码全部丢弃
+            const attrs = {};
+            const attrRegex = /(\w+)\s*=\s*"([^"]*)"/g;
+            let m;
+            while ((m = attrRegex.exec(tag)) !== null) {
+                attrs[m[1]] = m[2];
+            }
             const content = (inner || '').replace(/<[^>]+>/g, '').trim();
-            mems.push({ type: type, action: action, name: name, qty: qty, content: content });
+            mems.push({
+                type: attrs.type || '',
+                action: attrs.action || '',
+                name: attrs.name || '',
+                qty: attrs.qty || '',
+                content: content,
+                field: attrs.field || '',
+                value: attrs.value || '',
+                day: attrs.day || '',
+                period: attrs.period || ''
+            });
             return '';
         }).trim();
         if (mems.length === 0) return null;

@@ -1421,7 +1421,7 @@ input:checked + .slider:before {
     gap: 8px
 }
 
-.empty-state, .preset-empty, .quest-empty-state, .wi-empty {
+.empty-state, .preset-empty, .quest-empty-state, .wi-empty, .memory-empty-state {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1431,7 +1431,7 @@ input:checked + .slider:before {
     font-size: 13px;
     text-align: center;
 }
-.empty-state-icon, .preset-empty-icon, .quest-empty-icon, .wi-empty-icon {
+.empty-state-icon, .preset-empty-icon, .quest-empty-icon, .wi-empty-icon, .memory-empty-state-icon {
     font-size: 48px;
     opacity: 0.3;
     margin-bottom: 12px;

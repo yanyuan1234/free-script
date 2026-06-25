@@ -5675,7 +5675,7 @@ function saveGameSettings() {
     // NSFW 内容控制应通过自定义风格/设定实现，而非无效的安慰剂开关
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     gameState.generateChoices = true;
-    Storage.setJSON(Storage.KEYS.SETTINGS, {
+    var _saveResult = Storage.setJSON(Storage.KEYS.SETTINGS, {
         useStream: gameState.useStream,
         // 【修复P0-1】不再导出 gameState.temperature——统一由 PresetManager.currentParams 持久化
         fontSize: gameState.fontSize,
@@ -5697,6 +5697,12 @@ function saveGameSettings() {
         presetArchetype: gameState.presetArchetype
     });
     applyFontSize();
+    // 【修复 P2】检查 Storage.setJSON 返回值，配额超限时提示用户而非虚假"保存成功"
+    if (_saveResult && _saveResult.success === false) {
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('保存失败：存储空间不足，请导出存档后清理');
+        console.warn('[saveGameSettings] 存储失败:', _saveResult.error);
+        return;
+    }
     // 保存成功提示
     if (typeof UI !== 'undefined' && UI.toast) UI.toast('设置已保存');
 }
@@ -7060,7 +7066,12 @@ function saveNpcEdit() {
     var extraEl = document.getElementById('npcEditExtra');
     var title = titleEl ? titleEl.value.trim() : '';
     var relation = relationEl ? relationEl.value.trim() : '';
-    var favor = favorEl ? (parseInt(favorEl.value) || 50) : 50;
+    var favor = favorEl ? parseInt(favorEl.value) : NaN;
+    // 【修复 P2】输入为空或非数字时，取当前角色已有好感度，而非硬编码 50（与 openEditNpcModal 默认值 0 一致）
+    if (isNaN(favor)) {
+        var _curC = gameState.allCharacters && gameState.allCharacters[name];
+        favor = (_curC && _curC.favorability !== undefined) ? _curC.favorability : 0;
+    }
     var desc = descEl ? descEl.value.trim() : '';
     var extra = extraEl ? extraEl.value.trim() : '';
     // 【修复】好感度范围与渲染一致为 -100~100（原 0-100 无法表达反感）

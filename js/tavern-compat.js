@@ -941,9 +941,10 @@ var GameMemory = {
         if (!this._summaryLayers) this._summaryLayers = { near: [], mid: [], far: [] };
         if (!this._setupLayers) this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         if (!this._setupLayers.setupKeywords) this._setupLayers.setupKeywords = [];
-        if (!this.workingMemory.nearSummary) this.workingMemory.nearSummary = '';
-        if (!this.workingMemory.midSummary) this.workingMemory.midSummary = '';
-        if (!this.workingMemory.farSummary) this.workingMemory.farSummary = '';
+        // 【修复 P2】移除 nearSummary/midSummary/farSummary 死字段初始化——这些字段已废弃，无人读取
+        // if (!this.workingMemory.nearSummary) this.workingMemory.nearSummary = '';
+        // if (!this.workingMemory.midSummary) this.workingMemory.midSummary = '';
+        // if (!this.workingMemory.farSummary) this.workingMemory.farSummary = '';
         // 初始化AI叙事驱动系统的休眠追踪
         this._initDormantTracking();
         this.startAutoSave();
@@ -3290,11 +3291,16 @@ var GameMemory = {
     shouldTriggerCompression: function(currentTokenCount, maxTokens) {
         var config = this.compressionConfig;
         var messageCount = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.length : 0;
-        var lastCompressTime = Date.now() - (window.lastCompressTime || 0);
+        // 【修复 P2】冷却检查改用 compressionConfig.lastCompressionTurn（回合维度），而非未初始化的 window.lastCompressTime
+        // 旧代码 window.lastCompressTime 从未被赋值，导致 lastCompressTime = Date.now()（约1.7万亿），冷却形同虚设
+        var currentTurn = (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
+        var lastCompressTurn = config.lastCompressionTurn || 0;
+        var turnsSinceLastCompress = currentTurn - lastCompressTurn;
         if (currentTokenCount > maxTokens * config.triggerThreshold) return { shouldCompress: true, reason: 'Token超限 (' + currentTokenCount + '/' + maxTokens + ')' };
         // 按次计费：放宽消息数量阈值，保留更多原文
         if (messageCount > 100) return { shouldCompress: true, reason: '消息数量过多 (' + messageCount + '条)' };
-        if (lastCompressTime > config.cooldownMinutes * 60 * 1000 && messageCount >= 60) { var recentMessages = (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = (m && m.content) || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
+        // 冷却：至少经过 cooldownMinutes 等效回合数（用消息数估算，约10条/回合）后才考虑事件触发压缩
+        if (turnsSinceLastCompress >= config.cooldownMinutes && messageCount >= 60) { var recentMessages = (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = (m && m.content) || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
         return { shouldCompress: false, reason: '暂不需要压缩' };
     },
 

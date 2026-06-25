@@ -47,7 +47,17 @@ const AIOutputSchema = {
             }).filter(c => c.text);
         }
         // 【P1修复】深拷贝防止共享引用，调用方修改 raw 不影响 normalized 结果
-        if (raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player)) out.player = this._shallowClone(raw.player);
+        if (raw.player && typeof raw.player === 'object' && !Array.isArray(raw.player)) {
+            const playerClone = this._shallowClone(raw.player);
+            // 【修复 P2】归一化 player.stats 字段名：prompt 要求 {label, value}，但 AI 可能返回 {name, value} 或 {key, value}
+            if (Array.isArray(playerClone.stats)) {
+                playerClone.stats = playerClone.stats.map(function(s) {
+                    if (!s || typeof s !== 'object') return { label: '', value: 0 };
+                    return { label: s.label || s.name || s.key || '', value: s.value };
+                }).filter(function(s) { return s.label; });
+            }
+            out.player = playerClone;
+        }
         if (raw.characters && Array.isArray(raw.characters)) out.characters = raw.characters.slice();
         if (raw.bag && Array.isArray(raw.bag)) out.bag = raw.bag.slice();
         // 【P1修复】currency 放宽类型：接受字符串数字，防止 AI 输出 "50" 被丢弃

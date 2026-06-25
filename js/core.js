@@ -1852,6 +1852,11 @@ wordCountConfig: {
     paragraphMin: 15,
     paragraphMax: 17,
     paragraphStyle: 'medium',
+    perspective: 'third_person_limited',
+    userPronoun: 'second_person',
+    takeover: 'closed',
+    narrate: 'closed',
+    pacing: 'steady',
     lengthPreset: 'medium'
 },
 _theaterContent: {},
