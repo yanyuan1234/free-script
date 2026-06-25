@@ -2471,9 +2471,9 @@ function renderMailPage() {
             });
         }
     });
-    if (allMails.length === 0) {
-        allMails = gameState._mails || [];
-    }
+    // 【阶段3清理】原 if (allMails.length === 0) allMails = gameState._mails || [];
+    // _mails 从未被任何代码写入（死字段），删除 fallback。
+    // 所有邮件数据统一来自 _worldModules 的 type:'mail' 模块。
 
     var mailListHtml = '';
     if (allMails.length === 0) {
@@ -2543,7 +2543,7 @@ function renderShopPage() {
         }
     });
 
-    if (allGoods.length === 0) allGoods = gameState._shopGoods || [];
+    // 【阶段3清理】_shopGoods 死字段已删除，商品数据统一来自 _worldModules
 
     var catHtml = '';
     if (categories.length > 0) {
@@ -2623,7 +2623,7 @@ function buyShopItem(index) {
     shopModules.forEach(function(mod) {
         if (mod.items && Array.isArray(mod.items)) { mod.items.forEach(function(item) { allGoods.push(item); }); }
     });
-    if (allGoods.length === 0) allGoods = gameState._shopGoods || [];
+    // 【阶段3清理】_shopGoods 死字段已删除，商品数据统一来自 _worldModules
     if (index < 0 || index >= allGoods.length) return;
     var item = allGoods[index];
     var price = parseInt(item.price) || 0;
