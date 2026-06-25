@@ -81,7 +81,7 @@ const PromptBuilder = {
         // identity：身份与最高规则
         this.registerSection('identity', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const maxTokens = ctx.maxTokens || 4096;
+            const maxTokens = ctx.maxTokens || 8192;
             const base = '你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。';
             const modeRule = pureText
                 ? '【纯文本模式】**直接输出纯文本剧情**，不要任何JSON包裹、不要```json```代码块、不要"{"或"}"符号。你只需要写出剧情本身——状态变化用<mem>标签穿插在剧情中（前端自动提取维护结构化数据），心声用<giggle>标签。'
@@ -123,7 +123,7 @@ const PromptBuilder = {
         // workflow：工作方式
         this.registerSection('workflow', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const maxTokens = ctx.maxTokens || 4096;
+            const maxTokens = ctx.maxTokens || 8192;
             const parts = [];
             parts.push('【引导玩家输入】（提升剧情质量）');
             parts.push('- 好的输入：包含动作+对象+意图，如"我想去图书室查阅螺旋塔的资料"');

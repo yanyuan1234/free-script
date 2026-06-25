@@ -103,7 +103,16 @@ const ResponseParser = {
         const firstBrace = raw.indexOf('{');
         if (firstBrace === -1) return null;
         const lastBrace = raw.lastIndexOf('}');
-        if (lastBrace === -1 || lastBrace < firstBrace) return null;
+
+        // 【截断修复】当 JSON 被截断（没有闭合 }）时，尝试智能补全
+        if (lastBrace === -1 || lastBrace < firstBrace) {
+            const repaired = this._repairTruncatedJSON(raw, firstBrace);
+            if (repaired) {
+                console.log('[ResponseParser] JSON 截断修复成功，补全了闭合符号');
+                return repaired;
+            }
+            return null;
+        }
 
         // 【P2优化】快速路径：尝试 first{ ... last} 的最大切片（覆盖 99% 场景）
         let candidate = raw.slice(firstBrace, lastBrace + 1);
@@ -131,6 +140,88 @@ const ResponseParser = {
             fb = raw.indexOf('{', fb + 1);
             attempts++;
         }
+
+        // 【截断修复】所有正常路径失败后，最后尝试截断修复
+        const repaired = this._repairTruncatedJSON(raw, firstBrace);
+        if (repaired) {
+            console.log('[ResponseParser] JSON 截断修复成功（兜底路径）');
+            return repaired;
+        }
+        return null;
+    },
+
+    // 【新增】修复被截断的 JSON：补全缺失的闭合符号 } ] 和字符串引号
+    // 当 AI 输出因 max_tokens 不足被截断时，JSON 缺少闭合的 } 和 ]
+    // 本方法通过状态机扫描，统计未闭合的层级，在末尾补全
+    _repairTruncatedJSON(raw, startIdx) {
+        if (!raw || typeof raw !== 'string') return null;
+        const start = startIdx != null ? startIdx : raw.indexOf('{');
+        if (start === -1) return null;
+
+        let depth = 0;           // {} 层级
+        let bracketDepth = 0;    // [] 层级
+        let inString = false;
+        let escape = false;
+        let lastValidPos = start; // 最后一个完整 key-value 后的位置
+        let lastKeyEnd = -1;     // 最后一个键名后的冒号位置
+
+        for (let i = start; i < raw.length; i++) {
+            const ch = raw[i];
+            if (inString) {
+                if (escape) { escape = false; }
+                else if (ch === '\\') { escape = true; }
+                else if (ch === '"') { inString = false; }
+                continue;
+            }
+            if (ch === '"') { inString = true; continue; }
+            if (ch === '{') { depth++; continue; }
+            if (ch === '}') { depth--; lastValidPos = i; continue; }
+            if (ch === '[') { bracketDepth++; continue; }
+            if (ch === ']') { bracketDepth--; lastValidPos = i; continue; }
+            if (ch === ',') { lastValidPos = i; continue; }
+            if (ch === ':') { lastKeyEnd = i; continue; }
+        }
+
+        // 如果深度为 0 且 bracketDepth 为 0，说明 JSON 完整，不需要修复
+        if (depth === 0 && bracketDepth === 0) return null;
+
+        // 截取到最后一个有效位置（避免截断在 key 中间）
+        let candidate = raw.slice(start);
+        // 如果在字符串中间被截断，先补全引号
+        if (inString) {
+            candidate += '"';
+        }
+        // 补全缺失的 ] 和 }
+        for (let i = 0; i < bracketDepth; i++) {
+            candidate += ']';
+        }
+        for (let i = 0; i < depth; i++) {
+            candidate += '}';
+        }
+
+        // 尝试解析修复后的 JSON
+        const result = this._tryDirectJSON(candidate);
+        if (result) {
+            // 标记为截断修复的数据
+            result._truncatedRepaired = true;
+            return result;
+        }
+
+        // 如果直接补全失败，尝试截断到最后一个逗号/完整值后再补全
+        // 找到最后一个逗号或值结束位置
+        let trimPos = candidate.lastIndexOf(',');
+        if (trimPos > start) {
+            candidate = candidate.slice(0, trimPos);
+            if (inString) candidate += '"';
+            for (let i = 0; i < bracketDepth; i++) candidate += ']';
+            for (let i = 0; i < depth; i++) candidate += '}';
+            const result2 = this._tryDirectJSON(candidate);
+            if (result2) {
+                result2._truncatedRepaired = true;
+                return result2;
+            }
+        }
+
         return null;
     },
 
@@ -162,9 +253,29 @@ const ResponseParser = {
                 if (parsed && typeof parsed === 'object') data = parsed;
             } catch (e) {}
         }
+        // 【截断修复】如果没有匹配到完整 JSON（无闭合}），尝试截断修复
+        if (!data) {
+            const firstBrace = cleaned.indexOf('{');
+            if (firstBrace !== -1) {
+                const repaired = this._repairTruncatedJSON(cleaned, firstBrace);
+                if (repaired) {
+                    console.log('[ResponseParser] 纯文本模式截断修复成功');
+                    data = repaired;
+                }
+            }
+        }
         if (data) {
-            const story = OutputSanitizer ? OutputSanitizer.sanitizeStory(cleaned.replace(jsonMatch[0], '').trim()) : cleaned.replace(jsonMatch[0], '').trim();
-            data.story = data.story || story;
+            let story = data.story || '';
+            // 从 cleaned 中移除 JSON 部分，剩余作为 story
+            if (!story) {
+                const jsonStart = cleaned.indexOf('{');
+                const jsonEnd = cleaned.lastIndexOf('}');
+                if (jsonStart !== -1) {
+                    story = (cleaned.slice(0, jsonStart) + cleaned.slice(jsonEnd + 1)).trim();
+                    story = OutputSanitizer ? OutputSanitizer.sanitizeStory(story) : story;
+                }
+            }
+            data.story = story || '';
             return data;
         }
         return { storyText: cleaned };

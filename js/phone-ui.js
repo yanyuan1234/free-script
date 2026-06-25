@@ -4130,15 +4130,6 @@ function bindEvents() {
         saveNpcEdit();
     });
 
-    // NPC详情聊天按钮
-    bindEvent('btnNpcChat', 'click', function() {
-        UI.hideModal('npcDetailModal');
-        // 需要知道当前选中的NPC名字
-        var body = document.getElementById('npcDetailBody');
-        var nameEl = body.querySelector('h3');
-        if (nameEl) openNpcChat(nameEl.textContent);
-    });
-
     // 加载页面取消
     bindEvent('btnLoadingCancel', 'click', function() {
         UI.showPage('worldSetupPage');
@@ -5671,7 +5662,7 @@ function saveGameSettings() {
 function _syncMaxTokens(value) {
     var mt = value != null ? value :
         (typeof PresetManager !== 'undefined' && PresetManager.currentParams ?
-            (PresetManager.currentParams.max_tokens != null ? PresetManager.currentParams.max_tokens : 4096) : 4096);
+            (PresetManager.currentParams.max_tokens != null ? PresetManager.currentParams.max_tokens : 8192) : 8192);
     // 1. 同步 PresetManager（如果 value 是外部传入的）
     if (value != null && typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
         PresetManager.currentParams.max_tokens = mt;

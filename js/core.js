@@ -1812,7 +1812,7 @@ function createDefaultGameState() {
         rollingSummary: '',
         autoCompress: true,
         tokenCount: 0,
-        maxTokens: 4096,
+        maxTokens: 8192,
         useStream: true,
         streamFailCount: 0,
         generateChoices: true,
@@ -1908,7 +1908,7 @@ function ensureGameStateFields(gs) {
     // 特殊处理：maxTokens 的历史 bug 兼容（80000 是旧版本误写的异常默认值）
     var _mtVal = Number(gs.maxTokens);
     if (!isFinite(_mtVal) || _mtVal <= 0 || _mtVal === 80000) {
-        gs.maxTokens = 4096;
+        gs.maxTokens = 8192;
     }
     // 特殊处理：_stats.startTime 读档时应重置
     if (gs._stats) {
@@ -2984,9 +2984,20 @@ if (Object.keys(theaterContent).length > 0) {
         if (openBraces > 0 && openBraces > closeBraces) {
             _truncated = true;
             console.warn('[parseAIResponse] 检测到JSON被截断：{=' + openBraces + ', }=' + closeBraces);
-            if (!data) {
-                // 解析完全失败的情况下，把残余内容标识为截断
-                storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n' + (storyText || '').trim() + '\n\n💡 建议点击 🔄 重新生成';
+            // 【截断修复】如果 ResponseParser 已经通过 _repairTruncatedJSON 修复成功，
+            // data 会有值且 storyText 已提取。此时不应显示截断警告给用户。
+            if (data && data.story) {
+                console.log('[parseAIResponse] 截断 JSON 已自动修复，story 字段提取成功');
+            } else if (!data) {
+                // 解析完全失败的情况下，过滤掉原始 JSON 残骸，不显示给用户
+                var _cleanStory = (storyText || '').trim();
+                // 移除原始 JSON 片段（以 { 开头的部分）
+                _cleanStory = _cleanStory.replace(/\{[\s\S]*$/, '').trim();
+                if (!_cleanStory) {
+                    storyText = '⚠️ **AI回复被截断**（JSON未输出完整）\n\n💡 建议点击 🔄 重新生成，或增大 API 设置中的 max_tokens';
+                } else {
+                    storyText = _cleanStory;
+                }
             }
         }
     }

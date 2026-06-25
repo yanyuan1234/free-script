@@ -341,7 +341,7 @@ var PresetManager = {
         top_k: 0,
         frequency_penalty: 0,
         presence_penalty: 0,
-        max_tokens: 4096,
+        max_tokens: 8192,
         tool_reasoning_mode: 'disabled'
     },
 
@@ -469,7 +469,7 @@ var PresetManager = {
         if (topPEl) this.currentParams.top_p = parseFloat(topPEl.value) || 0.9;
         if (freqEl) this.currentParams.frequency_penalty = parseFloat(freqEl.value) || 0;
         if (presEl) this.currentParams.presence_penalty = parseFloat(presEl.value) || 0;
-        if (maxTokensEl) this.currentParams.max_tokens = parseInt(maxTokensEl.value) || 4096;
+        if (maxTokensEl) this.currentParams.max_tokens = parseInt(maxTokensEl.value) || 8192;
         if (topKEl) this.currentParams.top_k = parseInt(topKEl.value) || 0;
         // Read presetMinP
         var minPEl = document.getElementById('presetMinP');

@@ -518,7 +518,7 @@ function buildSystemPrompt(includeFormatRules) {
             gameTime: (gameState && gameState.gameTime) || {},
             pureTextMode: !!(gameState && gameState.pureTextMode),
             generateChoices: !(gameState && gameState.generateChoices === false),
-            maxTokens: (gameState && gameState.maxTokens) || 4096,
+            maxTokens: (gameState && gameState.maxTokens) || 8192,
             worldTerms: _terms,
             turn: turn
         };
@@ -556,7 +556,7 @@ function buildSystemPrompt(includeFormatRules) {
 
 // 格式锚点（硬性要求，始终存在）
 function _buildFormatAnchor() {
-    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || 4096;
+    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || 8192;
     var _hasChoicesForAnchor = gameState && gameState.generateChoices;
     var _pureTextMode = gameState && gameState.pureTextMode;
     if (_pureTextMode) {
@@ -1516,7 +1516,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 聊天历史 → 从最旧开始淘汰，直到不超预算
         // 参考：https://sillytavern.wiki/usage/common-settings/
         var contextSize = (gameState && gameState.contextSize) || 8000;
-        var maxTokens = (gameState && gameState.maxTokens) || 4096;
+        var maxTokens = (gameState && gameState.maxTokens) || 8192;
         // 酒馆公式：输入预算 = 上下文大小 - 输出预留
         // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
         // 预留不足会导致AI输出到一半被截断，JSON解析失败，残余`\n\n`被当纯文本渲染
