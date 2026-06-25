@@ -215,12 +215,22 @@ const AIResponseMutator = {
     },
 
     // 关系变化（简化合并到角色）
+    // 【修复BUG-019】原逻辑仅处理 {name,delta} 好感度增量格式，但 prompt 要求 AI 返回
+    // {from,to,type,desc} 关系图谱格式。AI 按 prompt 返回时全部被 if(!r.name) 跳过丢弃。
+    // 现同时支持两种：{name,delta}→好感度增量；{from,to,type,desc}→写入双方 relations 元数据。
     _applyRelationships(data) {
         const relationships = data.relationships || data.relations;
         if (!relationships || !Array.isArray(relationships) || relationships.length === 0) return;
         var self = this;
         relationships.forEach(function(r) {
-            if (!r || !r.name) return;
+            if (!r) return;
+            // 格式1：{from,to,type,desc} 关系图谱
+            if (r.from && r.to) {
+                self._applyGraphRelation(r);
+                return;
+            }
+            // 格式2：{name,delta} 好感度增量
+            if (!r.name) return;
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
                 CharacterMutator.updateRelationship(r.name, parseInt(r.delta || r.change || r.favor || 0) || 0, { silent: true });
             } else {
@@ -238,6 +248,33 @@ const AIResponseMutator = {
                 StateManager.set('entities.characters', updated, { silent: true });
             }
         });
+    },
+
+    // 写入 {from,to,type,desc} 关系到双方角色的 relations 数组（去重）
+    _applyGraphRelation(r) {
+        const list = StateManager.get('entities.characters') || [];
+        const type = String(r.type || '').trim();
+        const desc = String(r.desc || '').trim();
+        if (!type && !desc) return;
+        const updated = list.map(function(c) {
+            if (c.name !== r.from && c.name !== r.to) return c;
+            const clone = StateSchema.deepClone ? StateSchema.deepClone(c) : Object.assign({}, c);
+            if (!Array.isArray(clone.relations)) clone.relations = [];
+            const other = (c.name === r.from) ? r.to : r.from;
+            // 去重：同对方同类型只保留一条
+            clone.relations = clone.relations.filter(function(x) { return !(x && x.to === other && x.type === type); });
+            clone.relations.push({ to: other, type: type || '相识', desc: desc });
+            return clone;
+        });
+        StateManager.set('entities.characters', updated, { silent: true });
+        // 同步旧字段镜像，保证 UI 读 allCharacters 时一致
+        if (typeof gameState !== 'undefined' && Array.isArray(gameState.allCharacters)) {
+            const obj = {};
+            for (let i = 0; i < updated.length; i++) {
+                if (updated[i] && updated[i].name) obj[updated[i].name] = updated[i];
+            }
+            gameState.allCharacters = obj;
+        }
     },
 
     // HUD 信息

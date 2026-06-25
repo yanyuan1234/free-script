@@ -894,8 +894,33 @@ function renderQuests() {
 function mergeRelationships(newRels) {
     if (!newRels || !Array.isArray(newRels)) return;
     if (!gameState.relationships) gameState.relationships = [];
+    var playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
     newRels.forEach(function(nr) {
-        if (!nr || !nr.from || !nr.to) return;
+        if (!nr) return;
+        // 【修复】兼容两种结构：
+        // 1. 关系图谱格式 {from, to, type, desc}（A→B 的关系）
+        // 2. 好感度增量格式 {name, delta}（玩家→NPC 的好感变化）
+        if (!nr.from || !nr.to) {
+            // 格式2：{name, delta} → 转换为 玩家→NPC 关系
+            if (nr.name) {
+                var delta = parseInt(nr.delta || nr.change || nr.favor || 0) || 0;
+                // 先更新角色好感度（与 AIResponseMutator._applyRelationships 一致）
+                if (gameState.allCharacters && gameState.allCharacters[nr.name]) {
+                    var c = gameState.allCharacters[nr.name];
+                    c.favorability = (c.favorability || 0) + delta;
+                    c.favor = c.favorability;
+                }
+                // 转为关系图谱条目
+                nr = {
+                    from: playerName,
+                    to: nr.name,
+                    type: nr.type || '相识',
+                    desc: nr.desc || (delta > 0 ? '好感+' + delta : (delta < 0 ? '好感' + delta : '关系稳定'))
+                };
+            } else {
+                return;
+            }
+        }
         // 找已有的相同关系对（A→B 或 B→A 算同一对）
         var existIdx = -1;
         for (var i = 0; i < gameState.relationships.length; i++) {

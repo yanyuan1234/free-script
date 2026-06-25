@@ -645,7 +645,73 @@ function renderWorldModules(modules) {
     // 增量更新：保留旧模块。
     // 历史型模块（聊天/论坛/朋友圈/邮件/日记/成就）追加，不替换；状态型模块（排行/商店/文本/列表等）按类型替换。
     if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-    var accumulateTypes = { 'chat': true, 'comments': true, 'moments': true, 'mail': true, 'diary': true, 'achievements': true, 'achievement': true };
+    // 【修复BUG-007】forum 与 comments 同为论坛类型，都应累积；forum 也需结构标准化
+    var accumulateTypes = { 'chat': true, 'comments': true, 'forum': true, 'moments': true, 'mail': true, 'diary': true, 'achievements': true, 'achievement': true };
+    // 【修复BUG-007/015】标准化 AI 返回的模块结构，消除 prompt↔渲染器结构错配：
+    //   - forum: AI 返回 items:[{author,content,replies}] → 拆为多个 comments 模块（模块级字段）
+    //   - moments: AI 返回 items:[{author,content,time,likes,comments}] → 重命名为 posts（渲染器读 posts）
+    modules = modules.map(function(mod) {
+        if (!mod) return mod;
+        // forum 标准化：拆为多个 comments 模块
+        if (mod.type === 'forum' && Array.isArray(mod.items)) {
+            var items = mod.items;
+            var first = items[0] || {};
+            var normalized = {
+                type: 'comments',
+                title: mod.title || first.title || first.author + '的帖子' || '论坛帖子',
+                author: first.author || '匿名',
+                main: first.content || first.main || '',
+                content: first.content || first.main || '',
+                comments: (first.replies || []).map(function(r) {
+                    return { name: r.author || '匿名', text: r.content || '', replyTo: r.replyTo || '' };
+                })
+            };
+            if (items.length > 1) {
+                normalized._extras = items.slice(1).map(function(it) {
+                    return {
+                        type: 'comments',
+                        title: it.title || (it.author || '匿名') + '的帖子',
+                        author: it.author || '匿名',
+                        main: it.content || '',
+                        content: it.content || '',
+                        comments: (it.replies || []).map(function(r) {
+                            return { name: r.author || '匿名', text: r.content || '', replyTo: r.replyTo || '' };
+                        })
+                    };
+                });
+            }
+            return normalized;
+        }
+        // 【修复BUG-015】moments 标准化：AI 按 prompt 返回 items，渲染器读 posts
+        if (mod.type === 'moments' && Array.isArray(mod.items) && !mod.posts) {
+            mod.posts = mod.items.map(function(it) {
+                return {
+                    author: (it && it.author) || '匿名',
+                    text: (it && (it.text || it.content || it.main)) || '',
+                    content: (it && it.content) || '',
+                    time: (it && it.time) || '',
+                    location: (it && it.location) || '',
+                    images: (it && it.images) || [],
+                    likes: Array.isArray(it && it.likes) ? it.likes : (typeof (it && it.likes) === 'number' ? [] : (it && it.likes || [])),
+                    comments: Array.isArray(it && it.comments) ? it.comments.map(function(c) {
+                        return { name: c.author || c.name || '匿名', text: c.content || c.text || '', replyTo: c.replyTo || '' };
+                    }) : []
+                };
+            });
+            // 保留 items 以备其他读取，但 posts 为主
+            return mod;
+        }
+        return mod;
+    }).filter(Boolean);
+    // 展开 _extras 为独立模块
+    var extraMods = [];
+    modules.forEach(function(m) {
+        if (m && m._extras) {
+            extraMods = extraMods.concat(m._extras);
+            delete m._extras;
+        }
+    });
+    modules = modules.concat(extraMods);
     var replaceTypes = {};
     gameState._worldModules.forEach(function(mod, idx) {
         if (mod && mod.type && !accumulateTypes[mod.type]) replaceTypes[mod.type] = idx;
@@ -1843,8 +1909,10 @@ function sendMomentComment(idx) {
 
 function renderForumPage() {
     var modules = gameState._worldModules || [];
+    // 【修复BUG-007】AI prompt 要求 type:"forum"，但渲染器和 ensureLogFallbacks 用 type:"comments"。
+    // 此前 AI 返回的 forum 模块被过滤掉导致论坛永远空白。现同时接受两种类型。
     var commentMods = modules.filter(function(m) {
-        return m.type === 'comments';
+        return m && (m.type === 'comments' || m.type === 'forum');
     });
     // 【性能】渲染缓存
     var _lastMod = commentMods.length > 0 ? commentMods[commentMods.length-1] : null;

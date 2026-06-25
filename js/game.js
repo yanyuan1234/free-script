@@ -2161,7 +2161,17 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
         // 存历史（存储清理后的story文本，减少token浪费）
-        var historyAssistantContent = storyText || response;
+        // 【修复P1-3】JSON模式下原存纯文本 storyText，导致历史里 assistant 消息全是纯文本。
+        // AI 通过 in-context learning 模仿历史格式输出纯文本，削弱 BUG-001 修复效果
+        // （format reminder 要求JSON，但历史里全是纯文本反例，弱模型会跟随反例）。
+        // 改为：JSON模式存精简JSON（{title,story,choices}），让历史始终是JSON形态；
+        // 纯文本模式仍存 storyText（已清理<mem>等标签）。
+        var historyAssistantContent;
+        if (gameState && gameState.pureTextMode) {
+            historyAssistantContent = storyText || response;
+        } else {
+            historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
+        }
         if (gameState && gameState.conversationHistory) {
             gameState.conversationHistory.push({
                 role: 'user',
@@ -2187,7 +2197,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 【修复日志空白】在 autoSave 前调用 ensureLogFallbacks，确保日志功能有兜底内容
         // AI 未生成 theater 模块时，从角色/物品/任务/事件/剧情文本生成兜底内容
-        try { ensureLogFallbacks(finalStory); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
+        // 【修复BUG-020/021/022】传入 AI 本轮返回的 world 模块，按轮次去重生成兜底，
+        // 避免 accumulate 类型首次生成后 !hasType() 永久阻止后续兜底（与BUG-010同根）。
+        try { ensureLogFallbacks(finalStory, data && data.world); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
         autoSave();
         // 传入当前响应长度更新Token计数
         updateTokenCount(response ? response.length : 0);
@@ -4037,7 +4049,7 @@ function refreshAllPanels() {
 // 日志子系统兜底生成器
 // 当 AI 未返回对应 world 模块时，从现有游戏状态生成基础内容，避免空白占位。
 // ========================================
-function ensureLogFallbacks(storyText) {
+function ensureLogFallbacks(storyText, aiWorldModules) {
     if (!gameState) return;
     if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
     var modules = gameState._worldModules;
@@ -4049,6 +4061,16 @@ function ensureLogFallbacks(storyText) {
     var quests = gameState.currentQuests || [];
     var events = gameState.keyEvents || [];
     var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
+    // 【修复BUG-020/021/022】AI 本轮返回的模块类型集合，用于判断是否需要兜底。
+    // accumulate 类型（moments/diary/forum）首次生成后 hasType() 永远为 true，
+    // 但 AI 后续轮次可能不再返回，需按"本轮是否返回"决定是否生成兜底，而非"历史是否曾有"。
+    var _aiTypesThisTurn = {};
+    if (Array.isArray(aiWorldModules)) {
+        aiWorldModules.forEach(function(m) {
+            if (m && m.type) _aiTypesThisTurn[m.type] = true;
+        });
+    }
+    var _aiReturned = function(t) { return !!_aiTypesThisTurn[t]; };
 
     // 排行榜：按好感度排序的角色榜
     if (!hasType('ranking') && charList.length > 0) {
@@ -4075,40 +4097,96 @@ function ensureLogFallbacks(storyText) {
                 { name: '地图', price: 3, count: 3 }
             ];
         }
-        modules.push({ type: 'shop', title: '杂货铺', goods: goods });
+        // 【修复BUG-016】渲染器 renderShopPage 读 mod.items，兜底须用 items 而非 goods
+        modules.push({ type: 'shop', title: '杂货铺', items: goods });
     }
 
     // 朋友圈：从最近事件/角色生成
-    if (!hasType('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
+    // 【修复BUG-012】原兜底固定"今天也是平静的一天"导致所有NPC朋友圈雷同。
+    // 改为：主角用剧情摘要、NPC用 desc/最近事件拼接，并准备多套模板按角色名hash分散。
+    // 【修复BUG-020】原 !hasType('moments') 在AI首次返回moments后永久阻止兜底，
+    // 改为按本轮是否返回判断，让朋友圈随轮次持续增长。
+    if (!_aiReturned('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
+        var _moodTemplates = [
+            '又是充实的一天。',
+            '今天的天气不错，心情也跟着好起来。',
+            '最近的江湖，风起云涌啊。',
+            '闲下来反而不知道该做什么了。',
+            '有些事，想得多了反而头疼。',
+            '听到一些有趣的消息，记上一笔。'
+        ];
         var posts = [];
         if (storyText) {
             var sentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 10; }).slice(0, 2);
             sentences.forEach(function(s) {
-                posts.push({ author: playerName, text: s.trim().slice(0, 60) });
+                posts.push({ author: playerName, text: s.trim().slice(0, 60), time: new Date().toLocaleTimeString().slice(0, 5) });
             });
         }
-        charList.slice(0, 2).forEach(function(c) {
-            posts.push({ author: c.name || '匿名', text: (c.mood || '今天也是平静的一天。').slice(0, 60) });
+        charList.slice(0, 3).forEach(function(c, idx) {
+            var cName = c.name || '匿名';
+            // 用角色名 hash 选模板，避免所有人同一句
+            var _seed = 0;
+            for (var _i = 0; _i < cName.length; _i++) _seed = ((_seed << 5) - _seed + cName.charCodeAt(_i)) | 0;
+            var _tpl = _moodTemplates[Math.abs(_seed) % _moodTemplates.length];
+            var _npcText = c.mood || c.desc || _tpl;
+            // 若 desc 过长或与模板无关，叠加最近事件让内容更有信息量
+            if (events.length > 0 && (idx === 0 || _seed % 2 === 0)) {
+                var _ev = events[idx % events.length];
+                var _evText = typeof _ev === 'string' ? _ev : (_ev.content || _ev.title || '');
+                if (_evText) _npcText = _tpl + ' 听说' + _evText.slice(0, 24);
+            }
+            posts.push({ author: cName, text: _npcText.slice(0, 60), time: new Date().toLocaleTimeString().slice(0, 5) });
         });
         if (posts.length > 0) {
             modules.push({ type: 'moments', title: '朋友圈', posts: posts });
         }
     }
 
-    // 邮件：从任务/事件生成系统通知
-    if (!hasType('mail') && (quests.length > 0 || events.length > 0 || turn > 0)) {
-        var mails = [];
-        if (turn > 0) {
-            mails.push({ from: '系统', subject: '第 ' + turn + ' 轮冒险记录', content: '你的旅程已进入第 ' + turn + ' 轮，世界正因你的选择而改变。', read: false, time: new Date().toLocaleString() });
-        }
-        quests.slice(0, 2).forEach(function(q) {
-            if (q && q.title) mails.push({ from: '任务委员会', subject: q.title, content: q.desc || '请查看任务详情并尽快完成。', read: false, time: new Date().toLocaleString() });
+    // 邮件：每轮生成系统轮次记录邮件 + 任务通知
+    // 【修复BUG-010】原逻辑用 !hasType('mail') 跳过，但 mail 是 accumulate 类型，
+    // 第1轮的邮件使 hasType('mail') 永远为 true，后续轮次不再生成系统邮件。
+    // 改为：每轮都追加"第N轮冒险记录"系统邮件（去重），任务邮件仅在无邮件时生成。
+    if (turn > 0) {
+        var _existingMailMods = modules.filter(function(m) { return m && m.type === 'mail'; });
+        var _allMails = [];
+        _existingMailMods.forEach(function(m) {
+            if (Array.isArray(m.items)) _allMails = _allMails.concat(m.items);
         });
-        modules.push({ type: 'mail', title: '收件箱', items: mails });
+        // 检查本轮系统邮件是否已存在（避免重复）
+        var _turnMailSubject = '第 ' + turn + ' 轮冒险记录';
+        var _hasTurnMail = _allMails.some(function(ml) { return ml && ml.subject === _turnMailSubject; });
+        if (!_hasTurnMail) {
+            var newMail = { from: '系统', subject: _turnMailSubject, content: '你的旅程已进入第 ' + turn + ' 轮，世界正因你的选择而改变。', read: false, time: new Date().toLocaleString() };
+            // 追加到已有 mail 模块，或新建
+            if (_existingMailMods.length > 0) {
+                if (!_existingMailMods[0].items) _existingMailMods[0].items = [];
+                _existingMailMods[0].items.push(newMail);
+            } else {
+                modules.push({ type: 'mail', title: '收件箱', items: [newMail] });
+            }
+        }
+        // 任务邮件：仅在完全没有邮件时生成（避免每轮重复推送相同任务邮件）
+        if (_allMails.length === 0 && quests.length > 0) {
+            var questMails = quests.slice(0, 2).map(function(q) {
+                if (q && q.title) return { from: '任务委员会', subject: q.title, content: q.desc || '请查看任务详情并尽快完成。', read: false, time: new Date().toLocaleString() };
+                return null;
+            }).filter(Boolean);
+            if (questMails.length > 0) {
+                if (_existingMailMods.length > 0) {
+                    _existingMailMods[0].items = _existingMailMods[0].items.concat(questMails);
+                } else {
+                    modules.push({ type: 'mail', title: '收件箱', items: questMails });
+                }
+            }
+        }
     }
 
     // 日记：从剧情文本生成摘要 + 为每个 NPC 生成日记条目
-    if (!hasType('diary') && storyText) {
+    // 【修复BUG-017】渲染器 renderDiaryPage 读 mod.items（缺失时回退到模块级单条），
+    // 兜底须用 items 而非 entries，否则多条日记会被当成一条空记录丢失。
+    // 【修复BUG-021】原 !hasType('diary') 在AI首次返回diary后永久阻止兜底，
+    // 改为按本轮是否返回判断，让日记随轮次持续增长。
+    if (!_aiReturned('diary') && storyText) {
         var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
         var diaryEntries = [{ npc: playerName, date: new Date().toLocaleDateString(), content: summary, mood: '平静', memos: [] }];
         // 为每个 NPC 也生成日记条目（用 desc/mood 作为内容）
@@ -4123,16 +4201,27 @@ function ensureLogFallbacks(storyText) {
                 memos: []
             });
         });
-        modules.push({ type: 'diary', title: '冒险日记', entries: diaryEntries });
+        modules.push({ type: 'diary', title: '冒险日记', items: diaryEntries });
     }
 
     // 论坛：从事件生成帖子
-    if (!hasType('comments') && events.length > 0) {
-        var posts = events.slice(0, 2).map(function(ev) {
+    // 【修复BUG-007】同时检查 forum 和 comments 类型，与 renderForumPage 保持一致
+    // 【修复BUG-018】renderForumPage 按模块逐条渲染（读模块级 title/author/main/comments），
+    // 原兜底把多个帖子塞进一个模块的 posts 数组，导致只有一条空帖子。
+    // 改为：每个事件展开为独立的 comments 模块。
+    // 【修复BUG-022】原 !hasType 在AI首次返回后永久阻止兜底，改为按本轮是否返回判断。
+    if (!_aiReturned('comments') && !_aiReturned('forum') && events.length > 0) {
+        events.slice(0, 2).forEach(function(ev) {
             var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '发生了什么');
-            return { title: content.slice(0, 20), author: '路人', main: content, comments: [] };
+            modules.push({
+                type: 'comments',
+                title: content.slice(0, 20),
+                author: '路人',
+                main: content,
+                content: content,
+                comments: []
+            });
         });
-        if (posts.length > 0) modules.push({ type: 'comments', title: '世界论坛', posts: posts });
     }
 
     // 成就：注入默认成就，确保成就页有内容
@@ -4147,6 +4236,8 @@ function ensureLogFallbacks(storyText) {
     }
 
     // 聊天：为所有角色自动生成初始聊天消息（AI 未主动发消息时兜底）
+    // 【修复BUG-011】原兜底仅在第1轮生成1条问候，之后轮次若AI未返回chat模块，
+    // 聊天列表永远只有1条消息。增加每轮兜底：从剧情/事件中提取话题，让1-2个NPC主动发消息。
     if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
     if (!gameState._chatLogs) gameState._chatLogs = {};
     charList.forEach(function(c) {
@@ -4162,8 +4253,65 @@ function ensureLogFallbacks(storyText) {
                 role: 'npc',
                 from: name,
                 text: greetText.slice(0, 60),
-                time: new Date().toLocaleTimeString()
+                time: new Date().toLocaleTimeString(),
+                _ts: Date.now()
             });
         }
     });
+
+    // 【修复BUG-011】每轮兜底：AI 未主动发chat模块时，让1-2个NPC基于剧情发消息，
+    // 使聊天列表随轮次增长。用轮次+NPC名去重，避免同轮重复。
+    if (turn > 1 && storyText && charList.length > 0) {
+        // 统计本轮已生成的兜底消息数（通过 _turn 标记）
+        var _turnTag = '_fallback_turn_' + turn;
+        var _alreadyThisTurn = 0;
+        charList.forEach(function(c) {
+            var logs = gameState._chatLogs[c.name] || [];
+            if (logs.length > 0 && logs[logs.length - 1] && logs[logs.length - 1]._turnTag === _turnTag) {
+                _alreadyThisTurn++;
+            }
+        });
+        if (_alreadyThisTurn === 0) {
+            // 选取1-2个NPC发消息（按轮次轮换，避免每次都是同一个）
+            var _npcCount = Math.min(2, charList.length);
+            var _startIdx = (turn - 1) % charList.length;
+            var _chatTopics = [
+                '刚才的事你听说了吗？',
+                '最近的动静可真不小。',
+                '有空聊聊吗？',
+                '我这边有些消息，不知当讲不当讲。',
+                '今天的情况有点复杂。'
+            ];
+            for (var _n = 0; _n < _npcCount; _n++) {
+                var _npc = charList[(_startIdx + _n) % charList.length];
+                if (!_npc || !_npc.name) continue;
+                var _logs = gameState._chatLogs[_npc.name];
+                if (!_logs) { _logs = []; gameState._chatLogs[_npc.name] = _logs; }
+                // 从剧情中提取一句话作为话题
+                var _storySnip = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 8; });
+                var _topic = _storySnip.length > 0 ? _storySnip[0].trim().slice(0, 30) : _chatTopics[_n % _chatTopics.length];
+                _logs.push({
+                    role: 'npc',
+                    from: _npc.name,
+                    text: _topic,
+                    time: new Date().toLocaleTimeString(),
+                    _ts: Date.now(),
+                    _turnTag: _turnTag
+                });
+            }
+        }
+    }
+
+    // 【修复BUG-023】兜底直接 push 到 _worldModules 不经过 renderWorldModules 的上限检查，
+    // AI 连续多轮不返回 world 模块时会导致 accumulate 类型无限增长。
+    // 此处对每种类型保留最近 20 条，与 renderWorldModules 的上限一致。
+    var _typeCounts = {};
+    var _trimmed = [];
+    for (var _i = modules.length - 1; _i >= 0; _i--) {
+        var _m = modules[_i];
+        if (!_m || !_m.type) continue;
+        _typeCounts[_m.type] = (_typeCounts[_m.type] || 0) + 1;
+        if (_typeCounts[_m.type] <= 20) _trimmed.unshift(_m);
+    }
+    gameState._worldModules = _trimmed;
 }

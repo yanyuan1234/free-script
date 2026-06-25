@@ -175,6 +175,7 @@ const PromptBuilder = {
                 'player.stats 的 value 必须是0-100的数字，根据世界观生成3-6项核心属性（如修仙世界返回灵力/境界/神识等）。\n' +
                 'characters.favorability 必须根据剧情动态生成（-100极度反感~100极度好感，0为陌生），不要固定返回50。新角色按其与玩家的初次互动设定初始值，已有角色根据本回合互动变化。\n' +
                 '可选字段：hud, relationships, npcMessages, contextSummary（空字段省略）\n' +
+                'relationships 格式：[{"from":"角色A","to":"角色B","type":"师徒/敌对/恋人/朋友","desc":"关系说明"}]（描述角色间关系，from/to 为已出场角色名）\n' +
                 '【world 模块扩展】world 数组除世界设定外，还可包含以下 type 用于填充对应页面（按需生成，至少保证 diary 和 forum 有内容）：\n' +
                 '  - {"type":"chat","title":"聊天","items":[{"npc":"角色名","content":"NPC发来的消息内容","time":"08:30"}]}\n' +
                 '    说明：chat 为 NPC 主动发来的消息，每回合可生成 0-2 条，用于聊天页面。npc 必须是已出场角色。\n' +
