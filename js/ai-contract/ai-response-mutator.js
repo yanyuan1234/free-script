@@ -83,7 +83,12 @@ const AIResponseMutator = {
         const normalized = {
             name: lockedName || aiName || '主角',
             identity: String(player.identity || current.identity || '').trim(),
-            stats: Array.isArray(player.stats) ? player.stats : (current.stats || [])
+            stats: Array.isArray(player.stats) ? player.stats : (current.stats || []),
+            // 【修复 P1】保留 current 上的 level/exp/title/personality，避免被 AI 返回的 3 字段覆盖丢失
+            level: player.level !== undefined ? player.level : current.level,
+            exp: player.exp !== undefined ? player.exp : current.exp,
+            title: player.title !== undefined ? player.title : current.title,
+            personality: player.personality !== undefined ? player.personality : current.personality
         };
         StateManager.set('entities.player', normalized, { silent: true });
         StateManager.setLegacy('playerData', normalized, { silent: true });

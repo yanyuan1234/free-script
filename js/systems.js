@@ -5,7 +5,7 @@ var QuestSystem = {
     STATUS: {
         ACTIVE: '进行中',
         COMPLETED: '已完成',
-        FAILED: '失败',
+        FAILED: '已失败',
         ABANDONED: '已放弃'
     },
     TYPE: {

@@ -1299,7 +1299,13 @@
    否则内容少时只占内容高度，看起来"截取一半"不触底 */
 #logSubContent > .empty-state,
 #logSubContent > .chat-list-page,
-#logSubContent > .diary-page {
+#logSubContent > .diary-page,
+#logSubContent > .forum-page,
+#logSubContent > .rank-page,
+#logSubContent > .items-page,
+#logSubContent > .moments-page,
+#logSubContent > .quest-page,
+#logSubContent > .achieve-page {
     flex: 1;
     min-height: 0;
 }

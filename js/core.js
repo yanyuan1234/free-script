@@ -263,7 +263,8 @@ function _pushCurrentQuestsToGM() {
         if (cq.status === '已完成' || cq.status === 'resolved') {
             gq.status = 'resolved';
             if (!gq.resolvedTurn) gq.resolvedTurn = gm.currentTurn || 0;
-        } else if (cq.status === '失败' || cq.status === 'broken') {
+        } else if (cq.status === '已失败' || cq.status === '失败' || cq.status === 'broken') {
+            // 【修复 P1】兼容 '已失败'（QuestMutator.STATUS.FAILED）和 '失败'（旧数据）
             gq.status = 'broken';
             if (!gq.resolvedTurn) gq.resolvedTurn = gm.currentTurn || 0;
         } else {
@@ -2790,10 +2791,10 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'time':
-                    if (gameState.gameTime) {
-                        if (mem.day) gameState.gameTime.day = mem.day;
-                        if (mem.period) gameState.gameTime.period = mem.period;
-                    }
+                    // 【修复 P1】写入 gameTime.date（StateSchema 标准字段），而非 gameTime.day（非标准，UI 读不到）
+                    if (!gameState.gameTime) gameState.gameTime = { date: '', time: '', period: '' };
+                    if (mem.day) gameState.gameTime.date = mem.day;
+                    if (mem.period) gameState.gameTime.period = mem.period;
                     break;
                 case 'location':
                     if (!gameState.world) gameState.world = [];

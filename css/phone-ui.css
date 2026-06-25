@@ -1223,6 +1223,8 @@
 .items-page {
     display: flex;
     flex-direction: column;
+    height: 100%;
+    overflow: hidden;
     background: var(--bg-secondary);
 }
 
@@ -2321,6 +2323,10 @@
 /* ========== 朋友圈UI样式（完整） ========== */
 
 .moments-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     background-color: var(--card);
     color: var(--text);

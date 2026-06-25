@@ -182,6 +182,10 @@ const PromptBuilder = {
                 '  - {"type":"rank","title":"排行榜名","items":[{"rank":1,"name":"角色名","score":100,"desc":"说明"}]}\n' +
                 '  - {"type":"shop","title":"商店名","items":[{"name":"商品名","price":10,"desc":"说明","count":1}]}\n' +
                 '  - {"type":"diary","title":"日记标题","items":[{"npc":"角色名","date":"日期","content":"日记正文","mood":"心情","memos":["备忘1"]}]}\n' +
+                '  - {"type":"moments","title":"朋友圈","items":[{"author":"角色名","content":"动态内容","time":"08:30","likes":5,"comments":[{"author":"角色名","content":"评论"}]}]}\n' +
+                '    说明：moments 为角色发布的朋友圈动态，每回合可生成 0-2 条，author 必须是已出场角色。\n' +
+                '  - {"type":"mail","title":"邮箱","items":[{"from":"发件人","subject":"主题","body":"正文","preview":"预览","date":"日期","read":false}]}\n' +
+                '    说明：mail 为角色发来的邮件，每回合可生成 0-1 封，from 必须是已出场角色。\n' +
                 '  - {"type":"setting","title":"世界设定标题","content":"设定内容"}';
             return json;
         }, { order: 70 });

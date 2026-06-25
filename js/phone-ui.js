@@ -4088,6 +4088,8 @@ function bindEvents() {
     // 触发阈值选择
     bindEvent('compressThreshold', 'change', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.triggerThreshold = parseFloat(this.value);
+        // 【修复 P1】同步持久化到 SETTINGS，否则刷新后 loadGameSettings 会用 SETTINGS 旧值覆盖 EnhancedMemory
+        saveGameSettings();
         UI.toast('触发阈值已设置为 ' + (this.value * 100) + '%');
     });
     // 【修复P3】移除 btnRollbackSummary 处理器——EnhancedMemory.rollbackSummary 是 stub（恒返回 false），按钮无效
@@ -6013,6 +6015,52 @@ function _syncWordCountConfigToUI(wc) {
     if (get('wcPacing')) get('wcPacing').value = wc.pacing || 'steady';
 }
 
+// 【修复 P1】将已保存的设置同步到设置弹窗 UI（除 wordCountConfig 外的其他控件）
+// openSettingsModal 和 loadGameSettings 共用，避免两处回填逻辑分叉
+function _syncSettingsToUI(d) {
+    var get = function(id) { return document.getElementById(id); };
+    // 没有已保存数据时，从 gameState 取当前值
+    if (!d) {
+        d = {
+            writingStyle: gameState.writingStyle,
+            cotMode: gameState.cotMode,
+            chapterMode: gameState.chapterMode,
+            narrativeEyes: gameState.narrativeEyes,
+            presetArchetype: gameState.presetArchetype,
+            summaryThreshold: gameState.summaryThreshold,
+            autoCompress: gameState.autoCompress,
+            compressThreshold: (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) ? EnhancedMemory.compressionConfig.triggerThreshold : 0.92
+        };
+    }
+    // 叙事增强
+    if (d.writingStyle !== undefined) { var ws = get('settingWritingStyle'); if (ws) ws.value = d.writingStyle || ''; }
+    if (d.cotMode !== undefined) { var cm = get('settingCotMode'); if (cm) cm.value = d.cotMode || ''; }
+    // 章节模式
+    if (d.chapterMode !== undefined) { var chm = get('settingChapterMode'); if (chm) chm.value = d.chapterMode || 'off'; }
+    // 视角开关（narrativeEyes）
+    if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
+        document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
+            var eye = cb.getAttribute('data-eye');
+            if (eye && d.narrativeEyes[eye] !== undefined) cb.checked = !!d.narrativeEyes[eye];
+        });
+    }
+    // 原型卡（presetArchetype）
+    if (d.presetArchetype !== undefined) {
+        document.querySelectorAll('.archetype-card').forEach(function(el) {
+            el.classList.toggle('active', el.getAttribute('data-archetype') === d.presetArchetype);
+        });
+    }
+    // 摘要阈值
+    if (d.summaryThreshold !== undefined) { var st = get('summaryThreshold'); if (st) st.value = d.summaryThreshold; }
+    // 自动压缩开关
+    if (d.autoCompress !== undefined) { var ac = get('autoCompressToggle'); if (ac) ac.checked = d.autoCompress !== false; }
+    // 压缩触发阈值
+    if (d.compressThreshold !== undefined) {
+        var ct = get('compressThreshold');
+        if (ct) ct.value = d.compressThreshold;
+    }
+}
+
 function openSettingsModal() {
     // 更新上下文信息
     var msgCount = gameState.conversationHistory ? gameState.conversationHistory.length : 0;
@@ -6038,15 +6086,17 @@ function openSettingsModal() {
 
     // 【修复 P0】回填字数控制 UI——此前 openSettingsModal 不回填，导致每次打开都显示 HTML 默认值
     // 优先从 Storage 读取用户上次保存的值（避免被预设加载覆盖），回退到 gameState.wordCountConfig
-    var _savedWc = null;
+    var _savedSettings = null;
     try {
         var _raw = Storage.get(Storage.KEYS.SETTINGS);
-        if (_raw) {
-            var _d = JSON.parse(_raw);
-            if (_d && _d.wordCountConfig) _savedWc = _d.wordCountConfig;
-        }
+        if (_raw) _savedSettings = JSON.parse(_raw);
     } catch (e) { /* 读取失败时回退到 gameState */ }
+    var _savedWc = (_savedSettings && _savedSettings.wordCountConfig) ? _savedSettings.wordCountConfig : null;
     _syncWordCountConfigToUI(_savedWc || gameState.wordCountConfig);
+
+    // 【修复 P1】回填其他设置控件——与 wordCountConfig 同类问题，打开弹窗时也需从 Storage 回填
+    // 否则用户改了不保存就关闭，下次打开看到的是 DOM 残留而非已保存值
+    _syncSettingsToUI(_savedSettings);
 
     // 显示设置弹窗
     UI.showModal('settingsModal');
@@ -6074,28 +6124,17 @@ function loadGameSettings() {
             if (gameState.wordCountConfig) {
                 _syncWordCountConfigToUI(gameState.wordCountConfig);
             }
-            // 恢复摘要阈值UI
-            var stEl = document.getElementById('summaryThreshold');
-            if (stEl) stEl.value = gameState.summaryThreshold !== undefined ? gameState.summaryThreshold : 6;
             // 【修复P0-3】恢复 compressThreshold 到 UI 和 EnhancedMemory
             // 此前不恢复导致刷新后 UI 显示 80%（HTML 默认）但实际压缩用 92%（EnhancedMemory 默认）
             var _savedThreshold = d.compressThreshold !== undefined ? d.compressThreshold : 0.92;
             if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) {
                 EnhancedMemory.compressionConfig.triggerThreshold = _savedThreshold;
             }
-            var ctEl = document.getElementById('compressThreshold');
-            if (ctEl) ctEl.value = _savedThreshold;
             // 【酒馆预设融合】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
             // 【修复P2-1】不再恢复 anti429Mode——死代码已移除
             // squashSystemMessages 固定开启，不再从存档恢复（预设可覆盖）
-            // 恢复叙事增强UI
-            var wsEl = document.getElementById('settingWritingStyle');
-            if (wsEl) wsEl.value = gameState.writingStyle || '';
-            var cmEl = document.getElementById('settingCotMode');
-            if (cmEl) cmEl.value = gameState.cotMode || '';
-            // 【修复P2-1】不再同步 anti429Mode checkbox——UI 已移除
             // === 酒馆预设融合 v2 恢复 ===
             if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
             // 【修复P3】不再恢复 npcDescriptionRules——死代码字段已从 createDefaultGameState 移除
@@ -6103,19 +6142,17 @@ function loadGameSettings() {
                 gameState.narrativeEyes = d.narrativeEyes;
             }
             if (d.presetArchetype !== undefined) gameState.presetArchetype = d.presetArchetype;
-            // 恢复 UI 控件
-            var chModeEl = document.getElementById('settingChapterMode');
-            if (chModeEl) chModeEl.value = gameState.chapterMode || 'off';
-            // 【修复P2-3】不再恢复/同步 squelchRules UI——死代码已移除
-            // 【优化·narrativeEyes 可调开关】恢复 checkbox 状态
-            document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
-                var eye = cb.getAttribute('data-eye');
-                if (eye && gameState.narrativeEyes && gameState.narrativeEyes[eye] !== undefined) {
-                    cb.checked = !!gameState.narrativeEyes[eye];
-                }
-            });
-            document.querySelectorAll('.archetype-card').forEach(function(el) {
-                el.classList.toggle('active', el.getAttribute('data-archetype') === gameState.presetArchetype);
+            // 【修复 P1】统一回填设置 UI（summaryThreshold/compressThreshold/writingStyle/cotMode/
+            // chapterMode/narrativeEyes/presetArchetype/autoCompressToggle），与 openSettingsModal 共用
+            _syncSettingsToUI({
+                summaryThreshold: gameState.summaryThreshold,
+                compressThreshold: _savedThreshold,
+                writingStyle: gameState.writingStyle,
+                cotMode: gameState.cotMode,
+                chapterMode: gameState.chapterMode,
+                narrativeEyes: gameState.narrativeEyes,
+                presetArchetype: gameState.presetArchetype,
+                autoCompress: gameState.autoCompress
             });
         } catch (e) {
             console.warn('加载设置失败，使用默认值:', e);
