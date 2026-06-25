@@ -267,14 +267,9 @@ const AIResponseMutator = {
             return clone;
         });
         StateManager.set('entities.characters', updated, { silent: true });
-        // 同步旧字段镜像，保证 UI 读 allCharacters 时一致
-        if (typeof gameState !== 'undefined' && Array.isArray(gameState.allCharacters)) {
-            const obj = {};
-            for (let i = 0; i < updated.length; i++) {
-                if (updated[i] && updated[i].name) obj[updated[i].name] = updated[i];
-            }
-            gameState.allCharacters = obj;
-        }
+        // 【阶段1清理】删除死代码：原 if (Array.isArray(gameState.allCharacters)) 永远 false
+        // （allCharacters 由 _syncLegacyMirror 维护为对象，不可能是数组）。
+        // _syncLegacyMirror 已在 StateManager.set 内部完成 array→object 镜像，无需手动同步。
     },
 
     // HUD 信息

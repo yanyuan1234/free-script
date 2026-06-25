@@ -904,8 +904,11 @@ function mergeRelationships(newRels) {
             // 格式2：{name, delta} → 转换为 玩家→NPC 关系
             if (nr.name) {
                 var delta = parseInt(nr.delta || nr.change || nr.favor || 0) || 0;
-                // 先更新角色好感度（与 AIResponseMutator._applyRelationships 一致）
-                if (gameState.allCharacters && gameState.allCharacters[nr.name]) {
+                // 【阶段1统一】角色好感度更新委托 CharacterMutator.updateRelationship
+                // 替代原直接改 gameState.allCharacters[name].favorability（绕过 StateManager 导致不同步）
+                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
+                    CharacterMutator.updateRelationship(nr.name, delta);
+                } else if (gameState.allCharacters && gameState.allCharacters[nr.name]) {
                     var c = gameState.allCharacters[nr.name];
                     c.favorability = (c.favorability || 0) + delta;
                     c.favor = c.favorability;

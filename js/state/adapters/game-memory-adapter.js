@@ -64,7 +64,12 @@ const GameMemoryAdapter = {
                     BagMutator.setItems(GameMemory.tables.items, { silent: true });
                 }
                 if (GameMemory.tables.characters) {
-                    CharacterMutator.mergeCharacters(GameMemory.tables.characters, { silent: true });
+                    // 【阶段1修复类型bug】gm.tables.characters 是 {name: charObj} 对象，
+                    // CharacterMutator.mergeCharacters 期望数组，需 Object.values 转换
+                    var _charArr = Object.values(GameMemory.tables.characters).filter(function(c) { return c && c.name; });
+                    if (_charArr.length > 0) {
+                        CharacterMutator.mergeCharacters(_charArr, { silent: true });
+                    }
                 }
                 if (GameMemory.tables.locations) {
                     StateManager.set('entities.locations', GameMemory.tables.locations, { silent: true });

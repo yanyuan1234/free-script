@@ -2759,30 +2759,53 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'character':
-                    // 【修复】统一使用 gameState.allCharacters（与 gm.tables.characters 别名一致）
-                    if (!gameState.allCharacters) {
-                        if (typeof GameMemory !== 'undefined' && GameMemory.tables && GameMemory.tables.characters) {
-                            gameState.allCharacters = GameMemory.tables.characters;
-                        } else {
-                            gameState.allCharacters = {};
+                    // 【阶段1统一】<mem> 标签角色变更委托 CharacterMutator
+                    // 替代原直接操作 gameState.allCharacters[name]（绕过 StateManager 导致不同步）
+                    if (typeof CharacterMutator !== 'undefined') {
+                        var _memName = mem.name;
+                        var _existing = CharacterMutator.getCharacter(_memName);
+                        if (_existing) {
+                            if (mem.field && mem.value !== undefined) {
+                                var _numVal = parseFloat(mem.value);
+                                var _fieldVal = !isNaN(_numVal) ? _numVal : mem.value;
+                                CharacterMutator.updateCharacter(_memName, function(c) {
+                                    c[mem.field] = _fieldVal;
+                                    return c;
+                                });
+                            }
+                        } else if (_memName) {
+                            // 新角色
+                            var _newCh = { name: _memName };
+                            if (mem.field && mem.value !== undefined) {
+                                var _nv = parseFloat(mem.value);
+                                _newCh[mem.field] = !isNaN(_nv) ? _nv : mem.value;
+                            }
+                            CharacterMutator.mergeCharacters([_newCh]);
                         }
-                    }
-                    var ch = gameState.allCharacters[mem.name];
-                    if (ch) {
-                        if (mem.field && mem.value !== undefined) {
-                            // 数字字段（好感度等）
-                            var numVal = parseFloat(mem.value);
-                            if (!isNaN(numVal)) {
-                                ch[mem.field] = numVal;
+                    } else {
+                        // 兜底：CharacterMutator 不可用时回退旧逻辑
+                        if (!gameState.allCharacters) {
+                            if (typeof GameMemory !== 'undefined' && GameMemory.tables && GameMemory.tables.characters) {
+                                gameState.allCharacters = GameMemory.tables.characters;
                             } else {
-                                ch[mem.field] = mem.value;
+                                gameState.allCharacters = {};
                             }
                         }
-                    } else if (mem.name) {
-                        // 新角色
-                        var newCh = { name: mem.name };
-                        if (mem.field && mem.value !== undefined) newCh[mem.field] = mem.value;
-                        gameState.allCharacters[mem.name] = newCh;
+                        var ch = gameState.allCharacters[mem.name];
+                        if (ch) {
+                            if (mem.field && mem.value !== undefined) {
+                                var numVal = parseFloat(mem.value);
+                                if (!isNaN(numVal)) {
+                                    ch[mem.field] = numVal;
+                                } else {
+                                    ch[mem.field] = mem.value;
+                                }
+                            }
+                        } else if (mem.name) {
+                            var newCh = { name: mem.name };
+                            if (mem.field && mem.value !== undefined) newCh[mem.field] = mem.value;
+                            gameState.allCharacters[mem.name] = newCh;
+                        }
                     }
                     break;
                 case 'quest':
@@ -2815,12 +2838,15 @@ function _applyMemsToGameState(mems) {
             console.warn('[<mem>应用失败]', mem, e.message);
         }
     });
-    // 【数据断层修复】<mem> 直接写了 gameState.xxx，需同步回 StateManager，
-    // 否则 entities.* 为空但 gameState.* 有值，导致物品页/状态页数据不一致
+    // 【数据断层修复】<mem> 兜底分支直接写了 gameState.xxx，需同步回 StateManager
+    // 【阶段1统一】CharacterMutator 已直接写入 StateManager，characters 反向同步仅在兜底分支生效
     if (typeof StateManager !== 'undefined') {
         try {
             if (gameState.bag) StateManager.set('entities.bag', gameState.bag, { silent: true });
-            if (gameState.allCharacters) StateManager.set('entities.characters', Object.values(gameState.allCharacters), { silent: true });
+            // characters 仅在兜底分支（CharacterMutator 不可用）时需要反向同步
+            if (typeof CharacterMutator === 'undefined' && gameState.allCharacters) {
+                StateManager.set('entities.characters', Object.values(gameState.allCharacters), { silent: true });
+            }
             if (gameState.quests) StateManager.set('entities.quests', gameState.quests, { silent: true });
             if (gameState.keyEvents) StateManager.set('entities.events', gameState.keyEvents, { silent: true });
             if (gameState.gameTime) StateManager.set('time', gameState.gameTime, { silent: true });
@@ -3617,15 +3643,32 @@ if (relations.length === 0) {
 }
 
 // 将提取的关系注入到游戏系统
+// 【阶段1统一】角色关系子字段写入委托 CharacterMutator
 if (relations.length > 0 && gameState.allCharacters) {
         relations.forEach(function(rel) {
             // 更新"from"角色的关系描述
-            if (rel.from && gameState.allCharacters[rel.from]) {
-                gameState.allCharacters[rel.from].relation = rel.relation;
+            if (rel.from) {
+                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateCharacter) {
+                    CharacterMutator.updateCharacter(rel.from, function(c) {
+                        c.relation = rel.relation;
+                        return c;
+                    });
+                } else if (gameState.allCharacters[rel.from]) {
+                    gameState.allCharacters[rel.from].relation = rel.relation;
+                }
             }
             // 确保"to"角色也存在（必须有名有姓）
-            if (rel.to && typeof rel.to === 'string' && rel.to.trim() && !gameState.allCharacters[rel.to]) {
-                gameState.allCharacters[rel.to] = { name: rel.to, relation: '' };
+            if (rel.to && typeof rel.to === 'string' && rel.to.trim()) {
+                var _toExists = (typeof CharacterMutator !== 'undefined' && CharacterMutator.getCharacter)
+                    ? !!CharacterMutator.getCharacter(rel.to)
+                    : !!gameState.allCharacters[rel.to];
+                if (!_toExists) {
+                    if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
+                        CharacterMutator.mergeCharacters([{ name: rel.to, relation: '' }]);
+                    } else {
+                        gameState.allCharacters[rel.to] = { name: rel.to, relation: '' };
+                    }
+                }
             }
         });
         if (typeof renderNpcList === 'function') renderNpcList();
@@ -5211,8 +5254,17 @@ async function extractSetupToMemory() {
                 // 写入 permanentFacts.npcProfiles
                 var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
                 gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
-                // 同步到 gameState.allCharacters
-                if (typeof gameState !== 'undefined') {
+                // 【阶段1统一】同步到 StateManager 委托 CharacterMutator.mergeCharacters
+                // 替代原直接写 gameState.allCharacters[name]（绕过 StateManager 导致不同步）
+                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
+                    CharacterMutator.mergeCharacters([{
+                        name: c.name,
+                        title: c.title || '',
+                        relation: c.relation || '',
+                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
+                        desc: c.desc || ''
+                    }]);
+                } else if (typeof gameState !== 'undefined') {
                     if (!gameState.allCharacters) gameState.allCharacters = {};
                     gameState.allCharacters[c.name] = {
                         name: c.name,

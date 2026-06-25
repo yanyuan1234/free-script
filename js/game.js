@@ -3376,114 +3376,46 @@ function fillChoiceToInput(text) {
 // ========================================
 // 第5层: 数据管理 - NPC人物（累积 + 弹窗详情）
 // ========================================
+// 【阶段1统一】角色合并：统一委托 CharacterMutator.mergeCharacters
+// 原 game.js 独立实现的 mergeCharacters（对象操作+自有模糊匹配）已废弃，
+// CharacterMutator.mergeCharacters（数组操作+同款模糊匹配策略）为唯一入口。
+// StateManager._syncLegacyMirror 自动维护 gameState.allCharacters 镜像供 UI 读取。
 function mergeCharacters(chars) {
     if (!chars || chars.length === 0) return;
-    // 【数据联通】gameState.allCharacters 已是 gm.tables.characters 的别名
-    if (!gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
-        if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
-    }
-    // 获取主角名
+    // 跳过主角：CharacterMutator 不感知主角名，需调用方预过滤
     var playerName = '';
     if (gameState && gameState.playerData && gameState.playerData.name) {
         playerName = gameState.playerData.name;
     } else if (gameState && gameState.playerName) {
         playerName = gameState.playerName;
     }
-    // 【优化】预构建 cleanKey → originalKey 索引，将 O(n²) 匹配降为 O(n)
-    var _charKeyIndex = {};
-    Object.keys((gameState && gameState.allCharacters) || {}).forEach(function(key) {
-        var cleanKey = key.replace(/[（(].*?[）)]/g, '').trim();
-        if (cleanKey) _charKeyIndex[cleanKey] = key;
-    });
-    chars.forEach(function(c) {
-        if (!c || !c.name || typeof c.name !== 'string') return;
+    var filtered = chars.filter(function(c) {
+        if (!c || !c.name || typeof c.name !== 'string') return false;
         var name = c.name.trim();
-        if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return;
-        // 跳过主角
-        if (playerName && (name === playerName || name.includes(playerName) || playerName
-                .includes(name))) {
-            return;
-        }
-        // 严格匹配：只清理括号备注
-        var cleanName = name.replace(/[（(].*?[）)]/g, '').trim();
-        // 【优化】O(n²) → O(n)：预构建 cleanKey → originalKey 的索引，避免每次都遍历全部角色
-        var existingKey = _charKeyIndex[cleanName] || null;
-        if (existingKey && existingKey !== name) {
-            if (gameState && gameState.allCharacters) {
-                delete gameState.allCharacters[existingKey];
-                delete _charKeyIndex[cleanName];
-            }
-        }
-        // ★ 合并而非覆盖：AI返回了什么就更新什么，没返回的保留
-        var existing = gameState && gameState.allCharacters ? gameState.allCharacters[name] : undefined;
-        if (existing) {
-            if (c.title) existing.title = c.title;
-            if (c.relation) existing.relation = c.relation;
-            if (c.favorability !== undefined) existing.favorability = c.favorability;
-            if (c.desc) existing.desc = c.desc;
-            if (c.details) existing.details = c.details;
-        } else {
-            // 【修复BUG-005】模糊匹配：NPC 自报姓名时（如"补丁长袍女孩"→"莉莉安"），
-            // 通过描述重叠识别为同一角色，合并而非新建，避免重复条目
-            var fuzzyKey = _findFuzzyCharKey(gameState.allCharacters, name, c.desc || c.description || '');
-            if (fuzzyKey) {
-                var fuzzyExisting = gameState.allCharacters[fuzzyKey];
-                console.log('[mergeCharacters] 模糊匹配命中："' + fuzzyKey + '" → "' + name + '"，合并为同一角色');
-                // 迁移旧数据到新名称，保留累积好感度
-                var merged = Object.assign({}, fuzzyExisting, c);
-                if (typeof fuzzyExisting.favorability === 'number' && typeof c.favorability === 'number') {
-                    merged.favorability = Math.max(fuzzyExisting.favorability, c.favorability);
-                }
-                delete gameState.allCharacters[fuzzyKey];
-                delete _charKeyIndex[fuzzyKey.replace(/[（(].*?[）)]/g, '').trim()];
-                gameState.allCharacters[name] = merged;
-                _charKeyIndex[cleanName] = name;
-            } else if (gameState && gameState.allCharacters) {
-                gameState.allCharacters[name] = c;
-                _charKeyIndex[cleanName] = name;
-            }
-        }
+        if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return false;
+        if (playerName && (name === playerName || name.includes(playerName) || playerName.includes(name))) return false;
+        return true;
     });
-    renderNpcList();
-    // 【状态层同步】将 allCharacters 同步到 StateManager.entities.characters
-    if (StateManager) {
-        var charList = Object.values((gameState && gameState.allCharacters) || {}).filter(function(c) {
-            return c && c.name && typeof c.name === 'string' && c.name.trim();
-        });
-        StateManager.set('entities.characters', charList, { silent: true });
+    if (filtered.length === 0) return;
+    if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
+        CharacterMutator.mergeCharacters(filtered);
     }
+    renderNpcList();
     // 联动：广播角色数据变更，刷新其他依赖页面
     if (window.GameLinker) {
         GameLinker.refreshByDataChange('allCharacters');
     }
 }
-// 【修复BUG-005】模糊匹配辅助函数：在现有角色中查找与新角色描述重叠的条目
-function _findFuzzyCharKey(allChars, newName, newDesc) {
-    if (!allChars || !newName) return null;
-    newName = newName.replace(/[（(].*?[）)]/g, '').trim();
-    newDesc = String(newDesc || '').trim();
-    var keys = Object.keys(allChars);
-    for (var i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        var exist = allChars[key];
-        if (!exist || !exist.name) continue;
-        var existName = String(exist.name).replace(/[（(].*?[）)]/g, '').trim();
-        var existDesc = String(exist.desc || exist.description || '').trim();
-        if (!existName || existName === newName) continue;
-        // 策略A：新角色 desc 包含现有角色名
-        if (existName.length >= 3 && newDesc.indexOf(existName) !== -1) return key;
-        // 策略B：现有角色 desc 包含新角色名
-        if (newName.length >= 3 && existDesc.indexOf(newName) !== -1) return key;
-        // 策略C：名称互为子串
-        if (newName.length >= 2 && existName.length >= 2 &&
-            (existName.indexOf(newName) !== -1 || newName.indexOf(existName) !== -1)) return key;
-    }
-    return null;
-}
+// 【阶段1统一】删除角色：统一委托 CharacterMutator.removeCharacter
+// 替代原直接 delete gameState.allCharacters[name]（绕过 StateManager 导致不同步）
 function deleteCharacter(name) {
     UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？此操作不可撤回').then(function(ok) {
         if (!ok) return;
-        delete gameState.allCharacters[name];
+        if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
+            CharacterMutator.removeCharacter(name);
+        } else if (gameState.allCharacters) {
+            delete gameState.allCharacters[name];
+        }
         renderNpcList();
         UI.hideModal('npcDetailModal');
         autoSave();

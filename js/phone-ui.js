@@ -4861,23 +4861,24 @@ function deleteLastTurn() {
         // 恢复到撤销前的状态
         gameState.conversationHistory = lastUndo.conversationHistory || [];
         // storyHistory 已合并到 conversationHistory
-        // 【数据联通】gameState.allCharacters 是 gm.tables.characters 的别名，
-        // 不能直接重新赋值（会破坏别名）。改为清空后再恢复
+        // 【阶段1统一】撤销时角色恢复：通过 CharacterMutator.setCharacters 写入 StateManager，
+        // _syncLegacyMirror 自动维护 gameState.allCharacters 镜像。
+        // 原逻辑直接操作 gm.tables.characters（绕过 StateManager 导致 entities.characters 不同步）。
+        var _undoChars = lastUndo.allCharacters || {};
+        var _undoCharList = Object.keys(_undoChars).map(function(k) { return _undoChars[k]; }).filter(Boolean);
+        if (typeof CharacterMutator !== 'undefined' && CharacterMutator.setCharacters) {
+            CharacterMutator.setCharacters(_undoCharList, { silent: true });
+        }
+        // 仍同步 gm.tables.characters（GameMemory 内部缓存，部分旧逻辑读取）
         if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
             var gm = window.GameMemory;
-            // 清空当前 gm.tables.characters
             if (gm.tables.characters) {
                 Object.keys(gm.tables.characters).forEach(function(k) { delete gm.tables.characters[k]; });
-                // 从快照恢复
-                // 【优化·引用别名修复】深拷贝快照中的角色对象，避免与快照共享引用
-                // 旧代码直接赋值 chars[k]，导致后续修改会影响快照数据
-                var chars = lastUndo.allCharacters || {};
-                Object.keys(chars).forEach(function(k) {
+                Object.keys(_undoChars).forEach(function(k) {
                     try {
-                        gm.tables.characters[k] = JSON.parse(JSON.stringify(chars[k]));
+                        gm.tables.characters[k] = JSON.parse(JSON.stringify(_undoChars[k]));
                     } catch(e) {
-                        // 循环引用等异常时直接赋值（保留旧行为作为兜底）
-                        gm.tables.characters[k] = chars[k];
+                        gm.tables.characters[k] = _undoChars[k];
                     }
                 });
             }
@@ -7179,18 +7180,25 @@ function saveNpcEdit() {
             }
         });
     }
-    if (npcEditingName && npcEditingName !== name) {
-        if (gameState && gameState.allCharacters) delete gameState.allCharacters[npcEditingName];
-    }
-    if (gameState && gameState.allCharacters) {
-        gameState.allCharacters[name] = {
-            name: name,
-            title: title,
-            relation: relation,
-            favorability: favor,
-            desc: desc,
-            details: details
-        };
+    // 【阶段1统一】NPC 编辑保存：统一委托 CharacterMutator.replaceCharacter
+    // 替代原直接 delete + gameState.allCharacters[name]=（绕过 StateManager 导致不同步）
+    var _newCharObj = {
+        name: name,
+        title: title,
+        relation: relation,
+        favorability: favor,
+        desc: desc,
+        details: details
+    };
+    if (typeof CharacterMutator !== 'undefined' && CharacterMutator.replaceCharacter) {
+        // 若改名（npcEditingName !== name），replaceCharacter 会自动删除旧名并迁移累积数据
+        CharacterMutator.replaceCharacter(npcEditingName || name, _newCharObj);
+    } else if (gameState && gameState.allCharacters) {
+        // 兜底：CharacterMutator 不可用时回退旧逻辑
+        if (npcEditingName && npcEditingName !== name) {
+            delete gameState.allCharacters[npcEditingName];
+        }
+        gameState.allCharacters[name] = _newCharObj;
     }
     // 注入到对话历史让AI记住
     var injectText = '【系统提示：玩家更新了角色「' + name + '」的设定】\n' + '姓名: ' + name + '\n' + (title ? '身份: ' + title +
@@ -7419,7 +7427,12 @@ function openNpcDetail(name) {
             // 添加防抖检查
             if (newDeleteBtn.disabled) return;
             newDeleteBtn.disabled = true;
-                delete gameState.allCharacters[name];
+                // 【阶段1统一】删除角色委托 CharacterMutator.removeCharacter
+                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
+                    CharacterMutator.removeCharacter(name);
+                } else if (gameState && gameState.allCharacters) {
+                    delete gameState.allCharacters[name];
+                }
                 renderNpcList();
                 UI.hideModal('npcDetailModal');
                 UI.toast('已删除角色');

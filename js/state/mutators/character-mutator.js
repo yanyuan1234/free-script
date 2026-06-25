@@ -113,6 +113,52 @@ const CharacterMutator = {
         return this.setCharacters(updated, options);
     },
 
+    // 【阶段1统一】整字段替换（用于NPC编辑面板等需要替换多个字段的场景）
+    // name: 旧角色名（用于查找），newChar: 完整角色对象（替换后）
+    replaceCharacter(name, newChar, options) {
+        const normalized = this.normalizeCharacter(newChar);
+        if (!normalized) return false;
+        const characters = StateManager.get('entities.characters') || [];
+        // 若新名与旧名不同，先按旧名删，再追加新名
+        let updated;
+        if (name && name !== normalized.name) {
+            updated = characters.filter(function(c) { return c.name !== name; });
+            // 旧名数据合并到新角色（保留累积数据）
+            const old = characters.find(function(c) { return c.name === name; });
+            if (old) {
+                normalized.favorability = normalized.favorability || old.favorability || 0;
+                normalized.favor = normalized.favorability;
+            }
+            updated.push(normalized);
+        } else {
+            updated = characters.map(function(c) {
+                return c.name === normalized.name ? Object.assign({}, c, normalized) : c;
+            });
+        }
+        return this.setCharacters(updated, options);
+    },
+
+    // 【阶段1统一】删除角色（替代直接 delete gameState.allCharacters[name]）
+    removeCharacter(name, options) {
+        if (!name) return false;
+        const characters = StateManager.get('entities.characters') || [];
+        const filtered = characters.filter(function(c) { return c.name !== name; });
+        if (filtered.length === characters.length) return false; // 未找到
+        return this.setCharacters(filtered, options);
+    },
+
+    // 【阶段1统一】获取单个角色（深拷贝，安全）
+    getCharacter(name) {
+        const characters = StateManager.get('entities.characters') || [];
+        return characters.find(function(c) { return c.name === name; }) || null;
+    },
+
+    // 【阶段1统一】获取角色数量
+    count() {
+        const characters = StateManager.get('entities.characters') || [];
+        return characters.length;
+    },
+
     // 标准化角色
     normalizeCharacter(raw) {
         if (!raw) return null;

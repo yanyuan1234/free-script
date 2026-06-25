@@ -4015,14 +4015,18 @@ var MemoryManagerUI = {
     saveCharacter: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
         var char = gm.tables.characters[oldName] || {}; if (oldName !== newName) delete gm.tables.characters[oldName];
-        gm.tables.characters[newName] = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
-        if (typeof gameState !== 'undefined' && gameState.allCharacters) {
+        var _newCharData = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
+        gm.tables.characters[newName] = _newCharData;
+        // 【阶段1统一】通过 CharacterMutator.replaceCharacter 同步到 StateManager（替代直接写 allCharacters）
+        if (typeof CharacterMutator !== 'undefined' && CharacterMutator.replaceCharacter) {
+            CharacterMutator.replaceCharacter(oldName, _newCharData);
+        } else if (typeof gameState !== 'undefined' && gameState.allCharacters) {
             if (oldName !== newName && gameState.allCharacters[oldName]) delete gameState.allCharacters[oldName];
             gameState.allCharacters[newName] = gameState.allCharacters[newName] || {};
             gameState.allCharacters[newName].name = newName;
-            gameState.allCharacters[newName].title = document.getElementById('editCharTitle').value.trim();
-            gameState.allCharacters[newName].relation = document.getElementById('editCharRelation').value.trim();
-            gameState.allCharacters[newName].favorability = parseInt(document.getElementById('editCharFav').value) || 0;
+            gameState.allCharacters[newName].title = _newCharData.title;
+            gameState.allCharacters[newName].relation = _newCharData.relation;
+            gameState.allCharacters[newName].favorability = _newCharData.favorability;
         }
         UI.afterMemoryChange('characters', 'allCharacters', undefined);
     },
@@ -4030,7 +4034,12 @@ var MemoryManagerUI = {
     deleteCharacter: function(name) {
         var gm = window.GameMemory; if (!gm || !gm.tables.characters[name]) return;
         delete gm.tables.characters[name];
-        if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) delete gameState.allCharacters[name];
+        // 【阶段1统一】删除角色委托 CharacterMutator.removeCharacter（替代直接 delete allCharacters）
+        if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
+            CharacterMutator.removeCharacter(name);
+        } else if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) {
+            delete gameState.allCharacters[name];
+        }
         UI.afterMemoryChange('characters', 'allCharacters', '角色已删除');
     },
 
@@ -4049,11 +4058,14 @@ var MemoryManagerUI = {
 
     saveNewCharacter: function() {
         var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { UI.toast && UI.toast('请输入角色名称'); return; }
-        gm.tables.characters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
-        // 同步到gameState
-        if (typeof gameState !== 'undefined') {
+        var _newCharData = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
+        gm.tables.characters[name] = _newCharData;
+        // 【阶段1统一】新增角色委托 CharacterMutator.mergeCharacters（替代直接写 allCharacters）
+        if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
+            CharacterMutator.mergeCharacters([_newCharData]);
+        } else if (typeof gameState !== 'undefined') {
             if (!gameState.allCharacters) gameState.allCharacters = {};
-            gameState.allCharacters[name] = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), favorability: parseInt(document.getElementById('addCharFav').value) || 0 };
+            gameState.allCharacters[name] = { name: name, title: _newCharData.title, relation: _newCharData.relation, favorability: _newCharData.favorability };
         }
         UI.afterMemoryChange('characters', 'allCharacters', undefined);
     },
