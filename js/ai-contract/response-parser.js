@@ -38,6 +38,7 @@ const ResponseParser = {
             result.data = AIOutputSchema ? AIOutputSchema.normalize(data) : data;
             result.fallbackLevel = 0;
             result.storyText = result.data.story;
+            this._postExtractMems(result);
             return result;
         }
 
@@ -49,6 +50,7 @@ const ResponseParser = {
             result.fallbackLevel = 1;
             result.storyText = result.data.story;
             result.warnings.push('parsed from code block');
+            this._postExtractMems(result);
             return result;
         }
 
@@ -64,6 +66,7 @@ const ResponseParser = {
             result.fallbackLevel = 2;
             result.storyText = result.data.story;
             result.warnings.push('parsed via robust JSON extraction');
+            this._postExtractMems(result);
             return result;
         }
 
@@ -87,6 +90,24 @@ const ResponseParser = {
         result.storyText = plain.storyText;
         result.warnings.push('parsed as plain text');
         return result;
+    },
+
+    // 【修复 BUG-A】JSON 成功解析后，从 storyText 中提取 <mem> 标签并清理
+    // 背景：AI 会把 <mem> 标签嵌入 JSON story 字段值内（合法的字符串内容）。
+    // Level 0/1/2 成功后直接返回，导致 mem 标签原文泄漏到 storyText，且结构化记忆丢失。
+    // 本方法在返回前统一后处理：提取 mems，从 storyText 和 data.story 中剥离标签原文。
+    _postExtractMems(result) {
+        if (!result || !result.storyText || typeof result.storyText !== 'string') return;
+        if (result.storyText.indexOf('<mem') === -1) return;  // 快速路径：无 mem 标签
+        const memResult = this._tryMemTags(result.storyText);
+        if (memResult && memResult.mems && memResult.mems.length > 0) {
+            result.mems = (result.mems || []).concat(memResult.mems);
+            result.storyText = memResult.storyText;
+            if (result.data && typeof result.data === 'object') {
+                result.data.story = memResult.storyText;
+            }
+            result.warnings.push('mems extracted from story field');
+        }
     },
 
     // 【P0修复BUG-003】剥离推理模型思考过程
@@ -236,6 +257,15 @@ const ResponseParser = {
             if (r) return r;
         }
 
+        // 【修复 BUG-B】回退1失败后，优先尝试截断修复（保留 story/choices 等顶层字段）
+        // 必须在回退2之前执行：否则回退2会从 JSON 中间提取完整子对象（如 choices[0]），
+        // 其 .text 被误当作 storyText 返回，丢失真正的 story 内容
+        const repaired = this._repairTruncatedJSON(raw, firstBrace);
+        if (repaired) {
+            console.log('[ResponseParser] JSON 截断修复成功（保留顶层字段）');
+            return repaired;
+        }
+
         // 回退2：从后续 { 开始尝试，限制最多 5 次以防 O(n²)
         let fb = raw.indexOf('{', firstBrace + 1);
         let attempts = 0;
@@ -250,12 +280,6 @@ const ResponseParser = {
             attempts++;
         }
 
-        // 【截断修复】所有正常路径失败后，最后尝试截断修复
-        const repaired = this._repairTruncatedJSON(raw, firstBrace);
-        if (repaired) {
-            console.log('[ResponseParser] JSON 截断修复成功（兜底路径）');
-            return repaired;
-        }
         return null;
     },
 
@@ -271,8 +295,9 @@ const ResponseParser = {
         let bracketDepth = 0;    // [] 层级
         let inString = false;
         let escape = false;
-        let lastValidPos = start; // 最后一个完整 key-value 后的位置
-        let lastKeyEnd = -1;     // 最后一个键名后的冒号位置
+        // 【修复 BUG-B】记录顶层字段分隔逗号（depth===1 且 bracketDepth===0），
+        // 用于截断时回退到保留最多顶层字段（story/choices 等）的完整前缀
+        const topLevelCommas = [];
 
         for (let i = start; i < raw.length; i++) {
             const ch = raw[i];
@@ -284,40 +309,42 @@ const ResponseParser = {
             }
             if (ch === '"') { inString = true; continue; }
             if (ch === '{') { depth++; continue; }
-            if (ch === '}') { depth--; lastValidPos = i; continue; }
+            if (ch === '}') { depth--; continue; }
             if (ch === '[') { bracketDepth++; continue; }
-            if (ch === ']') { bracketDepth--; lastValidPos = i; continue; }
-            if (ch === ',') { lastValidPos = i; continue; }
-            if (ch === ':') { lastKeyEnd = i; continue; }
+            if (ch === ']') { bracketDepth--; continue; }
+            if (ch === ',' && depth === 1 && bracketDepth === 0) {
+                topLevelCommas.push(i);
+            }
         }
 
         // 如果深度为 0 且 bracketDepth 为 0，说明 JSON 完整，不需要修复
         if (depth === 0 && bracketDepth === 0) return null;
 
-        // 截取到最后一个有效位置（避免截断在 key 中间）
+        // 策略1：直接补全（保留全部内容，补全引号和闭合符号）
         let candidate = raw.slice(start);
-        // 如果在字符串中间被截断，先补全引号
-        if (inString) {
-            candidate += '"';
-        }
-        // 补全缺失的 ] 和 }
-        for (let i = 0; i < bracketDepth; i++) {
-            candidate += ']';
-        }
-        for (let i = 0; i < depth; i++) {
-            candidate += '}';
-        }
-
-        // 尝试解析修复后的 JSON
-        const result = this._tryDirectJSON(candidate);
+        if (inString) candidate += '"';
+        for (let i = 0; i < bracketDepth; i++) candidate += ']';
+        for (let i = 0; i < depth; i++) candidate += '}';
+        let result = this._tryDirectJSON(candidate);
         if (result) {
-            // 标记为截断修复的数据
             result._truncatedRepaired = true;
             return result;
         }
 
-        // 如果直接补全失败，尝试截断到最后一个逗号/完整值后再补全
-        // 找到最后一个逗号或值结束位置
+        // 策略2【修复 BUG-B】：从最后一个顶层逗号开始往前逐个回退截断
+        // 每个截断点丢弃该逗号后的不完整顶层字段，保留前面已完整的顶层字段
+        // （如 story/title/choices），优先保留含 story 的最大前缀
+        for (let j = topLevelCommas.length - 1; j >= 0; j--) {
+            const cutPos = topLevelCommas[j];
+            candidate = raw.slice(start, cutPos) + '}';
+            result = this._tryDirectJSON(candidate);
+            if (result) {
+                result._truncatedRepaired = true;
+                return result;
+            }
+        }
+
+        // 策略3：截到最后一个逗号/完整值后再补全（处理更深层截断）
         let trimPos = candidate.lastIndexOf(',');
         if (trimPos > start) {
             candidate = candidate.slice(0, trimPos);
