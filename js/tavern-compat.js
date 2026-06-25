@@ -1165,7 +1165,7 @@ var GameMemory = {
                             if (char.history.length > 10) char.history = char.history.slice(-10);
                         }
                     } else {
-                        self.tables.characters[charName] = { name: charName, title: '', relation: '', mood: '', location: '', outfit: '', favorability: 50, status: '', history: [{ turn: self.currentTurn, changes: attrs.field + ': ' + attrs.value }], lastChangedTurn: self.currentTurn, locked: false };
+                        self.tables.characters[charName] = { name: charName, title: '', relation: '', mood: '', location: '', outfit: '', favorability: 0, status: '', history: [{ turn: self.currentTurn, changes: attrs.field + ': ' + attrs.value }], lastChangedTurn: self.currentTurn, locked: false };
                         self.tables.characters[charName][attrs.field] = attrs.value;
                     }
                     self._changeLog.push({ turn: self.currentTurn, type: 'character', key: charName, field: attrs.field, oldValue: oldValue, newValue: attrs.value });
@@ -1804,7 +1804,7 @@ var GameMemory = {
                         mood: '',
                         location: '',
                         outfit: '',
-                        favorability: 50,
+                        favorability: 0,
                         status: '',
                         history: [],
                         lastChangedTurn: self.currentTurn,

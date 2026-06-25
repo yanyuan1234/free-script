@@ -165,7 +165,7 @@ const PromptBuilder = {
                 '{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' +
                 (hasChoices ? ', "choices": [{"id":"A","text":""}]' : '') +
                 ', "player": {"name":"角色名","age":"年龄","identity":"身份","personality":"性格特点","title":"称号","stats":[{"label":"属性名","value":"属性值0-100"}]},' +
-                ' "characters": [{"name":"角色名","title":"身份","relation":"关系","favorability":50,"desc":"状态描述","details":[{"key":"字段","value":"值"}]}], ' +
+                ' "characters": [{"name":"角色名","title":"身份","relation":"关系","favorability":-100到100的整数,"desc":"状态描述","details":[{"key":"字段","value":"值"}]}], ' +
                 '"world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], ' +
                 '"currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], ' +
                 '"keyEvents": ["本回合关键事件1","关键事件2"], ' +
@@ -173,8 +173,11 @@ const PromptBuilder = {
                 '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
                 'keyEvents 为必填字段，每回合至少给出 1 条关键事件（影响后续剧情的节点）。\n' +
                 'player.stats 的 value 必须是0-100的数字，根据世界观生成3-6项核心属性（如修仙世界返回灵力/境界/神识等）。\n' +
+                'characters.favorability 必须根据剧情动态生成（-100极度反感~100极度好感，0为陌生），不要固定返回50。新角色按其与玩家的初次互动设定初始值，已有角色根据本回合互动变化。\n' +
                 '可选字段：hud, relationships, npcMessages, contextSummary（空字段省略）\n' +
                 '【world 模块扩展】world 数组除世界设定外，还可包含以下 type 用于填充对应页面（按需生成，至少保证 diary 和 forum 有内容）：\n' +
+                '  - {"type":"chat","title":"聊天","items":[{"npc":"角色名","content":"NPC发来的消息内容","time":"08:30"}]}\n' +
+                '    说明：chat 为 NPC 主动发来的消息，每回合可生成 0-2 条，用于聊天页面。npc 必须是已出场角色。\n' +
                 '  - {"type":"forum","title":"板块名","items":[{"author":"角色名","content":"帖子内容","replies":[{"author":"角色名","content":"回复"}]}]}\n' +
                 '  - {"type":"rank","title":"排行榜名","items":[{"rank":1,"name":"角色名","score":100,"desc":"说明"}]}\n' +
                 '  - {"type":"shop","title":"商店名","items":[{"name":"商品名","price":10,"desc":"说明","count":1}]}\n' +

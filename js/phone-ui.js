@@ -1409,9 +1409,40 @@ function _applyLogPageStyle(content, type, html) {
 }
 // 渲染聊天页面
 function renderChatPage() {
+    // 【改造】聊天来源改为两路合并：
+    //   1. AI 在 world 模块返回的 type='chat' 条目（自动生成，不依赖玩家发起）
+    //   2. 玩家手动发起的 _chattedNpcs + _chatLogs（保留兼容）
+    var aiChatMap = {};  // name -> {lastMsg, time, unread, logs}
+    var worldMods = gameState._worldModules || [];
+    worldMods.forEach(function(mod) {
+        if (!mod || mod.type !== 'chat') return;
+        // 支持两种结构：{npc, content, time} 单条 或 {items:[{npc,content,time}]} 列表
+        var items = Array.isArray(mod.items) ? mod.items : [mod];
+        items.forEach(function(it) {
+            if (!it || !it.npc) return;
+            var npcName = String(it.npc).trim();
+            if (!npcName) return;
+            if (!aiChatMap[npcName]) aiChatMap[npcName] = { logs: [], lastMsg: '', time: '', unread: 0 };
+            var text = String(it.content || it.text || '').trim();
+            if (!text) return;
+            var logEntry = { role: 'npc', from: 'npc', text: text, time: it.time || '' };
+            aiChatMap[npcName].logs.push(logEntry);
+            aiChatMap[npcName].lastMsg = text;
+            aiChatMap[npcName].time = it.time || '';
+        });
+    });
+
     var chattedNpcs = gameState._chattedNpcs || {};
-    var chattedNames = Object.keys(chattedNpcs).filter(function(name) {
-        return chattedNpcs[name] && gameState.allCharacters[name];
+    // 合并：AI 生成的 NPC + 玩家手动聊过的 NPC
+    var allNames = Object.keys(aiChatMap);
+    Object.keys(chattedNpcs).forEach(function(name) {
+        if (chattedNpcs[name] && gameState.allCharacters[name] && allNames.indexOf(name) === -1) {
+            allNames.push(name);
+        }
+    });
+    // 过滤掉不存在于角色列表的（除非是 AI 生成的）
+    var chattedNames = allNames.filter(function(name) {
+        return aiChatMap[name] || (chattedNpcs[name] && gameState.allCharacters[name]);
     });
 
     // 【性能】渲染缓存——切回来时数据没变就不重渲染
@@ -1420,12 +1451,14 @@ function renderChatPage() {
     var _totalLogs = 0;
     var _logs = gameState._chatLogs || {};
     for (var _lk in _logs) _totalLogs += _logs[_lk].length;
-    var _key = chattedNames.length + '|' + _totalLogs + '|' + _seenSig;
+    var _aiTotal = 0;
+    Object.keys(aiChatMap).forEach(function(k) { _aiTotal += aiChatMap[k].logs.length; });
+    var _key = chattedNames.length + '|' + _totalLogs + '|' + _aiTotal + '|' + _seenSig;
     if (shouldSkipPageRender('renderChatPage', _key)) return;
 
     if (chattedNames.length === 0) {
         return '<div class="chat-list-page">' +
-            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">请在「人际」页面选择角色<br>点击「找TA聊聊」开始对话</p></div>' +
+            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">NPC 会在剧情推进中主动发来消息</p></div>' +
             '</div>';
     }
 
@@ -1434,7 +1467,8 @@ function renderChatPage() {
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
         chattedNames.map(function(name) {
-            var c = gameState.allCharacters[name];
+            var c = gameState.allCharacters[name] || {};
+            var aiChat = aiChatMap[name];
             var now = new Date();
             var h = now.getHours();
             var m = String(now.getMinutes()).padStart(2, '0');
@@ -1443,11 +1477,22 @@ function renderChatPage() {
             var avatarColor = colors[colorIdx];
             var lastMsg = '点击开始对话';
             var unreadNpc = 0;
+            // 优先用 AI 生成的最新消息
+            if (aiChat && aiChat.logs.length > 0) {
+                lastMsg = aiChat.lastMsg;
+                if (lastMsg.length > 20) lastMsg = lastMsg.substring(0, 20) + '...';
+                if (aiChat.time) timeStr = aiChat.time;
+            }
+            // 合并玩家手动聊天记录
             if (gameState._chatLogs && gameState._chatLogs[name]) {
                 var logs = gameState._chatLogs[name];
                 if (logs.length > 0) {
                     var last = logs[logs.length - 1];
-                    lastMsg = last.text.length > 20 ? last.text.substring(0, 20) + '...' : last.text;
+                    var lastText = last.text || '';
+                    // 手动聊天记录更新则覆盖 AI 的预览
+                    if (!aiChat || logs[logs.length - 1]._ts > (aiChat._ts || 0)) {
+                        lastMsg = lastText.length > 20 ? lastText.substring(0, 20) + '...' : lastText;
+                    }
                 }
                 var npcSent = logs.filter(function(m) {
                     if (!m) return false;
@@ -1456,6 +1501,12 @@ function renderChatPage() {
                 });
                 var seenCount = seen[name] || 0;
                 unreadNpc = Math.max(0, npcSent.length - seenCount);
+            }
+            // AI 生成的未读消息也算
+            if (aiChat) {
+                var aiSeenCount = seen[name] || 0;
+                var aiUnread = Math.max(0, aiChat.logs.length - aiSeenCount);
+                unreadNpc = Math.max(unreadNpc, aiUnread);
             }
             var unreadBadge = unreadNpc > 0 ?
                 '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 6px;background:#ff3b30;color:#fff;border-radius:9px;font-size:11px;font-weight:600;margin-left:6px;">' + (unreadNpc > 99 ? '99+' : unreadNpc) + '</span>' : '';
@@ -6385,7 +6436,21 @@ function openNpcChat(name) {
     } catch (e) {}
     npcChatState.npcName = name;
     if (gameState && (!gameState._chatLogs || Array.isArray(gameState._chatLogs))) gameState._chatLogs = {};
-    npcChatState.chatHistory = (gameState && gameState._chatLogs && gameState._chatLogs[name]) ? gameState._chatLogs[name].slice() : [];
+    // 【改造】聊天历史合并 AI 在 world 模块生成的 chat 记录
+    var manualLogs = (gameState && gameState._chatLogs && gameState._chatLogs[name]) ? gameState._chatLogs[name].slice() : [];
+    var aiChatLogs = [];
+    var _worldMods = (gameState && gameState._worldModules) || [];
+    _worldMods.forEach(function(mod) {
+        if (!mod || mod.type !== 'chat') return;
+        var items = Array.isArray(mod.items) ? mod.items : [mod];
+        items.forEach(function(it) {
+            if (!it || !it.npc || String(it.npc).trim() !== name) return;
+            var text = String(it.content || it.text || '').trim();
+            if (text) aiChatLogs.push({ role: 'npc', from: 'npc', text: text, time: it.time || '', _ai: true });
+        });
+    });
+    // AI 生成的放前面（历史），手动聊天的放后面（最新）
+    npcChatState.chatHistory = aiChatLogs.concat(manualLogs);
     npcChatState.isSending = false;
         npcChatState.abortController = null; // 重置NPC聊天的AbortController
     if (gameState) {
@@ -6913,7 +6978,7 @@ function openEditNpcModal(name) {
     el = document.getElementById('npcEditName'); if (el) { el.value = c.name || ''; el.disabled = true; }
     el = document.getElementById('npcEditTitle2'); if (el) el.value = c.title || '';
     el = document.getElementById('npcEditRelation'); if (el) el.value = c.relation || '';
-    el = document.getElementById('npcEditFavor'); if (el) el.value = c.favorability !== undefined ? c.favorability : 50;
+    el = document.getElementById('npcEditFavor'); if (el) el.value = c.favorability !== undefined ? c.favorability : 0;
     el = document.getElementById('npcEditDesc'); if (el) el.value = c.desc || '';
     var extra = '';
     if (c.details && c.details.length > 0) {
@@ -7185,17 +7250,6 @@ function openNpcDetail(name) {
     document.getElementById('npcDetailBody').innerHTML = html;
     UI.showModal('npcDetailModal');
 
-    // 绑定「找TA聊聊」按钮
-    var chatBtn = document.getElementById('btnNpcChat');
-    if (chatBtn) {
-        var newChatBtn = chatBtn.cloneNode(true);
-        chatBtn.parentNode.replaceChild(newChatBtn, chatBtn);
-        newChatBtn.addEventListener('click', function() {
-            if (typeof openNpcChat === 'function') {
-                openNpcChat(name);
-            }
-        });
-    }
     // 绑定编辑按钮
     var editBtn = document.getElementById('btnNpcEdit');
     if (editBtn) {
