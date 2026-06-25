@@ -2476,54 +2476,20 @@ function _findMatching(str, startChar, endChar, startIdx) {
     }
 return -1;
 }
-function safeJSONParse(str) {
+// 【阶段1-A1】safeJSONParse 已删除：与 ResponseParser._tryDirectJSON + _tryRobustJSON 完全重复
+// 原 safeJSONParse 内部第一行就调 ResponseParser._tryDirectJSON，剩余逻辑又重写代码块剥离+状态机，
+// 与 ResponseParser Level 1/2 高度重叠，且在 parseAIResponse 中形成循环调用。
+//
+// 替代方案：parseJSONHelper —— 用于非 AI 响应的 JSON 解析场景（结局生成、设定提取、论坛回复等）
+// 直接委托 ResponseParser.parse（5 层兜底），返回 data 对象或 null
+function parseJSONHelper(str) {
     if (!str || typeof str !== 'string') return null;
-    // 优先使用契约层解析器（更完善的 JSON 包字符串、代码块、状态机兜底）
-    if (typeof ResponseParser !== 'undefined' && ResponseParser._tryDirectJSON) {
-        var contractData = ResponseParser._tryDirectJSON(str);
-        if (contractData) return contractData;
+    if (typeof ResponseParser === 'undefined' || !ResponseParser.parse) {
+        // ResponseParser 不可用时最小兜底
+        try { return JSON.parse(str); } catch (e) { return null; }
     }
-    try {
-        let s = str.trim();
-        if (s.startsWith('```')) s = s.replace(/^```json\s*/i, '').replace(/^```/, '').trim();
-        if (s.endsWith('```')) s = s.slice(0, -3).trim();
-        const tryP = t => {
-            try {
-                return JSON.parse(t);
-            } catch {
-            return null;
-        }
-};
-let r = tryP(s);
-// 【修复】某些模型会把 JSON 再包一层字符串返回，需要二次解析
-if (typeof r === 'string' && r.trim().startsWith('{')) {
-    let r2 = tryP(r);
-    if (r2) r = r2;
-}
-if (r && typeof r === 'object') return r;
-// 状态机找第一个完整 {}
-const fb = s.indexOf('{');
-    if (fb !== -1) {
-        const end = _findMatching(s, '{', '}', fb);
-        if (end !== -1) {
-            r = tryP(s.slice(fb, end + 1));
-            if (r) return r
-        }
-}
-// 修复常见错误
-let fx = s.replace(/[\u0000-\u001F]+/g, ' ').replace(/,(\s*[}\]])/g, '$1').replace(/,+/g, ',');
-r = tryP(fx);
-if (r) return r;
-const js = s.indexOf('{'),
-    je = s.lastIndexOf('}');
-if (js !== -1 && je > js) {
-    r = tryP(s.slice(js, je + 1).replace(/,(\s*[}\]])/g, '$1'));
-if (r) return r
-}
-return null;
-} catch {
-return null;
-}
+    var result = ResponseParser.parse(str);
+    return (result && result.success && result.data) ? result.data : null;
 }
 // 状态机提取字符串字段
 // PNG角色卡解析工具 - 从PNG文件的tEXt chunk中提取chara数据
@@ -2705,78 +2671,11 @@ function extractObjArr(text, field) {
 }
 return result.length > 0 ? result : null;
 }
-// 强力状态机兜底
-function robustParse(raw) {
-    if (!raw) return null;
-    const r = {};
-    let ok = false;
-    const story = extractStr(raw, 'story');
-    if (story) {
-        r.story = story;
-        ok = true;
-    }
-    // 提取各字段（保持与 JSON 模式提示词字段一致）
-    const title = extractStr(raw, 'title');
-    if (title) { r.title = title; ok = true; }
-    const hud = extractObjArr(raw, 'hud');
-    if (hud) r.hud = hud;
-    const choices = extractObjArr(raw, 'choices');
-    if (choices) r.choices = choices;
-    const player = extractObj(raw, 'player');
-    if (player) {
-        r.player = player;
-        if (!r.player.stats) r.player.stats = extractObjArr(raw, 'stats') || [];
-    }
-    const chars = extractObjArr(raw, 'characters');
-    if (chars) r.characters = chars;
-    const world = extractObjArr(raw, 'world');
-    if (world) r.world = world;
-    const bag = extractObjArr(raw, 'bag');
-    if (bag) r.bag = bag;
-    const quests = extractObjArr(raw, 'quests');
-    if (quests) r.quests = quests;
-    const relationships = extractObjArr(raw, 'relationships');
-    if (relationships) r.relationships = relationships;
-    const keyEvents = extractArr(raw, 'keyEvents');
-    if (keyEvents) r.keyEvents = keyEvents;
-    const gameTime = extractObj(raw, 'gameTime');
-    if (gameTime) r.gameTime = gameTime;
-    if (Object.keys(r).length > 0) ok = true;
-    return ok ? r : null;
-}
-// === <mem>标签解析器（方案C核心：状态自动提取）===
-// AI只输出纯文本story + <mem>状态变化 + <giggle>心声
-// 前端从<mem>标签自动维护：player/characters/bag/quests/world/gameTime等结构化数据
-// AI无需输出JSON，节省的tokens全用在story上
-function _parseMemTags(reply) {
-    if (!reply || typeof reply !== 'string') return { mems: [], cleanedReply: reply || '' };
-    var mems = [];
-    // 匹配所有 <mem ...>...</mem> 或 <mem .../>
-    var memPattern = /<mem\s+([^>]*?)\s*(?:\/>|>([\s\S]*?)<\/mem>)/g;
-    var match;
-    while ((match = memPattern.exec(reply)) !== null) {
-        var attrsStr = match[1];
-        var content = match[2] || '';
-        var mem = { _raw: match[0] };
-        // 解析属性
-        var attrPattern = /(\w+)\s*=\s*"([^"]*)"/g;
-        var attrMatch;
-        while ((attrMatch = attrPattern.exec(attrsStr)) !== null) {
-            mem[attrMatch[1]] = attrMatch[2];
-        }
-        // 如果是 <mem>内容</mem> 形式，type可能放在attrsStr里，也可能content是描述
-        if (content && !mem.type) {
-            // 尝试从内容推断type
-            if (content.match(/^\d+$/)) mem.qty = content; // <mem>1</mem>
-        }
-        if (!mem.type) mem.type = 'note';
-        mem._content = content;
-        mems.push(mem);
-    }
-    // 从reply中移除<mem>标签，得到纯净的story
-    var cleanedReply = reply.replace(memPattern, '').trim();
-    return { mems: mems, cleanedReply: cleanedReply };
-}
+// 【阶段1-A1】robustParse 已删除：与 ResponseParser._tryRobustJSON 完全重复
+// 字段级状态机提取已由 ResponseParser Level 2（_tryRobustJSON + _repairTruncatedJSON）覆盖
+// extractStr/extractArr/extractObj/extractObjArr 保留：仍被 game.js 多处用于从纯文本提取字段
+// 【阶段1-A1】_parseMemTags 已删除：与 ResponseParser._tryMemTags 完全重复
+// <mem> 标签解析统一由 ResponseParser.parse 的 Level 3 处理
 
 // 将<mem>解析结果应用到gameState，自动维护结构化数据
 function _applyMemsToGameState(mems) {
@@ -2913,148 +2812,50 @@ function _applyMemsToGameState(mems) {
 function parseAIResponse(reply) {
     let data = null;
     let storyText = '';
+    let mems = [];
     let parsedByContract = null;
-    // 优先使用 AI 契约层统一解析（覆盖直接 JSON、代码块、状态机、<mem>、纯文本 5 层兜底）
+
+    // 【阶段1-A1】单一解析入口：ResponseParser.parse 已是 5 层完整兜底
+    // （direct JSON → code block → robust + 状态机 → <mem> tags → plain text）
+    // 旧实现在此之后又调 safeJSONParse/robustParse/_parseMemTags 三套重复解析器，
+    // 形成循环调用（safeJSONParse 内部又调 ResponseParser._tryDirectJSON）。
+    // 现统一为单层调用，删除三套重复解析器。
     if (typeof ResponseParser !== 'undefined' && ResponseParser.parse) {
         parsedByContract = ResponseParser.parse(reply);
-        if (parsedByContract && parsedByContract.success) {
+        if (parsedByContract) {
             data = parsedByContract.data || null;
             storyText = parsedByContract.storyText || '';
-            if (parsedByContract.mems && parsedByContract.mems.length > 0) {
-                if (typeof window !== 'undefined') window._lastParsedMems = parsedByContract.mems;
+            mems = parsedByContract.mems || [];
+            if (mems.length > 0) {
+                if (typeof window !== 'undefined') window._lastParsedMems = mems;
             }
             if (parsedByContract.warnings && parsedByContract.warnings.length > 0) {
                 parsedByContract.warnings.forEach(function(w) { console.warn('[ResponseParser]', w); });
             }
         }
-    }
-    // 【方案C】<mem>标签解析 - 在JSON解析前先提取（兼容旧路径）
-    var memParseResult = _parseMemTags(reply);
-    if (memParseResult.mems.length > 0) {
-        console.log('[方案C] 检测到 ' + memParseResult.mems.length + ' 个 <mem> 标签');
-        // 将解析结果暂存到全局，供后续使用
-        if (typeof window !== 'undefined') window._lastParsedMems = memParseResult.mems;
-    }
-    // 1. 先尝试直接解析纯JSON（新格式）
-    if (!data) data = safeJSONParse(reply);
-    // 2. 如果失败，兼容旧的```json格式
-    if (!data) {
-        const jsonMatch = reply.match(/```json\n?([\s\S]*?)\n?```/);
-        if (jsonMatch) {
-            data = safeJSONParse(jsonMatch[1]);
-        }
-}
-// 3. 状态机兜底
-if (!data) {
-    data = robustParse(reply);
-}
-// 4. 提取剧情文本
-if (storyText) {
-    // 契约层已提供清洗后的 storyText，直接使用
-} else if (data && data.story) {
-    // 新格式：story在JSON里
-    storyText = data.story;
-} else {
-// 先用状态机提取story
-storyText = extractStr(reply, 'story') || '';
-// 如果还没有，尝试从JSON中提取story字段值
-if (!storyText) {
-    var storyMatch = reply.match(/"story"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
-    if (storyMatch) {
-        storyText = storyMatch[1].replace(/\\n/g, '\n');
-    }
-}
-// 最后兜底：去掉JSON代码块，保留纯文本
-if (!storyText) {
-    storyText = reply.replace(/```json[\s\S]*?```/g, '').replace(/```[\s\S]*?```/g, '').trim();
-}
-// 如果还是空，检查是否是原始 SSE 数据（包含 data: 行），避免把 JSON 渲染给用户
-if (!storyText) {
-    if (reply && reply.indexOf('data:') !== -1 && reply.indexOf('"object"') !== -1) {
-        // 原始 SSE 流数据，不应直接显示
-        storyText = '';
     } else {
-        storyText = reply;
+        // ResponseParser 不可用时的最小兜底（理论不应发生，契约层在 init 阶段已加载）
+        console.error('[parseAIResponse] ResponseParser 不可用，解析能力降级');
+        storyText = reply || '';
     }
-}
-}
-// 【修复】兜底：如果storyText仍然为空，但reply有内容，
-// 说明是纯文本小说预设（非JSON格式），直接使用原文
-if (!storyText || storyText.trim() === '') {
-    if (reply && reply.trim()) {
-        var cleanedReply = reply
-        .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-        .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
-        .replace(/💭[\s\S]*?💭/g, '')
-        .trim();
-        if (cleanedReply) {
-            storyText = cleanedReply;
-            // 尝试从纯文本中提取可能的JSON数据
-            if (!data) {
-                try {
-                    // 尝试从文本末尾提取JSON块
-                    var jsonBlockMatch = cleanedReply.match(/\{[\s\S]*\}/);
-                    if (jsonBlockMatch) {
-                        var extracted = safeJSONParse(jsonBlockMatch[0]);
-                        if (extracted && typeof extracted === 'object') {
-                                data = extracted;
-                                // 从文本中移除JSON块
-                                storyText = cleanedReply.replace(jsonBlockMatch[0], '').trim();
-                            }
-                        }
-                } catch(e) { console.warn('[parseAIResponse] 文本末尾 JSON 块解析失败:', e && e.message); }
-}
-}
-}
-}
 
-// 【修复X8/BUG-01/NEW-BUG-5】裸文本思维链泄漏检测
-// 某些模型在 JSON 解析失败后会把推理过程当剧情输出：
-//   "用户选择了选项A：打开门让苏小雨进来。我需要根据这个选择来推进故事。
-//    当前状态：- 时间：2024年10月15日 07:30 早晨 - 主角：大三学生..."
-// 这些是 AI 的内心 OS，不应显示给玩家。检测特征：
-//   1. 含 "我需要"/"我应该"/"我来"/"让我" 等第一人称推理词
-//   2. 含 "当前状态"/"选择X的后果"/"分析" 等元叙述词
-//   3. 含 "- 时间：" / "- 主角：" 等状态清单格式
-//   4. 含 "用户现在选择了"/"首先得"/"然后我得" 等推理过程词（NEW-BUG-5 补充）
-// 触发条件：storyText 含明显推理特征（无论 JSON 是否解析成功，都可能泄漏到 story 字段）
-if (storyText && storyText.length > 0) {
-    var _leakPatterns = [
-        /我需要根据[^。]*推进/,
-        /我需要[^。]*分析/,
-        /我应该[^。]*描述/,
-        /让我[^。]*开始/,
-        /选择[A-Z]的后果分析/,
-        /当前状态[：:]/,
-        /- 时间[：:]/,
-        /- 主角[：:]/,
-        /- 已知NPC[：:]/,
-        /- 任务[：:]/,
-        /我需要[：:]/,
-        /分析[：:]/,
-        // 【NEW-BUG-5】扩展：覆盖实测泄漏文本特征（vb0e1ce05 R2/R4）
-        /用户.{0,5}选择了/,       // "用户现在选择了和莉瑞亚一起进去礼堂"
-        /玩家.{0,5}选择了/,
-        /首先得/,                 // "首先得符合世界观"
-        /然后我得/,
-        /我来[^。]{0,10}推进/,
-        /接下来[^。]{0,10}描述/,
-        /根据.{0,10}设定/,
-        /根据.{0,10}世界观/,
-        /这回合/,
-        /本回合.{0,5}应该/
-    ];
-    var _leakHits = 0;
-    for (let _li = 0; _li < _leakPatterns.length; _li++) {
-        if (_leakPatterns[_li].test(storyText)) _leakHits++;
+    // 兜底：storyText 为空但 reply 有内容（纯文本小说预设）
+    if ((!storyText || storyText.trim() === '') && reply && reply.trim()) {
+        var cleanedReply = reply
+            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+            .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
+            .replace(/💭[\s\S]*?💭/g, '')
+            .trim();
+        if (cleanedReply) storyText = cleanedReply;
     }
-    // 命中 2 个以上特征，判定为思维链泄漏
-    if (_leakHits >= 2) {
-        console.warn('[parseAIResponse] 检测到 AI 思维链泄漏到剧情，已拦截（命中 ' + _leakHits + ' 个特征）');
+
+    // 【修复X8/BUG-01/NEW-BUG-5】裸文本思维链泄漏检测
+    // 复用 game.js 全局 _isThinkingContent 函数（阶段2-B1 统一），避免正则数组重复定义
+    if (storyText && typeof _isThinkingContent === 'function' && _isThinkingContent(storyText)) {
+        console.warn('[parseAIResponse] 检测到 AI 思维链泄漏到剧情，已拦截');
         storyText = '⚠️ **AI 回复格式异常**（输出了推理过程而非剧情）\n\n💡 建议点击 🔄 重新生成，或检查预设是否要求 JSON 输出格式。';
-        if (gameState) gameState._lastLeakBlocked = true;
+        if (typeof gameState !== 'undefined' && gameState) gameState._lastLeakBlocked = true;
     }
-}
 
 // 【修复P2-2】移除 _squelchPostProcess 调用块——该函数是 no-op（直接 return story），
 // 调用它是纯开销（字符串比较 + try/catch），无任何效果。文风指导应在 prompt 中正面引导。
@@ -3112,7 +2913,7 @@ if (Object.keys(theaterContent).length > 0) {
     return {
         data,
         storyText,
-        mems: memParseResult.mems,
+        mems: mems,
         truncated: _truncated,
         // 【阶段2修复P0-1】添加 success 字段，激活 AIResponseMutator 状态层
         // 原 parseAIResponse 不返回 success，导致 game.js:1712 的 parseResult.success 永远 undefined，
@@ -5409,11 +5210,11 @@ async function extractSetupToMemory() {
             max_tokens: 4096
         });
 
-        var parsed = safeJSONParse(result);
+        var parsed = parseJSONHelper(result);
         if (!parsed) {
             // 尝试从文本中提取JSON
             var jsonMatch = result && result.match(/\{[\s\S]*\}/);
-            if (jsonMatch) parsed = safeJSONParse(jsonMatch[0]);
+            if (jsonMatch) parsed = parseJSONHelper(jsonMatch[0]);
         }
         if (!parsed) {
             console.warn('[设定提取] AI返回无法解析，跳过');

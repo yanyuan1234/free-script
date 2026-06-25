@@ -422,23 +422,67 @@ const AIResponseMutator = {
     },
 
     // 关键事件
-    // 【修复NEW-BUG-2/4】事件存储统一为字符串数组：与 prompt-builder.js 约定一致
-    // 旧实现存为 {title,desc,turn} 对象数组，与 EnhancedMemory.events 的 {content,turn,...} 格式不通用，
-    // 下游按字符串读取会得到 [object Object]。现统一为字符串数组，让消费方自行包装。
+    // 【阶段1-A2】事件四轨统一：StateManager.entities.events 为唯一权威源
+    // schema 统一为对象数组 [{content, turn, gameTime, importance, decayScore}]
+    // - content: 事件描述字符串（必填）
+    // - turn: 发生回合数
+    // - gameTime: 游戏内时间字符串
+    // - importance: 1-10 重要度（用于排序和遗忘曲线）
+    // - decayScore: 衰减分数（用于排序，由 EnhancedMemory._recalcEventDecayScores 维护）
+    // 删除 EnhancedMemory.events / gameState.keyEvents / gm.events 三个独立存储
     _applyKeyEvents(data) {
         const events = data.keyEvents || data.events || data.plotEvents;
         if (!events || !Array.isArray(events) || events.length === 0) return;
-        const turn = (StateManager.get && parseInt(StateManager.get('progress.turn') || 0)) || 0;
+        const turn = (StateManager.get && StateManager.get('progress.turn')) || 0;
+        // 获取当前游戏时间用于事件归档
+        var gameTimeStr = '';
+        try {
+            var gt = StateManager.get('time');
+            if (gt) gameTimeStr = (gt.date || '') + ' ' + (gt.time || '') + (gt.period ? ' ' + gt.period : '');
+        } catch (e) { /* ignore */ }
+
+        // 归一化：把字符串/对象统一转为 {content, turn, gameTime, importance, decayScore}
         const normalized = events.map(function(ev) {
-            if (typeof ev === 'string') return ev.trim();
-            if (ev && typeof ev === 'object') {
-                return String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '').trim();
+            var content = '';
+            var importance = 5;
+            if (typeof ev === 'string') {
+                content = ev.trim();
+            } else if (ev && typeof ev === 'object') {
+                content = String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '').trim();
+                if (ev.importance) importance = parseInt(ev.importance) || 5;
+            } else {
+                content = String(ev || '').trim();
             }
-            return String(ev || '').trim();
-        }).filter(function(s) { return s; });
+            if (!content) return null;
+            return {
+                content: content,
+                turn: turn,
+                gameTime: gameTimeStr.trim(),
+                importance: Math.max(1, Math.min(10, importance)),
+                decayScore: importance  // 初始等于 importance，后续由 _recalcEventDecayScores 衰减
+            };
+        }).filter(function(e) { return e !== null; });
+
         if (normalized.length === 0) return;
-        StateManager.set('entities.events', normalized, { silent: true });
-        StateManager.setLegacy('keyEvents', normalized, { silent: true });
+
+        // 合并到现有事件（去重：同 content 不重复添加）
+        var existing = StateManager.get('entities.events') || [];
+        if (!Array.isArray(existing)) existing = [];
+        var existingContents = {};
+        existing.forEach(function(e) {
+            if (e && e.content) existingContents[e.content] = true;
+        });
+        var toAdd = normalized.filter(function(e) { return !existingContents[e.content]; });
+        if (toAdd.length === 0) return;
+
+        var merged = existing.concat(toAdd);
+        // 限制最大事件数（保留最近 50 条 + importance >= 7 的）
+        if (merged.length > 50) {
+            merged.sort(function(a, b) { return (b.importance || 5) - (a.importance || 5); });
+            merged = merged.slice(0, 50);
+        }
+        StateManager.set('entities.events', merged, { silent: true });
+        // setLegacy 自动镜像到 gameState.keyEvents（_syncLegacyMirror）
     },
 
     // 关系变化（简化合并到角色）

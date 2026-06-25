@@ -4641,7 +4641,7 @@ async function _generateEndingRender(stories) {
             max_tokens: 2048,
             temperature: 0.7
         });
-        var parsed = safeJSONParse(result);
+        var parsed = parseJSONHelper(result);
         if (parsed) {
             document.getElementById('endingTitle').textContent = parsed.title || '未知结局';
             document.getElementById('endingNames').textContent = parsed.names || '';

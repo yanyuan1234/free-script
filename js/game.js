@@ -1691,25 +1691,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
-        // 【修复X9】JSON 解析失败兜底：data 为 null 但 response 含 JSON 字段时，
-        // 用 robustParse 状态机从原文提取结构化字段（gameTime/bag/quests/choices 等）
-        // 避免"故事显示了但游戏状态半残"（gameTime="--"、背包空、任务空）
-        if (!data && response && typeof response === 'string') {
-            var _rescuedData = null;
-            try {
-                if (typeof robustParse === 'function') {
-                    _rescuedData = robustParse(response);
-                }
-            } catch (e) { console.warn('[sendAIRequest] robustParse 兜底失败:', e && e.message); }
-            if (_rescuedData && (_rescuedData.story || _rescuedData.gameTime || _rescuedData.choices || _rescuedData.bag || _rescuedData.player || _rescuedData.title)) {
-                console.log('[sendAIRequest] robustParse 兜底成功，已恢复结构化字段:', Object.keys(_rescuedData).join(','));
-                data = _rescuedData;
-                // 如果 storyText 为空但兜底 data 有 story，用兜底 story
-                if ((!storyText || !storyText.trim()) && data.story) {
-                    storyText = data.story;
-                }
-            }
-        }
+        // 【阶段1-A1】robustParse 兜底已删除：ResponseParser.parse 的 5 层兜底已完全覆盖
+        // （direct JSON → code block → robust + 状态机 → <mem> tags → plain text）
+        // 原 robustParse 与 ResponseParser._tryRobustJSON 重复，删除后此处不再需要二次兜底。
+        // 保留 extractStr/extractArr 等状态机辅助函数，供 game.js 其他位置从纯文本提取字段。
 
         // 【修复】JSON 截断时即使解析出 data 也要提示用户
         if (parseResult.truncated && data && storyText) {
@@ -3958,7 +3943,7 @@ async function requestNpcReply(playerText) {
         // 解析回复
         var replies = [];
         var choices = [];
-        var parsed = safeJSONParse(response);
+        var parsed = parseJSONHelper(response);
         if (parsed) {
             if (parsed.replies && Array.isArray(parsed.replies)) {
                 replies = parsed.replies;
