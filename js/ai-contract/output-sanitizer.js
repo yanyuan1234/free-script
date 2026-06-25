@@ -58,7 +58,9 @@ const OutputSanitizer = {
         // 匹配 "字段名": 后跟 [ 或 { 的 JSON 结构残片（非剧情对话内容）
         s = s.replace(/\\?"(?:choices|characters|player|bag|currency|currencyName|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages)\\?"\s*:\s*[\[{][\s\S]*?(?:\]|\})\s*,?/gi, '');
         // 移除孤立的 JSON 结尾残片（如 ", "choices":[]}）
-        s = s.replace(/,\s*\\?"[a-zA-Z_]+\\?"\s*:\s*[\[{"][\s\S]*$/gi, '');
+        // 【修复 P1】原贪婪正则 [\s\S]*$ 会从故事中任意 ,"字段名": 处吞掉整段后续正文
+        // 改为非贪婪匹配，且仅当后面紧跟 ] 或 } 闭合符号时才删除（确认是 JSON 残片而非剧情对话）
+        s = s.replace(/,\s*\\?"[a-zA-Z_]+\\?"\s*:\s*[\[{"][\s\S]*?(?:\]|\})\s*,?\s*$/gi, '');
         // 移除转义的 JSON 引号残片
         s = s.replace(/\\+"/g, '"');
         return s;

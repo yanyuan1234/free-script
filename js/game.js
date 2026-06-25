@@ -1683,9 +1683,16 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // 【阶段2·AI契约层】使用 AIResponseMutator 把解析结果标准化写入 StateManager
+        // 注意：下方 legacy 路径（mergeCharacters/renderBag/mergeQuests）会再次写入相同数据。
+        // 两条路径都是幂等的智能合并（CharacterMutator.mergeCharacters / QuestMutator._smartMerge），
+        // 不会产生数据冲突。AIResponseMutator 负责标准化写入 StateManager，
+        // legacy 路径负责 UI 渲染（renderNpcList/renderQuests 等）和 gameState 同步。
+        // 保留双写是有意为之，移除任一路径都会丢失功能（UI 渲染或标准化）。
+        var _aiMutatorApplied = false;
         if (typeof AIResponseMutator !== 'undefined' && AIResponseMutator.apply && parseResult && parseResult.success) {
             try {
                 AIResponseMutator.apply(parseResult, { silent: true });
+                _aiMutatorApplied = true;
             } catch (e) {
                 console.warn('[sendAIRequest] AIResponseMutator 应用失败:', e && e.message);
             }
@@ -2170,6 +2177,19 @@ async function sendAIRequest(userMessage, isInit = false) {
         window._currentAbort = null;
         // 确保异常路径也调用 hideStoryLoading
         hideStoryLoading();
+        // 【修复 P1】AI 请求失败后状态回滚
+        // 若 AIResponseMutator 已执行（写入了 StateManager 并推进回合），但后续流程抛异常，
+        // 需要从 _undoHistory 恢复到请求前的状态，避免状态不一致（回合已推进但剧情未追加）
+        if (_aiMutatorApplied && gameState._undoHistory && gameState._undoHistory.length > 0) {
+            try {
+                console.warn('[sendAIRequest] AI 失败但 Mutator 已执行，回滚到请求前状态');
+                if (typeof deleteLastTurn === 'function') {
+                    deleteLastTurn();
+                }
+            } catch (rollbackErr) {
+                console.error('[sendAIRequest] 状态回滚失败:', rollbackErr);
+            }
+        }
         var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
         // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
         showError(errDisplay, error);
@@ -3586,10 +3606,20 @@ async function loadFromSlot(slot) {
     if (typeof gameState !== 'undefined' && gameState) gameState._loading = true;
     try {
         var data = null;
-        try {
-            data = await SaveDB.get(slot);
-        } catch (e) {
-            console.warn('IndexedDB读取失败，尝试localStorage:', e);
+        // 【修复 P1】支持从 AUTO_SAVE_BACKUP 恢复（beforeunload 崩溃备份）
+        if (slot === '__autoSaveBackup__') {
+            try {
+                var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
+                if (_backupRaw) data = JSON.parse(_backupRaw);
+            } catch (e) {
+                console.warn('[loadFromSlot] 读取崩溃备份失败:', e);
+            }
+        } else {
+            try {
+                data = await SaveDB.get(slot);
+            } catch (e) {
+                console.warn('IndexedDB读取失败，尝试localStorage:', e);
+            }
         }
         if (!data) {
             UI.toast('该存档位为空');

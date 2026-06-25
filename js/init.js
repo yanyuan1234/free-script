@@ -43,6 +43,31 @@ async function initApp() {
         await SaveDB.migrate();
         loadGameSettings();
 
+        // 【修复 P1】崩溃恢复检查：beforeunload 写入的 AUTO_SAVE_BACKUP 此前只写不读，
+        // 导致崩溃后备份就在 localStorage 里却无法恢复。这里检查备份是否比自动存档更新
+        try {
+            var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
+            if (_backupRaw) {
+                var _backupData = JSON.parse(_backupRaw);
+                // 读取自动存档（slot 0）的时间戳做比较
+                var _autoSlot = await SaveDB.get(0);
+                var _autoTime = (_autoSlot && _autoSlot.time) ? _autoSlot.time : 0;
+                var _backupTime = _backupData.time || 0;
+                if (_backupTime > _autoTime && _backupData.state) {
+                    // 备份比自动存档新，说明崩溃发生在最后一次自动存档之后
+                    var _ok = await UI.confirm('检测到未保存的进度', '上次退出时游戏可能未正常关闭，检测到比自动存档更新的进度。是否恢复？');
+                    if (_ok) {
+                        await loadFromSlot('__autoSaveBackup__');
+                    }
+                    // 无论是否恢复，都清除备份避免重复提示
+                    Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
+                }
+            }
+        } catch (e) {
+            console.warn('[INIT] 崩溃恢复检查失败:', e);
+            try { Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP); } catch(_) {}
+        }
+
         // 初始化世界创建页面的预设显示
         PresetManager.updateSetupPresetDisplay();
 
