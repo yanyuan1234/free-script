@@ -3958,6 +3958,22 @@ function escapeHtml(text) {
     return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// 内联 HTML 属性值转义：用于 onclick="fn('...')" 等场景
+// 把字符串安全嵌入 JS 字符串字面量（单引号包裹）中，防止 XSS 突破属性上下文
+// 与 escapeHtml 的区别：escapeHtml 转义为 HTML 实体（&amp; &lt;），escapeAttr 转义为 JS 转义序列（\x3c \\'）
+// 【J修复】统一 4 处 XSS 风险点的转义策略（phone-ui.js 3处 + game.js 1处）
+function escapeAttr(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/\\/g, '\\\\')
+        .replace(/'/g, "\\'")
+        .replace(/"/g, '\\"')
+        .replace(/</g, '\\x3c')
+        .replace(/>/g, '\\x3e')
+        .replace(/\n/g, '\\n')
+        .replace(/\r/g, '\\r');
+}
+
 // ========================================
 // 【P0修复】白名单 HTML 净化（替代黑名单正则方案）
 // 基于 DOMParser 解析 + 白名单标签/属性过滤

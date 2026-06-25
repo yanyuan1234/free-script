@@ -435,7 +435,8 @@ function openDiaryDatePicker() {
         dateList.map(function(d) {
             // 【优化·XSS 修复】旧代码只转义单引号，不防 XSS；新代码先 escapeHtml 再转义单引号
             // d 来自 AI 返回的日记数据，可能含恶意字符
-            var safeD = escapeHtml(d).replace(/&#39;/g, "\\'").replace(/'/g, "\\'");
+            // 【J修复】统一用 escapeAttr（转义 \ ' " < > \n \r），替代 escapeHtml+手动单引号转义
+            var safeD = escapeAttr(d);
             return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="UI.hideModal(\'diaryDatePicker\');diaryJumpToDate(\'' + safeD + '\')">' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div>';
@@ -2393,7 +2394,7 @@ function renderDiaryPage() {
                 var mentionTag = mentionCount > 0 ?
                     '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
                 return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" onclick="viewNpcDiary(\'' +
-                    escapeHtml(npcName).replace(/&#39;/g, "\\'").replace(/'/g, "\\'") + '\')">' +
+                    escapeAttr(npcName) + '\')">' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
                     '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
@@ -7339,9 +7340,8 @@ function renderNpcPage() {
         container.innerHTML = chars.map(function(c) {
             var fav = Number(c.favorability) || 0;
             fav = Math.max(-100, Math.min(100, fav));
-            // 先转义 HTML 实体，再转义 JS 字符串中的单引号（属性外层是双引号）
-            // 【优化】escapeHtml 将 ' 转为 &#39;，需先还原 &#39; 再转义单引号，否则 replace(/'/g) 无效
-            var sn = escapeHtml(c.name).replace(/&#39;/g, "\\'").replace(/'/g, "\\'");
+            // 【J修复】统一用 escapeAttr，替代 escapeHtml+手动单引号转义
+            var sn = escapeAttr(c.name);
             // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
             var favLevel = c.relation || '中立';
             // 根据好感度数值选择颜色（-100到100，0为中立）

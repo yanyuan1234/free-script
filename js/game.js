@@ -3954,8 +3954,8 @@ async function requestNpcReply(playerText) {
                     if (choices.length > 0) {
                         // 【修复X5】NPC聊天选项需要转义
                         var choicesHtml = choices.map(function(ch) {
-                            var safe = String(ch).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(
-                                /"/g, '&quot;').replace(/\n/g, ' ');
+                            // 【J修复】统一用 escapeAttr（转义 \ ' " < > \n \r），替代手动多步 replace
+                            var safe = escapeAttr(ch);
                             return '<button class="npc-chat-choice" onclick="selectNpcChatChoice(\'' +
                                 safe + '\')">' + escapeHtml(ch) + '</button>';
                         }).join('');

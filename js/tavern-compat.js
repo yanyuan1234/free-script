@@ -3676,7 +3676,7 @@ var MemoryManagerUI = {
     isVisible: false,
     currentTab: 'overview',
 
-    _escAttr: function(str) { if (str === null || str === undefined) return ''; return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/</g, '\\x3c').replace(/>/g, '\\x3e').replace(/\n/g, '\\n').replace(/\r/g, '\\r'); },
+    _escAttr: function(str) { return escapeAttr(str); },
 
     // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline/editOutline/refresh/detail/search/resolve
     // arg 支持 string / number（数字不加引号，字符串加引号并转义）
