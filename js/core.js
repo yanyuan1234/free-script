@@ -146,27 +146,36 @@ function _syncQuestsToGameState() {
     });
 }
 
-// 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array)
+// 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array) + StateManager
+// 【阶段5统一】此函数是 relationships 写入的唯一同步点：
+// 任何修改 gameState.relationships 的路径最终都必须经过此函数（直接调用或经由 _pushRelationshipsToGM 回流）
+// 由它统一更新 gameState.relationships 旧字段 + StateManager.set('entities.relationships') 新状态层
 function _syncRelationshipsToGameState() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
     var gm = window.GameMemory;
+    var arr;
     if (!gm.tables || !gm.tables.relationships) {
-        gameState.relationships = [];
-        return;
+        arr = [];
+    } else {
+        var rels = gm.tables.relationships;
+        arr = [];
+        Object.keys(rels).forEach(function(key) {
+            var r = rels[key];
+            if (!r) return;
+            if (Array.isArray(r)) {
+                r.forEach(function(item) { arr.push(item); });
+            } else {
+                arr.push(r);
+            }
+        });
     }
-    var rels = gm.tables.relationships;
-    var arr = [];
-    Object.keys(rels).forEach(function(key) {
-        var r = rels[key];
-        if (!r) return;
-        if (Array.isArray(r)) {
-            r.forEach(function(item) { arr.push(item); });
-        } else {
-            arr.push(r);
-        }
-    });
     gameState.relationships = arr;
+    // 【阶段5】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // silent:true 避免循环通知（此函数本身是被各种写入路径调用的下游同步）
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('entities.relationships', arr, { silent: true });
+    }
 }
 
 // 事件同步：gm.events (array) → gameState.keyEvents (array of strings)
@@ -3454,6 +3463,10 @@ function injectTheaterToLogs(theaterContent) {
             console.log('[小剧场融合] 已注入', key, '到', targetModule.type);
         }
     });
+    // 【阶段5】小剧场注入完成后同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('ui.worldModules', gameState._worldModules, { silent: true });
+    }
 }
 
 // 【深度融合】将预设<branches>选项桥接到游戏原生renderChoices系统
@@ -5293,17 +5306,10 @@ async function extractSetupToMemory() {
                     lastChangedTurn: 0
                 };
             });
-            // 同步到 gameState.relationships
-            if (typeof gameState !== 'undefined') {
-                if (!gameState.relationships) gameState.relationships = [];
-                parsed.relationships.forEach(function(r) {
-                    if (!r || !r.from || !r.to) return;
-                    // 去重
-                    var exists = gameState.relationships.some(function(existing) {
-                        return existing.from === r.from && existing.to === r.to;
-                    });
-                    if (!exists) gameState.relationships.push(r);
-                });
+            // 【阶段5统一】删除原直接 push 到 gameState.relationships 的重复逻辑
+            // 由 _syncRelationshipsToGameState 作为唯一同步点统一更新 gameState + StateManager
+            if (typeof _syncRelationshipsToGameState === 'function') {
+                _syncRelationshipsToGameState();
             }
         }
 

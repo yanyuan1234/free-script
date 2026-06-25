@@ -325,6 +325,10 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
                     main: data.main,
                     comments: []
                 });
+                // 【阶段5】论坛发帖后同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('ui.worldModules', gameState._worldModules, { silent: true });
+                }
                 autoSave();
                 // 刷新论坛页面
                 var forumContainer = document.getElementById('logSubContent');
@@ -732,6 +736,10 @@ function renderWorldModules(modules) {
         typeCounts[m.type] = (typeCounts[m.type] || 0) + 1;
         return typeCounts[m.type] <= 20;
     });
+    // 【阶段5】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('ui.worldModules', gameState._worldModules, { silent: true });
+    }
     // 【已移除】本地模板生成朋友圈/日记：现在由 AI 主动在 world 中提供 moments/diary 模块
     // 自动将AI返回的world模块解析到世界观设定中（仅首次或worldNotes为空时）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0 && modules.length > 0) {
@@ -4893,6 +4901,9 @@ function deleteLastTurn() {
         if (typeof _pushCurrentBagToGM === 'function') _pushCurrentBagToGM();
         if (typeof _pushCurrentQuestsToGM === 'function') _pushCurrentQuestsToGM();
         if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
+        // 【阶段5统一】undo 后 _pushRelationshipsToGM 已把 gameState.relationships 推到 gm.tables
+        // 再调用 _syncRelationshipsToGameState 让单一同步点统一更新 StateManager
+        if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
         if (typeof _pushKeyEventsToGM === 'function') _pushKeyEventsToGM();
         if (typeof GameLinker !== 'undefined') {
             GameLinker.refreshByDataChange('allCharacters');

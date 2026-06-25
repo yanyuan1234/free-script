@@ -52,7 +52,9 @@ const StateSchema = {
                 locations: [],
                 events: [],
                 currency: 0,
-                currencyName: '金币'
+                currencyName: '金币',
+                // 【阶段5】relationships 纳入 schema 管理（原为 gameState.relationships 旧字段）
+                relationships: []
             },
             time: {
                 date: '',
@@ -63,7 +65,10 @@ const StateSchema = {
                 currentPage: 'menu',
                 lastChoices: [],
                 logSubPage: '',
-                lastHUD: null
+                lastHUD: null,
+                // 【阶段5】worldModules 纳入 schema 管理（原为 gameState._worldModules 旧字段）
+                // 40处UI读取点依赖，原 _syncLegacyMirror 完全未覆盖
+                worldModules: []
             }
         };
     },
@@ -91,6 +96,9 @@ const StateSchema = {
         'currency': 'entities.currency',
         'currencyName': 'entities.currencyName',
         'keyEvents': 'entities.events',
+        // 【阶段5】relationships 和 _worldModules 纳入映射
+        'relationships': 'entities.relationships',
+        '_worldModules': 'ui.worldModules',
         'gameTime': 'time',
         '_lastChoices': 'ui.lastChoices',
         '_lastHUD': 'ui.lastHUD',

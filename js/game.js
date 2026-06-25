@@ -4234,4 +4234,8 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         if (_typeCounts[_m.type] <= 20) _trimmed.unshift(_m);
     }
     gameState._worldModules = _trimmed;
+    // 【阶段5】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('ui.worldModules', _trimmed, { silent: true });
+    }
 }

@@ -193,6 +193,14 @@ const StateManager = {
             this._state[legacyName] = obj;
             return;
         }
+        // 【阶段5修复bug】progress.turn → _stats.totalTurns 的镜像因 key 含 '.' 未生效
+        // _legacyToPath 中 '_stats.totalTurns' 是嵌套路径，getLegacyName 返回 '_stats.totalTurns'，
+        // 但 this._state['_stats.totalTurns'] 是字面量属性，不会写入 _state._stats.totalTurns
+        if (path === 'progress.turn') {
+            if (!this._state._stats) this._state._stats = {};
+            this._state._stats.totalTurns = value;
+            return;
+        }
         // time → gameTime：新结构 {date,time,period} 直接兼容旧 gameTime
         // 其他路径直接镜像
         this._state[legacyName] = StateSchema.deepClone(value);
