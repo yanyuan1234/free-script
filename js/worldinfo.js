@@ -522,7 +522,7 @@ var WorldInfo = {
             var comment = entry.comment || '';
             var constant = entry.constant || false;
             var content = entry.content || '';
-            var contentPreview = content.length > 60 ? content.substring(0, 60) + '...' : content;
+            var contentPreview = content.length > 60 ? truncateByChars(content, 60, '...') : content;
 
             // 构建标签行
             var tags = [];
@@ -915,7 +915,7 @@ var WorldInfo = {
         matchCreatorNotes: !!raw.matchCreatorNotes || !!ext.matchCreatorNotes,
         automationId: raw.automationId || raw.automation_id || ext.automation_id || '',
         outletName: raw.outletName || raw.outlet_name || ext.outlet_name || '',
-        displayIndex: raw.displayIndex !== undefined ? raw.displayIndex : (ext.display_index !== undefined ? ext.display_index : (parseInt(uid) || 0)),
+        displayIndex: raw.displayIndex !== undefined ? raw.displayIndex : (ext.display_index !== undefined ? ext.display_index : (safeInt(uid, 0))),
         characterFilter: raw.characterFilter || ext.characterFilter || null,
         // V2 Spec新增字段 priority（token预算不足时的优先级）
         priority: raw.priority !== undefined ? raw.priority : (ext.priority !== undefined ? ext.priority : 10),
@@ -1050,11 +1050,11 @@ var WorldInfo = {
 
         // 下拉框
         var posEl = document.getElementById('wiEditPosition');
-        if (posEl) entry.position = parseInt(posEl.value) || 0;
+        if (posEl) entry.position = safeInt(posEl.value, 0);
         var roleEl = document.getElementById('wiEditRole');
-        if (roleEl) entry.role = parseInt(roleEl.value) || 0;
+        if (roleEl) entry.role = safeInt(roleEl.value, 0);
         var logicEl = document.getElementById('wiEditLogic');
-        if (logicEl) entry.selectiveLogic = parseInt(logicEl.value) || 0;
+        if (logicEl) entry.selectiveLogic = safeInt(logicEl.value, 0);
 
         // 滑块
         var depthEl = document.getElementById('wiEditDepth');
@@ -1652,7 +1652,7 @@ var WorldInfo = {
             if (!trigger) return false;
             // 添加 ReDoS 防护：限制正则长度和复杂度
             if (trigger.length > 1000) {
-                console.warn('[WorldInfo] trigger 正则过长，跳过:', trigger.substring(0, 50) + '...');
+                console.warn('[WorldInfo] trigger 正则过长，跳过:', truncateByChars(trigger, 50, '...'));
                 return false;
             }
         try {

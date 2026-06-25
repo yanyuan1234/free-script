@@ -470,7 +470,7 @@ var PresetManager = {
         if (freqEl) this.currentParams.frequency_penalty = parseFloat(freqEl.value) || 0;
         if (presEl) this.currentParams.presence_penalty = parseFloat(presEl.value) || 0;
         if (maxTokensEl) this.currentParams.max_tokens = parseInt(maxTokensEl.value) || 8192;
-        if (topKEl) this.currentParams.top_k = parseInt(topKEl.value) || 0;
+        if (topKEl) this.currentParams.top_k = safeInt(topKEl.value, 0);
         // Read presetMinP
         var minPEl = document.getElementById('presetMinP');
         if (minPEl) this.currentParams.min_p = parseFloat(minPEl.value) || 0;
@@ -4045,9 +4045,9 @@ var MacroEngine = {
         // 简单的 XdY 格式支持
         var match = formula.match(/^(\d+)d(\d+)([+-]\d+)?$/i);
         if (match) {
-            var count = parseInt(match[1]) || 1;
+            var count = safeInt(match[1], 1);
             var sides = parseInt(match[2]) || 6;
-            var modifier = parseInt(match[3]) || 0;
+            var modifier = safeInt(match[3], 0);
             var total = 0;
             for (var i = 0; i < count; i++) {
                 total += Math.floor(Math.random() * sides) + 1;
@@ -4348,7 +4348,7 @@ var MacroEngine = {
         var pool = [];
         parts.forEach(function(p) {
             var wMatch = p.match(/^w\s*:\s*(\d+)\s*:\s*(.*)$/);
-            if (wMatch) { var w = parseInt(wMatch[1]) || 1; for (var wi = 0; wi < w; wi++) pool.push(wMatch[2]); }
+            if (wMatch) { var w = safeInt(wMatch[1], 1); for (var wi = 0; wi < w; wi++) pool.push(wMatch[2]); }
             else { pool.push(p); }
             });
         return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : '';
@@ -4625,7 +4625,7 @@ var MacroEngine = {
             case 'substring':
             // substring::start::end
             var sParts = arg.split('::');
-            if (sParts.length >= 2) return (value || '').substring(parseInt(sParts[0]) || 0, parseInt(sParts[1]) || 0);
+            if (sParts.length >= 2) return (value || '').substring(safeInt(sParts[0], 0), safeInt(sParts[1], 0));
             return value;
             case 'min':
             return String(Math.min(parseFloat(value) || 0, parseFloat(arg) || 0));

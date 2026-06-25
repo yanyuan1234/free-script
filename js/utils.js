@@ -130,6 +130,38 @@ function truncateByChars(text, maxChars, suffix) {
     return arr.slice(0, maxChars).join('') + suffix;
 }
 
+// ========================================
+// 类型安全转换工具
+// 消除 parseInt(x)||N 和 typeof x!=='object' 的重复模式（各 40+/50+ 处散落）
+// ========================================
+
+// 安全整数转换：无效值（null/undefined/空串/NaN）返回默认值
+function safeInt(v, defaultVal) {
+    if (v === null || v === undefined || v === '') return defaultVal || 0;
+    var n = parseInt(v, 10);
+    return isNaN(n) ? (defaultVal || 0) : n;
+}
+
+// 安全浮点转换：无效值返回默认值
+function safeFloat(v, defaultVal) {
+    if (v === null || v === undefined || v === '') return defaultVal || 0;
+    var n = parseFloat(v);
+    return isNaN(n) ? (defaultVal || 0) : n;
+}
+
+// 对象类型检查：排除 null（typeof null === 'object' 的 JS quirk 使 !x 检查必要）
+// 替代散落 50+ 处的 `!x || typeof x !== 'object'` 模式
+function isObject(v) {
+    return v !== null && typeof v === 'object';
+}
+
+// 纯对象检查：排除 null、数组、DOM 节点、类实例等
+function isPlainObject(v) {
+    if (v === null || typeof v !== 'object') return false;
+    if (Array.isArray(v)) return false;
+    return Object.prototype.toString.call(v) === '[object Object]';
+}
+
 // 统一的 token 估算函数（与 game.js updateTokenCount 保持一致）
 // 经验上中文 1.5 字符/token，英文 4 字符/token。统一取 1.7 字符/token
 // 注意：函数名带 _Util 后缀，避免与 game.js 中的 estimateTokens 顶层声明冲突

@@ -94,8 +94,8 @@ var QuestSystem = {
         var q = QuestSystem._cachedGuidanceQuest;
         if (q.status !== QuestSystem.STATUS.ACTIVE) return;
         var parts = (q.progress || '0/1').split('/');
-        var current = parseInt(parts[0]) || 0;
-        var total = parseInt(parts[1]) || 1;
+        var current = safeInt(parts[0], 0);
+        var total = safeInt(parts[1], 1);
         if (current < total) {
             current++;
             q.progress = current + '/' + total;
@@ -132,8 +132,8 @@ var QuestSystem = {
         if (!p) return 0;
         var parts = p.split('/');
         if (parts.length === 2) {
-            var c = parseInt(parts[0]) || 0,
-            t = parseInt(parts[1]) || 1;
+            var c = safeInt(parts[0], 0),
+            t = safeInt(parts[1], 1);
             return Math.min(100, Math.round((c / t) * 100));
         }
     return 0;
@@ -866,8 +866,8 @@ function renderQuests() {
             var parts = q.progress.split('/');
             var percent = 0;
             if (parts.length === 2) {
-                var cur = parseInt(parts[0]) || 0;
-                var total = parseInt(parts[1]) || 1;
+                var cur = safeInt(parts[0], 0);
+                var total = safeInt(parts[1], 1);
                 percent = Math.min(100, Math.round(cur / total * 100));
             }
             html += '<div class="quest-progress-row">';
@@ -903,7 +903,7 @@ function mergeRelationships(newRels) {
         if (!nr.from || !nr.to) {
             // 格式2：{name, delta} → 转换为 玩家→NPC 关系
             if (nr.name) {
-                var delta = parseInt(nr.delta || nr.change || nr.favor || 0) || 0;
+                var delta = safeInt(nr.delta || nr.change || nr.favor || 0, 0);
                 // 【阶段1统一】角色好感度更新委托 CharacterMutator.updateRelationship
                 // 替代原直接改 gameState.allCharacters[name].favorability（绕过 StateManager 导致不同步）
                 if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {

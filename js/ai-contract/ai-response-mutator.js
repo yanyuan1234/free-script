@@ -505,15 +505,15 @@ const AIResponseMutator = {
             // 格式2：{name,delta} 好感度增量
             if (!r.name) return;
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
-                CharacterMutator.updateRelationship(r.name, parseInt(r.delta || r.change || r.favor || 0) || 0, { silent: true });
+                CharacterMutator.updateRelationship(r.name, safeInt(r.delta || r.change || r.favor || 0, 0), { silent: true });
             } else {
                 const list = StateManager.get('entities.characters') || [];
                 const updated = list.map(function(c) {
                     if (c.name !== r.name) return c;
-                    const clone = StateSchema.deepClone ? StateSchema.deepClone(c) : Object.assign({}, c);
+                    const clone = StateSchema.deepClone(c);
                     // 【修复 P1】双写 favorability（权威字段）和 favor（兼容镜像），
                     // 与 CharacterMutator.updateRelationship 保持一致，避免 UI 读 favorability 时拿不到更新
-                    var delta = parseInt(r.delta || r.change || r.favor || 0) || 0;
+                    var delta = safeInt(r.delta || r.change || r.favor || 0, 0);
                     clone.favorability = (clone.favorability !== undefined ? clone.favorability : (clone.favor || 0)) + delta;
                     clone.favor = clone.favorability;
                     return clone;
@@ -535,7 +535,7 @@ const AIResponseMutator = {
         if (!rawType && !desc) return;
         const updated = list.map(function(c) {
             if (c.name !== r.from && c.name !== r.to) return c;
-            const clone = StateSchema.deepClone ? StateSchema.deepClone(c) : Object.assign({}, c);
+            const clone = StateSchema.deepClone(c);
             if (!Array.isArray(clone.relations)) clone.relations = [];
             const other = (c.name === r.from) ? r.to : r.from;
             // 去重：同对方同类型只保留一条（用规范化后的 type）

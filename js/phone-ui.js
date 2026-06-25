@@ -205,7 +205,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
     // 【P1性能优化】优先使用本轮已缓存的世界书扫描结果
     if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
         var _forumWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
-        var _forumWIText = (typeof _forumWI === 'object' && _forumWI !== null) ? (_forumWI.text || '') : (_forumWI || '');
+        var _forumWIText = isObject(_forumWI) ? (_forumWI.text || '') : (_forumWI || '');
         if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
     }
     // 【提示词重设计】让 AI 理解「真实社区」的质感，再交给它自由发挥
@@ -292,7 +292,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
     // 注入世界书（让新帖符合世界设定——P1 修复：跨帖生成前漏注世界书）
     if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
         var _spawnWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
-        var _spawnWIText = (typeof _spawnWI === 'object' && _spawnWI !== null) ? (_spawnWI.text || '') : (_spawnWI || '');
+        var _spawnWIText = isObject(_spawnWI) ? (_spawnWI.text || '') : (_spawnWI || '');
         if (_spawnWIText) sysMsg += '【世界知识】\n' + _spawnWIText + '\n\n';
     }
     // 【提示词重设计】让 AI 理解「好帖子」的质感，再交给它自由发挥
@@ -634,7 +634,7 @@ function buildModuleHTML(mod) {
             var momentsSummaryHtml = momentPosts.map(function(p) {
                 var mAuthor = (p.author || '匿名').replace(/\n/g, '').trim();
                 var mText = p.text || p.content || p.main || '';
-                if (mText.length > 50) mText = mText.substring(0, 50) + '...';
+                if (mText.length > 50) mText = truncateByChars(mText, 50, '...');
                 return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
                     '<strong style="color:#576b95;">' + escapeHtml(mAuthor) + '</strong>: ' +
                     escapeHtml(mText) + '</div>';
@@ -1588,7 +1588,7 @@ function renderChatPage() {
             // 优先用 AI 生成的最新消息
             if (aiChat && aiChat.logs.length > 0) {
                 lastMsg = aiChat.lastMsg;
-                if (lastMsg.length > 20) lastMsg = lastMsg.substring(0, 20) + '...';
+                if (lastMsg.length > 20) lastMsg = truncateByChars(lastMsg, 20, '...');
                 if (aiChat.time) timeStr = aiChat.time;
             }
             // 合并玩家手动聊天记录
@@ -1599,7 +1599,7 @@ function renderChatPage() {
                     var lastText = last.text || '';
                     // 手动聊天记录更新则覆盖 AI 的预览
                     if (!aiChat || logs[logs.length - 1]._ts > (aiChat._ts || 0)) {
-                        lastMsg = lastText.length > 20 ? lastText.substring(0, 20) + '...' : lastText;
+                        lastMsg = lastText.length > 20 ? truncateByChars(lastText, 20, '...') : lastText;
                     }
                 }
                 var npcSent = logs.filter(function(m) {
@@ -1699,7 +1699,7 @@ function renderWorldPage() {
                     inner = mPosts2.map(function(p) {
                         var mA = (p.author || '匿名').replace(/\n/g, '').trim();
                         var mT = p.text || p.content || p.main || '';
-                        if (mT.length > 50) mT = mT.substring(0, 50) + '...';
+                        if (mT.length > 50) mT = truncateByChars(mT, 50, '...');
                         return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
                             '<strong style="color:#576b95;">' + escapeHtml(mA) + '</strong>: ' +
                             escapeHtml(mT) + '</div>';
@@ -2159,7 +2159,7 @@ function renderRankPage() {
                     value: value,
                     extra: ''
                 });
-            } else if (typeof it === 'object' && it !== null) {
+            } else if (isObject(it)) {
                 var rawName = String(it.name || it.title || it.label || it[0] || '未知');
                 // 去掉name中的NO.1/NO1/第X名等前缀
                 rawName = rawName.replace(/^(NO\.?\s*\d+|第[一二三四五六七八九十百千万\d]+名|第\d+名)[：:\s]*/i, '').trim();
@@ -2536,7 +2536,7 @@ function renderMailPage() {
             var date = mail.date || mail.time || '';
             var subject = mail.subject || '无主题';
             var preview = mail.preview || mail.body || '';
-            if (preview.length > 80) preview = preview.substring(0, 80) + '...';
+            if (preview.length > 80) preview = truncateByChars(preview, 80, '...');
             preview = preview.replace(/<[^>]*>/g, '');
             var subjectStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
             var senderStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
@@ -2674,7 +2674,7 @@ function buyShopItem(index) {
     // 【阶段3清理】_shopGoods 死字段已删除，商品数据统一来自 _worldModules
     if (index < 0 || index >= allGoods.length) return;
     var item = allGoods[index];
-    var price = parseInt(item.price) || 0;
+    var price = safeInt(item.price, 0);
     var currency = gameState.currency || gameState.money || gameState.coins || 0;
     var currencyName = gameState.currencyName || '金币';
     if (item.count !== undefined && item.count !== null && parseInt(item.count) <= 0) {
@@ -2711,7 +2711,7 @@ function buyShopItem(index) {
     // 触发 UI 刷新
     if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
     if (item.count !== undefined && item.count !== null) {
-        item.count = Math.max(0, (parseInt(item.count) || 0) - 1);
+        item.count = Math.max(0, safeInt(item.count, 0) - 1);
     }
     UI.toast('购买成功：' + bagItem.name);
     autoSave();
@@ -2921,14 +2921,14 @@ function renderDefaultPage(type) {
                     break;
                 case 'list':
                     inner = (mod.items || []).map(function(it) {
-                        var txt = (typeof it === 'object' && it !== null) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
+                        var txt = isObject(it) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
                         return '<div style="padding:6px 0;font-size:14px;">▸ ' + escapeHtml(txt) +
                             '</div>';
                     }).join('');
                     break;
                 case 'ranking':
                     inner = (mod.items || []).map(function(it, i) {
-                        var txt = (typeof it === 'object' && it !== null) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
+                        var txt = isObject(it) ? (it.name || it.text || it.title || JSON.stringify(it)) : String(it || '');
                         return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;"><span style="font-weight:600;color:' +
                             (i < 3 ? 'var(--text)' : 'var(--text-tertiary)') + ';">' + (i +
                                 1) + '</span><span style="font-size:14px;">' + escapeHtml(txt) +
@@ -2965,7 +2965,7 @@ function renderDefaultPage(type) {
                         inner = mPosts3.map(function(p) {
                             var mA3 = (p.author || '匿名').replace(/\n/g, '').trim();
                             var mT3 = p.text || p.content || p.main || '';
-                            if (mT3.length > 50) mT3 = mT3.substring(0, 50) + '...';
+                            if (mT3.length > 50) mT3 = truncateByChars(mT3, 50, '...');
                             return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
                                 '<strong style="color:#576b95;">' + mA3 + '</strong>: ' +
                                 mT3 + '</div>';
@@ -4601,7 +4601,7 @@ async function _generateEndingRender(stories) {
         // 【P1性能优化】优先使用本轮已缓存的世界书扫描结果
         if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
             var _endingWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
-            var _endingWIText = (typeof _endingWI === 'object' && _endingWI !== null) ? (_endingWI.text || '') : (_endingWI || '');
+            var _endingWIText = isObject(_endingWI) ? (_endingWI.text || '') : (_endingWI || '');
             if (_endingWIText) prompt += '【世界知识】\n' + _endingWIText + '\n\n';
         }
         // 【提示词重设计】让 AI 理解「好结局」的质感，再交给它自由发挥

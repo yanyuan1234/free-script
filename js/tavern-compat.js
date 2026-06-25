@@ -1179,7 +1179,7 @@ var GameMemory = {
                     edits.push(edit); return '';
                 }
                 var action = attrs.action || 'add';
-                var qty = parseInt(attrs.qty) || 1;
+                var qty = safeInt(attrs.qty, 1);
                 var item = self.tables.items[itemName];
                 if (action === 'add') {
                     if (item) { var oldQty = item.qty; item.qty += qty; item.lastChangedTurn = self.currentTurn; if (!item.history) item.history = []; item.history.push({ turn: self.currentTurn, from: oldQty, to: item.qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty, newValue: item.qty }); }
@@ -1718,7 +1718,7 @@ var GameMemory = {
                             return;
                         }
                     }
-                    if (!parsed || typeof parsed !== 'object') {
+                    if (!isObject(parsed)) {
                         console.warn('[设定解析] AI返回JSON解析结果非对象');
                         return;
                     }
@@ -3572,7 +3572,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         return result;
     },
     set: function(val) {
-        if (!val || typeof val !== 'object') return;
+        if (!isObject(val)) return;
         var self = this;
         // 恢复永久事实
         if (val.worldAnchors && Array.isArray(val.worldAnchors)) {
@@ -3732,8 +3732,8 @@ var MemoryManagerUI = {
             inputHtml = '<textarea id="' + id + '" rows="' + (field.rows || 4) + '"' + (field.placeholder ? ' placeholder="' + escapeHtml(field.placeholder) + '"' : '') + ' style="width:100%;min-height:' + minH + ';padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;resize:vertical;outline:none;font-family:inherit;">' + escapeHtml(val) + '</textarea>';
         } else if (type === 'select') {
             var opts = (field.options || []).map(function(o) {
-                var v = (typeof o === 'object' && o !== null) ? o.v : o;
-                var t = (typeof o === 'object' && o !== null) ? o.t : o;
+                var v = (isObject(o)) ? o.v : o;
+                var t = (isObject(o)) ? o.t : o;
                 return '<option value="' + escapeHtml(v) + '"' + (String(v) === String(val) ? ' selected' : '') + '>' + escapeHtml(t) + '</option>';
             }, this).join('');
             inputHtml = '<select id="' + id + '" style="width:100%;padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">' + opts + '</select>';

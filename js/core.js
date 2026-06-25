@@ -919,7 +919,7 @@ function _deobfuscateKey(encoded) {
 function _obfuscateConfigs(configs) {
     if (!Array.isArray(configs)) return configs;
     return configs.map(function(c) {
-        if (!c || typeof c !== 'object') return c;
+        if (!isObject(c)) return c;
         var copy = Object.assign({}, c);
         if (copy.apiKey) copy.apiKey = _obfuscateKey(copy.apiKey);
         return copy;
@@ -928,7 +928,7 @@ function _obfuscateConfigs(configs) {
 function _deobfuscateConfigs(configs) {
     if (!Array.isArray(configs)) return configs;
     return configs.map(function(c) {
-        if (!c || typeof c !== 'object') return c;
+        if (!isObject(c)) return c;
         var copy = Object.assign({}, c);
         if (copy.apiKey) copy.apiKey = _deobfuscateKey(copy.apiKey);
         return copy;
@@ -1126,7 +1126,7 @@ var LocalGameAPI = {
     // 【修复P0-1】最终错误附带各配置失败原因，让用户知道真正失败原因
     // 只保留前 3 条原因避免过长，每条截断到 100 字符
     var shortReasons = failReasons.slice(0, 3).map(function(r) {
-        return r.length > 100 ? r.substring(0, 100) + '...' : r;
+        return r.length > 100 ? truncateByChars(r, 100, '...') : r;
     });
     var reasonSummary = shortReasons.length > 0 ? '\n失败原因：\n' + shortReasons.join('\n') : '';
     throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + reasonSummary);
@@ -1565,7 +1565,7 @@ var SaveDB = {
         return slot === -1 || (slot <= -101 && slot >= -199);
     },
     _attachChecksum(data) {
-        if (!data || typeof data !== 'object') return data;
+        if (!isObject(data)) return data;
         var clone = StateSchema.deepClone(data);
         var stateStr = typeof clone.state === 'string' ? clone.state : JSON.stringify(clone.state || {});
         clone._checksum = this._crc32(stateStr);
@@ -1573,7 +1573,7 @@ var SaveDB = {
         return clone;
     },
     _verifyChecksum(data) {
-        if (!data || typeof data !== 'object') return true;
+        if (!isObject(data)) return true;
         if (typeof data._checksum !== 'number') return true; // 旧存档无校验，放行
         var stateStr = typeof data.state === 'string' ? data.state : JSON.stringify(data.state || {});
         return data._checksum === this._crc32(stateStr);
@@ -2952,7 +2952,7 @@ if (Object.keys(theaterContent).length > 0) {
 // 【优化】校验 AI 返回的 JSON 字段完整性
 // 返回 { valid: Boolean, missing: Array, storyField: String }
 function validateAIResponse(data) {
-    if (!data || typeof data !== 'object') {
+    if (!isObject(data)) {
         return { valid: false, missing: ['data'], storyField: null };
     }
     var missing = [];

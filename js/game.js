@@ -464,7 +464,7 @@ function buildSystemPrompt(includeFormatRules) {
     // 【阶段4清理】_wiText 死变量已删除（赋值后全函数无引用，仅为副作用调用 getWorldInfoInjection）
 
     // 存储世界书分组数据供 sendAIRequest 使用（不再拼入system prompt）
-    gameState._wiPositionTexts = (typeof _wiResult === 'object' && _wiResult !== null && _wiResult.positionTexts) ? _wiResult.positionTexts : null;
+    gameState._wiPositionTexts = (isObject(_wiResult) && _wiResult.positionTexts) ? _wiResult.positionTexts : null;
 
     // 注入增强记忆
     var _memoryText = '';
@@ -1079,7 +1079,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             try {
                 var _initWI = getWorldInfoInjection();
                 if (gameState) {
-                    gameState._wiPositionTexts = (typeof _initWI === 'object' && _initWI !== null && _initWI.positionTexts) ? _initWI.positionTexts : null;
+                    gameState._wiPositionTexts = (isObject(_initWI) && _initWI.positionTexts) ? _initWI.positionTexts : null;
                 }
             } catch(e) {
                 console.warn('[isInit] 世界书扫描失败:', e);
@@ -3856,7 +3856,7 @@ async function requestNpcReply(playerText) {
         // 【P1性能优化】走统一入口，本轮内复用主路径的扫描结果
         if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
             var _npcWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
-            var _npcWIText = (typeof _npcWI === 'object' && _npcWI !== null) ? (_npcWI.text || '') : (_npcWI || '');
+            var _npcWIText = (isObject(_npcWI)) ? (_npcWI.text || '') : (_npcWI || '');
             if (_npcWIText) {
                 systemMsg += '\n【世界知识】\n' + _npcWIText + '\n';
             }
