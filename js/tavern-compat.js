@@ -3912,7 +3912,10 @@ var MemoryManagerUI = {
     renderPermanentFacts: function(gm) {
         var self = this;
         var typeLabels = { pcIdentity: '◇ 主角身份', settings: '◇ 世界设定', worldRules: '◇ 设定规则', npcProfiles: '◇ 关键角色', promises: '◇ 玩家承诺', worldPlaces: '◇ 关键地点' };
-        var typeOrder = ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises'];
+        // 【v3审查修复】补回 'worldPlaces'，否则关键地点永久事实在 UI 列表中不可见
+        // （addPermanentFact 表单可选该类型，buildPermanentFactsSection 也会注入，
+        //   但渲染循环 typeOrder 遗漏导致列表为空、统计却计入）
+        var typeOrder = ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises', 'worldPlaces'];
         var html = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;"><div style="font-size:13px;color:var(--text-tertiary);">永久事实——任何情况下 AI 都会优先看到</div>' + this._btn('add', 'addPermanentFact', undefined) + '</div>';
         var total = 0; Object.keys(gm.permanentFacts).forEach(function(k) { total += gm.permanentFacts[k].length; });
         if (total === 0) html += '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">还没有永久事实</div>';
@@ -3957,7 +3960,11 @@ var MemoryManagerUI = {
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
         var oldTypeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
         var result = gm.addWorldAnchor(oldTypeMap[type] || type, content, 'manual', gm.currentTurn);
-        if (result) { gm.saveToStorage(); UI.toast && UI.toast('已添加'); } else UI.toast && UI.toast('已存在（重复内容）');
+        if (result) {
+            gm.saveToStorage(); UI.toast && UI.toast('已添加');
+            // 【v3审查修复】同 savePermanentFact，新增永久事实后失效注入缓存
+            gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
+        } else UI.toast && UI.toast('已存在（重复内容）');
         this.switchTab('permanentFacts');
     },
 
@@ -3975,6 +3982,10 @@ var MemoryManagerUI = {
         var content = (document.getElementById('editFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
         gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual';
+        // 【v3审查修复】失效注入缓存：_getCacheVersion 不含 permanentFacts 计数，
+        //   编辑后 cacheVersion 不变、currentTurn 不变 → buildInjection 命中缓存返回旧文本，
+        //   AI 本轮仍看到旧设定，用户以为编辑没保存
+        gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
         UI.afterMemoryChange('permanentFacts', '_memory', '已保存');
     },
 
@@ -3984,6 +3995,8 @@ var MemoryManagerUI = {
         UI.confirm('删除永久事实', '确定要删除这条永久事实吗？').then(function(ok) {
             if (!ok) return;
             gm.permanentFacts[type].splice(idx, 1);
+            // 【v3审查修复】同 savePermanentFact，失效注入缓存
+            gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
             UI.afterMemoryChange('permanentFacts', '_memory', '已删除');
         });
     },
@@ -4044,6 +4057,22 @@ var MemoryManagerUI = {
             CharacterMutator.removeCharacter(name);
         } else if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) {
             delete gameState.allCharacters[name];
+        }
+        // 【v3审查修复】清理 permanentFacts.npcProfiles 中的孤儿引用
+        // 否则 AI 在"核心设定"层仍看到已删除角色的 profile，可能继续让该角色登场
+        if (gm.permanentFacts && Array.isArray(gm.permanentFacts.npcProfiles)) {
+            var profiles = gm.permanentFacts.npcProfiles;
+            for (var i = profiles.length - 1; i >= 0; i--) {
+                var p = profiles[i];
+                if (p && p.content && p.content.indexOf(name) === 0) {
+                    // 确认是精确匹配角色名（后面跟分隔符或结束），避免误删"李四丰"的 profile
+                    var after = p.content.substring(name.length);
+                    if (!after || /^[\s:：\-—【（(]/.test(after)) {
+                        profiles.splice(i, 1);
+                    }
+                }
+            }
+            gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
         }
         UI.afterMemoryChange('characters', 'allCharacters', '角色已删除');
     },

@@ -188,7 +188,9 @@ const AIResponseMutator = {
             lockedName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
         }
         const aiName = String(player.name || '').trim();
-        if (aiName && aiName !== lockedName) {
+        // 【v2审查修复】仅在已有锁定名且 AI 尝试覆盖时才警告
+        // 原实现 lockedName 为空时也警告"已拦截"，但实际接受了 AI 名（误导性日志）
+        if (aiName && lockedName && aiName !== lockedName) {
             console.warn('[AIResponseMutator] AI 尝试覆盖主角名 "' + lockedName + '" 为 "' + aiName + '"，已拦截');
         }
         const normalized = {
@@ -475,23 +477,24 @@ const AIResponseMutator = {
     // 写入 {from,to,type,desc} 关系到双方角色的 relations 数组（去重）
     _applyGraphRelation(r) {
         const list = StateManager.get('entities.characters') || [];
-        const type = String(r.type || '').trim();
-        const desc = String(r.desc || '').trim();
-        if (!type && !desc) return;
+        // 【v2审查修复】先规范化 type，保证去重和推入使用相同值
+        // 原实现：filter 检查 x.type === type（可能为空），push 用 type || '相识'
+        // → 空type时去重查空，推入'相识'，下次空type不再去重，'相识'重复累积
+        var rawType = String(r.type || '').trim();
+        var type = rawType || '相识';
+        var desc = String(r.desc || '').trim();
+        if (!rawType && !desc) return;
         const updated = list.map(function(c) {
             if (c.name !== r.from && c.name !== r.to) return c;
             const clone = StateSchema.deepClone ? StateSchema.deepClone(c) : Object.assign({}, c);
             if (!Array.isArray(clone.relations)) clone.relations = [];
             const other = (c.name === r.from) ? r.to : r.from;
-            // 去重：同对方同类型只保留一条
+            // 去重：同对方同类型只保留一条（用规范化后的 type）
             clone.relations = clone.relations.filter(function(x) { return !(x && x.to === other && x.type === type); });
-            clone.relations.push({ to: other, type: type || '相识', desc: desc });
+            clone.relations.push({ to: other, type: type, desc: desc });
             return clone;
         });
         StateManager.set('entities.characters', updated, { silent: true });
-        // 【阶段1清理】删除死代码：原 if (Array.isArray(gameState.allCharacters)) 永远 false
-        // （allCharacters 由 _syncLegacyMirror 维护为对象，不可能是数组）。
-        // _syncLegacyMirror 已在 StateManager.set 内部完成 array→object 镜像，无需手动同步。
     },
 
     // HUD 信息

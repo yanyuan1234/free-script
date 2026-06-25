@@ -100,19 +100,89 @@ const ResponseParser = {
     // 则保留开标签之后的内容（可能是 JSON），删除开标签及之前的全部思考文本。
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
-        let s = raw;
-        const tags = ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
-        for (let i = 0; i < tags.length; i++) {
-            const tag = tags[i];
-            const openRe = new RegExp('<' + tag + '>', 'gi');
-            const closeRe = new RegExp('</' + tag + '>', 'gi');
-            // 先处理配对块（贪婪匹配，跨多行）
-            const pairRe = new RegExp('<' + tag + '>[\\s\\S]*?</' + tag + '>', 'gi');
+        var s = raw;
+        var tags = ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
+
+        // Step 1: 剥离所有配对思考块（\b[^>]* 支持标签带属性，如 <think type="x">）
+        for (var i = 0; i < tags.length; i++) {
+            var tag = tags[i];
+            var pairRe = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?</' + tag + '\\s*>', 'gi');
             s = s.replace(pairRe, '');
-            // 再处理只有开标签的残余（如末尾被截断）
-            s = s.replace(openRe, '');
-            s = s.replace(closeRe, '');
         }
+
+        // Step 2: 检查是否有未匹配的开标签（思考末尾被 max_tokens 截断，无闭标签）
+        var hasLoneOpenTag = false;
+        for (var j = 0; j < tags.length; j++) {
+            var t = tags[j];
+            var openRe = new RegExp('<' + t + '\\b[^>]*>', 'i');
+            if (openRe.test(s)) {
+                hasLoneOpenTag = true;
+                break;
+            }
+        }
+
+        // Step 3: 若有截断思考块，定位实际 JSON 响应起点并删除之前的思考内容
+        // 思考内容中的 JSON 片段（如 {"label":"魔力"}）不含 story/title 等已知字段，
+        // 通过已知字段定位真正的 JSON 响应，避免误取思考片段
+        if (hasLoneOpenTag) {
+            var jsonStartPatterns = [
+                /\{\s*"story"/i,
+                /\{\s*"title"/i,
+                /\{\s*"player"/i,
+                /\{\s*"choices"/i,
+                /\{\s*"characters"/i,
+                /\{\s*"bag"/i,
+                /\{\s*"quests"/i,
+                /\{\s*"gameTime"/i,
+                /\{\s*"narrative"/i,
+                /\{\s*"content"/i,
+                /\{\s*"storyText"/i,
+                /\{\s*"scene"/i
+            ];
+            var jsonStartIdx = -1;
+            for (var k = 0; k < jsonStartPatterns.length; k++) {
+                var m = s.match(jsonStartPatterns[k]);
+                if (m && m.index !== undefined) {
+                    if (jsonStartIdx === -1 || m.index < jsonStartIdx) {
+                        jsonStartIdx = m.index;
+                    }
+                }
+            }
+
+            if (jsonStartIdx > 0) {
+                // 找到 JSON 起点：删除之前的全部思考内容（含未匹配开标签）
+                s = s.slice(jsonStartIdx);
+            } else if (jsonStartIdx === -1) {
+                // 没找到已知字段：尝试保留从第一个 { 开始的内容
+                var firstBrace = s.indexOf('{');
+                if (firstBrace > 0) {
+                    s = s.slice(firstBrace);
+                }
+                // 如果连 { 都没有，保留原文让 _tryPlainText 兜底
+            }
+        }
+
+        // Step 4: 清理 JSON 之前 preamble 中的残留标签
+        // 只清理第一个 { 之前的内容，保护 JSON 字符串值中的合法标签文本
+        var firstBraceFinal = s.indexOf('{');
+        if (firstBraceFinal > 0) {
+            var preamble = s.slice(0, firstBraceFinal);
+            var jsonPart = s.slice(firstBraceFinal);
+            for (var n = 0; n < tags.length; n++) {
+                var tn = tags[n];
+                preamble = preamble.replace(new RegExp('<' + tn + '\\b[^>]*>', 'gi'), '');
+                preamble = preamble.replace(new RegExp('</' + tn + '\\s*>', 'gi'), '');
+            }
+            s = preamble + jsonPart;
+        } else if (firstBraceFinal === -1) {
+            // 没有 JSON，清理全部残留标签
+            for (var p = 0; p < tags.length; p++) {
+                var tp = tags[p];
+                s = s.replace(new RegExp('<' + tp + '\\b[^>]*>', 'gi'), '');
+                s = s.replace(new RegExp('</' + tp + '\\s*>', 'gi'), '');
+            }
+        }
+
         return s;
     },
 

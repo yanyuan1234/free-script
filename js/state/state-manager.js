@@ -221,14 +221,21 @@ const StateManager = {
     _setRaw(path, value) {
         const parts = path.split('.');
         let current = this._state;
+        // 【v3审查修复】拦截危险键 __proto__/constructor/prototype，防止原型污染
+        // schema.js 的 _setByPath/_deepMerge/deepClone 都过滤了 _DANGEROUS_KEYS，
+        // 唯独此处未检查；validatePath 正则反而允许这些段名作为合法路径
+        const dangerous = (StateSchema && StateSchema._DANGEROUS_KEYS) || { __proto__: 1, constructor: 1, prototype: 1 };
         for (let i = 0; i < parts.length - 1; i++) {
             const p = parts[i];
+            if (dangerous[p]) return;
             if (!current[p] || typeof current[p] !== 'object') {
                 current[p] = {};
             }
             current = current[p];
         }
-        current[parts[parts.length - 1]] = value;
+        const lastKey = parts[parts.length - 1];
+        if (dangerous[lastKey]) return;
+        current[lastKey] = value;
     },
 
     // 内部：通知订阅者

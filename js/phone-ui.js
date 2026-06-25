@@ -4912,6 +4912,20 @@ function deleteLastTurn() {
         gameState.currentQuests = lastUndo.currentQuests || [];
         gameState.relationships = lastUndo.relationships || [];
         gameState.currentBag = lastUndo.currentBag || [];
+        // 【v3审查修复】恢复回合数与场景标题
+        if (lastUndo.totalTurns !== undefined && gameState._stats) {
+            gameState._stats.totalTurns = lastUndo.totalTurns;
+        }
+        if (lastUndo.progressTurn !== undefined && typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('progress.turn', lastUndo.progressTurn, { silent: true });
+        }
+        if (lastUndo.sceneTitle !== undefined) {
+            gameState._lastSceneTitle = lastUndo.sceneTitle;
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.sceneTitle', lastUndo.sceneTitle, { silent: true });
+                StateManager.set('progress.lastSceneTitle', lastUndo.sceneTitle, { silent: true });
+            }
+        }
 
         // 【数据联通】反向推送到权威源 + 触发 UI 刷新
         if (typeof _pushCurrentBagToGM === 'function') _pushCurrentBagToGM();
@@ -4928,7 +4942,10 @@ function deleteLastTurn() {
             GameLinker.refreshByDataChange('relationships');
             GameLinker.refreshByDataChange('keyEvents');
         }
-        
+        // 【v3审查修复】撤销后刷新回合数标签与场景标题，否则 UI 仍显示撤销前的值
+        if (typeof updateTurnLabel === 'function') updateTurnLabel();
+        if (typeof updateSceneTitle === 'function' && lastUndo.sceneTitle) updateSceneTitle(lastUndo.sceneTitle);
+
         // 重新渲染
         var lastAI = [...gameState.conversationHistory].reverse().find(m => m.role === 'assistant');
         if (lastAI) {
@@ -4992,6 +5009,13 @@ function saveUndoState() {
         currentQuests: _safeClone(gameState.currentQuests || []),
         relationships: _safeClone(gameState.relationships || []),
         currentBag: _safeClone(gameState.currentBag || []),
+        // 【v3审查修复】保存回合数与场景标题，否则 deleteLastTurn 恢复对话后
+        //   _stats.totalTurns / progress.turn 仍为递增后的值，UI 显示"第 N+1 回合"
+        //   但对话内容是回合 N-1 的，回合数与对话严重不同步
+        totalTurns: (gameState._stats && gameState._stats.totalTurns) || 0,
+        progressTurn: (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.turn') : 0,
+        sceneTitle: gameState._lastSceneTitle || (typeof StateManager !== 'undefined' && StateManager.get ? StateManager.get('progress.sceneTitle') : '') || '',
+        lastSceneTitle: gameState._lastSceneTitle || '',
         timestamp: Date.now()
     });
 }

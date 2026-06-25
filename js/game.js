@@ -1706,8 +1706,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _aiMutatorApplied = false;
         if (typeof AIResponseMutator !== 'undefined' && AIResponseMutator.apply && parseResult && parseResult.success) {
             try {
-                AIResponseMutator.apply(parseResult, { silent: true });
-                _aiMutatorApplied = true;
+                // 【v3审查修复】apply() 内部 try-catch 失败时返回 { success: false } 而非抛异常
+                // 原实现仅凭"未抛异常"就置 _aiMutatorApplied = true，导致后续 deleteLastTurn 误撤销
+                var _mutatorResult = AIResponseMutator.apply(parseResult, { silent: true });
+                _aiMutatorApplied = !!(_mutatorResult && _mutatorResult.success === true);
+                if (_mutatorResult && Array.isArray(_mutatorResult.warnings) && _mutatorResult.warnings.length > 0) {
+                    console.warn('[AIResponseMutator] 部分步骤告警:', _mutatorResult.warnings.join('; '));
+                }
             } catch (e) {
                 console.warn('[sendAIRequest] AIResponseMutator 应用失败:', e && e.message);
             }
@@ -1756,6 +1761,12 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) gameState._lastCotContent = cotMatches.join('\n---\n');
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
         }
+        // 【v3审查修复】清理未闭合的思考标签（被 max_tokens 截断，无闭标签）
+        // 原实现 cotRegex 要求开闭标签成对出现，截断的 <thinking>...（无</thinking>）
+        // 不匹配，思考内容泄漏到 cleanStoryText 显示给用户。
+        // ResponseParser._stripThinkingTokens 已处理 think/thinking/reasoning/thought/analysis，
+        // 但 game.js 还需处理 cot/chain_of_thought/ECoT 等额外标签，统一在此兜底
+        cleanStoryText = cleanStoryText.replace(/<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>[\s\S]*$/gi, '').trim();
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
             storyText = cleanStoryText;
@@ -2087,12 +2098,19 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 旧实现只依赖 TypewriterBuffer.onComplete 清理光标，但若打字机因故卡住
         // （如 pause 后未 resume、异常退出）onComplete 不会触发，光标会永久残留
         // 此安全网在 30 秒后无条件调用 cleanCursor，覆盖所有卡死场景
-        setTimeout(function() {
+        // 【v3审查修复】原实现裸 setTimeout 未保存 timer ID，连续多回合会累积多个
+        //   定时器，且新回合开始时无法清理旧定时器，导致光标被误清。
+        //   现保存到模块级变量，在新请求入口与正常完成路径中 clearTimeout
+        if (typeof window._cursorSafetyTimer !== 'undefined' && window._cursorSafetyTimer) {
+            clearTimeout(window._cursorSafetyTimer);
+        }
+        window._cursorSafetyTimer = setTimeout(function() {
             try {
                 if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.cleanCursor) {
                     TypewriterBuffer.cleanCursor();
                 }
             } catch (e) { /* 忽略 */ }
+            window._cursorSafetyTimer = null;
         }, 30000);
         // 记录
         // storyHistory 已合并到 conversationHistory，不再单独存储

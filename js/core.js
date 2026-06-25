@@ -4045,21 +4045,9 @@ function _getTranslateErrorSortedKeys(map) {
 }
 // 【修复】如果翻译后的结果与原文不同，在末尾附加原始错误信息
 // 这样用户既能看到中文解释，也能看到原始英文错误用于排查
-var translated = null;
-for (let key in map) {
-    if (m === key) { translated = map[key]; break; }
-}
-if (!translated) {
-    var keys = _getTranslateErrorSortedKeys(map);
-    for (let i = 0; i < keys.length; i++) {
-        var key = keys[i];
-        if (m.indexOf(key) !== -1) { translated = map[key]; break; }
-    }
-}
-if (translated && translated !== m) {
-    return translated + ' (' + m + ')';
-}
-// HTTP状态码翻译
+// 【v3审查修复】HTTP 状态码优先匹配：原实现先做子串匹配，message="HTTP 429" 会命中
+// map 中的裸数字 '429'（3字符），导致 httpMap 块沦为死代码，且两份翻译文案不一致。
+// 现把 httpMap 提前到子串匹配之前，确保 "HTTP <status>" 走专用状态码翻译。
 var httpMatch = m.match(/HTTP\s*(\d{3})/);
 if (httpMatch) {
     var code = httpMatch[1];
@@ -4076,7 +4064,21 @@ if (httpMatch) {
         '504': '网关超时(504) → 中转服务等待上游超时',
         '529': '站点过载(529) → 服务器负载过高',
     };
-if (httpMap[code]) return httpMap[code];
+    if (httpMap[code]) return httpMap[code];
+}
+var translated = null;
+for (let key in map) {
+    if (m === key) { translated = map[key]; break; }
+}
+if (!translated) {
+    var keys = _getTranslateErrorSortedKeys(map);
+    for (let i = 0; i < keys.length; i++) {
+        var key = keys[i];
+        if (m.indexOf(key) !== -1) { translated = map[key]; break; }
+    }
+}
+if (translated && translated !== m) {
+    return translated + ' (' + m + ')';
 }
 // API错误码格式："Error: NNN - message" 或 "API错误: NNN"
 var apiCodeMatch = m.match(/(?:Error|错误)[:\s]*(\d{3})/);
@@ -5187,12 +5189,21 @@ var _KNOWN_MODEL_CONTEXT = {
     'moonshot-v1-128k': 128000
 };
 
-// 【P1修复BUG-002】带重试和指数退避的 fetch（仅对网络错误/超时重试，不对 4xx 认证错误重试）
+// 【P1修复BUG-002】带重试和指数退避的 fetch（网络错误/超时/429/5xx 重试，401/403 不重试）
 async function _fetchWithContextRetry(url, options, maxRetries) {
     var lastErr = null;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
         try {
             var resp = await fetch(url, options);
+            // 【v2审查修复】429 限速和 5xx 服务端错误也需要重试
+            // 原实现只对 fetch 抛出的网络错误重试，但 429 是 HTTP 响应（fetch 不抛错）
+            // 导致 /models API 遇 429 直接返回，detectContextSize 跳过动态检测
+            if ((resp.status === 429 || resp.status >= 500) && attempt < maxRetries) {
+                var retryDelay = 500 * Math.pow(2, attempt);
+                console.log('[Context检测] HTTP ' + resp.status + '，' + retryDelay + 'ms 后重试 (' + (attempt + 1) + '/' + maxRetries + ')');
+                await new Promise(function(r) { setTimeout(r, retryDelay); });
+                continue;
+            }
             return resp;
         } catch (e) {
             lastErr = e;

@@ -123,9 +123,12 @@ const CharacterMutator = {
         let updated;
         if (name && name !== normalized.name) {
             updated = characters.filter(function(c) { return c.name !== name; });
-            // 旧名数据合并到新角色（保留累积数据）
+            // 【v3审查修复】旧名数据合并到新角色（保留累积数据）
+            // 原实现只保留 favorability，丢失 relation/stats/tags/notes/desc/title/identity/id
+            // 等全部累积字段，与同名分支（Object.assign({}, c, normalized)）行为严重不一致
             const old = characters.find(function(c) { return c.name === name; });
             if (old) {
+                normalized = Object.assign({}, old, normalized);
                 normalized.favorability = normalized.favorability || old.favorability || 0;
                 normalized.favor = normalized.favorability;
             }

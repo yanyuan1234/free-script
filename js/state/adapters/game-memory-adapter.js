@@ -32,9 +32,24 @@ const GameMemoryAdapter = {
             const events = StateManager.get('entities.events') || [];
 
             if (GameMemory.tables) {
-                GameMemory.tables.items = bag;
-                GameMemory.tables.characters = characters;
-                GameMemory.tables.locations = locations;
+                // 【v3审查修复】GameMemory.tables.* 是按 name 索引的对象（见 tavern-compat.js
+                //   tables.characters[name]=..., tables.items[name]=..., tables.locations[name]=...）
+                //   原实现直接把 StateManager 的数组赋给它们，会把对象结构替换成数组，
+                //   之后 GameMemory 所有 tables[name] 读取返回 undefined，休眠追踪/NPC档案/召回全部损坏。
+                //   现按 name 转换为索引对象，与 GameMemory 内部结构对齐。
+                const toMap = function(arr) {
+                    const m = {};
+                    if (Array.isArray(arr)) {
+                        for (let i = 0; i < arr.length; i++) {
+                            const x = arr[i];
+                            if (x && x.name) m[x.name] = x;
+                        }
+                    }
+                    return m;
+                };
+                GameMemory.tables.items = toMap(bag);
+                GameMemory.tables.characters = toMap(characters);
+                GameMemory.tables.locations = toMap(locations);
             }
             if (GameMemory.quests) {
                 GameMemory.quests = quests;
@@ -61,22 +76,39 @@ const GameMemoryAdapter = {
         try {
             if (GameMemory.tables) {
                 if (GameMemory.tables.items) {
-                    BagMutator.setItems(GameMemory.tables.items, { silent: true });
+                    // 【v3审查修复】tables.items 是 {name: item} 对象（与 characters 同构），
+                    //   BagMutator.setItems 期望数组；原实现直接传对象会被包成 [对象]，
+                    //   normalizeItem 取 .name=undefined 返回 null，被 filter 清掉 → 背包清空
+                    var _itemArr = Array.isArray(GameMemory.tables.items)
+                        ? GameMemory.tables.items
+                        : Object.values(GameMemory.tables.items).filter(function(it) { return it && it.name; });
+                    if (_itemArr.length > 0) BagMutator.setItems(_itemArr, { silent: true });
                 }
                 if (GameMemory.tables.characters) {
                     // 【阶段1修复类型bug】gm.tables.characters 是 {name: charObj} 对象，
                     // CharacterMutator.mergeCharacters 期望数组，需 Object.values 转换
-                    var _charArr = Object.values(GameMemory.tables.characters).filter(function(c) { return c && c.name; });
+                    var _charArr = Array.isArray(GameMemory.tables.characters)
+                        ? GameMemory.tables.characters
+                        : Object.values(GameMemory.tables.characters).filter(function(c) { return c && c.name; });
                     if (_charArr.length > 0) {
                         CharacterMutator.mergeCharacters(_charArr, { silent: true });
                     }
                 }
                 if (GameMemory.tables.locations) {
-                    StateManager.set('entities.locations', GameMemory.tables.locations, { silent: true });
+                    // 【v3审查修复】tables.locations 同样是 {name: loc} 对象，转数组后再写入
+                    var _locArr = Array.isArray(GameMemory.tables.locations)
+                        ? GameMemory.tables.locations
+                        : Object.values(GameMemory.tables.locations).filter(function(l) { return l && l.name; });
+                    if (_locArr.length > 0) StateManager.set('entities.locations', _locArr, { silent: true });
                 }
             }
             if (GameMemory.quests) {
-                QuestMutator.setQuests(GameMemory.quests, { silent: true });
+                // 【v3审查修复】QuestMutator.setQuests 对对象输入会包成 [对象] 然后 normalizeQuest
+                //   取 .title=undefined 返回 null → 任务清空。统一 Object.values 转换
+                var _questArr = Array.isArray(GameMemory.quests)
+                    ? GameMemory.quests
+                    : Object.values(GameMemory.quests).filter(function(q) { return q && (q.title || q.id); });
+                if (_questArr.length > 0) QuestMutator.setQuests(_questArr, { silent: true });
             }
             if (GameMemory.events) {
                 StateManager.set('entities.events', GameMemory.events, { silent: true });
