@@ -81,15 +81,6 @@ const CharacterMutator = {
         return -1;
     },
 
-    // 数组 -> 对象（兼容旧代码 allCharacters 格式）
-    _arrayToObject(characters) {
-        const obj = {};
-        (characters || []).forEach(function(c) {
-            if (c && c.name) obj[c.name] = c;
-        });
-        return obj;
-    },
-
     // 更新角色关系
     updateRelationship(name, delta, options) {
         return this.updateCharacter(name, function(character) {
@@ -151,12 +142,6 @@ const CharacterMutator = {
     getCharacter(name) {
         const characters = StateManager.get('entities.characters') || [];
         return characters.find(function(c) { return c.name === name; }) || null;
-    },
-
-    // 【阶段1统一】获取角色数量
-    count() {
-        const characters = StateManager.get('entities.characters') || [];
-        return characters.length;
     },
 
     // 标准化角色

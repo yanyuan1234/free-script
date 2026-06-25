@@ -102,7 +102,9 @@ var GameLinker = {
 // 视图别名：gameState.allCharacters === gm.tables.characters（同一引用，最快）
 // ========================================
 
-// 物品同步：gm.tables.items (keyed) → gameState.currentBag (array)
+// 物品同步：gm.tables.items (keyed) → gameState.currentBag (array) + StateManager
+// 【全量修复】此函数是 bag 写入的同步点之一：
+// 由它统一更新 gameState.currentBag 旧字段 + StateManager.set('entities.bag') 新状态层
 function _syncItemsToBag() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
@@ -127,15 +129,22 @@ function _syncItemsToBag() {
         });
     });
     gameState.currentBag = bag;
+    // 【全量修复】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // silent:true 避免循环通知（此函数本身是被各种写入路径调用的下游同步）
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('entities.bag', bag, { silent: true });
+    }
 }
 
-// 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式)
+// 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式) + StateManager
+// 【全量修复】此函数是 quests 写入的同步点之一：
+// 由它统一更新 gameState.currentQuests 旧字段 + StateManager.set('entities.quests') 新状态层
 function _syncQuestsToGameState() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
     var gm = window.GameMemory;
     if (!Array.isArray(gm.quests)) return;
-    gameState.currentQuests = gm.quests.map(function(q) {
+    var arr = gm.quests.map(function(q) {
         return {
             title: q.content || '',
             type: q.type || 'quest',
@@ -144,6 +153,11 @@ function _syncQuestsToGameState() {
             hint: q.hint || ''
         };
     });
+    gameState.currentQuests = arr;
+    // 【全量修复】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('entities.quests', arr, { silent: true });
+    }
 }
 
 // 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array) + StateManager
@@ -178,16 +192,23 @@ function _syncRelationshipsToGameState() {
     }
 }
 
-// 事件同步：gm.events (array) → gameState.keyEvents (array of strings)
+// 事件同步：gm.events (array) → gameState.keyEvents (array of strings) + StateManager
+// 【全量修复】此函数是 events 写入的同步点之一：
+// 由它统一更新 gameState.keyEvents 旧字段 + StateManager.set('entities.events') 新状态层
 function _syncEventsToKeyEvents() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
     var gm = window.GameMemory;
     if (!Array.isArray(gm.events)) return;
     // gm.events 是对象数组 {content, importance, ...}，keyEvents 是字符串数组
-    gameState.keyEvents = gm.events.map(function(e) {
+    var arr = gm.events.map(function(e) {
         return typeof e === 'string' ? e : (e.content || (e.event ? e.event : ''));
     }).filter(function(s) { return s && s.length > 0; });
+    gameState.keyEvents = arr;
+    // 【全量修复】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('entities.events', arr, { silent: true });
+    }
 }
 
 // 总入口：把所有权威源同步到视图
@@ -319,6 +340,12 @@ function _pushKeyEventsToGM() {
             gm.events.push({ content: evt, importance: 7, source: 'story_parsed', turn: gm.currentTurn || 0 });
         }
     });
+    // 【全量修复-P0】反向推送后同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // 此函数是 gameState.keyEvents → gm.events 方向，_syncEventsToKeyEvents 是 gm.events → gameState.keyEvents 方向
+    // 为避免循环重建，此处直接 set gameState.keyEvents 当前值
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('entities.events', gameState.keyEvents, { silent: true });
+    }
 }
 
 // 拦截 gm.saveToStorage：保存后自动同步 + 通知 UI
@@ -3433,8 +3460,11 @@ targetModule = { type: 'theater', title: '文字剧场', content: theater.html |
 function injectTheaterToLogs(theaterContent) {
     if (!theaterContent || Object.keys(theaterContent).length === 0) return;
 
-    // 确保 _worldModules 存在
-    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+    // 【全量修复-P2】方向反转：以 StateManager 为权威源读取，本地累积变更后写回
+    // 不再直接操作 gameState._worldModules（由 _syncLegacyMirror 自动回写）
+    var mods = (typeof StateManager !== 'undefined' && StateManager.get)
+        ? (StateManager.get('ui.worldModules') || [])
+        : (Array.isArray(gameState._worldModules) ? gameState._worldModules : []);
 
     Object.keys(theaterContent).forEach(function(key) {
         var theater = theaterContent[key];
@@ -3452,20 +3482,22 @@ function injectTheaterToLogs(theaterContent) {
 
         if (targetModule) {
             // 查找是否已有同类型模块，有则更新，无则添加
-            var existingIdx = gameState._worldModules.findIndex(function(m) {
+            var existingIdx = mods.findIndex(function(m) {
                 return m.type === targetModule.type && m.title === targetModule.title;
             });
             if (existingIdx >= 0) {
-                gameState._worldModules[existingIdx] = targetModule;
+                mods[existingIdx] = targetModule;
             } else {
-                gameState._worldModules.push(targetModule);
+                mods.push(targetModule);
             }
             console.log('[小剧场融合] 已注入', key, '到', targetModule.type);
         }
     });
-    // 【阶段5】小剧场注入完成后同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // 【全量修复-P2】写入权威源 StateManager，_syncLegacyMirror 自动回写 gameState._worldModules
     if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('ui.worldModules', gameState._worldModules, { silent: true });
+        StateManager.set('ui.worldModules', mods, { silent: true });
+    } else if (typeof gameState !== 'undefined') {
+        gameState._worldModules = mods;
     }
 }
 

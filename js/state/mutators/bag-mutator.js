@@ -51,26 +51,6 @@ const BagMutator = {
         return this.setItems(bag, options);
     },
 
-    // 移除物品
-    removeItem(name, options) {
-        const bag = StateManager.get('entities.bag') || [];
-        const filtered = bag.filter((it) => it.name !== name);
-        return this.setItems(filtered, options);
-    },
-
-    // 更新物品
-    updateItem(name, updater, options) {
-        const bag = StateManager.get('entities.bag') || [];
-        const updated = bag.map(function(it) {
-            if (it.name === name) {
-                const clone = StateSchema.deepClone(it);
-                return updater(clone) || clone;
-            }
-            return it;
-        });
-        return this.setItems(updated, options);
-    },
-
     // 标准化物品格式
     normalizeItem(raw) {
         if (!raw) return null;

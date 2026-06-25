@@ -317,17 +317,22 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         try {
             var data = typeof resp === 'string' ? JSON.parse(resp) : resp;
             if (data && data.title && data.main) {
-                if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
-                gameState._worldModules.push({
+                // 【全量修复-P2】方向反转：以 StateManager 为权威源读取，本地累积后写回
+                var _mods = (typeof StateManager !== 'undefined' && StateManager.get)
+                    ? (StateManager.get('ui.worldModules') || [])
+                    : (Array.isArray(gameState._worldModules) ? gameState._worldModules : []);
+                _mods.push({
                     type: 'comments',
                     title: data.title,
                     author: data.author || '匿名',
                     main: data.main,
                     comments: []
                 });
-                // 【阶段5】论坛发帖后同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+                // 写入权威源 StateManager，_syncLegacyMirror 自动回写 gameState._worldModules
                 if (typeof StateManager !== 'undefined' && StateManager.set) {
-                    StateManager.set('ui.worldModules', gameState._worldModules, { silent: true });
+                    StateManager.set('ui.worldModules', _mods, { silent: true });
+                } else if (typeof gameState !== 'undefined') {
+                    gameState._worldModules = _mods;
                 }
                 autoSave();
                 // 刷新论坛页面
@@ -648,7 +653,10 @@ function renderWorldModules(modules) {
     modules = modules || [];
     // 增量更新：保留旧模块。
     // 历史型模块（聊天/论坛/朋友圈/邮件/日记/成就）追加，不替换；状态型模块（排行/商店/文本/列表等）按类型替换。
-    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+    // 【全量修复-P2】方向反转：以 StateManager 为权威源读取，本地累积变更后写回
+    var _existingMods = (typeof StateManager !== 'undefined' && StateManager.get)
+        ? (StateManager.get('ui.worldModules') || [])
+        : (Array.isArray(gameState._worldModules) ? gameState._worldModules : []);
     // 【修复BUG-007】forum 与 comments 同为论坛类型，都应累积；forum 也需结构标准化
     var accumulateTypes = { 'chat': true, 'comments': true, 'forum': true, 'moments': true, 'mail': true, 'diary': true, 'achievements': true, 'achievement': true };
     // 【修复BUG-007/015】标准化 AI 返回的模块结构，消除 prompt↔渲染器结构错配：
@@ -717,28 +725,30 @@ function renderWorldModules(modules) {
     });
     modules = modules.concat(extraMods);
     var replaceTypes = {};
-    gameState._worldModules.forEach(function(mod, idx) {
+    _existingMods.forEach(function(mod, idx) {
         if (mod && mod.type && !accumulateTypes[mod.type]) replaceTypes[mod.type] = idx;
     });
     modules.forEach(function(newMod) {
         if (!newMod || !newMod.type) return;
         if (!accumulateTypes[newMod.type] && replaceTypes.hasOwnProperty(newMod.type)) {
             // 替换同类型旧模块
-            gameState._worldModules[replaceTypes[newMod.type]] = newMod;
+            _existingMods[replaceTypes[newMod.type]] = newMod;
         } else {
             // 新增模块（历史型追加）
-            gameState._worldModules.push(newMod);
+            _existingMods.push(newMod);
         }
     });
     // 限制每种模块类型数量，防止无限增长
     var typeCounts = {};
-    gameState._worldModules = gameState._worldModules.filter(function(m) {
+    _existingMods = _existingMods.filter(function(m) {
         typeCounts[m.type] = (typeCounts[m.type] || 0) + 1;
         return typeCounts[m.type] <= 20;
     });
-    // 【阶段5】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // 【全量修复-P2】写入权威源 StateManager，_syncLegacyMirror 自动回写 gameState._worldModules
     if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('ui.worldModules', gameState._worldModules, { silent: true });
+        StateManager.set('ui.worldModules', _existingMods, { silent: true });
+    } else if (typeof gameState !== 'undefined') {
+        gameState._worldModules = _existingMods;
     }
     // 【已移除】本地模板生成朋友圈/日记：现在由 AI 主动在 world 中提供 moments/diary 模块
     // 自动将AI返回的world模块解析到世界观设定中（仅首次或worldNotes为空时）

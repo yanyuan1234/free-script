@@ -3386,9 +3386,6 @@ var GameMemory = {
         if (!self._summaryLayers) self._summaryLayers = { near: [], mid: [], far: [] };
         if (!self._setupLayers) self._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         if (!self._setupLayers.setupKeywords) self._setupLayers.setupKeywords = [];
-        if (!self.workingMemory.nearSummary) self.workingMemory.nearSummary = '';
-        if (!self.workingMemory.midSummary) self.workingMemory.midSummary = '';
-        if (!self.workingMemory.farSummary) self.workingMemory.farSummary = '';
         // 加载后初始化休眠追踪（兼容旧存档）
         self._initDormantTracking();
         // 迁移成功后异步保存
@@ -3414,7 +3411,7 @@ var GameMemory = {
             if (!migrated.events) migrated.events = [];
             if (!migrated.timeline) migrated.timeline = [];
             if (!migrated.quests) migrated.quests = [];
-            if (!migrated.workingMemory) migrated.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [], nearSummary: '', midSummary: '', farSummary: '' };
+            if (!migrated.workingMemory) migrated.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
             if (!migrated.stats) migrated.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
             if (!migrated._dormantTracking) migrated._dormantTracking = { characters: {}, items: {}, locations: {} };
             if (!migrated._storytellingConfig) migrated._storytellingConfig = {};
@@ -3437,7 +3434,7 @@ var GameMemory = {
         this.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
         this.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
         this.events = []; this.timeline = []; this.quests = [];
-        this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [], nearSummary: '', midSummary: '', farSummary: '' };
+        this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
         this._changeLog = []; this.summaryHistory = []; this.currentSummaryIndex = -1;
         this._injectionSnapshots = {};
@@ -4105,7 +4102,12 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var newName = document.getElementById('editItemName').value.trim(); if (!newName) return;
         var item = gm.tables.items[oldName] || {}; if (oldName !== newName) delete gm.tables.items[oldName];
         gm.tables.items[newName] = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
-        if (typeof gameState !== 'undefined' && gameState.currentBag) {
+        // 【全量修复-P0】物品编辑走 BagMutator 统一入口，替代直接操作 gameState.currentBag
+        // 原 _syncItemsToBag 会自动从 gm.tables.items 同步到 StateManager，但此处已改 gm，直接调用同步即可
+        if (typeof _syncItemsToBag === 'function') {
+            _syncItemsToBag();
+        } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
+            // 兜底：_syncItemsToBag 不可用时直接改视图
             if (oldName !== newName) gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== oldName; });
             var found = false;
             for (let i = 0; i < gameState.currentBag.length; i++) {
@@ -4124,7 +4126,13 @@ var MemoryManagerUI = {
     deleteItem: function(name) {
         var gm = window.GameMemory; if (!gm || !gm.tables.items[name]) return;
         delete gm.tables.items[name];
-        if (typeof gameState !== 'undefined' && gameState.currentBag) gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== name; });
+        // 【全量修复-P0】删除物品走 _syncItemsToBag 统一同步点
+        // _syncItemsToBag 会从 gm.tables.items 重新构建 bag 并写 StateManager
+        if (typeof _syncItemsToBag === 'function') {
+            _syncItemsToBag();
+        } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
+            gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== name; });
+        }
         UI.afterMemoryChange('items', 'currentBag', '物品已删除');
     },
 
@@ -4145,8 +4153,12 @@ var MemoryManagerUI = {
     saveNewItem: function() {
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { UI.toast && UI.toast('请输入物品名称'); return; }
         gm.tables.items[name] = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
-        // 同步到gameState.currentBag
-        if (typeof gameState !== 'undefined') {
+        // 【全量修复-P0】新增物品走 _syncItemsToBag 统一同步点，替代直接操作 gameState.currentBag
+        // _syncItemsToBag 会从 gm.tables.items 重新构建 bag 并写 StateManager
+        if (typeof _syncItemsToBag === 'function') {
+            _syncItemsToBag();
+        } else if (typeof gameState !== 'undefined') {
+            // 兜底：_syncItemsToBag 不可用时直接改视图
             if (!gameState.currentBag) gameState.currentBag = [];
             var exists = gameState.currentBag.some(function(b) { return b.name === name; });
             if (!exists) gameState.currentBag.push({ name: name, count: parseInt(document.getElementById('addItemQty').value) || 1, desc: document.getElementById('addItemDesc').value.trim(), rarity: document.getElementById('addItemRarity').value });
@@ -4274,7 +4286,12 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { UI.toast && UI.toast('请输入事件内容'); return; }
         gm.events.push({ content: content, turn: gm.currentTurn, gameTime: gm.getGameTimeStr(), importance: parseInt(document.getElementById('addEventImportance').value) || 5, decayScore: parseInt(document.getElementById('addEventImportance').value) || 5 });
         if (gm.events.length > 50) gm.events = gm.events.slice(-50);
-        if (typeof gameState !== 'undefined') {
+        // 【全量修复-P0】新增事件走 _syncEventsToKeyEvents 统一同步点
+        // _syncEventsToKeyEvents 会从 gm.events 重新构建 keyEvents 并写 StateManager
+        if (typeof _syncEventsToKeyEvents === 'function') {
+            _syncEventsToKeyEvents();
+        } else if (typeof gameState !== 'undefined') {
+            // 兜底：_syncEventsToKeyEvents 不可用时直接改视图
             if (!gameState.keyEvents) gameState.keyEvents = [];
             if (gameState.keyEvents.indexOf(content) === -1) { gameState.keyEvents.push(content); if (gameState.keyEvents.length > 30) gameState.keyEvents = gameState.keyEvents.slice(-30); }
         }
@@ -4283,9 +4300,18 @@ var MemoryManagerUI = {
 
     deleteEvent: function(index) {
         var gm = window.GameMemory; if (!gm || !gm.events[index]) return;
-        var evtContent = gm.events[index] ? gm.events[index].content : '';
         gm.events.splice(index, 1);
-        if (typeof gameState !== 'undefined' && gameState.keyEvents && evtContent) { var idx = gameState.keyEvents.indexOf(evtContent); if (idx >= 0) gameState.keyEvents.splice(idx, 1); }
+        // 【全量修复-P0】删除事件走 _syncEventsToKeyEvents 统一同步点
+        // _syncEventsToKeyEvents 会从 gm.events 重新构建 keyEvents 并写 StateManager
+        if (typeof _syncEventsToKeyEvents === 'function') {
+            _syncEventsToKeyEvents();
+        } else if (typeof gameState !== 'undefined' && gameState.keyEvents) {
+            // 兜底：_syncEventsToKeyEvents 不可用时直接改视图
+            // 注意：兜底分支无法知道被删事件的内容，需从 afterMemoryChange 触发的刷新中重建
+            gameState.keyEvents = gm.events.map(function(e) {
+                return typeof e === 'string' ? e : (e.content || '');
+            }).filter(function(s) { return s && s.length > 0; });
+        }
         UI.afterMemoryChange('events', 'keyEvents', '事件已删除');
     },
 

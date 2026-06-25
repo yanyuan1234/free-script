@@ -2482,10 +2482,12 @@ function _parseStructuredSummary(summary) {
     var eventMatch = summary.match(/【重要事件】\n([\s\S]*?)(?=【|$)/);
     if (eventMatch) {
         var events = eventMatch[1].split('\n').filter(function(l) { return l.trim(); });
+        var _hasNewEvent = false;
         events.forEach(function(event) {
             if (!gameState.keyEvents) gameState.keyEvents = [];
             if (!gameState.keyEvents.includes(event.trim())) {
                 gameState.keyEvents.push(event.trim());
+                _hasNewEvent = true;
             }
             EnhancedMemory.longTermMemory.importantEvents.push({
                 time: Date.now(),
@@ -2496,6 +2498,11 @@ function _parseStructuredSummary(summary) {
                 EnhancedMemory.longTermMemory.importantEvents = EnhancedMemory.longTermMemory.importantEvents.slice(-50);
             }
         });
+        // 【全量修复-P0】摘要解析的 keyEvents 补 StateManager 同步
+        // 原代码只写 gameState.keyEvents，StateManager.get('entities.events') 返回陈旧值
+        if (_hasNewEvent && typeof StateManager !== 'undefined' && StateManager.set && gameState.keyEvents) {
+            StateManager.set('entities.events', gameState.keyEvents, { silent: true });
+        }
     }
     
     // 解析当前状态
@@ -3909,14 +3916,24 @@ async function requestNpcReply(playerText) {
             }, delay);
             delay += 300 + Math.random() * 400;
         });
-        // 好感度可能变化，更新到allCharacters（别名 → 自动同步到 gm.tables.characters）
+        // 好感度可能变化，更新到权威源 CharacterMutator（→ StateManager → allCharacters 镜像）
+        // 【全量修复-P0】原代码直接改 gameState.allCharacters[name].favorability，
+        // 绕过 CharacterMutator 导致 StateManager.get('entities.characters') 返回陈旧好感度
         if (parsed && parsed.favorability !== undefined) {
-            if (gameState && gameState.allCharacters && gameState.allCharacters[name]) {
+            if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateCharacter) {
+                CharacterMutator.updateCharacter(name, function(c) {
+                    c.favorability = parsed.favorability;
+                    c.favor = parsed.favorability;  // 兼容旧字段
+                    return c;
+                });
+            } else if (gameState && gameState.allCharacters && gameState.allCharacters[name]) {
+                // 兜底：CharacterMutator 不可用时直接改视图别名
                 gameState.allCharacters[name].favorability = parsed.favorability;
-                // 【数据联通】触发记忆页/回顾页等所有依赖页面刷新
-                if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
-                renderNpcList();
+                gameState.allCharacters[name].favor = parsed.favorability;
             }
+            // 【数据联通】触发记忆页/回顾页等所有依赖页面刷新
+            if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
+            renderNpcList();
         }
         // 联动1：把这次私聊摘要加入剧情记忆（避免剧情AI忘记NPC私聊内容）
         if (replies.length > 0) {
@@ -4233,9 +4250,10 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         _typeCounts[_m.type] = (_typeCounts[_m.type] || 0) + 1;
         if (_typeCounts[_m.type] <= 20) _trimmed.unshift(_m);
     }
-    gameState._worldModules = _trimmed;
-    // 【阶段5】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // 【全量修复-P2】方向反转：写入权威源 StateManager，_syncLegacyMirror 自动回写 gameState._worldModules
     if (typeof StateManager !== 'undefined' && StateManager.set) {
         StateManager.set('ui.worldModules', _trimmed, { silent: true });
+    } else if (typeof gameState !== 'undefined') {
+        gameState._worldModules = _trimmed;
     }
 }

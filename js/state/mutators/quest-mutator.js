@@ -121,19 +121,6 @@ const QuestMutator = {
         return this.setQuests(quests, options);
     },
 
-    // 更新任务
-    updateQuest(id, updater, options) {
-        const quests = StateManager.get('entities.quests') || [];
-        const updated = quests.map(function(q) {
-            if (q.id === id) {
-                const clone = StateSchema.deepClone(q);
-                return updater(clone) || clone;
-            }
-            return q;
-        });
-        return this.setQuests(updated, options);
-    },
-
     // 根据剧情文本自动推进任务进度
     autoAdvanceByStory(storyText, options) {
         if (!storyText) return { changed: false };
