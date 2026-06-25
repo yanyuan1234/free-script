@@ -1869,20 +1869,37 @@ var PresetManager = {
     gameState._assistantPrompt = asstParts.join('\n\n');
 
     // 合并世界书depth prompts和预设depth prompts
+    // 【阶段4统一】写入前先清除上一轮的 preset 条目，避免切换预设时旧条目累积
+    if (!gameState._depthPrompts) gameState._depthPrompts = {};
+    Object.keys(gameState._depthPrompts).forEach(function(d) {
+        gameState._depthPrompts[d] = (gameState._depthPrompts[d] || []).filter(function(e) {
+            return e._source !== 'preset';
+        });
+        if (gameState._depthPrompts[d].length === 0) delete gameState._depthPrompts[d];
+    });
     Object.keys(depthPrompts).forEach(function(d) {
-        if (!gameState._depthPrompts) gameState._depthPrompts = {};
         if (!gameState._depthPrompts[d]) gameState._depthPrompts[d] = [];
-        depthPrompts[d].forEach(function(p) {
+        depthPrompts[d].forEach(function(p, idx) {
             var c = MacroEngine.process(p.content.trim(), macroEnv);
             if (c.trim()) {
                 // 【酒馆兼容】injection_position: 0=RELATIVE(默认，从聊天底部往上数)
                 //                                1=ABSOLUTE(从聊天顶部往下数)
                 // game.js 的深度注入逻辑会按这个标志决定从哪一端开始数
-                gameState._depthPrompts[d].push({
+                var _id = 'preset_depth_' + d + '_' + idx;
+                var _existing = gameState._depthPrompts[d].findIndex(function(e) { return e.identifier === _id; });
+                var _entry = {
                     enabled: true,
                     content: c,
-                    injection_position: (p.injection_position === 1) ? 1 : 0
-                });
+                    injection_position: (p.injection_position === 1) ? 1 : 0,
+                    identifier: _id,
+                    _source: 'preset',
+                    _order: 200
+                };
+                if (_existing >= 0) {
+                    gameState._depthPrompts[d][_existing] = _entry;
+                } else {
+                    gameState._depthPrompts[d].push(_entry);
+                }
             }
         });
     });

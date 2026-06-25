@@ -1554,14 +1554,12 @@ var GameMemory = {
         var turns = self.workingMemory.turns || [];
         var totalTurns = turns.length;
 
-        // 近层：最近3轮，保留完整内容（不截断，剧情不能断层）
-        var nearTurns = turns.slice(-3);
-        self._summaryLayers.near = nearTurns.map(function(t) {
-            var parts = [];
-            if (t && t.user) parts.push('玩家: ' + t.user);
-            if (t && t.assistant) parts.push('AI: ' + t.assistant);
-            return parts.join(' | ');
-        });
+        // 【阶段4修复重复注入】原 near 层注入最近3轮完整原文（玩家:xxx | AI:xxx），
+        // 但 conversationHistory 也会把最近 N 轮原文作为 messages 发送给 API，
+        // 导致同一份内容在 system prompt 和 messages 数组中重复出现，浪费大量 token。
+        // 改为：near 层置空，最近3轮由 conversationHistory 唯一承载。
+        // summaryLayers 只负责4轮以前的压缩（mid/far），避免剧情断层。
+        self._summaryLayers.near = [];
 
         // 中层：4-10轮前，保留完整内容（不截断）
         if (totalTurns > 3) {
@@ -1869,11 +1867,16 @@ var GameMemory = {
 
         var result = '';
 
-        // 【去重优化】增强记忆已注入核心规则和角色档案时，设定只保留叙述性内容
+        // 【阶段4修复】增强记忆已注入核心规则和角色档案时，设定只保留叙述性内容
         // 避免同一条规则在【设定】和【当前状态与记忆】中重复出现
+        // 【修复】原 hasMemoryInjection 只检查 worldRules/npcProfiles，漏了 settings/pcIdentity/promises，
+        // 导致 permanentFacts 已有 settings 数据时仍走 else 分支注入【完整设定】造成重复
         var hasMemoryInjection = (self.permanentFacts &&
             ((self.permanentFacts.worldRules && self.permanentFacts.worldRules.length > 0) ||
-             (self.permanentFacts.npcProfiles && self.permanentFacts.npcProfiles.length > 0)));
+             (self.permanentFacts.npcProfiles && self.permanentFacts.npcProfiles.length > 0) ||
+             (self.permanentFacts.settings && self.permanentFacts.settings.length > 0) ||
+             (self.permanentFacts.pcIdentity && self.permanentFacts.pcIdentity.length > 0) ||
+             (self.permanentFacts.promises && self.permanentFacts.promises.length > 0)));
 
         if (hasMemoryInjection) {
             // 记忆系统已有结构化数据 → 设定只注入叙述性内容（外貌、性格描写、背景故事）

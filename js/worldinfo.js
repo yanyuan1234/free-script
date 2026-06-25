@@ -2035,22 +2035,39 @@ var WorldInfo = {
             });
 
         // atDepth条目存储到 gameState._depthPrompts
+        // 【阶段4统一】写入前先清除上一轮的 worldInfo 条目，避免跨轮累积
         if (groups.atDepth && groups.atDepth.length > 0) {
             // 添加 gameState 未定义检查
             if (typeof gameState !== 'undefined' && gameState) {
                 if (!gameState._depthPrompts) gameState._depthPrompts = {};
+                // 清除上一轮的 worldInfo 条目
+                Object.keys(gameState._depthPrompts).forEach(function(d) {
+                    gameState._depthPrompts[d] = (gameState._depthPrompts[d] || []).filter(function(e) {
+                        return e._source !== 'worldInfo';
+                    });
+                    if (gameState._depthPrompts[d].length === 0) delete gameState._depthPrompts[d];
+                });
                 groups.atDepth.forEach(function(item) {
                     var depth = item.depth || 4;
                     if (!gameState._depthPrompts[depth]) gameState._depthPrompts[depth] = [];
-                    gameState._depthPrompts[depth].push({
+                    // 按 identifier 去重注册
+                    var _id = 'worldInfo_depth_' + depth + '_' + (item.comment || item.name || Math.random().toString(36).slice(2,8));
+                    var _existing = gameState._depthPrompts[depth].findIndex(function(e) { return e.identifier === _id; });
+                    var _entry = {
                         enabled: true,
                         content: MacroEngine.process(item.text),
-                        identifier: 'worldInfo_depth_' + depth,
+                        identifier: _id,
                         name: 'WI@Depth' + depth,
                         _order: item.order !== undefined ? item.order : 100,
-                        _source: 'worldInfo'
-                        });
-                    });
+                        _source: 'worldInfo',
+                        injection_position: 0
+                    };
+                    if (_existing >= 0) {
+                        gameState._depthPrompts[depth][_existing] = _entry;
+                    } else {
+                        gameState._depthPrompts[depth].push(_entry);
+                    }
+                });
             }
         }
 

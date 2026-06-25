@@ -422,7 +422,7 @@ function buildSystemPrompt(includeFormatRules) {
     if (includeFormatRules === undefined) includeFormatRules = true;
     // 【P1性能优化】通过统一入口获取世界书注入，命中本轮缓存时跳过扫描
     var _wiResult = getWorldInfoInjection();
-    var _wiText = (typeof _wiResult === 'object' && _wiResult !== null) ? (_wiResult.text || '') : (_wiResult || '');
+    // 【阶段4清理】_wiText 死变量已删除（赋值后全函数无引用，仅为副作用调用 getWorldInfoInjection）
 
     // 存储世界书分组数据供 sendAIRequest 使用（不再拼入system prompt）
     gameState._wiPositionTexts = (typeof _wiResult === 'object' && _wiResult !== null && _wiResult.positionTexts) ? _wiResult.positionTexts : null;
@@ -529,13 +529,8 @@ function buildSystemPrompt(includeFormatRules) {
                 _memoryText ? '【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText : '',
                 _chatContextText, _formatAnchor].filter(Boolean).join('\n\n');
         }
-        // 补充原函数中 PromptBuilder 默认片段未覆盖的术语、格式锚点和主角信息
-        var extraParts = [];
-        if (_termsPrompt) extraParts.push(_termsPrompt);
-        if (_formatAnchor) extraParts.push(_formatAnchor);
-        if (extraParts.length > 0) {
-            return prompt + '\n\n' + extraParts.join('\n\n');
-        }
+        // 【阶段4清理】原后置补丁已删除：termsPrompt/formatAnchor 已注册为 PromptBuilder section
+        // (terms order=25, formatAnchor order=71)，由 PromptBuilder.buildSystemPrompt 统一组装
         return prompt;
     }
 
