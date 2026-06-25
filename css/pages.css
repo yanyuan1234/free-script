@@ -1295,6 +1295,15 @@
     position: relative;
 }
 
+/* 【修复】日志子页面内容区为 flex column，空状态需 flex:1 撑满并垂直居中，
+   否则内容少时只占内容高度，看起来"截取一半"不触底 */
+#logSubContent > .empty-state,
+#logSubContent > .chat-list-page,
+#logSubContent > .diary-page {
+    flex: 1;
+    min-height: 0;
+}
+
 /* ================================================================
    CONFIRM & SETTINGS MODALS
 ================================================================ */

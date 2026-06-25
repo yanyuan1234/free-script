@@ -2868,7 +2868,7 @@ function renderDefaultPage(type) {
     } else {
         // 【修复BUG-L2】为各空状态子页面提供更明确的引导
         var hints = {
-            chat: '在「人际」页面选择角色后点击「找TA聊聊」即可开始对话',
+            chat: 'NPC 会在剧情推进中主动发来消息',
             forum: '论坛内容会随剧情推进由 AI 自动生成',
             rank: '排行榜将在有竞争/评比剧情时自动出现',
             shop: '商店会在剧情中出现可交易场景后解锁',
