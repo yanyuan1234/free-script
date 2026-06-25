@@ -3020,6 +3020,8 @@ var GameMemory = {
             });
             self._recalcEventDecayScores(currentTurn);
             self._pruneImportantEvents(50);
+            // 【阶段1-A2】统一同步：gm.events → StateManager.entities.events + gameState.keyEvents
+            if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         }
     },
 
@@ -3228,8 +3230,39 @@ var GameMemory = {
         if (this.events.some(function(e) { return e.content === evt.content; })) return false;
         this.events.push({ content: evt.content, turn: this.currentTurn, gameTime: this.getGameTimeStr(), importance: evt.importance || 5, decayScore: evt.importance || 5, accessCount: 0 });
         this._pruneImportantEvents(50);
+        // 【阶段1-A2】统一同步：gm.events → StateManager.entities.events（对象数组）+ gameState.keyEvents（字符串数组）
+        if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         try { this.saveToStorage(); } catch(e) { console.warn('[GameMemory] addImportantEvent 保存失败:', e); }
         return true;
+    },
+
+    // 【阶段1-A2】批量添加事件（供 AIResponseMutator._applyKeyEvents 调用）
+    // 避免 N 次 addImportantEvent = N 次 _syncEventsToKeyEvents + N 次 saveToStorage
+    addImportantEvents: function(eventList) {
+        if (!this.events) this.events = [];
+        if (!Array.isArray(eventList) || eventList.length === 0) return 0;
+        var self = this;
+        var added = 0;
+        eventList.forEach(function(evt) {
+            if (!evt || !evt.content) return;
+            if (self.events.some(function(e) { return e.content === evt.content; })) return;
+            self.events.push({
+                content: evt.content,
+                turn: evt.turn !== undefined ? evt.turn : self.currentTurn,
+                gameTime: evt.gameTime || self.getGameTimeStr(),
+                importance: evt.importance || 5,
+                decayScore: evt.decayScore || evt.importance || 5,
+                accessCount: 0
+            });
+            added++;
+        });
+        if (added > 0) {
+            self._pruneImportantEvents(50);
+            // 批量同步：仅 1 次 _syncEventsToKeyEvents + 1 次 saveToStorage
+            if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
+            try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] addImportantEvents 保存失败:', e); }
+        }
+        return added;
     },
 
     _recalcEventDecayScores: function(currentTurn) {
@@ -3472,6 +3505,10 @@ var GameMemory = {
         this.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
         this.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
         this.events = []; this.timeline = []; this.quests = [];
+        // 【阶段1-A2】clear 后同步清空 StateManager.entities.events
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('entities.events', [], { silent: true });
+        }
         this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
         this._changeLog = []; this.summaryHistory = []; this.currentSummaryIndex = -1;
@@ -3579,6 +3616,8 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         // 恢复事件
         if (val.importantEvents && Array.isArray(val.importantEvents)) {
             self.events = val.importantEvents;
+            // 【阶段1-A2】反序列化后同步到 StateManager.entities.events + gameState.keyEvents
+            if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         }
         // 恢复时间线
         if (val.timeline && Array.isArray(val.timeline)) {
@@ -4352,34 +4391,21 @@ var MemoryManagerUI = {
 
     saveNewEvent: function() {
         var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { UI.toast && UI.toast('请输入事件内容'); return; }
-        gm.events.push({ content: content, turn: gm.currentTurn, gameTime: gm.getGameTimeStr(), importance: parseInt(document.getElementById('addEventImportance').value) || 5, decayScore: parseInt(document.getElementById('addEventImportance').value) || 5 });
-        if (gm.events.length > 50) gm.events = gm.events.slice(-50);
-        // 【全量修复-P0】新增事件走 _syncEventsToKeyEvents 统一同步点
-        // _syncEventsToKeyEvents 会从 gm.events 重新构建 keyEvents 并写 StateManager
-        if (typeof _syncEventsToKeyEvents === 'function') {
-            _syncEventsToKeyEvents();
-        } else if (typeof gameState !== 'undefined') {
-            // 兜底：_syncEventsToKeyEvents 不可用时直接改视图
-            if (!gameState.keyEvents) gameState.keyEvents = [];
-            if (gameState.keyEvents.indexOf(content) === -1) { gameState.keyEvents.push(content); if (gameState.keyEvents.length > 30) gameState.keyEvents = gameState.keyEvents.slice(-30); }
-        }
+        var importance = parseInt(document.getElementById('addEventImportance').value) || 5;
+        // 【阶段1-A2】统一通过 gm.addImportantEvent 写入（含去重 + 修剪 + 同步 + 持久化）
+        // 旧代码直接 gm.events.push + 手动 slice(-50) + _syncEventsToKeyEvents，绕过去重逻辑
+        var added = gm.addImportantEvent({ content: content, importance: importance });
+        if (!added) { UI.toast && UI.toast('该事件已存在'); return; }
         UI.afterMemoryChange('events', 'keyEvents', undefined);
     },
 
     deleteEvent: function(index) {
         var gm = window.GameMemory; if (!gm || !gm.events[index]) return;
         gm.events.splice(index, 1);
-        // 【全量修复-P0】删除事件走 _syncEventsToKeyEvents 统一同步点
-        // _syncEventsToKeyEvents 会从 gm.events 重新构建 keyEvents 并写 StateManager
-        if (typeof _syncEventsToKeyEvents === 'function') {
-            _syncEventsToKeyEvents();
-        } else if (typeof gameState !== 'undefined' && gameState.keyEvents) {
-            // 兜底：_syncEventsToKeyEvents 不可用时直接改视图
-            // 注意：兜底分支无法知道被删事件的内容，需从 afterMemoryChange 触发的刷新中重建
-            gameState.keyEvents = gm.events.map(function(e) {
-                return typeof e === 'string' ? e : (e.content || '');
-            }).filter(function(s) { return s && s.length > 0; });
-        }
+        // 【阶段1-A2】统一通过 _syncEventsToKeyEvents 同步 + saveToStorage 持久化
+        // _syncEventsToKeyEvents 是 core.js 的函数声明（hoisted），始终可用
+        if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
+        try { gm.saveToStorage(); } catch(e) { console.warn('[MemoryManagerUI] deleteEvent 保存失败:', e); }
         UI.afterMemoryChange('events', 'keyEvents', '事件已删除');
     },
 

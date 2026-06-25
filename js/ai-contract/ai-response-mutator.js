@@ -422,14 +422,13 @@ const AIResponseMutator = {
     },
 
     // 关键事件
-    // 【阶段1-A2】事件四轨统一：StateManager.entities.events 为唯一权威源
-    // schema 统一为对象数组 [{content, turn, gameTime, importance, decayScore}]
-    // - content: 事件描述字符串（必填）
-    // - turn: 发生回合数
-    // - gameTime: 游戏内时间字符串
-    // - importance: 1-10 重要度（用于排序和遗忘曲线）
-    // - decayScore: 衰减分数（用于排序，由 EnhancedMemory._recalcEventDecayScores 维护）
-    // 删除 EnhancedMemory.events / gameState.keyEvents / gm.events 三个独立存储
+    // 【阶段1-A2】事件统一入口：通过 gm.addImportantEvents 批量写入
+    // gm.events 是单一权威源，addImportantEvents 内部处理：
+    //   1. 去重（同 content 不重复添加）
+    //   2. 修剪（_pruneImportantEvents 保留 50 条）
+    //   3. 同步（_syncEventsToKeyEvents → StateManager.entities.events 对象数组 + gameState.keyEvents 字符串数组）
+    //   4. 持久化（saveToStorage）
+    // schema: [{content, turn, gameTime, importance, decayScore}]
     _applyKeyEvents(data) {
         const events = data.keyEvents || data.events || data.plotEvents;
         if (!events || !Array.isArray(events) || events.length === 0) return;
@@ -459,30 +458,33 @@ const AIResponseMutator = {
                 turn: turn,
                 gameTime: gameTimeStr.trim(),
                 importance: Math.max(1, Math.min(10, importance)),
-                decayScore: importance  // 初始等于 importance，后续由 _recalcEventDecayScores 衰减
+                decayScore: importance
             };
         }).filter(function(e) { return e !== null; });
 
         if (normalized.length === 0) return;
 
-        // 合并到现有事件（去重：同 content 不重复添加）
-        var existing = StateManager.get('entities.events') || [];
-        if (!Array.isArray(existing)) existing = [];
-        var existingContents = {};
-        existing.forEach(function(e) {
-            if (e && e.content) existingContents[e.content] = true;
-        });
-        var toAdd = normalized.filter(function(e) { return !existingContents[e.content]; });
-        if (toAdd.length === 0) return;
-
-        var merged = existing.concat(toAdd);
-        // 限制最大事件数（保留最近 50 条 + importance >= 7 的）
-        if (merged.length > 50) {
-            merged.sort(function(a, b) { return (b.importance || 5) - (a.importance || 5); });
-            merged = merged.slice(0, 50);
+        // 【阶段1-A2】统一通过 gm.addImportantEvents 写入（去重 + 修剪 + 同步 + 持久化）
+        var gm = (typeof window !== 'undefined') ? window.GameMemory : null;
+        if (gm && typeof gm.addImportantEvents === 'function') {
+            gm.addImportantEvents(normalized);
+        } else {
+            // 兜底：gm 不可用时直接写 StateManager（对象数组）
+            var existing = StateManager.get('entities.events') || [];
+            if (!Array.isArray(existing)) existing = [];
+            var existingContents = {};
+            existing.forEach(function(e) {
+                if (e && e.content) existingContents[e.content] = true;
+            });
+            var toAdd = normalized.filter(function(e) { return !existingContents[e.content]; });
+            if (toAdd.length === 0) return;
+            var merged = existing.concat(toAdd);
+            if (merged.length > 50) {
+                merged.sort(function(a, b) { return (b.importance || 5) - (a.importance || 5); });
+                merged = merged.slice(0, 50);
+            }
+            StateManager.set('entities.events', merged, { silent: true });
         }
-        StateManager.set('entities.events', merged, { silent: true });
-        // setLegacy 自动镜像到 gameState.keyEvents（_syncLegacyMirror）
     },
 
     // 关系变化（简化合并到角色）

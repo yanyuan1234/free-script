@@ -201,6 +201,17 @@ const StateManager = {
             this._state._stats.totalTurns = value;
             return;
         }
+        // 【阶段1-A2】entities.events（对象数组）→ keyEvents（字符串数组）
+        // StateManager.entities.events 是对象数组 [{content, turn, importance, ...}]
+        // gameState.keyEvents 是旧格式字符串数组，供 indexOf 等使用
+        // 转换确保两种 schema 各自一致，避免对象/字符串混用
+        if (path === 'entities.events' && Array.isArray(value)) {
+            this._state.keyEvents = value.map(function(e) {
+                if (typeof e === 'string') return e;
+                return (e && e.content) ? String(e.content) : '';
+            }).filter(function(s) { return s && s.length > 0; });
+            return;
+        }
         // time → gameTime：新结构 {date,time,period} 直接兼容旧 gameTime
         // 其他路径直接镜像
         this._state[legacyName] = StateSchema.deepClone(value);

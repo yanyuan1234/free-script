@@ -2569,10 +2569,11 @@ function _parseStructuredSummary(summary) {
                 EnhancedMemory.longTermMemory.importantEvents = EnhancedMemory.longTermMemory.importantEvents.slice(-50);
             }
         });
-        // 【全量修复-P0】摘要解析的 keyEvents 补 StateManager 同步
-        // 原代码只写 gameState.keyEvents，StateManager.get('entities.events') 返回陈旧值
-        if (_hasNewEvent && typeof StateManager !== 'undefined' && StateManager.set && gameState.keyEvents) {
-            StateManager.set('entities.events', gameState.keyEvents, { silent: true });
+        // 【阶段1-A2】摘要解析的 keyEvents 通过 _pushKeyEventsToGM 统一同步
+        // 旧代码 StateManager.set('entities.events', gameState.keyEvents) 写入字符串数组，
+        // 与 _applyKeyEvents 的对象数组 schema 冲突
+        if (_hasNewEvent && typeof _pushKeyEventsToGM === 'function') {
+            try { _pushKeyEventsToGM(); } catch (e) { console.warn('[pushKeyEvents] 摘要同步失败:', e); }
         }
     }
     

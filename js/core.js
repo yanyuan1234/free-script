@@ -192,22 +192,22 @@ function _syncRelationshipsToGameState() {
     }
 }
 
-// 事件同步：gm.events (array) → gameState.keyEvents (array of strings) + StateManager
-// 【全量修复】此函数是 events 写入的同步点之一：
-// 由它统一更新 gameState.keyEvents 旧字段 + StateManager.set('entities.events') 新状态层
+// 事件同步：gm.events (对象数组) → gameState.keyEvents (字符串数组) + StateManager.entities.events (对象数组)
+// 【阶段1-A2】统一 schema：gm.events 和 StateManager.entities.events 都保持对象数组
+// gameState.keyEvents 保持字符串数组（旧格式兼容），由 _syncLegacyMirror 自动转换
 function _syncEventsToKeyEvents() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
     var gm = window.GameMemory;
     if (!Array.isArray(gm.events)) return;
-    // gm.events 是对象数组 {content, importance, ...}，keyEvents 是字符串数组
-    var arr = gm.events.map(function(e) {
-        return typeof e === 'string' ? e : (e.content || (e.event ? e.event : ''));
+    // gameState.keyEvents 保持字符串数组（旧格式，_syncLegacyMirror 也会自动转换）
+    gameState.keyEvents = gm.events.map(function(e) {
+        return typeof e === 'string' ? e : (e && e.content || '');
     }).filter(function(s) { return s && s.length > 0; });
-    gameState.keyEvents = arr;
-    // 【全量修复】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
+    // StateManager.entities.events 保持对象数组（新格式，权威源）
+    // _syncLegacyMirror 会自动将对象数组转为字符串数组镜像到 gameState.keyEvents
     if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('entities.events', arr, { silent: true });
+        StateManager.set('entities.events', gm.events, { silent: true });
     }
 }
 
@@ -324,6 +324,8 @@ function _pushRelationshipsToGM() {
 }
 
 // 把 gameState.keyEvents 反向推送到 gm.events
+// 【阶段1-A2】此函数处理 <mem> 标签等直接写 gameState.keyEvents 的旧路径
+// 推送后调用 _syncEventsToKeyEvents 统一同步（对象数组写 StateManager）
 function _pushKeyEventsToGM() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
@@ -340,11 +342,11 @@ function _pushKeyEventsToGM() {
             gm.events.push({ content: evt, importance: 7, source: 'story_parsed', turn: gm.currentTurn || 0 });
         }
     });
-    // 【全量修复-P0】反向推送后同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
-    // 此函数是 gameState.keyEvents → gm.events 方向，_syncEventsToKeyEvents 是 gm.events → gameState.keyEvents 方向
-    // 为避免循环重建，此处直接 set gameState.keyEvents 当前值
-    if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('entities.events', gameState.keyEvents, { silent: true });
+    // 【阶段1-A2】统一通过 _syncEventsToKeyEvents 同步到 StateManager（对象数组）
+    // 旧代码直接 StateManager.set('entities.events', gameState.keyEvents) 会写入字符串数组，
+    // 与 _applyKeyEvents 的对象数组 schema 冲突
+    if (typeof _syncEventsToKeyEvents === 'function') {
+        _syncEventsToKeyEvents();
     }
 }
 
@@ -2685,11 +2687,19 @@ function _applyMemsToGameState(mems) {
             switch (mem.type) {
                 case 'event':
                     if (mem.action === 'add' && mem._content) {
-                        // 添加到重要事件
-                        if (!gameState.keyEvents) gameState.keyEvents = [];
-                        if (gameState.keyEvents.indexOf(mem._content) === -1) {
-                            gameState.keyEvents.push(mem._content);
-                            if (gameState.keyEvents.length > 20) gameState.keyEvents.shift();
+                        // 【阶段1-A2】统一通过 gm.addImportantEvent 写入事件
+                        // 旧代码直接 push 到 gameState.keyEvents（字符串数组），绕过了 gm.events，
+                        // 导致 EnhancedMemory 记忆注入看不到 <mem> 添加的事件
+                        var _gm = (typeof window !== 'undefined') ? window.GameMemory : null;
+                        if (_gm && _gm.addImportantEvent) {
+                            _gm.addImportantEvent(mem._content);
+                        } else if (typeof gameState !== 'undefined' && gameState) {
+                            // 兜底：gm 不可用时直接写 keyEvents
+                            if (!gameState.keyEvents) gameState.keyEvents = [];
+                            if (gameState.keyEvents.indexOf(mem._content) === -1) {
+                                gameState.keyEvents.push(mem._content);
+                                if (gameState.keyEvents.length > 20) gameState.keyEvents.shift();
+                            }
                         }
                     }
                     break;
@@ -2803,7 +2813,10 @@ function _applyMemsToGameState(mems) {
                 StateManager.set('entities.characters', Object.values(gameState.allCharacters), { silent: true });
             }
             if (gameState.quests) StateManager.set('entities.quests', gameState.quests, { silent: true });
-            if (gameState.keyEvents) StateManager.set('entities.events', gameState.keyEvents, { silent: true });
+            // 【阶段1-A2】keyEvents 不再直接写 StateManager——<mem> 事件已走 gm.addImportantEvent
+            // 统一入口，由 _syncEventsToKeyEvents 写入对象数组到 StateManager.entities.events。
+            // 旧代码 StateManager.set('entities.events', gameState.keyEvents) 写入字符串数组，
+            // 会覆盖 _applyKeyEvents 的对象数组 schema，导致事件数据格式不一致。
             if (gameState.gameTime) StateManager.set('time', gameState.gameTime, { silent: true });
         } catch (e) { console.warn('[<mem>同步 StateManager 失败]', e.message); }
     }
