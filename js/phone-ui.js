@@ -2714,8 +2714,7 @@ function buyShopItem(index) {
     if (typeof _pushCurrentBagToGM === 'function') {
         try { _pushCurrentBagToGM(); } catch (e) { console.warn('[buyShopItem] push 失败:', e); }
     }
-    // 触发 UI 刷新
-    if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('currentBag');
+    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange('currentBag')：死代码空操作
     if (item.count !== undefined && item.count !== null) {
         item.count = Math.max(0, safeInt(item.count, 0) - 1);
     }
@@ -4713,8 +4712,16 @@ function _restoreGameRender() {
                         gameState._lastHUD = data.hud;
                     }
                     if (data.gameTime) {
-                        if (!gameState.gameTime) gameState.gameTime = {};
-                        Object.assign(gameState.gameTime, data.gameTime);
+                        // 【P1修复BUG-5.7】读档恢复路径统一走 TimeMutator.setTime，避免直接改
+                        // gameState.gameTime 绕过状态层；读档切换到不同时间线是合理场景，
+                        // 通过 skipMonotonicCheck 跳过单调性校验，避免读档后时间被错误拦截
+                        if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
+                            var _gtMerged = Object.assign({}, gameState.gameTime || {}, data.gameTime);
+                            TimeMutator.setTime(_gtMerged, { silent: true, skipMonotonicCheck: true });
+                        } else if (!gameState.gameTime) {
+                            gameState.gameTime = {};
+                            Object.assign(gameState.gameTime, data.gameTime);
+                        }
                     }
                 }
                 if (!data || !data.choices) {
@@ -4975,13 +4982,7 @@ function deleteLastTurn() {
         // 再调用 _syncRelationshipsToGameState 让单一同步点统一更新 StateManager
         if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
         if (typeof _pushKeyEventsToGM === 'function') _pushKeyEventsToGM();
-        if (typeof GameLinker !== 'undefined') {
-            GameLinker.refreshByDataChange('allCharacters');
-            GameLinker.refreshByDataChange('currentBag');
-            GameLinker.refreshByDataChange('currentQuests');
-            GameLinker.refreshByDataChange('relationships');
-            GameLinker.refreshByDataChange('keyEvents');
-        }
+        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         // 【v3审查修复】撤销后刷新回合数标签与场景标题，否则 UI 仍显示撤销前的值
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
         if (typeof updateSceneTitle === 'function' && lastUndo.sceneTitle) updateSceneTitle(lastUndo.sceneTitle);

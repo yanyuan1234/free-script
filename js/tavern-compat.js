@@ -1216,22 +1216,11 @@ var GameMemory = {
         });
         cleanedText = cleanedText.replace(/\n{3,}/g, '\n\n').trim();
         // 【数据联通】<mem> 直接写入权威源（gm.tables.* / gm.quests / gm.events），
-        // 同步到 gameState 视图并触发 GameLinker 通知 UI
+        // 同步到 gameState 视图（UI 刷新由各调用方主动触发）
         if (edits.length > 0 && typeof _ensureDataLinkage === 'function') {
             try { _ensureDataLinkage(); } catch (e) { console.warn('[mem解析] 数据联通同步失败:', e); }
         }
-        if (edits.length > 0 && typeof GameLinker !== 'undefined') {
-            try {
-                var hasCharacter = edits.some(function(e) { return e.type === 'character'; });
-                var hasItem = edits.some(function(e) { return e.type === 'item'; });
-                var hasQuest = edits.some(function(e) { return e.type === 'quest'; });
-                var hasEvent = edits.some(function(e) { return e.type === 'event'; });
-                if (hasCharacter) GameLinker.refreshByDataChange('allCharacters');
-                if (hasItem) GameLinker.refreshByDataChange('currentBag');
-                if (hasQuest) GameLinker.refreshByDataChange('currentQuests');
-                if (hasEvent) GameLinker.refreshByDataChange('keyEvents');
-            } catch (e) {}
-        }
+        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         return { cleanedText: cleanedText, edits: edits };
     },
 
@@ -1864,11 +1853,7 @@ var GameMemory = {
         // 【P0修复】permanentFacts 已变更（pcIdentity/worldRules/promises/npcProfiles/settings），
         // 失效 longTermMemory 缓存（覆盖本方法所有 permanentFacts 写入点）
         self._ltmDirty = true;
-        // 通知UI刷新
-        if (typeof GameLinker !== 'undefined') {
-            GameLinker.refreshByDataChange('_memory');
-            GameLinker.refreshByDataChange('allCharacters');
-        }
+        // 【P1修复BUG-2.2】移除 GameLinker 通知：死代码空操作，UI 刷新由调用方主动触发
     },
 
     // 获取当前应该注入的设定文本（渐进式压缩策略）

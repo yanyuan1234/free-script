@@ -89,6 +89,10 @@ var QuestSystem = {
             };
     },
     // 【修复BUG-11】更新引导任务进度：玩家每进行一次有效行动，进度+1
+    // 【P1修复BUG-4.8】与 QuestMutator.autoAdvanceByStory 职责分离说明：
+    // 本方法仅推进 _cachedGuidanceQuest（transient 引导任务"继续探索"）的进度，
+    // 不操作 StateManager 中的持久化任务。autoAdvanceByStory 负责 AI 返回任务的关键词匹配。
+    // 两者操作不同数据，不会冲突。autoAdvanceByStory 已通过 id 前缀 'guidance_' 跳过引导任务。
     advanceGuidanceQuest() {
         if (!QuestSystem._cachedGuidanceQuest) return;
         var q = QuestSystem._cachedGuidanceQuest;
@@ -794,9 +798,7 @@ function mergeQuests(newQuests) {
     // 【优化·循环同步修复】移除 _syncQuestsToGameState 调用——_pushCurrentQuestsToGM 已将数据推送到 gm.quests
     // 旧代码紧接着调用 _syncQuestsToGameState（gm.quests → gameState.currentQuests），可能覆盖刚推送的数据
     // 正确流程：推送后只刷新 UI，不再反向同步
-    if (window.GameLinker) {
-        GameLinker.refreshByDataChange('currentQuests');
-    }
+    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
 }
 
 function toggleQuestList() {
@@ -900,20 +902,14 @@ function mergeRelationships(newRels) {
         // 【修复】兼容两种结构：
         // 1. 关系图谱格式 {from, to, type, desc}（A→B 的关系）
         // 2. 好感度增量格式 {name, delta}（玩家→NPC 的好感变化）
+        // 【P1修复BUG-4.7】好感度增量由 AIResponseMutator._applyRelationships 在 transaction 内
+        // 统一处理（transaction-safe，可回滚）。此处不再重复更新好感度，避免双写导致
+        // delta 被叠加两次。仅保留 {name,delta} → 关系图谱条目的转换（UI 展示用）。
         if (!nr.from || !nr.to) {
-            // 格式2：{name, delta} → 转换为 玩家→NPC 关系
+            // 格式2：{name, delta} → 转换为 玩家→NPC 关系（仅图谱条目，好感度已由 mutator 处理）
             if (nr.name) {
                 var delta = safeInt(nr.delta || nr.change || nr.favor || 0, 0);
-                // 【阶段1统一】角色好感度更新委托 CharacterMutator.updateRelationship
-                // 替代原直接改 gameState.allCharacters[name].favorability（绕过 StateManager 导致不同步）
-                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
-                    CharacterMutator.updateRelationship(nr.name, delta);
-                } else if (gameState.allCharacters && gameState.allCharacters[nr.name]) {
-                    var c = gameState.allCharacters[nr.name];
-                    c.favorability = (c.favorability || 0) + delta;
-                    c.favor = c.favorability;
-                }
-                // 转为关系图谱条目
+                // 转为关系图谱条目（desc 中保留 delta 信息供 UI 展示）
                 nr = {
                     from: playerName,
                     to: nr.name,
@@ -949,9 +945,7 @@ function mergeRelationships(newRels) {
     if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
     if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
     // 联动：广播关系数据变更
-    if (window.GameLinker) {
-        GameLinker.refreshByDataChange('relationships');
-    }
+    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
 }
 
 // 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网

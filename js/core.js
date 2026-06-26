@@ -6,92 +6,11 @@
 // 自由剧本 - 完整游戏逻辑
 // ========================================
 
-// ========================================
-// 统一联动系统：数据变更广播 + 页面联动刷新
-// ========================================
-var GameLinker = {
-    // 注册各页面的刷新函数
-    _refreshers: {},
-    // 注册刷新函数：pageName -> function
-    register: function(pageName, refreshFn) {
-        this._refreshers[pageName] = refreshFn;
-    },
-    // 触发指定页面的刷新（如果该页面当前可见）
-    refresh: function(pageName) {
-        var fn = this._refreshers[pageName];
-        if (fn) {
-            try { fn(); } catch (e) { console.warn('[GameLinker] 刷新 ' + pageName + ' 失败:', e); }
-        }
-    },
-    // 触发所有页面的刷新（用于全局数据变更）
-    // 合并为单次 rAF，避免页面多时触发多次 requestAnimationFrame
-    refreshAll: function() {
-        var self = this;
-        if (self._rafPending) return;
-        self._rafPending = true;
-        requestAnimationFrame(function() {
-            self._rafPending = false;
-            var pages = Object.keys(self._refreshers);
-            for (let i = 0; i < pages.length; i++) {
-                self.refresh(pages[i]);
-            }
-        });
-    },
-    // 触发除当前页面外的所有页面刷新（避免当前页面重复刷新）
-    refreshOthers: function(exceptPage) {
-        var self = this;
-        if (self._rafPending) return;
-        self._rafPending = true;
-        requestAnimationFrame(function() {
-            self._rafPending = false;
-            var pages = Object.keys(self._refreshers);
-            for (let i = 0; i < pages.length; i++) {
-                if (pages[i] !== exceptPage) {
-                    self.refresh(pages[i]);
-                }
-            }
-        });
-    },
-    // 智能刷新：根据变更的数据类型，自动推断需要刷新的页面
-    // 【性能优化】合并同一帧内的多次刷新请求，避免重复渲染
-    _pendingPages: {},
-    refreshByDataChange: function(changeType) {
-        var map = {
-            playerData: ['playerPage'],
-            allCharacters: ['npcPage', 'playerPage', 'memoryPage', 'recapPage'],
-            relationships: ['playerPage', 'npcPage', 'memoryPage'],
-            currentQuests: ['storyPage', 'logPage', 'memoryPage'],
-            currentBag: ['playerPage', 'logPage', 'memoryPage'],
-            keyEvents: ['recapPage', 'storyPage', 'memoryPage'],
-            rollingSummary: ['storyPage', 'recapPage'],
-            worldSnapshot: ['storyPage', 'playerPage', 'npcPage'],
-            conversationHistory: ['storyPage', 'recapPage'],
-            _chatLogs: ['npcPage', 'storyPage'],
-            _worldModules: ['logPage', 'storyPage'],
-            _memory: ['memoryPage'],
-            gameTime: ['storyPage', 'logPage']
-        };
-        var pages = map[changeType];
-        if (pages) {
-            var self = this;
-            for (let i = 0; i < pages.length; i++) {
-                self._pendingPages[pages[i]] = true;
-            }
-            // 合并到同一帧执行，避免多次 rAF 触发多次渲染
-            if (!self._rafScheduled) {
-                self._rafScheduled = true;
-                requestAnimationFrame(function() {
-                    self._rafScheduled = false;
-                    var toRefresh = Object.keys(self._pendingPages);
-                    self._pendingPages = {};
-                    for (let j = 0; j < toRefresh.length; j++) {
-                        self.refresh(toRefresh[j]);
-                    }
-                });
-            }
-        }
-    }
-};
+// 【P1修复BUG-2.2】删除 GameLinker 整套联动系统：
+// 原实现 _refreshers 永远为空对象（register 全代码库零调用），
+// 但 25+ 处仍调 refreshByDataChange/refreshAll，每次触发无意义的 rAF + 空对象遍历。
+// 数据变更后的 UI 刷新已由各具体调用方主动触发（如 renderNpcList/renderQuests 等），
+// GameLinker 这层"广播"是死代码，直接删除。
 
 // ========================================
 // 数据联通（方案 A：单一来源）
@@ -802,15 +721,11 @@ var UI = {
         }
     },
     // ========================================
-    // 【重构】合并 6 处 "gm.saveToStorage + GameLinker + toast" 三连
+    // 【重构】合并 6 处 "gm.saveToStorage + toast" 二连（原三连，已删除 GameLinker）
     // ========================================
     afterMemoryChange: function(tab, dataKey, toastMsg) {
         try { if (window.GameMemory) GameMemory.saveToStorage(); } catch (e) { console.warn('[afterMemoryChange] saveToStorage:', e); }
-        try {
-            if (typeof GameLinker !== 'undefined' && dataKey) {
-                GameLinker.refreshByDataChange(dataKey);
-            }
-        } catch (e) { console.warn('[afterMemoryChange] refresh:', e); }
+        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         if (toastMsg) UI.toast(toastMsg);
         if (tab && typeof MemoryManagerUI !== 'undefined' && MemoryManagerUI.switchTab) {
             MemoryManagerUI.switchTab(tab);
@@ -1945,6 +1860,45 @@ presetArchetype: 'free'      // conservative / natural / passionate / delicate /
 
 var gameState = createDefaultGameState();
 
+// 【P1修复BUG-5.8】运行时状态单例 RuntimeState
+// 原问题：core.js 顶层用 var/let/const 声明大量全局（streamBuffer/isWaiting/isCompressing/
+// npcEditingName/npcChatState/MAX_HISTORY），由 game.js/phone-ui.js 直接读写，无模块边界，
+// 重构时极易遗漏。现统一封装到 RuntimeState 单例，通过 getter/setter 访问。
+// 注意：
+// - gameState 仍是顶层全局（StateManager 已封装其读写，且跨文件引用极广），暂不纳入
+// - _streamModeLocked/_streamMode 声明在 game.js，不在本修复范围
+// - RuntimeState.npcChatState 为对象引用，嵌套修改（.npcName/.chatHistory 等）直接操作底层对象
+const RuntimeState = {
+    _streamBuffer: '',
+    _isWaiting: false,
+    _isCompressing: false,
+    _npcEditingName: '',
+    _npcChatState: {
+        npcName: '',
+        chatHistory: [],
+        isSending: false,
+        abortController: null
+    },
+    MAX_HISTORY: 20,  // 常量，直接暴露
+    get streamBuffer() { return this._streamBuffer; },
+    set streamBuffer(v) { this._streamBuffer = v; },
+    get isWaiting() { return this._isWaiting; },
+    set isWaiting(v) { this._isWaiting = v; },
+    get isCompressing() { return this._isCompressing; },
+    set isCompressing(v) { this._isCompressing = v; },
+    get npcEditingName() { return this._npcEditingName; },
+    set npcEditingName(v) { this._npcEditingName = v; },
+    get npcChatState() { return this._npcChatState; },
+    // npcChatState 不提供 setter：嵌套对象通过 RuntimeState.npcChatState.xxx 修改
+    // 重置时调 resetNpcChatState()
+    resetNpcChatState() {
+        this._npcChatState.npcName = '';
+        this._npcChatState.chatHistory = [];
+        this._npcChatState.abortController = null;
+        this._npcChatState.isSending = false;
+    }
+};
+
 // 【修复P1-3】统一状态重置入口——此前 startNewGame/loadFromSlot/handleImportFile 三处各自重置不同字段子集，
 // 极易字段遗漏。现在统一为 ensureGameStateFields() 和 resetRuntimeState(scope) 两个函数。
 // ensureGameStateFields：补全缺失字段（用于 loadFromSlot 和 handleImportFile）
@@ -1990,9 +1944,9 @@ function ensureGameStateFields(gs) {
 // resetRuntimeState：重置运行时状态（用于 startNewGame 和 loadFromSlot 前清场）
 // scope: 'full'（新游戏，全部重置）/ 'load'（读档，保留 gameState 但重置运行时变量）
 function resetRuntimeState(scope) {
-    streamBuffer = '';
-    isWaiting = false;
-    isCompressing = false;
+    RuntimeState.streamBuffer = '';
+    RuntimeState.isWaiting = false;
+    RuntimeState.isCompressing = false;
     // 压缩冷却实际使用 window.lastCompressTime（见 game.js）
     window.lastCompressTime = 0;
     _streamModeLocked = false;
@@ -2003,12 +1957,7 @@ function resetRuntimeState(scope) {
         EnhancedMemory.clear();
     }
     // 清空NPC聊天状态
-    if (typeof npcChatState !== 'undefined') {
-        npcChatState.npcName = '';
-        npcChatState.chatHistory = [];
-        npcChatState.abortController = null;
-        npcChatState.isSending = false;
-    }
+    RuntimeState.resetNpcChatState();
     // 清空打字机缓冲
     if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.stop) {
         TypewriterBuffer.stop();
@@ -2715,21 +2664,24 @@ function _applyMemsToGameState(mems) {
                     // 【C1修复】委托 BagMutator，不再直接操作 gameState.bag（数据孤岛）
                     // 旧代码写 gameState.bag（不在 _legacyToPath 映射中），_syncLegacyMirror 不镜像，
                     // UI 读 gameState.currentBag 看不到 <mem> 添加的物品
-                    if (typeof BagMutator !== 'undefined') {
-                        var _itemQty = parseInt(mem.qty) || 1;
-                        if (mem.action === 'add') {
-                            BagMutator.mergeItems([{ name: mem.name, count: _itemQty, desc: mem._content || '' }]);
-                        } else if (mem.action === 'remove') {
-                            var _rawBag = StateManager.get('entities.bag');
-                            var _bag = Array.isArray(_rawBag) ? _rawBag : [];
-                            var _rmItem = _bag.find(function(b) { return b && b.name === mem.name; });
-                            if (_rmItem) {
-                                _rmItem.count = Math.max(0, (_rmItem.count || 0) - _itemQty);
-                                if (_rmItem.count === 0) {
-                                    _bag = _bag.filter(function(b) { return b && b.name !== mem.name; });
-                                }
-                                BagMutator.setItems(_bag);
+                    // 【P1修复BUG-7.4】删除 else 兜底分支（直接写 gameState.currentBag），
+                    // mutator 始终加载，缺失即抛错（与 event/character/time 分支一致）
+                    if (typeof BagMutator === 'undefined') {
+                        throw new Error('[<mem> item] BagMutator 未加载，无法写入物品');
+                    }
+                    var _itemQty = parseInt(mem.qty) || 1;
+                    if (mem.action === 'add') {
+                        BagMutator.mergeItems([{ name: mem.name, count: _itemQty, desc: mem._content || '' }]);
+                    } else if (mem.action === 'remove') {
+                        var _rawBag = StateManager.get('entities.bag');
+                        var _bag = Array.isArray(_rawBag) ? _rawBag : [];
+                        var _rmItem = _bag.find(function(b) { return b && b.name === mem.name; });
+                        if (_rmItem) {
+                            _rmItem.count = Math.max(0, (_rmItem.count || 0) - _itemQty);
+                            if (_rmItem.count === 0) {
+                                _bag = _bag.filter(function(b) { return b && b.name !== mem.name; });
                             }
+                            BagMutator.setItems(_bag);
                         }
                     }
                     break;
@@ -2767,17 +2719,20 @@ function _applyMemsToGameState(mems) {
                     // 【C1修复】委托 QuestMutator，不再直接操作 gameState.quests（数据孤岛）
                     // 旧代码写 gameState.quests（不在 _legacyToPath 映射中），与 currentQuests 平行存在，
                     // 下游 mergeQuests 只读 currentQuests，导致 <mem> 添加的任务丢失
-                    if (typeof QuestMutator !== 'undefined') {
-                        if (mem.action === 'add') {
-                            QuestMutator.addQuest({ title: mem._content || mem.name || '新任务', status: '进行中' });
-                        } else if (mem.action === 'resolve') {
-                            var _qTitle = mem._content || mem.name;
-                            var _rawQuests = StateManager.get('entities.quests') || [];
-                            var _q = _rawQuests.find(function(qq) { return qq && qq.title === _qTitle; });
-                            if (_q) {
-                                _q.status = QuestMutator.STATUS.COMPLETED;
-                                QuestMutator.setQuests(_rawQuests);
-                            }
+                    // 【P1修复BUG-7.4】删除 else 兜底分支（直接写 gameState.currentQuests），
+                    // mutator 始终加载，缺失即抛错（与 event/character/time 分支一致）
+                    if (typeof QuestMutator === 'undefined') {
+                        throw new Error('[<mem> quest] QuestMutator 未加载，无法写入任务');
+                    }
+                    if (mem.action === 'add') {
+                        QuestMutator.addQuest({ title: mem._content || mem.name || '新任务', status: '进行中' });
+                    } else if (mem.action === 'resolve') {
+                        var _qTitle = mem._content || mem.name;
+                        var _rawQuests = StateManager.get('entities.quests') || [];
+                        var _q = _rawQuests.find(function(qq) { return qq && qq.title === _qTitle; });
+                        if (_q) {
+                            _q.status = QuestMutator.STATUS.COMPLETED;
+                            QuestMutator.setQuests(_rawQuests);
                         }
                     }
                     break;
@@ -5364,10 +5319,7 @@ async function extractSetupToMemory() {
 
         // 保存记忆数据
         gm.saveToStorage();
-        // 刷新所有关联页面
-        if (typeof GameLinker !== 'undefined') {
-            GameLinker.refreshAll();
-        }
+        // 【P1修复BUG-2.2】移除 GameLinker.refreshAll()：死代码空操作
         console.log('[设定提取] 完成：' +
             (parsed.characters ? parsed.characters.length : 0) + '个角色, ' +
             (parsed.relationships ? parsed.relationships.length : 0) + '条关系, ' +

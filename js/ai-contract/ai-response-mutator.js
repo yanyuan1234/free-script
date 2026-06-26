@@ -443,21 +443,22 @@ const AIResponseMutator = {
     },
 
     // 关系变化（简化合并到角色）
-    // 【修复BUG-019】原逻辑仅处理 {name,delta} 好感度增量格式，但 prompt 要求 AI 返回
-    // {from,to,type,desc} 关系图谱格式。AI 按 prompt 返回时全部被 if(!r.name) 跳过丢弃。
-    // 现同时支持两种：{name,delta}→好感度增量；{from,to,type,desc}→写入双方 relations 元数据。
+    // 【P1修复BUG-4.10】与 systems.js mergeRelationships 职责分离：
+    // - mergeRelationships 负责关系图谱 {from,to,type,desc}（写入 gameState.relationships + 推送 gm.tables）
+    //   这是 UI 渲染（renderRelationships）实际依赖的入口
+    // - _applyRelationships 仅负责好感度增量 {name,delta}（写入 entities.characters.favorability）
+    // 【P1修复BUG-4.7】好感度更新的唯一入口（transaction-safe，可回滚）。
+    // 原 mergeRelationships 内 {name,delta} 分支也会调 CharacterMutator.updateRelationship，
+    // 导致 delta 被叠加两次。现 mergeRelationships 已移除好感度更新，仅保留图谱条目转换。
+    // 原 _applyGraphRelation 写入 characters[].relations 字段全代码库无任何 UI 读取，是死字段，已删除
     _applyRelationships(data) {
         const relationships = data.relationships || data.relations;
         if (!relationships || !Array.isArray(relationships) || relationships.length === 0) return;
-        var self = this;
+        // 仅处理 {name,delta} 格式；{from,to,type,desc} 由 game.js 的 mergeRelationships 路径处理
         relationships.forEach(function(r) {
             if (!r) return;
-            // 格式1：{from,to,type,desc} 关系图谱
-            if (r.from && r.to) {
-                self._applyGraphRelation(r);
-                return;
-            }
-            // 格式2：{name,delta} 好感度增量
+            // 跳过图谱格式：mergeRelationships 负责写入 gameState.relationships
+            if (r.from && r.to) return;
             if (!r.name) return;
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
                 CharacterMutator.updateRelationship(r.name, safeInt(r.delta || r.change || r.favor || 0, 0), { silent: true });
@@ -476,29 +477,6 @@ const AIResponseMutator = {
                 StateManager.set('entities.characters', updated, { silent: true });
             }
         });
-    },
-
-    // 写入 {from,to,type,desc} 关系到双方角色的 relations 数组（去重）
-    _applyGraphRelation(r) {
-        const list = StateManager.get('entities.characters') || [];
-        // 【v2审查修复】先规范化 type，保证去重和推入使用相同值
-        // 原实现：filter 检查 x.type === type（可能为空），push 用 type || '相识'
-        // → 空type时去重查空，推入'相识'，下次空type不再去重，'相识'重复累积
-        var rawType = String(r.type || '').trim();
-        var type = rawType || '相识';
-        var desc = String(r.desc || '').trim();
-        if (!rawType && !desc) return;
-        const updated = list.map(function(c) {
-            if (c.name !== r.from && c.name !== r.to) return c;
-            const clone = StateSchema.deepClone(c);
-            if (!Array.isArray(clone.relations)) clone.relations = [];
-            const other = (c.name === r.from) ? r.to : r.from;
-            // 去重：同对方同类型只保留一条（用规范化后的 type）
-            clone.relations = clone.relations.filter(function(x) { return !(x && x.to === other && x.type === type); });
-            clone.relations.push({ to: other, type: type, desc: desc });
-            return clone;
-        });
-        StateManager.set('entities.characters', updated, { silent: true });
     },
 
     // HUD 信息

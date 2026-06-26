@@ -6,7 +6,10 @@ const TimeMutator = {
     // 【P0修复BUG-006】保留 weather/era 字段：原实现仅保留 date/time/period，
     // 导致 GameTimeSystem.parseFromAI 通过 setTime 写入的 weather/era 被丢弃，
     // gameState.gameTime 镜像后 weather/era 为空，UI 显示缺失天气/纪元信息。
+    // 【P1修复BUG-5.7】options.skipMonotonicCheck: 跳过单调性校验，仅用于读档/撤销场景
+    // （切换到不同时间线是合理的，不应被拦截）。AI 响应解析路径绝不可传此选项。
     setTime(time, options) {
+            options = options || {};
             const normalized = (!time || typeof time !== 'object')
                 ? { date: '', time: '', period: '', weather: '', era: '' }
                 : {
@@ -19,16 +22,19 @@ const TimeMutator = {
             // 【修复BUG-06】时间单调性校验：若新时间早于当前时间，拒绝更新
             // 防止 AI 返回不一致时间导致剧情时间倒流（如 R5 09:30→08:45）
             // 仅当当前状态存在且新时间更早时拦截；同时间或更晚时间正常更新
-            try {
-                if (typeof StateManager !== 'undefined' && StateManager.get) {
-                    var current = StateManager.get('time');
-                    if (current && this._isEarlier(normalized, current)) {
-                        console.warn('[TimeMutator] 拒绝时间回退：当前 ' + JSON.stringify(current) + ' → 新 ' + JSON.stringify(normalized) + '，保持原时间');
-                        return false;
+            // 【P1修复BUG-5.7】读档/撤销路径通过 options.skipMonotonicCheck 跳过校验
+            if (!options.skipMonotonicCheck) {
+                try {
+                    if (typeof StateManager !== 'undefined' && StateManager.get) {
+                        var current = StateManager.get('time');
+                        if (current && this._isEarlier(normalized, current)) {
+                            console.warn('[TimeMutator] 拒绝时间回退：当前 ' + JSON.stringify(current) + ' → 新 ' + JSON.stringify(normalized) + '，保持原时间');
+                            return false;
+                        }
                     }
+                } catch (e) {
+                    console.warn('[TimeMutator] 时间单调性校验异常（忽略，继续更新）:', e && e.message);
                 }
-            } catch (e) {
-                console.warn('[TimeMutator] 时间单调性校验异常（忽略，继续更新）:', e && e.message);
             }
             return StateManager.set('time', normalized, options);
         },

@@ -93,6 +93,9 @@ const BagMutator = {
     },
 
     // 标准化物品格式
+    // 【P1修复BUG-4.14】统一 item schema：BagMutator 为权威 schema。
+    // - count 为身份字段（旧 qty 已在 sync 层映射为 count，此处兼容读取但不输出）
+    // - 保留 GameMemory 运行时字段（obtainedTurn/lastChangedTurn/history），避免 mutator 回写时丢失
     normalizeItem(raw) {
         if (!raw) return null;
         let name = '';
@@ -107,8 +110,10 @@ const BagMutator = {
             return null;
         }
         let count = 1;
-        if (raw.count !== undefined) {
-            const parsed = parseInt(raw.count);
+        // 【P1修复BUG-4.14】兼容 qty（GameMemory 字段名）→ count 统一
+        const rawCount = raw.count !== undefined ? raw.count : raw.qty;
+        if (rawCount !== undefined) {
+            const parsed = parseInt(rawCount);
             if (!isNaN(parsed) && parsed > 0) count = parsed;
         }
         const unit = raw.unit || '个';
@@ -123,7 +128,11 @@ const BagMutator = {
             effect: raw.effect || '',
             equippable: !!raw.equippable,
             equipped: !!raw.equipped,
-            slot: raw.slot || ''
+            slot: raw.slot || '',
+            // 【P1修复BUG-4.14】GameMemory 运行时字段（避免回写丢失）
+            obtainedTurn: raw.obtainedTurn || 0,
+            lastChangedTurn: raw.lastChangedTurn || 0,
+            history: Array.isArray(raw.history) ? raw.history : []
         };
     }
 };

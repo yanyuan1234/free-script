@@ -1738,14 +1738,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【方案C】应用<mem>标签解析结果到gameState（自动维护结构化数据）
         if (parseResult.mems && parseResult.mems.length > 0) {
             _applyMemsToGameState(parseResult.mems);
-            // 【修复】<mem> 更新了结构化数据后，刷新相关页面
-            if (typeof GameLinker !== 'undefined' && GameLinker.refreshByDataChange) {
-                GameLinker.refreshByDataChange('currentBag');
-                GameLinker.refreshByDataChange('allCharacters');
-                GameLinker.refreshByDataChange('quests');
-                GameLinker.refreshByDataChange('relationships');
-                GameLinker.refreshByDataChange('worldModules');
-            }
+            // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         }
 
         // === COT（思维链）处理 ===
@@ -2004,8 +1997,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                         try { _gm.addImportantEvents(_keyEventObjs); } catch (e) { console.warn('[keyEvents]', e); }
                     }
                 }
-                // 触发 UI 刷新
-                if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('keyEvents');
+                // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
             }
             // === 新增：保存世界状态快照 ===
             var snapshot = {};
@@ -3419,10 +3411,7 @@ function mergeCharacters(chars) {
         CharacterMutator.mergeCharacters(filtered);
     }
     renderNpcList();
-    // 联动：广播角色数据变更，刷新其他依赖页面
-    if (window.GameLinker) {
-        GameLinker.refreshByDataChange('allCharacters');
-    }
+    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
 }
 // 【阶段1统一】删除角色：统一委托 CharacterMutator.removeCharacter
 // 替代原直接 delete gameState.allCharacters[name]（绕过 StateManager 导致不同步）
@@ -3963,7 +3952,7 @@ async function requestNpcReply(playerText) {
                 });
             }
             // 【数据联通】触发记忆页/回顾页等所有依赖页面刷新
-            if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');
+            // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
             renderNpcList();
         }
         // 联动1：把这次私聊摘要加入剧情记忆（避免剧情AI忘记NPC私聊内容）
@@ -3983,10 +3972,7 @@ async function requestNpcReply(playerText) {
             }
         }
         // 联动2：广播聊天日志更新
-        if (window.GameLinker) {
-            GameLinker.refreshByDataChange('_chatLogs');
-            GameLinker.refreshByDataChange('allCharacters');
-        }
+        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
     } catch (e) {
         if (e.name === 'AbortError') return;
         var loadingEl2 = document.getElementById('npcChatLoading');

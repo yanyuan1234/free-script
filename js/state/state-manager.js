@@ -137,6 +137,16 @@ const StateManager = {
 
     // 内部：同步镜像到旧字段名（数据断层修复）
     // 新路径写入后，同时写入对应的旧顶层字段，保证 UI 直接读 gameState.xxx 不为空
+    //
+    // 【P1修复BUG-5.3】_syncLegacyMirror 是单向只读镜像（StateManager → legacy gameState 字段）。
+    // - 方向：仅 StateManager.set → gameState.<legacy>（供 UI 读取兼容）
+    // - 禁止：UI 层不可直接写 gameState.<legacy>（绕过 StateManager 会导致两份数据不同步）
+    // - 迁移路径（3 阶段）：
+    //     1. 短期（本注释）：明确标注镜像为只读，禁止直接写 legacy 字段
+    //     2. 中期（P1-7.16）：phone-ui.js 改读 StateManager.get，去除对 legacy 字段的依赖
+    //     3. 长期（P2/P3）：删除 _syncLegacyMirror 与 gameState 旧字段，StateManager 为唯一真相源
+    // - 特殊转换在下方分支处理：characters 数组↔allCharacters 对象 / progress.turn↔_stats.totalTurns /
+    //   entities.events 对象数组↔keyEvents 字符串数组
     _syncLegacyMirror(path, value) {
         const legacyName = StateSchema.getLegacyName(path);
         if (legacyName === path) return; // 无对应旧字段

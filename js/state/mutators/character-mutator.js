@@ -157,6 +157,10 @@ const CharacterMutator = {
     },
 
     // 标准化角色
+    // 【P1修复BUG-4.15】统一 character schema：CharacterMutator 为权威 schema。
+    // - name 为身份字段
+    // - 保留 GameMemory 运行时字段（mood/location/outfit/status/history/gameTime/
+    //   accessCount/lastChangedTurn/locked），避免 mutator 回写时丢失这些累积状态
     normalizeCharacter(raw) {
         if (!raw) return null;
         const name = String(raw.name || raw.title || raw.character || '').trim();
@@ -180,27 +184,39 @@ const CharacterMutator = {
             desc: raw.desc || raw.description || '',
             tags: Array.isArray(raw.tags) ? raw.tags : [],
             stats: this.normalizeStats(raw.stats),
-            notes: raw.notes || ''
+            notes: raw.notes || '',
+            // 【P1修复BUG-4.15】GameMemory 运行时字段（避免回写丢失）
+            mood: raw.mood || '',
+            location: raw.location || '',
+            outfit: raw.outfit || '',
+            status: raw.status || '',
+            history: Array.isArray(raw.history) ? raw.history : [],
+            gameTime: raw.gameTime || '',
+            accessCount: raw.accessCount || 0,
+            lastChangedTurn: raw.lastChangedTurn || 0,
+            locked: !!raw.locked
         };
     },
 
     // 标准化状态值
+    // 【P1修复BUG-4.12】字段名统一为 {label, value}（原 {name, value}），
+    // 与 ai-output-schema.js 的 player.stats 归一化保持一致，下游 UI 统一通过 s.label 读取
     normalizeStats(stats) {
         if (!stats) return [];
         if (Array.isArray(stats)) {
             return stats.map(function(s) {
-                if (typeof s === 'string') return { name: s, value: 0 };
+                if (typeof s === 'string') return { label: s, value: 0 };
                 return {
-                    name: String(s.name || s.key || '').trim(),
+                    label: String(s.label || s.name || s.key || '').trim(),
                     value: parseInt(s.value !== undefined ? s.value : s.val) || 0
                 };
-            }).filter((s) => s.name);
+            }).filter((s) => s.label);
         }
         if (typeof stats === 'object') {
             const result = [];
             for (let key in stats) {
                 if (stats.hasOwnProperty(key)) {
-                    result.push({ name: key, value: parseInt(stats[key]) || 0 });
+                    result.push({ label: key, value: parseInt(stats[key]) || 0 });
                 }
             }
             return result;

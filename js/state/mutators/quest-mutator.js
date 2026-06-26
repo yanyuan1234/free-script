@@ -125,6 +125,14 @@ const QuestMutator = {
     },
 
     // 根据剧情文本自动推进任务进度
+    // 【P1修复BUG-4.8】与 QuestSystem.advanceGuidanceQuest 职责分离说明：
+    // - autoAdvanceByStory：基于剧情文本关键词 + 完成类动词，标记 AI 返回的持久化任务完成
+    //   操作对象：StateManager.get('entities.quests')（AI 返回的任务）
+    // - advanceGuidanceQuest：基于玩家行动计数，推进临时引导任务（"继续探索"）进度
+    //   操作对象：QuestSystem._cachedGuidanceQuest（transient，不在 StateManager 持久化）
+    // 两者操作不同数据，不会同一回合重复标记同一任务完成。
+    // 引导任务通过 id 前缀 'guidance_' 跳过关键词匹配（"继续探索"的关键词过于泛化，
+    // 会误匹配大量剧情文本；引导任务只应通过行动计数推进）。
     autoAdvanceByStory(storyText, options) {
         if (!storyText) return { changed: false };
         const quests = StateManager.get('entities.quests') || [];
@@ -136,6 +144,10 @@ const QuestMutator = {
             if (!q || q.status === self.STATUS.COMPLETED || q.status === self.STATUS.FAILED) return;
             const title = String(q.title || '');
             if (!title) return;
+            // 【P1修复BUG-4.8】跳过引导任务（id 前缀 'guidance_'）：引导任务仅通过
+            // advanceGuidanceQuest 的行动计数推进，不参与关键词匹配，避免"继续探索"
+            // 等泛化关键词误触发完成
+            if (q.id && String(q.id).indexOf('guidance_') === 0) return;
             // 任务标题关键词在剧情中出现，且伴随完成类动词，则标记完成
             const titleKeywords = self._extractKeywords(title);
             const matched = titleKeywords.some((kw) => lowerStory.indexOf(kw) !== -1);
@@ -174,6 +186,9 @@ const QuestMutator = {
     },
 
     // 标准化任务
+    // 【P1修复BUG-4.13】统一 quest schema：QuestMutator 为权威 schema。
+    // - title 为身份字段（旧 content 已在 sync 层迁移为 title，此处兼容读取但不输出）
+    // - 保留 GameMemory 运行时字段（createdTurn/resolvedTurn/stale），避免 mutator 回写时丢失
     normalizeQuest(raw) {
         if (!raw) return null;
         const title = String(raw.title || raw.name || raw.quest || raw.content || '').trim();
@@ -198,7 +213,11 @@ const QuestMutator = {
             hint: raw.hint || '',
             rewards: this.normalizeRewards(raw.rewards),
             deadline: raw.deadline || raw.timeLimit || null,
-            priority: raw.priority || 50
+            priority: raw.priority || 50,
+            // 【P1修复BUG-4.13】GameMemory 运行时字段（避免回写丢失）
+            createdTurn: raw.createdTurn || 0,
+            resolvedTurn: raw.resolvedTurn || 0,
+            stale: !!raw.stale
         };
     },
 
