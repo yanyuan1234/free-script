@@ -20,20 +20,14 @@ const PromptBuilder = {
         };
     },
 
-    // 注销片段
-    unregisterSection(name) {
-        delete this._sections[name];
-    },
+    // 【P2清理】删除 unregisterSection（全项目零调用）
 
     // 设置模式
     setMode(mode) {
         this._mode = mode || 'json';
     },
 
-    // 获取当前模式
-    getMode() {
-        return this._mode;
-    },
+    // 【P2清理】删除 getMode（全项目零调用）
 
     // 构建 system prompt
     buildSystemPrompt(context) {

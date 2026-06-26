@@ -13,26 +13,7 @@ var QuestSystem = {
         SIDE: '支线',
         HIDDEN: '隐藏'
     },
-    // 动态类型注册：AI 可以创造新的任务类型
-    _customTypes: {},
-    _customStatuses: {},
-    registerType: function(key, label, sortOrder) {
-        this._customTypes[key] = { label: label, sortOrder: sortOrder || 50 };
-    },
-    registerStatus: function(key, label, sortOrder) {
-        this._customStatuses[key] = { label: label, sortOrder: sortOrder || 50 };
-    },
-    // 获取所有已知类型（内置+自定义）
-    getAllTypes: function() {
-        var types = Object.assign({}, this.TYPE);
-        for (var k in this._customTypes) { types[k] = this._customTypes[k].label; }
-        return types;
-    },
-    getAllStatuses: function() {
-        var statuses = Object.assign({}, this.STATUS);
-        for (var k in this._customStatuses) { statuses[k] = this._customStatuses[k].label; }
-        return statuses;
-    },
+    // 【P2清理】删除动态类型注册系统（registerType / registerStatus / getAllTypes / getAllStatuses）—— 全项目零调用，动态类型从未被注册
     getAllQuests() {
         var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.currentQuests || []));
         if (quests.filter(function(q) {
@@ -109,11 +90,7 @@ var QuestSystem = {
             }
         }
     },
-    filterByType(quests, type) {
-        return type === 'all' ? quests : quests.filter(function(q) {
-            return q.type === type;
-            });
-    },
+    // 【P2清理】删除 filterByType（类型筛选从未被启用，全项目零调用）
     filterByStatus(quests, status) {
         if (status === 'all') return quests;
         if (status === 'active') return quests.filter(function(q) {
@@ -142,9 +119,7 @@ var QuestSystem = {
         }
     return 0;
     },
-    getTypeIcon(type) {
-        return '';
-    },
+    // 【P2清理】删除 getTypeIcon（恒返回空字符串，全项目零调用）
     renderQuestPage(container) {
         var quests = this.getAllQuests();
         var ac = quests.filter(function(q) {
@@ -262,40 +237,8 @@ var QuestSystem = {
             }
         });
     });
-    },
-    renderTracker() {
-        var tracker = document.getElementById('questTracker');
-        if (!tracker) {
-            tracker = document.createElement('div');
-            tracker.id = 'questTracker';
-            tracker.className = 'quest-tracker';
-            var sp = document.getElementById('storyPage');
-            if (sp) sp.appendChild(tracker);
-        }
-    var aq = this.getAllQuests().filter(function(q) {
-        return q.status === QuestSystem.STATUS.ACTIVE;
-        }).slice(0, 3);
-    if (aq.length === 0) {
-        tracker.style.display = 'none';
-        return;
     }
-    tracker.style.display = 'block';
-    var html =
-    '<div class="quest-tracker-toggle" onclick="QuestSystem.toggleTracker()">◀</div><div class="quest-tracker-title"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>任务追踪</span><span style="font-size:11px;color:var(--text-tertiary);">' +
-    aq.length + '</span></div>';
-    aq.forEach(function(q) {
-        var p = QuestSystem.parseProgress(q.progress);
-        html += '<div class="quest-tracker-item"><div class="quest-tracker-item-name">' + q
-        .title +
-        '</div><div class="quest-tracker-item-progress"><div class="quest-tracker-item-fill" style="width:' +
-        p + '%;"></div></div></div>';
-        });
-    tracker.innerHTML = html;
-    },
-    toggleTracker() {
-        var t = document.getElementById('questTracker');
-        if (t) t.classList.toggle('collapsed');
-    }
+    // 【P2清理】删除 renderTracker / toggleTracker（仅 backup/index.html 引用，全项目零调用）
 };
 // ========================================
 // 成就系统 - Achievement System

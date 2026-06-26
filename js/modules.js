@@ -308,27 +308,7 @@ var SmartConfigEngine = {
         return config;
     },
 
-    /**
-    * 获取配置摘要（用于显示）
-    */
-    getConfigSummary: function() {
-        if (!this.currentConfig) return '无配置';
-
-        var summary = [];
-        var config = this.currentConfig;
-
-        if (config.autoParse) {
-            summary.push('自动解析: ' + config.autoParse.prefix + '/' + config.autoParse.suffix);
-        }
-        if (config.modelRecommendations.length > 0) {
-            summary.push('推荐模型: ' + config.modelRecommendations.join('/'));
-        }
-    if (config.apiSettings.promptPostProcessing) {
-        summary.push('后处理: ' + config.apiSettings.promptPostProcessing);
-    }
-
-    return summary.join(' | ') || '基础配置';
-    }
+    // 【P2清理】删除 getConfigSummary（全项目零调用）
 };
 
 var PresetManager = {
@@ -1698,28 +1678,7 @@ var PresetManager = {
     console.log('[预设] 已加载 ' + versions.length + ' 个预设版本快照:', versions.map(function(v) { return v.name; }).join(', '));
     },
 
-    // 【新增】切换 entryStates 预设版本
-    switchEntryState: function(stateName) {
-        var preset = this.presets[this.currentPresetIndex];
-        if (!preset || !preset._entryStateVersions) return;
-        var target = preset._entryStateVersions.find(function(v) { return v.name === stateName; });
-        if (!target) return;
-        preset._activeEntryState = stateName;
-        // 应用该版本快照中的启用/禁用状态到 prompts
-        if (target.entries && Array.isArray(target.entries)) {
-            target.entries.forEach(function(entry) {
-                var prompt = (preset.prompts || []).find(function(p) {
-                    return p.identifier === entry.identifier || p.name === entry.name;
-                    });
-                if (prompt) {
-                    prompt.enabled = entry.enabled;
-                }
-            });
-        }
-    // 重新应用提示词
-    this._applyPromptsToSystemPrompt(preset);
-    UI.toast('已切换预设版本: ' + stateName);
-    },
+    // 【P2清理】删除 switchEntryState（仅 backup/index.html 引用，全项目零调用）
 
     _applyPromptsToSystemPrompt: function(preset) {
         // 【关键】有预设时只取游戏上下文（玩家设定/记忆/私聊），不包含默认格式规则
@@ -2342,12 +2301,7 @@ var PresetManager = {
     // 从 PresetEngine 合并的方法
     // ========================================
 
-    // 构建基础游戏规则：委托给 game.js 的 buildSystemPrompt()，避免硬编码副本不同步
-    buildBaseGameRules: function() {
-        if (typeof buildSystemPrompt === 'function') return buildSystemPrompt();
-        return '';
-    },
-
+    // 【P2清理】删除 buildBaseGameRules（全项目零调用）
 };
 
 
@@ -3129,25 +3083,7 @@ this.renderScriptList();
 UI.toast('正则脚本已保存');
 },
 
-// 切换正则启用/禁用
-toggleScript: function(idx) {
-    if (idx < 0 || idx >= this.scripts.length) return;
-    this.scripts[idx].enabled = this.scripts[idx].enabled === false ? true : false;
-    this.save();
-    this.renderScriptList();
-    UI.toast(this.scripts[idx].enabled ? '正则已启用' : '正则已禁用');
-},
-
-// 快速删除正则（从列表直接删除）
-quickDeleteScript: async function(idx) {
-    if (idx < 0 || idx >= this.scripts.length) return;
-    var ok = await UI.confirm('删除正则', '确定删除「' + (this.scripts[idx].name || '未命名') + '」？');
-    if (!ok) return;
-    this.scripts.splice(idx, 1);
-    this.save();
-    this.renderScriptList();
-    UI.toast('正则已删除');
-},
+// 【P2清理】删除 toggleScript / quickDeleteScript（全项目零调用）
 
 // 删除脚本（编辑弹窗内）
 deleteScript: async function() {
@@ -3422,19 +3358,7 @@ var MacroEngine = {
         }
     },
 
-    saveLocalVars: function() {
-        // 【优化】VariableStore 自动处理持久化
-        },
-
-    saveGlobalVars: function() {
-        // 【优化】VariableStore 自动处理持久化
-        if (typeof VariableStore !== 'undefined') VariableStore._persistGlobal();
-        },
-
-    // 重置局部变量（新游戏时调用）
-    resetLocalVars: function() {
-        if (typeof VariableStore !== 'undefined') VariableStore.clearLocal();
-        },
+    // 【P2清理】删除 saveLocalVars / saveGlobalVars / resetLocalVars（空壳代理，VariableStore 已自动处理持久化，全项目零调用）
 
     // 设置局部变量
     setLocalVar: function(name, value) {
@@ -4666,37 +4590,7 @@ var MacroEngine = {
         return true;
         },
 
-    /**
-    * 去除缩进 (dedent)
-    * 用于处理多行内容的缩进
-    */
-    _dedent: function(text) {
-        var lines = text.split('\n');
-        var minIndent = Infinity;
-
-        // 找出最小缩进（跳过空行）
-        for (var i = 0; i < lines.length; i++) {
-            var line = lines[i];
-            if (line.trim() === '') continue;
-
-            var match = line.match(/^(\s*)/);
-            if (match) {
-                var indent = match[1].length;
-                minIndent = Math.min(minIndent, indent);
-            }
-        }
-
-    if (minIndent === Infinity) minIndent = 0;
-
-    // 去除每行的最小缩进
-    for (var j = 0; j < lines.length; j++) {
-        if (lines[j].length >= minIndent) {
-            lines[j] = lines[j].substring(minIndent);
-        }
-    }
-
-    return lines.join('\n');
-    },
+    // 【P2清理】删除 _dedent（全项目零调用）
 
     /**
     * 处理变量简写

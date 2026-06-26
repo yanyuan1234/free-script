@@ -2,39 +2,7 @@
 // ========================================
 // 世界观主题检测 + 动态术语系统
 // ========================================
-
-/**
- * 检测当前游戏的世界观主题
- * 基于 gameState.userPrompt 中的关键词判断
- * 返回: 'modern' | 'ancient' | 'xianxia' | 'wasteland' | 'fantasy' | 'mixed' | 'other'
- * 'mixed' 表示包含多种世界观元素（如无限流：现代+副本内古代）
- * 'other' 表示未匹配到预设主题，由 AI 自行决定术语
- */
-function detectWorldTheme() {
-    var prompt = (gameState && gameState.userPrompt) || '';
-    var text = prompt.toLowerCase();
-    // 检测各主题关键词是否存在
-    var hasXianxia = /修仙|仙侠|灵气|灵石|宗门|道侣|元婴|金丹|筑基|飞升|天劫|仙界|修真|道友|师尊/.test(text);
-    var hasAncient = /古代|古风|朝代|皇帝|宫廷|江湖|武侠|侠客|县令|将军|公主|王爷|宫斗|科举|银两/.test(text);
-    var hasWasteland = /末世|废土|丧尸|末日|幸存|避难|变异|辐射|物资|避难所|丧尸世界/.test(text);
-    var hasFantasy = /魔法|精灵|龙族|骑士|冒险者|公会|魔王|勇者|矮人|哥布林|地下城|中世纪/.test(text);
-    var hasModern = /现代|都市|职场|学校|校园|公司|总裁|同事|微信|手机|网络/.test(text);
-    // 检测混合世界观（如无限流：现代框架+副本内多种时代）
-    var hasInfiniteFlow = /无限流|副本|诡异|玩家|通关|任务面板|生存天数|排行榜|游戏系统/.test(text);
-    // 无限流/混合世界观：现代框架下包含多种时代背景
-    if (hasInfiniteFlow) return 'mixed';
-    // 多主题共存但非无限流
-    var themeCount = [hasXianxia, hasAncient, hasWasteland, hasFantasy, hasModern].filter(Boolean).length;
-    if (themeCount >= 2) return 'mixed';
-    // 单一主题
-    if (hasXianxia) return 'xianxia';
-    if (hasAncient) return 'ancient';
-    if (hasWasteland) return 'wasteland';
-    if (hasFantasy) return 'fantasy';
-    if (hasModern) return 'modern';
-    // 无法匹配时返回 other，表示由 AI 自行决定术语
-    return 'other';
-}
+// 【P2清理】删除旧版 detectWorldTheme（仅检测 userPrompt 单字段，已被 _detectWorldTheme 完全替代）
 
 // 【修复】提供全局地点提取辅助函数，委托给 EnhancedMemory 的实现
 function _extractLocations(text) {
@@ -3989,15 +3957,7 @@ async function requestNpcReply(playerText) {
         if (inputEl) inputEl.focus();
     }
 }
-// --- 刷新所有面板（原版功能：一键重新渲染所有UI面板） ---
-function refreshAllPanels() {
-    try { renderPlayerStats(); } catch (e) { console.warn('renderPlayerStats error:', e); }
-    try { renderNpcList(); } catch (e) { console.warn('renderNpcList error:', e); }
-    try { renderQuests(); } catch (e) { console.warn('renderQuests error:', e); }
-    try { renderBag(); } catch (e) { console.warn('renderBag error:', e); }
-    try { if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) AchievementSystem.checkAchievements(); } catch (e) { console.warn('AchievementSystem error:', e); }
-    UI.toast('面板已刷新');
-}
+// 【P2清理】删除 refreshAllPanels（全项目零调用，phone-ui.js:3358 仅有注释提及）
 
 // ========================================
 // 日志子系统兜底生成器

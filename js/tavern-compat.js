@@ -578,19 +578,7 @@ _renderQuickReplyButtons: function() {
                         promptText = btn.prompt;
                     }
                     if (promptText && promptText.trim()) {
-                        // 记录到日志
-                        if (typeof gameState !== 'undefined') {
-                            if (!gameState._quickReplyLog) gameState._quickReplyLog = [];
-                            gameState._quickReplyLog.push({
-                                name: btn.name || '快捷回复',
-                                prompt: promptText,
-                                time: new Date().toLocaleTimeString()
-                            });
-                            // 【P1-mem修复】限制日志长度，防止无限增长
-                            if (gameState._quickReplyLog.length > 50) {
-                                gameState._quickReplyLog = gameState._quickReplyLog.slice(-50);
-                            }
-                        }
+                        // 【P2清理】删除 gameState._quickReplyLog 写入（写入后从不读取，全项目零消费）
                         // 发送消息
                         var inputEl = document.getElementById('userInput') || document.getElementById('customAction');
                         if (inputEl) {
@@ -911,7 +899,7 @@ var GameMemory = {
     stats: { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 },
     _changeLog: [],
     summaryHistory: [],
-    currentSummaryIndex: -1,
+    // 【P2清理】删除 currentSummaryIndex（仅初始化与 reset，全项目零读取；summaryHistory 保留供 phone-ui.js 压缩统计显示）
     _saving: false,
     _pendingSave: false,
 
@@ -1122,7 +1110,7 @@ var GameMemory = {
             // 【AI叙事驱动】更新所有角色/物品/任务的休眠状态
             self._updateDormantStatus(message);
         } catch (e) {
-            self.stats.lastError = { msg: (e && e.message) || String(e), stack: (e && e.stack) || '', time: Date.now() };
+            // 【P2清理】删除 self.stats.lastError 写入（写入后从不读取，全项目零消费）
             console.error('[GameMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
         }
     },
@@ -1909,47 +1897,7 @@ var GameMemory = {
         return result;
     },
 
-    // 提取设定中的章节标题行，作为结构索引
-    // 让AI知道设定中有哪些内容，即使看不到全文也能知道"有什么"
-    _extractSectionIndex: function(fullSetup) {
-        if (!fullSetup) return '';
-        var lines = fullSetup.split('\n');
-        var indexLines = [];
-        for (let i = 0; i < lines.length; i++) {
-            var line = lines[i].trim();
-            if (!line) continue;
-            // 匹配中文标题格式：一、二、三、1. 2. 【】等
-            if (/^[一二三四五六七八九十]+[、．.]/.test(line) ||
-                /^（[一二三四五六七八九十]+）/.test(line) ||
-                /^\d+[、．.．]/.test(line) ||
-                /^【[^】]+】$/.test(line) ||
-                /^#+\s/.test(line)) {
-                indexLines.push(line);
-            }
-        }
-        // 如果结构化标题不足3个，说明是散文式设定（如纯角色卡）
-        // 改为提取每个段落的核心句（第一句或前30字）
-        if (indexLines.length < 3) {
-            indexLines = [];
-            var paragraphs = fullSetup.split(/\n\s*\n/);
-            for (let j = 0; j < paragraphs.length && indexLines.length < 20; j++) {
-                var para = paragraphs[j].trim();
-                if (!para || para.length < 10) continue;
-                // 提取段落的第一句话（以句号/问号/感叹号结尾）
-                var firstSentence = para.match(/^[^。？！\n]{2,40}[。？！]?/);
-                if (firstSentence) {
-                    var sentence = firstSentence[0].trim();
-                    // 保留完整首句，截断会丢失段落核心语义
-                    indexLines.push('• ' + sentence);
-                }
-            }
-        }
-        // 【动态化】移除 slice(0, 30) 硬上限——设定索引不应被截断
-        // 旧代码最多保留 30 行，长设定会被截断，AI 看不到完整设定索引
-        // 新策略：保留所有索引行，由 token 预算系统自然控制
-        return indexLines.join('\n');
-    },
-
+    // 【P2清理】删除 _extractSectionIndex（全项目零调用）
     // 【优化】移除 compressSetupIfNeeded 空函数——函数体只有注释，processMessage 已不再调用
     // 保留此注释说明：渐进式压缩由 getSetupInjection 根据轮次自动处理，无需手动标记
 
@@ -3050,13 +2998,7 @@ var GameMemory = {
         return gameTime;
     },
 
-    getRelativeTime: function(timestamp) {
-        if (!timestamp) return '未知时间';
-        var diff = Date.now() - timestamp;
-        var minutes = Math.floor(diff / 60000); var hours = Math.floor(diff / 3600000); var days = Math.floor(diff / 86400000);
-        if (minutes < 1) return '刚刚'; if (minutes < 60) return minutes + '分钟前'; if (hours < 24) return hours + '小时前'; if (days === 1) return '昨天'; if (days < 7) return days + '天前'; if (days < 30) return Math.floor(days / 7) + '周前'; return Math.floor(days / 30) + '个月前';
-    },
-
+    // 【P2清理】删除 getRelativeTime（全项目零调用）
     addWorldAnchor: function(type, content, source, createdTurn) {
         var self = this;
         var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
@@ -3153,8 +3095,7 @@ var GameMemory = {
         return quest;
     },
 
-    addActiveQuest: function(quest) { return this.addQuest(quest); },
-
+    // 【P2清理】删除 addActiveQuest（全项目零调用）
     resolveQuest: function(contentFragment, newStatus) {
         var self = this; var count = 0;
         self.quests.forEach(function(q) { if (q.status === 'pending' && q.title.indexOf(contentFragment) >= 0) { q.status = newStatus || 'resolved'; q.resolvedTurn = self.currentTurn; count++; } });
@@ -3553,7 +3494,7 @@ var GameMemory = {
         }
         this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
-        this._changeLog = []; this.summaryHistory = []; this.currentSummaryIndex = -1;
+        this._changeLog = []; this.summaryHistory = []; // 【P2清理】删除 currentSummaryIndex 重置
         this._injectionSnapshots = {};
         this._summaryLayers = { near: [], mid: [], far: [] };
         this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
@@ -3562,11 +3503,10 @@ var GameMemory = {
         Storage.remove(Storage.KEYS.MEMORY); Storage.remove(Storage.KEYS.ENHANCED_MEMORY);
     },
 
-    getCharacterInfo: function(name) { return this.tables.characters[name] || null; },
-    getItemHistory: function(name) { var it = this.tables.items[name]; return it ? it.history : null; },
-    getTimeline: function(startTurn, endTurn) { return this.timeline.filter(function(t) { return t.turn >= (startTurn || 0) && t.turn <= (endTurn || Infinity); }); },
-    getRelationshipNetwork: function(charName) { var network = []; var self = this; Object.keys(self.tables.relationships).forEach(function(key) { var rel = self.tables.relationships[key]; if (rel && (rel.from === charName || rel.to === charName)) network.push(rel); }); return network; },
-
+    // 【P2清理】删除 getCharacterInfo（全项目零调用）
+    // 【P2清理】删除 getItemHistory（全项目零调用）
+    // 【P2清理】删除 getTimeline（全项目零调用）
+    // 【P2清理】删除 getRelationshipNetwork（全项目零调用）
     // 【P1修复BUG-011-longTermMemory只读快照】配套写入 API
     // longTermMemory getter 已改为只读快照，旧代码直接 `longTermMemory.characterTable[name] = {...}`
     // 等写入方式不再生效（写入的是快照副本，不影响源 tables.characters）。现提供以下 API 替代。
@@ -3831,11 +3771,7 @@ Object.defineProperty(GameMemory, 'shortTermMemory', {
     configurable: true
 });
 
-Object.defineProperty(GameMemory, 'injectionBudget', {
-    get: function() { return this.budget; },
-    set: function(val) { if (val) Object.assign(this.budget, val); },
-    configurable: true
-});
+// 【P2清理】删除 injectionBudget getter/setter（全项目零引用）
 
 Object.defineProperty(GameMemory, 'workingMemory', {
     // 【优化】移除 nearSummary/midSummary/farSummary 死字段
@@ -5657,25 +5593,7 @@ if (!global.stscriptEngine) {
             });
     },
 
-    // ── 构建增强Prompt（发送到API前调用） ──
-    buildEnhancedPrompt(userMessage) {
-        if (!this.currentPreset) return this._buildDefaultPrompt();
-
-        this.updateContext({ lastUserMessage: userMessage });
-
-        const result = this.engine.processPreset(this.currentPreset, {
-            user: this.engine.templates.context.user,
-            char: this.engine.templates.context.char,
-            lastUserMessage: userMessage,
-            chatHistory: this.chatHistory,
-            character: this.currentCharacter,
-            scenario: this.currentCharacter?.scenario || '',
-            personality: this.currentCharacter?.personality || ''
-            });
-
-        return result.messages;
-    },
-
+    // 【P2清理】删除 buildEnhancedPrompt（全项目零调用）
     // ── 处理AI回复（收到回复后调用） ──
     processResponse(response) {
         if (!response || !this.currentPreset) return response;
@@ -5711,89 +5629,17 @@ if (!global.stscriptEngine) {
             });
     },
 
-    // ── Markdown渲染后处理（美化正则） ──
-    processMarkdown(text) {
-        if (!text || !this.currentPreset) return text;
-
-        const scripts = this.currentPreset.regexScripts || [];
-        if (!scripts.length) return text;
-
-        // 只应用 markdownOnly=true 且 promptOnly=false 的正则（美化类）
-        return this.engine.regex.execute(text, scripts, {
-            messageDepth: this._messageDepth,
-            isPrompt: false,
-            isMarkdown: true
-            });
-    },
-
-    // ── 聊天历史管理 ──
-    addToHistory(role, content) {
-        this.chatHistory.push({ role, content });
-        if (role === 'user') this._messageDepth++;
-        if (this.chatHistory.length > 50) this.chatHistory = this.chatHistory.slice(-50);
-        this.updateContext({ chatHistory: this.chatHistory });
-    },
-    clearHistory() {
-        this.chatHistory = [];
-        this._messageDepth = 0;
-        this.updateContext({ chatHistory: [] });
-    },
-
-    // ── 默认Prompt ──
-    _buildDefaultPrompt() {
-        const messages = [];
-        if (this.currentCharacter) {
-            messages.push({
-                role: 'system',
-                content: `你是${this.currentCharacter.name}。${this.currentCharacter.description || ''}`
-                });
-        }
-    return messages;
-    },
-
-    // ── 外部API ──
-    getVariable(name, scope = 'local') { return this.engine.getVar(name, scope); },
-    setVariable(name, value, scope = 'local') { this.engine.setVar(name, value, scope); },
+    // 【P2清理】删除 processMarkdown（全项目零调用）
+    // 【P2清理】删除 addToHistory（全项目零调用）
+    // 【P2清理】删除 clearHistory（全项目零调用）
+    // 【P2清理】删除 _buildDefaultPrompt（全项目零调用）
+    // 【P2清理】删除 getVariable（全项目零调用）
+    // 【P2清理】删除 setVariable（全项目零调用）
     parse(text) { return this.engine.parser.parse(text, { context: this.engine.templates.context }); },
 
-    /**
-    * 获取预设中的快速切换配置
-    */
-    getQuickSwitchProfiles() {
-        if (!this.currentPreset?.tavernHelperScripts) return [];
-        const helper = this.currentPreset.tavernHelperScripts[0];
-        if (!helper?.data?.presets) return {};
-        return helper.data.presets;
-    },
-
-    /**
-    * 获取预设中的命令列表
-    */
-    getCommands() {
-        if (!this.currentPreset?.tavernHelperScripts) return [];
-        const helper = this.currentPreset.tavernHelperScripts[0];
-        return helper?.data?.default?.commands || {};
-    },
-
-    /**
-    * 应用快速切换配置
-    */
-    applyQuickSwitchProfile(profileId) {
-        const profiles = this.getQuickSwitchProfiles();
-        const profile = profiles[profileId];
-        if (!profile?.promptStates) return false;
-
-        const prompts = this.currentPreset.prompts || [];
-        profile.promptStates.forEach(state => {
-            const prompt = prompts.find(p => p.identifier === state.promptId);
-            if (prompt) {
-                prompt.enabled = state.afterEnabled !== false;
-            }
-        });
-
-    console.log('[GameAdapter] 已应用快速切换配置:', profile.name);
-    return true;
-    }
+    // 【P2清理】删除 getQuickSwitchProfiles（全项目零调用）
+    // 【P2清理】删除 getCommands（全项目零调用）
+    // 【P2清理】删除 applyQuickSwitchProfile（全项目零调用）
     };
 
     // ============================================================================

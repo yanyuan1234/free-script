@@ -474,10 +474,7 @@ function openDiaryDatePicker() {
         '</div>';
     UI.createModal({ id: 'diaryDatePicker', html: listHtml, persistent: false });
 }
-function closeDiaryDatePicker() {
-    // 【兼容旧调用】统一走 UI.hideModal
-    UI.hideModal('diaryDatePicker');
-}
+// 【P2清理】删除 closeDiaryDatePicker（全项目零调用）
 function diaryJumpToDate(dateStr) {
     var npcName = gameState._currentDiaryNpc;
     if (!npcName) return;
@@ -570,118 +567,7 @@ function deleteMail(index) {
         }
     }
 }
-// --- 世界模块渲染 ---
-// 【修复X1】所有AI返回的数据必须经过escapeHtml转义，防止XSS
-function buildModuleHTML(mod) {
-    var type = mod.type || 'text';
-    var title = escapeHtml(mod.title || '');
-    var content = escapeHtml(mod.content || '');
-    var items = mod.items || mod.data || [];
-
-    switch (type) {
-        case 'text':
-            return '<div class="world-module world-module-text">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-content">' + content + '</div></div>';
-
-        case 'list':
-            if (!items || items.length === 0) return '';
-            var listHtml = items.map(function(item) {
-                var text = typeof item === 'string' ? item : (item.name || item.text || item
-                    .title || JSON.stringify(item));
-                return '<div class="world-module-list-item"><span class="world-module-list-dot"></span>' +
-                    escapeHtml(text) + '</div>';
-            }).join('');
-            return '<div class="world-module world-module-list">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-list">' + listHtml + '</div></div>';
-
-        case 'ranking':
-            if (!items || items.length === 0) return '';
-            var rankHtml = items.map(function(item, idx) {
-                var name = typeof item === 'string' ? item : String(item.name || item.text || item.title || '');
-                var val = typeof item === 'object' ? String(item.value || item.score || '') : String(item || '');
-                var medal = idx === 0 ? '1.' : idx === 1 ? '2.' : idx === 2 ? '3.' : (idx + 1);
-                return '<div class="world-module-rank-item">' +
-                    '<span class="world-module-rank-num">' + medal + '</span>' +
-                    '<span class="world-module-rank-name">' + escapeHtml(name) + '</span>' +
-                    (val ? '<span class="world-module-rank-val">' + escapeHtml(val) + '</span>' : '') +
-                    '</div>';
-            }).join('');
-            return '<div class="world-module world-module-ranking">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-rank-list">' + rankHtml + '</div></div>';
-
-        case 'key_value':
-            if (!items || items.length === 0) return '';
-            var kvHtml = items.map(function(item) {
-                var k = item.key || item.name || '';
-                var v = item.value || item.val || '';
-                return '<div class="world-module-kv-row">' +
-                    '<span class="world-module-kv-key">' + escapeHtml(k) + '</span>' +
-                    '<span class="world-module-kv-val">' + escapeHtml(v) + '</span></div>';
-            }).join('');
-            return '<div class="world-module world-module-kv">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-kv-body">' + kvHtml + '</div></div>';
-
-        case 'cards':
-            if (!items || items.length === 0) return '';
-            var cardsHtml = items.map(function(item) {
-                var cardTitle = item.name || item.title || '';
-                var cardDesc = item.desc || item.description || item.content || '';
-                var cardIcon = item.icon || '';
-                return '<div class="character-card pearl-card" style="cursor:default;">' +
-                    '<div class="avatar avatar-md" style="font-size:20px;">' + escapeHtml(cardIcon) + '</div>' +
-                    '<div class="char-info">' +
-                    '<div class="char-name">' + escapeHtml(cardTitle) + '</div>' +
-                    (cardDesc ? '<div class="char-meta">' + escapeHtml(cardDesc) + '</div>' : '') +
-                    '</div></div>';
-            }).join('');
-            return '<div class="world-module world-module-cards">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-cards-grid">' + cardsHtml + '</div></div>';
-
-        case 'comments':
-            if (!items || items.length === 0) return '';
-            var commentsHtml = items.map(function(item) {
-                var author = item.author || item.name || '匿名';
-                var text = item.text || item.content || item.comment || '';
-                return '<div class="world-module-comment">' +
-                    '<div class="world-module-comment-author">' + escapeHtml(author) + '</div>' +
-                    '<div class="world-module-comment-text">' + escapeHtml(text) + '</div></div>';
-            }).join('');
-            return '<div class="world-module world-module-comments">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-comments-list">' + commentsHtml + '</div></div>';
-
-        case 'moments':
-            // 朋友圈模块：显示最近几条动态摘要
-            var momentPosts = [];
-            if (mod.posts) {
-                momentPosts = mod.posts.slice(0, 3);
-            } else if (mod.moments && Array.isArray(mod.moments)) {
-                momentPosts = mod.moments.slice(0, 3);
-            }
-            if (momentPosts.length === 0) return '';
-            var momentsSummaryHtml = momentPosts.map(function(p) {
-                var mAuthor = (p.author || '匿名').replace(/\n/g, '').trim();
-                var mText = p.text || p.content || p.main || '';
-                if (mText.length > 50) mText = truncateByChars(mText, 50, '...');
-                return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
-                    '<strong style="color:#576b95;">' + escapeHtml(mAuthor) + '</strong>: ' +
-                    escapeHtml(mText) + '</div>';
-            }).join('');
-            return '<div class="world-module world-module-text">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-content">' + momentsSummaryHtml + '</div></div>';
-
-        default:
-            return '<div class="world-module world-module-text">' +
-                (title ? '<div class="world-module-title">' + title + '</div>' : '') +
-                '<div class="world-module-content">' + content + '</div></div>';
-    }
-}
+// 【P2清理】删除 buildModuleHTML（全项目零调用）
 // 模块级：根据 gameState._worldModules 控制 logFeat-calendar / logFeat-author_note 元素显隐
 // 【P0 修复】原定义嵌套在 renderLogPage 内部，外层 typeof 检查永远返回 'undefined'，
 // 导致 renderWorldModules 三处调用永远不执行，日历/作者备注入口无法及时刷新。
@@ -884,55 +770,7 @@ function _autoExtractWorldNotes(modules) {
     console.log('[世界观] 已自动提取 ' + modules.length + ' 条世界设定到世界页面');
 }
 
-// 从文本中自动提取关键词（用于世界书条目）
-function _extractKeywords(text) {
-    if (!text || typeof text !== 'string') return [];
-    // 常见停用词
-    var stopWords = ['的', '了', '是', '在', '有', '和', '与', '或', '不', '也', '都', '而', '但', '又', '很', '非常', '可以', '这个', '那个', '一个', '什么', '如何', '怎样', '为什么', '因为', '所以', '如果', '虽然', '但是', '然而', '以及', '及其', '其中', '通过', '进行', '使用', '具有', '属于', '关于', '对于', '根据', '按照', '需要', '能够', '应该', '必须', '已经', '正在', '将', '被', '把', '让', '给', '到', '从', '对', '等', '着', '过', '得', '地', '之', '其', '此', '该', '各', '每', '某', '些', '种', '样', '般', '件', '个', '条', '名', '位', '次', '种', '类', '级', '个', '人', '中', '上', '下', '里', '外', '前', '后', '左', '右', '大', '小', '多', '少', '高', '低', '长', '短', '好', '坏', '新', '旧', '强', '弱', '快', '慢', '远', '近', '深', '浅', '重', '轻', '冷', '热', '黑', '白', '红', '蓝', '绿', '黄', '金', '银', '铁', '石', '水', '火', '风', '雷', '电', '光', '暗', '天', '地', '日', '月', '星', '云', '山', '海', '河', '湖', '林', '树', '花', '草', '鸟', '鱼', '龙', '凤', '虎', '狼', '蛇', '马', '牛', '羊', '猪', '狗', '猫', '鸡', '鹤', '鹰', '血', '骨', '魂', '灵', '神', '魔', '妖', '鬼', '仙', '佛', '道', '法', '术', '功', '技', '武', '剑', '刀', '枪', '弓', '甲', '盾', '药', '丹', '符', '阵', '宝', '玉', '珠', '镜', '书', '卷', '印', '令', '牌', '门', '派', '宗', '教', '国', '城', '镇', '村', '店', '楼', '阁', '宫', '殿', '塔', '洞', '谷', '峰', '崖', '岛', '洲', '大陆', '世界', '空间', '境界', '层次', '阶段', '等级', '品质', '属性', '效果', '能力', '技能', '天赋', '资质', '经验', '等级', '修炼', '突破', '瓶颈', '天劫', '渡劫', '飞升', '转生', '重生', '穿越', '系统', '任务', '奖励', '惩罚', '积分', '兑换', '商店', '拍卖', '交易', '战斗', '战争', '冲突', '联盟', '合作', '背叛', '阴谋', '秘密', '宝藏', '遗迹', '副本', '探险', '冒险', '旅程', '使命', '命运', '宿命', '因果', '轮回', '前世', '今生', '来世', '记忆', '遗忘', '觉醒', '封印', '诅咒', '祝福', '预言', '传说', '神话', '历史', '故事', '背景', '设定', '规则', '制度', '法律', '秩序', '混乱', '正义', '邪恶', '中立', '善良', '黑暗', '光明'];
-    
-    // 提取2-4字的词组作为关键词
-    var keywords = [];
-    var seen = {};
-    
-    // 按标点分割成句子
-    var sentences = text.replace(/[，。！？、；：""''【】《》（）\[\]\{\}<>\/\\@#$%^&*\+\=\~`\|]/g, ' ').split(/\s+/);
-    
-    sentences.forEach(function(sentence) {
-        // 提取2-4字词组
-        for (var len = 4; len >= 2; len--) {
-            for (var i = 0; i <= sentence.length - len; i++) {
-                var word = sentence.substring(i, i + len);
-                // 跳过纯数字、含停用词的
-                if (/^\d+$/.test(word)) continue;
-                var hasStop = stopWords.some(function(sw) { return word === sw; });
-                if (hasStop) continue;
-                if (!seen[word] && word.length >= 2) {
-                    seen[word] = true;
-                    keywords.push(word);
-                }
-            }
-        }
-    });
-    
-    // 按词频排序，取前15个
-    var freq = {};
-    keywords.forEach(function(w) { freq[w] = (freq[w] || 0) + 1; });
-    var sorted = Object.keys(freq).sort(function(a, b) { return freq[b] - freq[a]; });
-    
-    // 去重：如果短词被长词包含，优先保留长词
-    var filtered = [];
-    sorted.forEach(function(word) {
-        var isSubstr = filtered.some(function(existing) {
-            return existing.indexOf(word) !== -1 && existing !== word;
-        });
-        if (!isSubstr && filtered.length < 15) {
-            filtered.push(word);
-        }
-    });
-    
-    return filtered;
-}
-
+// 【P2清理】删除 _extractKeywords（全项目零调用）
 // 统一获取剧情列表的辅助函数（storyHistory 已合并到 conversationHistory）
 // 【修复BUG-03】历史消息可能是 JSON 字符串（_slimAssistantMessage 精简格式 {"title":"...","story":"..."}）
 // 旧实现直接返回 m.content，回顾页显示为原始 JSON 字符串，玩家无法阅读
@@ -3832,26 +3670,7 @@ function bindEvent(id, event, handler, opts) {
     }
     return true;
 }
-function bindEventQuery(selector, event, handler, opts) {
-    var el = document.querySelector(selector);
-    if (!el) {
-        if (typeof console !== 'undefined' && console.warn) {
-            console.warn('[bindEventQuery] selector not found:', selector);
-        }
-        return false;
-    }
-    // 【性能优化】防重复绑定
-    var bindKey = '_bound_' + event;
-    if (el[bindKey]) return true;
-    el[bindKey] = true;
-    if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
-        GlobalCleanup.registerListener(el, event, handler, opts);
-    } else {
-        el.addEventListener(event, handler, opts);
-    }
-    return true;
-}
-
+// 【P2清理】删除 bindEventQuery（全项目零调用）
 // 页面加载时自动恢复上次填写的内容
 function renderMenu() {
     // 渲染预设页面
@@ -6398,111 +6217,13 @@ function loadGameSettings() {
 // 存档系统 - UI操作（从 game.js 收拢）
 // ========================================
 
-// 存档常量
-const SAVE_GAME_ID = 'freeScript';
-const LOCAL_SAVE_KEY = 'freeScript_localSaves';
+// 【P2清理】删除 SAVE_GAME_ID / LOCAL_SAVE_KEY（全项目零调用）
+// 保留 LOCAL_MANUAL_COUNT / LOCAL_EXT_START / LOCAL_EXT_END（openSaveLoadModal 在用）
 const LOCAL_MANUAL_COUNT = 5;
 const LOCAL_EXT_START = 6;
 const LOCAL_EXT_END = 10;
 
-// 显示游戏统计面板
-function showGameStats() {
-    var stats = (gameState && gameState._stats) || {};
-
-    // 格式化时间
-    function formatTime(ms) {
-        if (!ms || ms < 1000) return '0秒';
-        var seconds = Math.floor(ms / 1000);
-        var minutes = Math.floor(seconds / 60);
-        var hours = Math.floor(minutes / 60);
-        var days = Math.floor(hours / 24);
-        if (days > 0) return days + '天' + (hours % 24) + '小时';
-        if (hours > 0) return hours + '小时' + (minutes % 60) + '分';
-        if (minutes > 0) return minutes + '分' + (seconds % 60) + '秒';
-        return seconds + '秒';
-    }
-
-    // 格式化数字
-    function formatNum(n) {
-        if (!n) return '0';
-        if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
-        if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
-        return n.toString();
-    }
-
-    // 计算当前游戏时长
-    var currentPlayTime = stats.totalPlayTime || 0;
-    if (stats.startTime) {
-        currentPlayTime += Date.now() - stats.startTime;
-    }
-
-    // 更新显示
-    var playTimeEl = document.getElementById('statPlayTime');
-    if (playTimeEl) playTimeEl.textContent = formatTime(currentPlayTime);
-
-    var totalTurnsEl = document.getElementById('statTotalTurns');
-    if (totalTurnsEl) totalTurnsEl.textContent = formatNum(stats.totalTurns || ((gameState && gameState.conversationHistory) || []).filter(m => m.role === 'assistant').length || 0);
-
-    var totalTokensEl = document.getElementById('statTotalTokens');
-    if (totalTokensEl) totalTokensEl.textContent = formatNum(stats.totalTokens || (gameState && gameState.tokenCount) || 0);
-
-    var maxTokensEl = document.getElementById('statMaxTokens');
-    if (maxTokensEl) maxTokensEl.textContent = formatNum(stats.maxTokensInTurn || 0);
-
-    var totalCharsEl = document.getElementById('statTotalCharacters');
-    if (totalCharsEl) totalCharsEl.textContent = formatNum(stats.totalCharacters || 0);
-
-    var currentCharsEl = document.getElementById('statCurrentCharacters');
-    if (currentCharsEl) currentCharsEl.textContent = formatNum(Object.keys((gameState && gameState.allCharacters) || {}).length);
-
-    var completedQuestsEl = document.getElementById('statCompletedQuests');
-    if (completedQuestsEl) completedQuestsEl.textContent = formatNum(stats.completedQuests || 0);
-
-    var currentQuestsEl = document.getElementById('statCurrentQuests');
-    if (currentQuestsEl) currentQuestsEl.textContent = formatNum(((gameState && gameState.currentQuests) || []).length);
-
-    var keyEventsEl = document.getElementById('statKeyEvents');
-    if (keyEventsEl) keyEventsEl.textContent = formatNum(((gameState && gameState.keyEvents) || []).length);
-
-    var versionEl = document.getElementById('statGameVersion');
-    if (versionEl) versionEl.textContent = GAME_VERSION;
-
-    var saveEl = document.getElementById('statCurrentSave');
-    if (saveEl) saveEl.textContent = ((gameState && gameState.userPrompt) || '').substring(0, 15) || '-';
-    
-    UI.showModal('statsModal');
-}
-
-// ========================================
-// 旧手动存档兼容（从早期版本迁移）
-// ========================================
-function safeLoadOldManual(idx) {
-    try {
-        var oldManual = Storage.get(Storage.KEYS.LEGACY_SAVES);
-        if (!oldManual) {
-            UI.toast('没有找到旧存档');
-            return;
-        }
-        var arr = JSON.parse(oldManual);
-        if (!arr[idx]) {
-            UI.toast('旧存档不存在');
-            return;
-        }
-        var saveData = arr[idx];
-        if (saveData && saveData.state) {
-            var state = JSON.parse(saveData.state);
-            Object.assign(gameState, state);
-            UI.goHome();
-            UI.toast('旧存档已加载');
-        } else {
-            UI.toast('旧存档格式不兼容');
-        }
-    } catch (e) {
-        console.error('读取旧存档失败:', e);
-        UI.toast('读取旧存档失败: ' + e.message);
-    }
-}
-
+// 【P2清理】删除 safeLoadOldManual（全项目零调用）
 async function renameSave(slot) {
     try {
         var data = await SaveDB.get(slot);
@@ -6635,58 +6356,7 @@ async function renderSaveUI() {
         '</div>';
     ct.innerHTML = html;
 }
-// 云迁移功能已移除（自由版无云存档）
-// ── 首页读档弹窗 ──
-async function openLoadModal() {
-    try {
-        var html = '';
-
-        function loadRow(label, icon, data, slot) {
-            if (!data) return '';
-            var info = _formatSaveSlotData(data);
-            return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px;background:var(--bg);margin-bottom:6px;border:2px solid #a2d2ff;cursor:pointer" onclick="safeLoadSlot(' +
-                slot + ')">' + '<div style="flex:1;min-width:0;overflow:hidden">' +
-                '<div style="font-size:14px;color:var(--text-tertiary);font-weight:600">' + icon + ' ' + escapeHtml(info.name) +
-                '</div>' + '<div style="font-size:11px;color:var(--text-tertiary)">' + label + ' · ' + escapeHtml(info.time) +
-                '</div>' + '</div>' +
-                '<span style="color:#a2d2ff;font-size:18px;padding-left:10px">&#9654;</span></div>';
-        }
-        // 统一读取所有存档槽位
-        var allSaves = {};
-        try {
-            allSaves[0] = await SaveDB.get(0);
-            for (var si = 1; si <= LOCAL_EXT_END; si++) {
-                allSaves[si] = await SaveDB.get(si);
-            }
-        } catch (e) {
-            console.warn('读取存档列表失败:', e);
-        }
-        if (allSaves[0]) html += loadRow('自动存档', '', allSaves[0], 0);
-        for (var mi = 1; mi <= LOCAL_MANUAL_COUNT; mi++) {
-            if (allSaves[mi]) html += loadRow('手动存档' + mi, '', allSaves[mi], mi);
-        }
-        for (var ei = LOCAL_EXT_START; ei <= LOCAL_EXT_END; ei++) {
-            if (allSaves[ei]) html += loadRow('存档' + ei, '', allSaves[ei], ei);
-        }
-        if (!html) {
-            html = '<div style="text-align:center;padding:30px;color:var(--text-tertiary)">没有找到任何存档</div>';
-        }
-        html +=
-            '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border);display:flex;gap:8px">' +
-            '<button class="pixel-btn blue big" onclick="UI.hideModal(\'loadModal\');exportSaves()" style="flex:1">导出存档</button>' +
-            '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
-            '</div>';
-        // 使用统一弹窗管理器
-        UI.createModal({
-            id: 'loadModal',
-            html: '<div class="modal-titlebar"><span class="modal-titlebar-text">读取存档</span></div><div class="modal-body">' + html + '</div>',
-            persistent: true
-        });
-    } catch (e) {
-        console.error('打开存档列表失败:', e);
-        UI.toast('读取存档列表时出错: ' + translateError(e.message));
-    }
-}
+// 【P2清理】删除 openLoadModal（全项目零调用）
 // 安全读档包装（解决async onclick静默失败问题）
 function safeLoadSlot(slot) {
     loadFromSlot(slot).catch(function(e) {

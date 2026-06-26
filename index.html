@@ -57,12 +57,7 @@
                 <polyline points="17 21 17 13 7 13 7 21" fill="none" stroke="currentColor" stroke-width="2" />
                 <polyline points="7 3 7 8 15 8" fill="none" stroke="currentColor" stroke-width="2" />
             </symbol>
-            <symbol id="icon-bell" viewBox="0 0 24 24">
-                <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" />
-                <path d="M13.73 21a2 2 0 0 1-3.46 0" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" stroke-linejoin="round" />
-            </symbol>
+            <!-- 【P2清理】删除未使用 SVG symbol id=icon-bell -->
             <symbol id="icon-settings" viewBox="0 0 24 24">
                 <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" stroke-width="2" />
                 <path
@@ -84,12 +79,7 @@
             <symbol id="icon-play" viewBox="0 0 24 24">
                 <polygon points="5 3 19 12 5 21 5 3" fill="none" stroke="currentColor" stroke-width="2" />
             </symbol>
-            <symbol id="icon-skip" viewBox="0 0 24 24">
-                <polygon points="5 4 13 12 5 20 5 4" fill="none" stroke="currentColor" stroke-width="2"
-                    stroke-linejoin="round" />
-                <line x1="19" y1="5" x2="19" y2="19" stroke="currentColor" stroke-width="2"
-                    stroke-linecap="round" />
-            </symbol>
+            <!-- 【P2清理】删除未使用 SVG symbol id=icon-skip -->
             <symbol id="icon-plus" viewBox="0 0 24 24">
                 <line x1="12" y1="5" x2="12" y2="19" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
                 <line x1="5" y1="12" x2="19" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
@@ -131,10 +121,7 @@
                     stroke-width="2" />
                 <polyline points="9 22 9 12 15 12 15 22" fill="none" stroke="currentColor" stroke-width="2" />
             </symbol>
-            <symbol id="icon-message" viewBox="0 0 24 24">
-                <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z" fill="none" stroke="currentColor"
-                    stroke-width="2" />
-            </symbol>
+            <!-- 【P2清理】删除未使用 SVG symbol id=icon-message -->
             <symbol id="icon-chevron-right" viewBox="0 0 24 24">
                 <polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" />
@@ -197,7 +184,8 @@
             </symbol>
         </svg>
 
-        <div class="game-container" id="gameContainer">
+        <!-- 【P2清理】删除未使用 id=gameContainer（仅类 .game-container 在 CSS 中使用） -->
+        <div class="game-container">
             <div class="toast-container" id="toastContainer"></div>
 
             <!-- ==================== 主菜单页面（极简手机桌面风格） ==================== -->
@@ -268,7 +256,8 @@
 
                 <!-- 长条开始按钮 -->
                 <div class="menu-start-card cursor-pointer" id="menuStartCard" role="button" tabindex="0">
-                    <div class="menu-start-icon flex-center" id="menuStartIcon"
+                    <!-- 【P2清理】删除未使用 id=menuStartIcon（仅包裹 svg） -->
+                    <div class="menu-start-icon flex-center"
                         style="color:var(--text);">
                         <svg class="icon size-28" style="stroke-width:2;">
                             <use href="#icon-sparkles" />
@@ -474,7 +463,7 @@
                 </div>
                 <div class="gen-control" id="genControl">
                     <div class="gen-spinner"></div>
-                    <span id="genText">正在生成...</span>
+                    <span><!-- 【P2清理】删除未使用 id=genText（js 只引用 genControl 与 genProgressBar） -->正在生成...</span>
                     <span class="flex-1"></span>
                     <!-- 跳过按钮：打字机阶段才显示，AI 请求阶段由取消按钮负责 -->
                     <button class="gen-btn" id="genSkipBtn" style="display:none;">跳过</button>
@@ -535,7 +524,8 @@
                 </div>
                 <div class="page-body" id="playerPageBody">
                     <div class="player-hero">
-                        <div class="avatar avatar-lg" id="playerPageAvatar" style="margin:0 auto;">
+                        <!-- 【P2清理】删除未使用 id=playerPageAvatar（js 引用的是 playerPageAvatarFallback） -->
+                        <div class="avatar avatar-lg" style="margin:0 auto;">
                             <span id="playerPageAvatarFallback"><svg class="icon size-36"
                                     style="stroke-width:1.5;">
                                     <use href="#icon-user" />
@@ -614,9 +604,11 @@
                                     <line x1="12" y1="18" x2="12.01" y2="18" />
                                 </svg></div>
                             <div class="menu-top-info">
-                                <div class="menu-top-name text-18 font-semibold" id="logDynamicTitle">
+                                <!-- 【P2清理】删除未使用 id=logDynamicTitle（文本恒为静态） -->
+                                <div class="menu-top-name text-18 font-semibold">
                                     冒险日志</div>
-                                <div class="menu-top-motto text-13 text-secondary mt-4" id="logDynamicSubtitle">记录你的每一次奇遇</div>
+                                <!-- 【P2清理】删除未使用 id=logDynamicSubtitle（文本恒为静态） -->
+                                <div class="menu-top-motto text-13 text-secondary mt-4">记录你的每一次奇遇</div>
                             </div>
                             <div class="menu-top-meta text-right">
                                 <div class="menu-top-date text-15 text-secondary font-medium" id="logTopDate">--/--</div>
@@ -852,7 +844,8 @@
                         </button>
                     </div>
                     <!-- 工具栏 -->
-                    <div class="wi-toolbar" id="wiToolbar">
+                    <!-- 【P2清理】删除未使用 id=wiToolbar（世界书工具栏容器） -->
+                    <div class="wi-toolbar">
                         <button class="wi-toolbar-btn" id="btnWiNewBook" onclick="WorldInfo.addNewBook()">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             新建书
@@ -912,7 +905,8 @@
                     <div class="wi-divider"></div>
                     <!-- 编辑器 -->
                     <div style="max-height:45vh;overflow-y:auto;">
-                        <div class="wi-section" id="wiEditorSection">
+                        <!-- 【P2清理】删除未使用 id=wiEditorSection（条目编辑器容器） -->
+                        <div class="wi-section">
                             <div class="wi-section-title">条目编辑器</div>
                             <div class="empty-state" style="padding:20px;">选择上方条目进行编辑</div>
                         </div>
@@ -949,14 +943,16 @@
                         <!-- 主关键词 -->
                         <div class="wi-field">
                             <label class="wi-field-label" for="wiEntryKeys">主关键词</label>
-                            <div class="keywords-input" id="wiKeysInputContainer">
+                            <!-- 【P2清理】删除未使用 id=wiKeysInputContainer（主关键词输入容器） -->
+                            <div class="keywords-input">
                                 <input type="text" id="wiEntryKeys" placeholder="用逗号分隔多个关键词">
                             </div>
                         </div>
                         <!-- 次关键词 -->
                         <div class="wi-field">
                             <label class="wi-field-label">次关键词</label>
-                            <div class="keywords-input" id="wiSecondaryKeysInputContainer">
+                            <!-- 【P2清理】删除未使用 id=wiSecondaryKeysInputContainer（次关键词输入容器） -->
+                            <div class="keywords-input">
                                 <input type="text" id="wiEntrySecondaryKeys" placeholder="用逗号分隔多个关键词">
                             </div>
                         </div>
@@ -1033,7 +1029,8 @@
                             </div>
                         </div>
                         <!-- 状态开关折叠面板 -->
-                        <div class="collapse-panel" id="wiStatusPanel">
+                        <!-- 【P2清理】删除未使用 id=wiStatusPanel（折叠面板由内部 onclick 用 parentElement 操作，不通过 id 引用） -->
+                        <div class="collapse-panel">
                             <div class="collapse-header" onclick="this.parentElement.classList.toggle('open')">
                                 <span>状态开关</span>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1098,7 +1095,8 @@
                             </div>
                         </div>
                         <!-- 高级设置折叠面板 -->
-                        <div class="collapse-panel" id="wiAdvancedPanel">
+                        <!-- 【P2清理】删除未使用 id=wiAdvancedPanel（折叠面板由内部 onclick 用 parentElement 操作，不通过 id 引用） -->
+                        <div class="collapse-panel">
                             <div class="collapse-header" onclick="this.parentElement.classList.toggle('open')">
                                 <span>高级设置</span>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
@@ -1446,7 +1444,8 @@
                         </button>
                     </div>
                     <!-- 工具栏 -->
-                    <div class="wi-toolbar" id="regexToolbar">
+                    <!-- 【P2清理】删除未使用 id=regexToolbar（正则工具栏容器） -->
+                    <div class="wi-toolbar">
                         <button class="wi-toolbar-btn hidden" id="btnRegexBack">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                             返回
@@ -1730,7 +1729,8 @@
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
-                    <div class="modal-body" id="apiConfigBody" style="padding:0;">
+                    <!-- 【P2清理】删除未使用 id=apiConfigBody（API 模态框 body 容器） -->
+                    <div class="modal-body" style="padding:0;">
                         <!-- 顶部操作栏 -->
                         <div class="flex gap-10 p-12-20 border-b">
                             <button class="crystal-btn primary flex-1" id="btnCreateApi"
@@ -2380,7 +2380,8 @@
                                     <!-- 【优化·narrativeEyes 可调开关】10 项叙事基调，默认全开，用户可关闭不想要的 -->
                                     <div class="setting-row" style="flex-direction:column;align-items:flex-start;">
                                         <label class="field-label" style="margin-bottom:6px;">叙事基调（可关闭不想要的，最多保留 5 项）</label>
-                                        <div id="narrativeEyesContainer" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;width:100%;font-size:12px;">
+                                        <!-- 【P2清理】删除未使用 id=narrativeEyesContainer（仅作布局容器，JS 用 class .narrative-eye-toggle 选择） -->
+                                        <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;width:100%;font-size:12px;">
                                             <label><input type="checkbox" class="narrative-eye-toggle" data-eye="realistic" checked> 现实感</label>
                                             <label><input type="checkbox" class="narrative-eye-toggle" data-eye="ideal" checked> 温情</label>
                                             <label><input type="checkbox" class="narrative-eye-toggle" data-eye="ensemble" checked> 多角色</label>

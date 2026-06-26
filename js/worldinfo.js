@@ -621,30 +621,7 @@ var WorldInfo = {
         UI.toast('已创建新世界书');
     },
 
-    // 切换书的启用/禁用
-    toggleBook: function(bookId) {
-        for (var i = 0; i < this.books.length; i++) {
-            if (this.books[i].id === bookId) {
-                this.books[i].enabled = !this.books[i].enabled;
-                break;
-            }
-        }
-    this.save();
-    this.renderCurrentView();
-    },
-
-    // 切换条目启用/禁用
-    toggleEntry: function(uid) {
-        var book = this.getCurrentBook();
-        if (!book || !book.entries[uid]) return;
-        var entry = book.entries[uid];
-        // 兼容旧格式读取，只写入 enabled
-        var wasDisabled = !!(entry.disable || entry.disabled || entry.enabled === false);
-        entry.enabled = wasDisabled;
-        this.save();
-        this.renderCurrentView();
-        UI.toast(wasDisabled ? '条目已启用' : '条目已禁用');
-        },
+    // 【P2清理】删除 toggleBook / toggleEntry（全项目零调用）
 
     // 快速删除条目（从列表直接删除）
     quickDeleteEntry: async function(uid) {
@@ -2103,23 +2080,6 @@ var WorldInfo = {
         groups: groups,
         positionTexts: positionTexts
         };
-    },
-
-    // 获取指定角色的注入文本
-    getInjectionByRole: function(chatMessages, role) {
-        var activated = this.scan(chatMessages);
-        if (activated.length === 0) return '';
-
-        var texts = [];
-        activated.forEach(function(entry) {
-            if ((entry.role || 0) === role) {
-                var label = entry.comment || (entry.key || []).join(', ');
-                texts.push(entry.addMemo
-                ? '[' + label + ']: ' + (entry.content || '')
-                : (entry.content || ''));
-            }
-        });
-
-        return texts.length > 0 ? texts.join('\n') : '';
     }
+    // 【P2清理】删除 getInjectionByRole（全项目零调用）
 };

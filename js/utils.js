@@ -21,23 +21,7 @@ const DOMCache = {
         }
     return el;
 },
-query(sel, permanent) {
-    if (permanent && this._permanent[sel]) return this._permanent[sel];
-    const c = this._cache[sel];
-    if (c && (Date.now() - c.t < this._maxAge)) return c.el;
-    const el = document.querySelector(sel);
-    if (el) {
-        if (permanent) this._permanent[sel] = el;
-        else {
-            this._cache[sel] = { el: el, t: Date.now() };
-            this._evictIfNeeded();
-        }
-    }
-return el;
-},
-setPermanent(id, el) { if (el) this._permanent[id] = el; },
 clear() { this._cache = {}; },
-clearAll() { this._cache = {}; this._permanent = {}; },
 // 【性能优化】超出容量时淘汰最旧的条目
 _evictIfNeeded() {
     const keys = Object.keys(this._cache);
@@ -70,10 +54,8 @@ window.addEventListener('beforeunload', function() { GlobalCleanup.cleanup(); })
 
 // escapeHTML / sanitizeHTML 已统一到 core.js 的 escapeHtml，此处不再重复定义
 
-function debounce(fn, delay) { let t = null; return function() { const a = arguments, c = this; if (t) clearTimeout(t); t = setTimeout(function() { fn.apply(c, a); t = null; }, delay); }; }
-function throttle(fn, interval) { let last = 0, t = null; return function() { const a = arguments, c = this, now = Date.now(), r = interval - (now - last); if (r <= 0) { if (t) { clearTimeout(t); t = null; } last = now; fn.apply(c, a); } else if (!t) { t = setTimeout(function() { last = Date.now(); t = null; fn.apply(c, a); }, r); } }; }
-
-function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fallback; } }
+// 【P2清理】删除 debounce / throttle / safeExecute / dynamicTruncateLen（全项目零调用）
+// 保留 getContextScale（被多处使用）
 
 // ========================================
 // 动态截断策略：根据模型 contextSize 自动调整截断长度
@@ -84,13 +66,6 @@ function safeExecute(fn, fallback) { try { return fn(); } catch(e) { return fall
 function getContextScale() {
     const ctx = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
     return Math.max(0.5, ctx / 8000);
-}
-
-// 动态截断：根据 context 大小自动计算截断长度
-// baseLen 是 8K context 下的基准长度，实际长度 = baseLen * scale，无上限
-function dynamicTruncateLen(baseLen) {
-    const scale = getContextScale();
-    return Math.max(baseLen, Math.round(baseLen * scale));
 }
 
 // 获取各层的动态截断配置（供记忆系统使用）
@@ -142,25 +117,13 @@ function safeInt(v, defaultVal) {
     return isNaN(n) ? (defaultVal || 0) : n;
 }
 
-// 安全浮点转换：无效值返回默认值
-function safeFloat(v, defaultVal) {
-    if (v === null || v === undefined || v === '') return defaultVal || 0;
-    var n = parseFloat(v);
-    return isNaN(n) ? (defaultVal || 0) : n;
-}
-
 // 对象类型检查：排除 null（typeof null === 'object' 的 JS quirk 使 !x 检查必要）
 // 替代散落 50+ 处的 `!x || typeof x !== 'object'` 模式
 function isObject(v) {
     return v !== null && typeof v === 'object';
 }
 
-// 纯对象检查：排除 null、数组、DOM 节点、类实例等
-function isPlainObject(v) {
-    if (v === null || typeof v !== 'object') return false;
-    if (Array.isArray(v)) return false;
-    return Object.prototype.toString.call(v) === '[object Object]';
-}
+// 【P2清理】删除 safeFloat / isPlainObject（全项目零调用，safeInt/isObject 仍在使用）
 
 // 统一的 token 估算函数（与 game.js updateTokenCount 保持一致）
 // 经验上中文 1.5 字符/token，英文 4 字符/token。统一取 1.7 字符/token
@@ -291,7 +254,7 @@ Logger.error('localStorage写入失败:', e.message);
 return { success: false, error: 'write_error', message: e.message, key: key };
 }
 }
-function safeGetItem(key, defaultValue) { try { const v = localStorage.getItem(key); return v !== null ? v : defaultValue; } catch(e) { return defaultValue; } }
+// 【P2清理】删除 safeGetItem（与 Storage.get 实现逐字相同，全项目零调用）
 
 // ========================================
 // 【统一管理】Storage 命名空间：集中声明所有 localStorage key 常量
@@ -375,11 +338,7 @@ Logger.error('计算localStorage使用量失败:', e.message);
 }
 return used;
 },
-getRemainingSpace() {
-    const used = this.getUsedSpace();
-    const total = this._estimateTotalSpace();
-    return Math.max(0, total - used);
-},
+// 【P2清理】删除 getRemainingSpace（全项目零调用，保留 checkCapacity/getUsedSpace/invalidateCache）
 checkCapacity() {
     // 【性能优化】使用缓存的容量检查结果
     const now = Date.now();
@@ -397,15 +356,7 @@ invalidateCache() {
     this._capacityCache = null;
     this._capacityCacheTime = 0;
 },
-warnIfFull(threshold) {
-    threshold = threshold !== undefined ? threshold : 80;
-    const capacity = this.checkCapacity();
-    if (capacity.percentage >= threshold) {
-        Logger.warn('localStorage使用率已达 ' + capacity.percentage.toFixed(1) + '%，建议清理旧数据');
-        return true;
-    }
-return false;
-},
+// 【P2清理】删除 warnIfFull（全项目零调用）
 _estimateTotalSpace() {
     const testKey = '__storage_test_' + Date.now();
     const testValue = 'x';
@@ -465,13 +416,6 @@ const ThemeManager = {
         }
     },
 
-    toggle() {
-        this._current = this._current === 'dark' ? 'light' : 'dark';
-        this.apply();
-        this._updateStar();
-        Storage.set(Storage.KEYS.THEME, this._current);
-    },
-
     _updateStar() {
         const star = document.getElementById('menuTopStar');
         if (!star) return;
@@ -483,11 +427,8 @@ const ThemeManager = {
             star.classList.remove('dark-mode');
         }
     }
+    // 【P2清理】删除 ThemeManager.toggle（与 toggleTheme 互相调用形成死循环，无外部入口）
 };
-
-function toggleTheme() {
-    ThemeManager.toggle();
-}
 
 (function() {
     const saved = Storage.get(Storage.KEYS.THEME);
@@ -526,21 +467,9 @@ const Logger = (function() {
     }
     return {
         LEVELS: LEVELS,
-        getLevel: currentLevel,
-        setLevel(name) {
-            if (LEVELS[name] === undefined) return;
-            Storage.set(Storage.KEYS.LOG_LEVEL, name);
-        },
-        debug() { if (currentLevel() <= LEVELS.debug) { try { console.debug.apply(console, ['[DBG]'].concat([].slice.call(arguments))); } catch(e) {} } },
-        info()  { if (currentLevel() <= LEVELS.info)  { try { console.info.apply(console,  ['[INF]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        // 【P2清理】删除 debug/info/log/getLevel/setLevel（全项目零调用），保留 warn/error
         warn()  { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
-        error() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} },
-        // 直接调用 Logger.log('msg', 'info') 走级别路由
-        log(msg, level) {
-            level = level || 'info';
-            if (this[level]) this[level](msg);
-            else this.info(msg);
-        }
+        error() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} }
     };
 })();
 
@@ -560,12 +489,8 @@ const RenderCache = {
     },
     mark(name, key) {
         this._keys[name] = key;
-    },
-    // 某些数据变化后（如存档切换、删除消息），需手动失效
-    invalidate(name) {
-        if (name) delete this._keys[name];
-        else this._keys = {};
     }
+    // 【P2清理】删除 invalidate（全项目零调用；存档切换/删除消息场景通过 RenderCache.mark 重写实现失效）
 };
 
 // 【性能】页面渲染缓存快捷助手：
