@@ -3239,11 +3239,20 @@ var GameMemory = {
         //   saveToStorage 体积同步膨胀，最终触发配额错误
         // - 现策略：epic 占 60% 预算（至少 5 条），normal 占 40%
         //   保留重要事件优先权的同时强制 epic 也受裁剪
-        // - 若 epic 实际数量 < 预算，剩余预算让渡给 normal
+        // - 预算双向回流：
+        //     a) epic 实际数 < 预算 → 剩余让渡给 normal（normalBudget = maxCount - keptEpic.length）
+        //     b) normal 实际数 < 剩余预算 → 回流给 epic（避免槽位浪费，确保总量 = maxCount）
+        //   b 是关键：旧实现仅做了 a，当 normal 不足时（如全是 epic 的场景）总条数 < maxCount，
+        //   既浪费了存储预算又丢失了本可保留的高分 epic，与"裁剪到 maxCount"语义不符
         var epicBudget = Math.max(5, Math.floor(maxCount * 0.6));
         var keptEpic = epic.slice(0, Math.min(epic.length, epicBudget));
         var normalBudget = Math.max(0, maxCount - keptEpic.length);
         var keptNormal = normal.slice(0, normalBudget);
+        // 预算回流：normal 未填满时，剩余槽位用 epic 补齐（epic 已按 decayScore 降序排列，取后续高分项）
+        if (keptEpic.length + keptNormal.length < maxCount && keptEpic.length < epic.length) {
+            var refill = maxCount - keptEpic.length - keptNormal.length;
+            keptEpic = keptEpic.concat(epic.slice(keptEpic.length, keptEpic.length + refill));
+        }
         this.events = keptEpic.concat(keptNormal).sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
 
         // 修复后裁剪监控：被丢弃事件数大于 0 时记录，便于排查
