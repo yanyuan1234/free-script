@@ -2091,7 +2091,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
         // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（与 utils.js estimateTokensUtil 一致）
-        var currentTokens = response ? Math.round(response.length / 1.7) : 0;
+        var currentTokens = response ? estimateTokensUtil(response) : 0;
         gameState._stats.totalTokens = (gameState._stats.totalTokens || 0) + currentTokens;
         if (currentTokens > (gameState._stats.maxTokensInTurn || 0)) {
             gameState._stats.maxTokensInTurn = currentTokens;
@@ -2178,8 +2178,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 避免 accumulate 类型首次生成后 !hasType() 永久阻止后续兜底（与BUG-010同根）。
         try { ensureLogFallbacks(finalStory, data && data.world); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
         autoSave();
-        // 传入当前响应长度更新Token计数
-        updateTokenCount(response ? response.length : 0);
+        // 传入当前响应更新Token计数（estimateTokensUtil 内部按 1.7 字符/token 估算）
+        updateTokenCount(response);
     } catch (error) {
         TypewriterBuffer.stop();
         // 清理 AbortController
@@ -2214,7 +2214,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
     }
 }
-function updateTokenCount(currentResponseLength) {
+function updateTokenCount(currentResponse) {
     if (!gameState.conversationHistory) return;
     // 统一用 utils 里的 token 估算（1 token ≈ 1.7 字符，含中英文混合）
     var estimated = estimateTokensForMessagesUtil(gameState.conversationHistory);
@@ -2224,8 +2224,8 @@ function updateTokenCount(currentResponseLength) {
     var currentTokenEl = document.getElementById('currentTokenCount');
     var totalTokenEl = document.getElementById('totalTokenCount');
 
-    if (currentResponseLength && currentTokenEl) {
-        var currentTokens = Math.round(currentResponseLength / 1.7);
+    if (currentResponse && currentTokenEl) {
+        var currentTokens = estimateTokensUtil(currentResponse);
         currentTokenEl.textContent = currentTokens > 1000 ?
             (currentTokens / 1000).toFixed(1) + 'k' : currentTokens;
     } else if (currentTokenEl) {

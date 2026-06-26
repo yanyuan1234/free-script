@@ -37,6 +37,20 @@
     --primary: var(--accent);
     --primary-hover: #555555;
     --radius-btn: 8px;
+    /* 【P2修复】品质/稀有度语义色板（统一 phone-ui 与 systems，支持暗色模式）
+       原硬编码 #1890ff/#722ed1/#fa8c16/#9e9e9e 散落两文件且暗色模式不适配 */
+    --rarity-common: #9e9e9e;
+    --rarity-uncommon: #1890ff;            /* 蓝：item.fine / achievement.rare / tag-output */
+    --rarity-uncommon-bg: #e6f7ff;
+    --rarity-rare: #722ed1;               /* 紫：item.rare / achievement.epic */
+    --rarity-rare-bg: #f9f0ff;
+    --rarity-legendary: #fa8c16;           /* 橙：item.legendary / achievement.legendary */
+    --rarity-legendary-bg: #fff7e6;
+    --rarity-legendary-bg-strong: #ffecb3;
+    /* 排行榜名次色 */
+    --rank-top2: #ff7a45;
+    --rank-top3: #ffbb38;
+    --rank-self-bg: #f0f7ff;
 }
 
 /* ================================================================
@@ -78,6 +92,17 @@
     --bg-hover: rgba(255, 255, 255, 0.06);
     --primary: var(--accent);
     --primary-hover: #b0b0b0;
+    --rarity-common: #7a7a7a;
+    --rarity-uncommon: #40a9ff;
+    --rarity-uncommon-bg: rgba(24, 144, 255, 0.16);
+    --rarity-rare: #b37feb;
+    --rarity-rare-bg: rgba(114, 46, 209, 0.18);
+    --rarity-legendary: #ffa940;
+    --rarity-legendary-bg: rgba(250, 140, 22, 0.18);
+    --rarity-legendary-bg-strong: rgba(255, 152, 0, 0.3);
+    --rank-top2: #ff9c6e;
+    --rank-top3: #ffd666;
+    --rank-self-bg: rgba(24, 144, 255, 0.16);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -103,6 +128,17 @@
         --bg-hover: rgba(255, 255, 255, 0.06);
         --primary: var(--accent);
         --primary-hover: #b0b0b0;
+        --rarity-common: #7a7a7a;
+        --rarity-uncommon: #40a9ff;
+        --rarity-uncommon-bg: rgba(24, 144, 255, 0.16);
+        --rarity-rare: #b37feb;
+        --rarity-rare-bg: rgba(114, 46, 209, 0.18);
+        --rarity-legendary: #ffa940;
+        --rarity-legendary-bg: rgba(250, 140, 22, 0.18);
+        --rarity-legendary-bg-strong: rgba(255, 152, 0, 0.3);
+        --rank-top2: #ff9c6e;
+        --rank-top3: #ffd666;
+        --rank-self-bg: rgba(24, 144, 255, 0.16);
     }
 }
 

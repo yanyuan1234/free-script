@@ -315,7 +315,7 @@ _executeSingleCommand: function(cmdStr) {
             result=''; break;
         // 新增：delay命令（延迟）
         case 'delay':
-            var ms=parseInt(argsStr)||1000;
+            var ms = safeInt(argsStr, 1000);
             return new Promise(function(resolve){
                 TimerManager.setTimeout('delayCmd', function(){resolve('');},ms);
             });
@@ -1250,7 +1250,7 @@ var GameMemory = {
                 var fAttrs = self._parseMemAttrs(fm[1]);
                 var fDesc = (fm[2] || '').trim();
                 var fId = fAttrs.id || ('fs_' + self.currentTurn + '_' + Math.random().toString(36).substr(2, 6));
-                var fPriority = parseInt(fAttrs.priority) || 5;
+                var fPriority = safeInt(fAttrs.priority, 5);
                 if (fDesc && self._dormantTracking && self._dormantTracking.foreshadowings) {
                     // 如果已存在相同描述的伏笔，不重复注册
                     var exists = Object.keys(self._dormantTracking.foreshadowings).some(function(k) {
@@ -1884,7 +1884,7 @@ var GameMemory = {
 
             var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
             if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
-            var setupTokens = Math.ceil(layers.fullSetup.length / 1.7);
+            var setupTokens = estimateTokensUtil(layers.fullSetup);
             var setupRatio = setupTokens / ctxSize;
 
             if (layers.compressed && layers.compressedSetup && setupRatio > 0.4) {

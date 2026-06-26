@@ -98,7 +98,7 @@ const QuestMutator = {
         if (!progress) return { current: 0, total: 1 };
         const parts = String(progress).split('/');
         if (parts.length === 2) {
-            return { current: parseInt(parts[0]) || 0, total: parseInt(parts[1]) || 1 };
+            return { current: safeInt(parts[0], 0), total: safeInt(parts[1], 1) };
         }
         // 纯数字视为 current
         const n = parseInt(progress);

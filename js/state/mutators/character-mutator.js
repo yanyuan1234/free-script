@@ -208,7 +208,7 @@ const CharacterMutator = {
                 if (typeof s === 'string') return { label: s, value: 0 };
                 return {
                     label: String(s.label || s.name || s.key || '').trim(),
-                    value: parseInt(s.value !== undefined ? s.value : s.val) || 0
+                    value: safeInt(s.value !== undefined ? s.value : s.val, 0)
                 };
             }).filter((s) => s.label);
         }
@@ -216,7 +216,7 @@ const CharacterMutator = {
             const result = [];
             for (let key in stats) {
                 if (stats.hasOwnProperty(key)) {
-                    result.push({ label: key, value: parseInt(stats[key]) || 0 });
+                    result.push({ label: key, value: safeInt(stats[key], 0) });
                 }
             }
             return result;

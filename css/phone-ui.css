@@ -507,14 +507,16 @@
     text-align: center;
     z-index: 5;
     border-bottom: 1px solid rgba(0,0,0,0.05);
-    animation: pulse 1.5s infinite
+    animation: pulse-opacity 1.5s infinite
 }
 
 .npc-chat-loading::before {
     content: '对方正在输入中';
 }
 
-@keyframes pulse {
+/* 【P2修复】重命名为 pulse-opacity，避免与 base.css 的 @keyframes pulse（autoSaveDot 缩放动画）同名冲突
+   原同名导致后加载的 phone-ui.css 覆盖 base.css，使 #autoSaveDot 误用 opacity 动画 */
+@keyframes pulse-opacity {
 
     0%,
     100% {
@@ -634,11 +636,11 @@
 }
 
 .forum-hot-rank.top2 {
-    color: #ff7a45;
+    color: var(--rank-top2);
 }
 
 .forum-hot-rank.top3 {
-    color: #ffbb38;
+    color: var(--rank-top3);
 }
 
 .forum-hot-info {
@@ -672,8 +674,8 @@
 }
 
 .forum-hot-tag.bao {
-    background: #fff7e6;
-    color: #fa8c16;
+    background: var(--rarity-legendary-bg);
+    color: var(--rarity-legendary);
 }
 
 .forum-hot-tag.xin {
@@ -1176,7 +1178,7 @@
 }
 
 .rank-num.top3 {
-    color: #ff7a45;
+    color: var(--rank-top2);
     font-size: 22px;
 }
 
@@ -1202,11 +1204,11 @@
 }
 
 .rank-self {
-    background: #f0f7ff;
+    background: var(--rank-self-bg);
 }
 
 .rank-id-self {
-    color: #1890ff;
+    color: var(--rarity-uncommon);
     font-weight: 600;
 }
 
@@ -1296,11 +1298,11 @@
 }
 
 .items-card-circle.red {
-    background: #ff4d4f;
+    background: var(--danger);
 }
 
 .items-card-circle.orange {
-    background: #fa8c16;
+    background: var(--rarity-legendary);
     margin-left: -15px;
 }
 
@@ -1485,18 +1487,18 @@
 }
 
 .items-box-rarity.fine {
-    background: #e6f7ff;
-    color: #1890ff;
+    background: var(--rarity-uncommon-bg);
+    color: var(--rarity-uncommon);
 }
 
 .items-box-rarity.rare {
-    background: #f9f0ff;
-    color: #722ed1;
+    background: var(--rarity-rare-bg);
+    color: var(--rarity-rare);
 }
 
 .items-box-rarity.legendary {
-    background: #fff7e6;
-    color: #fa8c16;
+    background: var(--rarity-legendary-bg);
+    color: var(--rarity-legendary);
 }
 
 /* ================================================================
@@ -2159,8 +2161,8 @@
 /* 底部操作栏 */
 .mail-bottom-bar {
     height: 64px;
-    background: #fff;
-    border-top: 1px solid #f0f0f0;
+    background: var(--card);
+    border-top: 1px solid var(--border);
     display: flex;
     justify-content: space-around;
     align-items: center;
@@ -2173,7 +2175,7 @@
     align-items: center;
     gap: 4px;
     font-size: 11px;
-    color: #666;
+    color: var(--text-secondary);
     cursor: pointer;
 }
 

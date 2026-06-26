@@ -449,7 +449,7 @@ var PresetManager = {
         if (topPEl) this.currentParams.top_p = parseFloat(topPEl.value) || 0.9;
         if (freqEl) this.currentParams.frequency_penalty = parseFloat(freqEl.value) || 0;
         if (presEl) this.currentParams.presence_penalty = parseFloat(presEl.value) || 0;
-        if (maxTokensEl) this.currentParams.max_tokens = parseInt(maxTokensEl.value) || 8192;
+        if (maxTokensEl) this.currentParams.max_tokens = safeInt(maxTokensEl.value, 8192);
         if (topKEl) this.currentParams.top_k = safeInt(topKEl.value, 0);
         // Read presetMinP
         var minPEl = document.getElementById('presetMinP');
@@ -3970,7 +3970,7 @@ var MacroEngine = {
         var match = formula.match(/^(\d+)d(\d+)([+-]\d+)?$/i);
         if (match) {
             var count = safeInt(match[1], 1);
-            var sides = parseInt(match[2]) || 6;
+            var sides = safeInt(match[2], 6);
             var modifier = safeInt(match[3], 0);
             var total = 0;
             for (var i = 0; i < count; i++) {

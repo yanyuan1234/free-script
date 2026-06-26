@@ -403,7 +403,7 @@ const AIResponseMutator = {
                 content = ev.trim();
             } else if (ev && typeof ev === 'object') {
                 content = String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '').trim();
-                if (ev.importance) importance = parseInt(ev.importance) || 5;
+                if (ev.importance) importance = safeInt(ev.importance, 5);
             } else {
                 content = String(ev || '').trim();
             }

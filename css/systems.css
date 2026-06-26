@@ -508,15 +508,15 @@
 }
 
 .achieve-icon-wrap.rare {
-    background: #e3f2fd;
+    background: var(--rarity-uncommon-bg);
 }
 
 .achieve-icon-wrap.epic {
-    background: #f3e5f5;
+    background: var(--rarity-rare-bg);
 }
 
 .achieve-icon-wrap.legendary {
-    background: linear-gradient(135deg, #fff8e1, #ffecb3);
+    background: linear-gradient(135deg, var(--rarity-legendary-bg), var(--rarity-legendary-bg-strong));
     box-shadow: 0 2px 8px rgba(255, 193, 7, 0.2);
 }
 
@@ -535,19 +535,19 @@
 }
 
 .achieve-rarity-badge.common {
-    background: #9e9e9e;
+    background: var(--rarity-common);
 }
 
 .achieve-rarity-badge.rare {
-    background: #2196f3;
+    background: var(--rarity-uncommon);
 }
 
 .achieve-rarity-badge.epic {
-    background: #9c27b0;
+    background: var(--rarity-rare);
 }
 
 .achieve-rarity-badge.legendary {
-    background: #ff9800;
+    background: var(--rarity-legendary);
 }
 
 .achieve-info {
@@ -602,19 +602,19 @@
 }
 
 .achieve-progress-fill.common {
-    background: #9e9e9e;
+    background: var(--rarity-common);
 }
 
 .achieve-progress-fill.rare {
-    background: #2196f3;
+    background: var(--rarity-uncommon);
 }
 
 .achieve-progress-fill.epic {
-    background: #9c27b0;
+    background: var(--rarity-rare);
 }
 
 .achieve-progress-fill.legendary {
-    background: #ff9800;
+    background: var(--rarity-legendary);
 }
 
 .achieve-progress-text {
@@ -671,7 +671,7 @@
     align-items: center;
     justify-content: center;
     font-size: 28px;
-    background: linear-gradient(135deg, #fff8e1, #ffecb3);
+    background: linear-gradient(135deg, var(--rarity-legendary-bg), var(--rarity-legendary-bg-strong));
     flex-shrink: 0;
 }
 
@@ -694,7 +694,7 @@
 .achieve-toast-points {
     font-size: 14px;
     font-weight: 700;
-    color: #ff9800;
+    color: var(--rarity-legendary);
 }
 
 
@@ -729,7 +729,7 @@
     .wi-entry-card .entry-keys { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
     .wi-entry-card .entry-meta { display:flex; align-items:center; gap:6px; margin-top:4px; }
     .wi-entry-card .entry-status { font-size:11px; color:var(--text-tertiary); }
-    .wi-entry-card .entry-status.enabled { color:#34c759; }
+    .wi-entry-card .entry-status.enabled { color:var(--success); }
     .wi-entry-card .entry-status.disabled { color:var(--danger); }
     .keyword-chip { display:inline-flex; align-items:center; gap:3px; padding:3px 8px; background:rgba(102,102,102,0.08); border:1px solid rgba(102,102,102,0.15); border-radius:5px; font-size:12px; color:var(--text-secondary); }
     .keyword-chip .remove { cursor:pointer; opacity:0.5; font-size:14px; }
@@ -794,8 +794,8 @@
     .regex-card .regex-card-pattern { font-size:11px; color:var(--text-tertiary); font-family:monospace; background:var(--bg); padding:4px 8px; border-radius:4px; margin:4px 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .regex-card .regex-card-tags { display:flex; gap:4px; margin-top:4px; }
     .regex-card .regex-card-tags span { font-size:10px; padding:2px 6px; border-radius:4px; font-weight:600; }
-    .regex-card .regex-card-tags .tag-input { background:rgba(52,199,89,0.1); color:#34c759; }
-    .regex-card .regex-card-tags .tag-output { background:rgba(0,122,255,0.1); color:#007aff; }
+    .regex-card .regex-card-tags .tag-input { background:rgba(52,199,89,0.1); color:var(--success); }
+    .regex-card .regex-card-tags .tag-output { background:rgba(0,122,255,0.1); color:var(--rarity-uncommon); }
     .regex-card .regex-card-tags .tag-disabled {
     background: rgba(255, 59, 48, 0.1);
     color: var(--danger);

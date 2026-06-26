@@ -2728,7 +2728,7 @@ function _applyMemsToGameState(mems) {
                     if (typeof BagMutator === 'undefined') {
                         throw new Error('[<mem> item] BagMutator 未加载，无法写入物品');
                     }
-                    var _itemQty = parseInt(mem.qty) || 1;
+                    var _itemQty = safeInt(mem.qty, 1);
                     if (mem.action === 'add') {
                         BagMutator.mergeItems([{ name: mem.name, count: _itemQty, desc: mem._content || '' }]);
                     } else if (mem.action === 'remove') {
@@ -5390,7 +5390,7 @@ async function extractSetupToMemory() {
         // 规则不丢 → permanentFacts 已存；描述精简 → 节省context
         // ========================================
         var ctxSize = gameState.contextSize || (await detectContextSize());
-        var setupTokens = Math.ceil(setupText.length / 1.7); // 中文约1.7字/token
+        var setupTokens = estimateTokensUtil(setupText);
         var setupRatio = setupTokens / ctxSize;
 
         console.log('[设定压缩] 设定约' + setupTokens + 'tokens, context ' + ctxSize + ', 占比 ' + (setupRatio * 100).toFixed(1) + '%');

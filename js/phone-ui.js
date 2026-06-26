@@ -5650,11 +5650,11 @@ function saveGameSettings() {
     var wcParaMinEl = document.getElementById('wcParaMin');
     var wcParaMaxEl = document.getElementById('wcParaMax');
     // 【优化·边界校验】min > max 时自动交换，避免注入矛盾指令给 AI
-    var _wcMin = parseInt(wcMinEl ? wcMinEl.value : '') || 1500;
-    var _wcMax = parseInt(wcMaxEl ? wcMaxEl.value : '') || 3000;
+    var _wcMin = safeInt(wcMinEl ? wcMinEl.value : '', 1500);
+    var _wcMax = safeInt(wcMaxEl ? wcMaxEl.value : '', 3000);
     if (_wcMin > _wcMax) { var _tmp = _wcMin; _wcMin = _wcMax; _wcMax = _tmp; }
-    var _pcMin = parseInt(wcParaMinEl ? wcParaMinEl.value : '') || 15;
-    var _pcMax = parseInt(wcParaMaxEl ? wcParaMaxEl.value : '') || 17;
+    var _pcMin = safeInt(wcParaMinEl ? wcParaMinEl.value : '', 15);
+    var _pcMax = safeInt(wcParaMaxEl ? wcParaMaxEl.value : '', 17);
     if (_pcMin > _pcMax) { var _tmp2 = _pcMin; _pcMin = _pcMax; _pcMax = _tmp2; }
     gameState.wordCountConfig = {
         enabled: document.getElementById('wcEnabled') ? document.getElementById('wcEnabled').checked : true,
@@ -6096,14 +6096,7 @@ function _syncSettingsToUI(d) {
 function openSettingsModal() {
     // 更新上下文信息
     var msgCount = gameState.conversationHistory ? gameState.conversationHistory.length : 0;
-    var total = 0;
-    if (gameState.conversationHistory) {
-        gameState.conversationHistory.forEach(function(m) {
-            total += (m.content || '').length;
-        });
-    }
-    // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token
-    var estimated = Math.round(total / 1.7);
+    var estimated = estimateTokensForMessagesUtil(gameState.conversationHistory);
     var contextInfo = document.getElementById('contextInfo');
     if (contextInfo) contextInfo.textContent = '上下文: ' + msgCount + ' 条 | 约 ' + (estimated > 1000 ? (
         estimated / 1000).toFixed(1) + 'k' : estimated) + ' token';

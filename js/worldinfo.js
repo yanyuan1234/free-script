@@ -1035,7 +1035,7 @@ var WorldInfo = {
 
         // 滑块
         var depthEl = document.getElementById('wiEditDepth');
-        if (depthEl) entry.depth = parseInt(depthEl.value) || 4;
+        if (depthEl) entry.depth = safeInt(depthEl.value, 4);
         var scanDepthEl = document.getElementById('wiEditScanDepth');
         if (scanDepthEl) {
             var sdv = parseInt(scanDepthEl.value);
@@ -1058,7 +1058,7 @@ var WorldInfo = {
         var groupEl = document.getElementById('wiEditGroup');
         if (groupEl) entry.group = groupEl.value.trim();
         var gwEl = document.getElementById('wiEditGroupWeight');
-        if (gwEl) entry.groupWeight = parseInt(gwEl.value) || 100;
+        if (gwEl) entry.groupWeight = safeInt(gwEl.value, 100);
         var stickyEl = document.getElementById('wiEditSticky');
         if (stickyEl) {
             var sv = stickyEl.value.trim();
@@ -1397,8 +1397,8 @@ var WorldInfo = {
             var depthEl = document.getElementById('wiScanDepth');
             var budgetEl = document.getElementById('wiTokenBudget');
             var recursiveEl = document.getElementById('wiRecursive');
-            if (depthEl) this.settings.scanDepth = parseInt(depthEl.value) || 2;
-            if (budgetEl) this.settings.tokenBudget = parseInt(budgetEl.value) || 25;
+            if (depthEl) this.settings.scanDepth = safeInt(depthEl.value, 2);
+            if (budgetEl) this.settings.tokenBudget = safeInt(budgetEl.value, 25);
             if (recursiveEl) this.settings.recursive = recursiveEl.checked;
             this._settingsCache = { turn: this._currentTurn };
         }
@@ -1847,8 +1847,7 @@ var WorldInfo = {
         for (var i = 0; i < activated.length; i++) {
             var entry = activated[i];
             var content = entry.content || '';
-            // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（旧代码 * 1.5 等价于 /0.67，严重高估）
-            var tokens = Math.ceil(content.length / 1.7);
+            var tokens = estimateTokensUtil(content);
 
             // ignoreBudget: 跳过预算限制，直接加入结果
             if (entry.ignoreBudget) {
@@ -1878,7 +1877,7 @@ var WorldInfo = {
         for (var j = 0; j < deferred.length; j++) {
             var deferredEntry = deferred[j];
             // 【修复 P1-1】统一 token 估算系数为 1.7
-            var deferredTokens = Math.ceil((deferredEntry.content || '').length / 1.7);
+            var deferredTokens = estimateTokensUtil(deferredEntry.content);
             if (totalTokens + deferredTokens <= budget) {
                 totalTokens += deferredTokens;
                 result.push(deferredEntry);
