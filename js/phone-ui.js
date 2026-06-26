@@ -33,6 +33,38 @@
 // 注：本会话仅完成短期文档化，物理迁移涉及 80+ 调用点，延后到独立重构任务。
 
 
+// ========================================
+// 【P2-阶段3-15】玩家货币读写 helper
+// 统一 phone-ui.js 中 5 处 currency fallback 读取 + 3 处 currencyName + 1 处扣款
+// 原 fallback 链 gameState.currency || gameState.money || gameState.coins || 0 散落多处
+// ========================================
+function getPlayerMoney() {
+    return gameState.currency || gameState.money || gameState.coins || 0;
+}
+function getCurrencyName() {
+    return gameState.currencyName || '金币';
+}
+// 扣款：保留原 fallback 顺序（currency → money → coins）
+function subtractPlayerMoney(amount) {
+    if (gameState.currency !== undefined) gameState.currency -= amount;
+    else if (gameState.money !== undefined) gameState.money -= amount;
+    else if (gameState.coins !== undefined) gameState.coins -= amount;
+}
+
+// ========================================
+// 【P2-阶段3-14】按类型筛选世界模块 helper
+// 统一 phone-ui.js 中 13+ 处 (gameState._worldModules || []).filter(m => m.type === 'xxx')
+// 支持单类型字符串或类型数组（兼容 BUG-007 的 comments/forum 双类型）
+// ========================================
+function getModulesByType(type) {
+    var mods = gameState._worldModules || [];
+    if (Array.isArray(type)) {
+        return mods.filter(function(m) { return m && type.indexOf(m.type) >= 0; });
+    }
+    return mods.filter(function(m) { return m && m.type === type; });
+}
+
+
 function _switchForumView(showHot) {
     var hotView = document.getElementById('forumHotView');
     var topicView = document.getElementById('forumTopicView');
@@ -119,10 +151,7 @@ function sendForumComment(postIdx, replyToName) {
     if (!text) return;
     input.textContent = '';
     var playerName = gameState.playerName || '我';
-    var modules = gameState._worldModules || [];
-    var commentMods = modules.filter(function(m) {
-        return m.type === 'comments';
-    });
+    var commentMods = getModulesByType('comments');
     if (!commentMods[postIdx]) return;
     if (!commentMods[postIdx].comments) commentMods[postIdx].comments = [];
     var newComment = {
@@ -138,10 +167,7 @@ function sendForumComment(postIdx, replyToName) {
     requestForumNpcReplies(postIdx, text, playerName);
 }
 function replyToForumComment(postIdx, commentIdx) {
-    var modules = gameState._worldModules || [];
-    var commentMods = modules.filter(function(m) {
-        return m.type === 'comments';
-    });
+    var commentMods = getModulesByType('comments');
     if (!commentMods[postIdx] || !commentMods[postIdx].comments[commentIdx]) return;
     var targetName = commentMods[postIdx].comments[commentIdx].name || '匿名';
     var input = document.querySelector('#forumPostDetail' + postIdx + ' .forum-comment-input');
@@ -187,10 +213,7 @@ function appendForumReply(postIdx, comment) {
     if (scroll) scroll.scrollTop = scroll.scrollHeight;
 }
 function requestForumNpcReplies(postIdx, playerText, playerName) {
-    var modules = gameState._worldModules || [];
-    var commentMods = modules.filter(function(m) {
-        return m.type === 'comments';
-    });
+    var commentMods = getModulesByType('comments');
     var post = commentMods[postIdx];
     if (!post) return;
     var existingComments = (post.comments || []).slice(-8).map(function(c) {
@@ -299,10 +322,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
     });
 }
 function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
-    var modules = gameState._worldModules || [];
-    var srcPost = modules.filter(function(m) {
-        return m.type === 'comments';
-    })[srcPostIdx];
+    var srcPost = getModulesByType('comments')[srcPostIdx];
     if (!srcPost) return;
     var sysMsg = '你是一个社区系统。玩家在社区发言引起了关注，有人开了一个新帖子来讨论这件事——这是社区的自然反应。\n\n' +
         '【玩家】' + playerName + '\n' +
@@ -486,9 +506,7 @@ function diaryJumpToDate(dateStr) {
 }
 // 邮件详情
 function openMailDetail(index) {
-    var mailModules = (gameState._worldModules || []).filter(function(m) {
-        return m.type === 'mail';
-    });
+    var mailModules = getModulesByType('mail');
     var allMails = [];
     mailModules.forEach(function(mod) {
         if (mod.items && Array.isArray(mod.items)) {
@@ -548,9 +566,7 @@ function backToMailList() {
     openLogSubPage('mail');
 }
 function deleteMail(index) {
-    var mailModules = (gameState._worldModules || []).filter(function(m) {
-        return m.type === 'mail';
-    });
+    var mailModules = getModulesByType('mail');
     if (mailModules.length > 0 && mailModules[0].items && Array.isArray(mailModules[0].items)) {
         if (index >= 0 && index < mailModules[0].items.length) {
             mailModules[0].items.splice(index, 1);
@@ -1760,7 +1776,7 @@ function renderMomentsPage() {
 }
 // 朋友圈互动函数
 function getMomentPost(idx) {
-    var modules = (gameState._worldModules || []).filter(function(m) { return m.type === 'moments'; });
+    var modules = getModulesByType('moments');
     var allPosts = [];
     modules.forEach(function(mod) {
         if (mod.posts) {
@@ -1831,12 +1847,9 @@ function sendMomentComment(idx) {
 }
 
 function renderForumPage() {
-    var modules = gameState._worldModules || [];
     // 【修复BUG-007】AI prompt 要求 type:"forum"，但渲染器和 ensureLogFallbacks 用 type:"comments"。
     // 此前 AI 返回的 forum 模块被过滤掉导致论坛永远空白。现同时接受两种类型。
-    var commentMods = modules.filter(function(m) {
-        return m && (m.type === 'comments' || m.type === 'forum');
-    });
+    var commentMods = getModulesByType(['comments', 'forum']);
     // 【性能】渲染缓存
     var _lastMod = commentMods.length > 0 ? commentMods[commentMods.length-1] : null;
     var _lastSig = _lastMod ? String(_lastMod.title || '').slice(0, 20) + '|' + (_lastMod.comments || []).length : '';
@@ -2007,10 +2020,7 @@ function renderForumPage() {
 }
 // 渲染排行榜页面
 function renderRankPage() {
-    var modules = gameState._worldModules || [];
-    var rankMods = modules.filter(function(m) {
-        return m.type === 'ranking';
-    });
+    var rankMods = getModulesByType('ranking');
     // 【性能】渲染缓存
     var _key = 'rank:' + rankMods.length + '|' + (rankMods[0] ? String(rankMods[0].title || '').slice(0, 20) : '');
     if (shouldSkipPageRender('renderRankPage', _key)) return;
@@ -2126,8 +2136,8 @@ function renderItemsPage() {
         return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知';
     });
     var playerName = gameState.playerName || '我';
-    var currency = gameState.currency || gameState.money || gameState.coins || 0;
-    var currencyName = gameState.currencyName || '金币';
+    var currency = getPlayerMoney();
+    var currencyName = getCurrencyName();
     // 【性能】渲染缓存（基于过滤后的 bag）
     var _lastItem = bag.length > 0 ? String(bag[bag.length-1].name || bag[bag.length-1].title || '') : '';
     var _key = 'items:' + bag.length + '|' + currency + '|' + _lastItem;
@@ -2150,10 +2160,7 @@ function renderItemsPage() {
         }).join('');
     }
 
-    var modules = gameState._worldModules || [];
-    var cardMods = modules.filter(function(m) {
-        return m.type === 'cards';
-    });
+    var cardMods = getModulesByType('cards');
     var flowItems = '';
     if (cardMods.length > 0) {
         flowItems = cardMods.slice(0, 5).map(function(mod) {
@@ -2213,9 +2220,7 @@ function renderDiaryPage() {
         '0');
 
     // 【已重构】从 AI 的 world[].type === 'diary' 模块汇总日记数据
-    var diaryModules = (gameState._worldModules || []).filter(function(m) {
-        return m.type === 'diary';
-    });
+    var diaryModules = getModulesByType('diary');
     var collectDiaryEntry = function(entry) {
         if (!entry || !entry.npc) return;
         var npcName = entry.npc;
@@ -2378,9 +2383,7 @@ function renderDiaryPage() {
 }
 // 渲染邮件页面
 function renderMailPage() {
-    var mailModules = (gameState._worldModules || []).filter(function(m) {
-        return m.type === 'mail';
-    });
+    var mailModules = getModulesByType('mail');
     // 【性能】渲染缓存
     var _lastMod = mailModules.length > 0 ? mailModules[mailModules.length-1] : null;
     var _lastSig = _lastMod ? (_lastMod.items ? _lastMod.items.length : 0) : 0;
@@ -2433,11 +2436,10 @@ function renderMailPage() {
 }
 // 渲染商店页面
 function renderShopPage() {
-    var shopModules = (gameState._worldModules || []).filter(function(m) {
-        return m.type === 'shop';
-    });
+    var shopModules = getModulesByType('shop');
     // 【性能】渲染缓存
-    var _currency = gameState.currency || gameState.money || 0;
+    // 【P2-阶段3-15】统一走 getPlayerMoney（原缺失 coins fallback，现已对齐其他读取点）
+    var _currency = getPlayerMoney();
     var _key = 'shop:' + shopModules.length + '|' + _currency;
     if (shouldSkipPageRender('renderShopPage', _key)) return;
     var allGoods = [];
@@ -2527,8 +2529,8 @@ function renderShopPage() {
     var catSectionHtml = catHtml ?
         '<div class="shop-section-title">分类</div><div class="shop-cat-row">' + catHtml + '</div>' : '';
 
-    var _balance = gameState.currency || gameState.money || gameState.coins || 0;
-    var _cName = gameState.currencyName || '金币';
+    var _balance = getPlayerMoney();
+    var _cName = getCurrencyName();
     var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
     return '<div style="display:flex;flex-direction:column;flex:1;background:#f5f5f5;overflow:hidden;">' +
         balanceBar +
@@ -2541,7 +2543,7 @@ function renderShopPage() {
 }
 // 商城购买函数
 function buyShopItem(index) {
-    var shopModules = (gameState._worldModules || []).filter(function(m) { return m.type === 'shop'; });
+    var shopModules = getModulesByType('shop');
     var allGoods = [];
     shopModules.forEach(function(mod) {
         if (mod.items && Array.isArray(mod.items)) { mod.items.forEach(function(item) { allGoods.push(item); }); }
@@ -2550,8 +2552,8 @@ function buyShopItem(index) {
     if (index < 0 || index >= allGoods.length) return;
     var item = allGoods[index];
     var price = safeInt(item.price, 0);
-    var currency = gameState.currency || gameState.money || gameState.coins || 0;
-    var currencyName = gameState.currencyName || '金币';
+    var currency = getPlayerMoney();
+    var currencyName = getCurrencyName();
     if (item.count !== undefined && item.count !== null && parseInt(item.count) <= 0) {
         UI.toast('该商品已售稀');
         return;
@@ -2561,9 +2563,7 @@ function buyShopItem(index) {
         return;
     }
     // 扣款
-    if (gameState.currency !== undefined) gameState.currency -= price;
-    else if (gameState.money !== undefined) gameState.money -= price;
-    else if (gameState.coins !== undefined) gameState.coins -= price;
+    subtractPlayerMoney(price);
     // 加入背包
     var bagItem = { name: item.name || '未知物品', icon: item.icon || '物', count: item.count || 1, desc: item.desc || item.description || '', rarity: item.rarity || '普通', rarityClass: item.rarityClass || 'common' };
     if (StateManager && BagMutator) {
@@ -2589,7 +2589,7 @@ function buyShopItem(index) {
     }
     UI.toast('购买成功：' + bagItem.name);
     autoSave();
-    var newCurrency = gameState.currency || gameState.money || gameState.coins || 0;
+    var newCurrency = getPlayerMoney();
     var content = document.getElementById('logSubContent');
     if (content) { content.innerHTML = renderShopPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
     var shopBal = document.getElementById('shopBalanceDisplay');
