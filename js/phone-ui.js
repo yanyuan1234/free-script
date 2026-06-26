@@ -2,6 +2,37 @@
 // ========================================
 // 第7层: 论坛系统
 // ========================================
+//
+// 【P1修复BUG-7.10 / P1-7.16】UI 层绕过 StateManager 直接读写业务状态字段
+// -----------------------------------------------------------------------------
+// 项目架构：StateManager 是权威源 + _syncLegacyMirror 单向镜像到 gameState 旧字段
+// （供 UI 读取兼容，参见 state-manager.js 顶部 P1-5.3 注释）。
+// 但 phone-ui.js 大量函数仍直接读写 legacy 字段：
+//   - 读：gameState.allCharacters / currentBag / currentQuests / playerData / keyEvents /
+//          relationships / _worldModules（40+ 处）
+//   - 写：gameState.currentBag.push / gameState.allCharacters[name] = ...
+//          / gameState.playerData = ... / gameState.keyEvents = ...
+//
+// 风险：
+//   1. 直接写 legacy 字段绕过 _syncLegacyMirror → StateManager.get 返回陈旧值
+//   2. 直接读 legacy 字段 → 读到镜像值，可能与 StateManager 实际值有时序差异
+//   3. 同一概念（角色/物品/任务）有 StateManager 内部值 + gameState 镜像值两份
+//
+// 修复路线（与 P1-5.3 共同推进）：
+//   - 短期（本注释）：明确边界，新增 UI 函数禁止直接读写 legacy 字段
+//   - 中期：phone-ui.js 全部改读 StateManager.get / 改写 StateManager.set 或对应 Mutator
+//   - 长期：删除 _syncLegacyMirror 与 gameState 旧字段（参见 P1-5.3）
+//
+// 写入替换映射（推荐 Mutator）：
+//   - gameState.currentBag.push(...)        → BagMutator.mergeItems([item])
+//   - gameState.allCharacters[name] = obj   → CharacterMutator.replaceCharacter(name, obj)
+//   - gameState.playerData = ...            → StateManager.set('entities.player', ...)
+//   - gameState.currentQuests = ...         → QuestMutator.addQuest / resolveQuest
+//   - gameState.keyEvents = ...             → StateManager.set('entities.events', ...)
+//
+// 注：本会话仅完成短期文档化，物理迁移涉及 80+ 调用点，延后到独立重构任务。
+
+
 function _switchForumView(showHot) {
     var hotView = document.getElementById('forumHotView');
     var topicView = document.getElementById('forumTopicView');

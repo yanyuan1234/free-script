@@ -5,6 +5,42 @@
 // ========================================
 // 自由剧本 - 完整游戏逻辑
 // ========================================
+//
+// 【P1修复BUG-5.9 / P1-7.1】core.js 上帝文件与循环依赖
+// -----------------------------------------------
+// 本文件 5500+ 行混合 13 个职责域：
+//   1.  数据同步（_sync*/_push*）
+//   2.  UI 弹窗/导航/模态（UI 对象）
+//   3.  API Key 混淆（_obfuscateKey 等）
+//   4.  API 配置与重试（LocalGameAPI）
+//   5.  IndexedDB 存档（SaveDB）
+//   6.  题材库（THEME_LIBRARY）
+//   7.  全局状态工厂（createDefaultGameState/ensureGameStateFields/resetRuntimeState/RuntimeState）
+//   8.  打字机（TypewriterBuffer）
+//   9.  时间系统（GameTimeSystem）
+//   10. JSON 解析 + 小剧场映射（extractStr/parseXxxContent/_mapTheaterByKey）
+//   11. 错误翻译/HTML 净化（translateError/_cleanUnrecognizedTags）
+//   12. AI 请求构建（callAI/sendAIRequest）
+//
+// 与 game.js 形成双向循环依赖：
+//   - core.js → game.js：formatStory / mergeCharacters / renderChoices / renderNpcList /
+//                  buildSystemPrompt / buildSaveData / sendAIRequest / _isThinkingContent /
+//                  _cleanUnrecognizedTags / _reDecorTagsTyping
+//   - game.js → core.js：TypewriterBuffer / callAI / parseAIResponse / translateError /
+//                  showError / LocalGameAPI / SaveDB / UI / autoSave / RuntimeState
+//
+// 由于所有调用点都是「延迟调用」（运行时已加载完成，未在顶层立即使用），
+// 循环依赖在运行时不报错；但使 core.js 无法被独立加载或单元测试。
+//
+// 修复路线（与 P1-7.1 共同推进，分阶段执行）：
+//   - 短期（本注释）：明确边界 + 标注职责域，便于后续拆分定位
+//   - 中期：将 game.js 内的 core.js 调用入口（formatStory/renderChoices 等）抽到
+//            `js/core/runtime-bridge.js` 中转模块，core.js 改调中转模块，
+//            打破对 game.js 的直接依赖
+//   - 长期：core.js 按职责拆为 core/{data-sync,ui,api,save,theme,state-factory,
+//            typewriter,time,parser,error,ai-request}.js，每个模块可独立测试
+//
+// 注：当前会话内仅完成短期文档化，物理拆分延后到独立重构任务（涉及 80+ 调用点迁移）。
 
 // 【P1修复BUG-2.2】删除 GameLinker 整套联动系统：
 // 原实现 _refreshers 永远为空对象（register 全代码库零调用），
@@ -1976,8 +2012,38 @@ function resetRuntimeState(scope) {
     }
 }
 
-var streamBuffer = '';
-var isWaiting = false;
+// 【P1修复BUG-5.8】streamBuffer / isWaiting / isCompressing / npcEditingName /
+// npcChatState 改由 RuntimeState 单例承载。此处保留顶层引用以兼容现有调用点
+// （game.js / phone-ui.js 仍按旧名读写）；通过 Object.defineProperty 转发到 RuntimeState，
+// 确保所有读写都集中在单一真相源。后续 P2/P3 可逐步删除这些兼容别名。
+Object.defineProperty(window, 'streamBuffer', {
+    get: function() { return RuntimeState.streamBuffer; },
+    set: function(v) { RuntimeState.streamBuffer = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'isWaiting', {
+    get: function() { return RuntimeState.isWaiting; },
+    set: function(v) { RuntimeState.isWaiting = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'isCompressing', {
+    get: function() { return RuntimeState.isCompressing; },
+    set: function(v) { RuntimeState.isCompressing = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'npcEditingName', {
+    get: function() { return RuntimeState.npcEditingName; },
+    set: function(v) { RuntimeState.npcEditingName = v; },
+    configurable: true
+});
+Object.defineProperty(window, 'npcChatState', {
+    get: function() { return RuntimeState.npcChatState; },
+    configurable: true
+});
+Object.defineProperty(window, 'MAX_HISTORY', {
+    get: function() { return RuntimeState.MAX_HISTORY; },
+    configurable: true
+});
 // ======= 打字机缓冲系统 v2（优化版） =======
 // 优化：段落级渲染节流、标点智能停顿、统一光标、脏检查
 var TypewriterBuffer = {
@@ -2244,7 +2310,9 @@ var TypewriterBuffer = {
         }
     }
 };
-const MAX_HISTORY = 20;
+// 【P1修复BUG-5.8】MAX_HISTORY / isCompressing / npcChatState / npcEditingName
+// 原顶层 const/let 声明已删除，全部通过 RuntimeState 单例承载。
+// 上方 window 兼容别名（defineProperty）转发到 RuntimeState，旧调用点无需改动。
 
 // ========================================
 // 打字机「跳过」按钮管理（用户需求：长按快进、点击屏幕一律不要，只保留按钮）
@@ -2267,19 +2335,10 @@ function _hideSkipButton() {
 // ========================================
 // Token 计数 + 自动压缩
 // ========================================
-let isCompressing = false;
-const npcChatState = {
-    npcName: '',
-    chatHistory: [],
-    // [{role:'player'|'npc', text:'...'}]
-    isSending: false,
-    // 【修复R1】NPC聊天使用独立的AbortController，避免与主游戏共享导致竞态条件
-    abortController: null
-};
 // ========================================
 // NPC编辑 & 手动添加
 // ========================================
-let npcEditingName = '';
+// （P1修复BUG-5.8）npcEditingName 已迁至 RuntimeState.npcEditingName
 // 空=新增模式，有值=编辑模式
 // --- 打字机光标颜色适配 ---
 

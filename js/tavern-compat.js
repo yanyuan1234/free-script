@@ -3851,6 +3851,27 @@ Object.defineProperty(GameMemory, 'workingMemory', {
  */
 
 var MemoryManagerUI = {
+    // 【P1修复BUG-7.17】UI 层与业务逻辑耦合说明
+    // -----------------------------------------------------------------------------
+    // 本对象是 UI 层，但 saveCharacter/saveItem 等方法内同时执行：
+    //   1. 直接写 GameMemory.tables.<entity>[name]（业务同步路径之一）
+    //   2. 调用对应 Mutator（CharacterMutator.replaceCharacter 等，业务同步路径之二）
+    //   3. 调用 UI.afterMemoryChange（UI 刷新）
+    //   4. 失效缓存 gm._cachedInjection = null
+    //
+    // 与 GameMemory 自身的 addImportantEvent（内含同步+持久化）形成两套写入路径。
+    //
+    // 修复路线（短期文档化 + 中期解耦）：
+    //   - 短期（本注释）：明确职责边界，新增方法禁止同时执行 1+2 双写
+    //   - 中期：MemoryManagerUI 只调用 GameMemory 公开 API（如新增 GameMemory.saveCharacter），
+    //            由 GameMemory 内部触发 StateManager 同步与缓存失效；删除 UI 层对
+    //            Mutator 与 gm.tables 的直接写入
+    //   - 写入职责归位后，UI 层只负责：表单读取 → 调 GameMemory API → 触发 UI 刷新
+    //
+    // 注：当前 saveCharacter/saveItem 等方法仍同时写 gm.tables.* 与调 Mutator，
+    //      双写在 Mutator 已加载的环境下会通过 StateManager.set → _syncLegacyMirror
+    //      再次回写到 gm.tables.*（详见 GameMemoryAdapter.syncToGameMemory 的 MERGE 策略）。
+    //      不会产生数据冲突，但属于冗余写入。物理解耦延后到独立重构任务。
 
     isVisible: false,
     currentTab: 'overview',

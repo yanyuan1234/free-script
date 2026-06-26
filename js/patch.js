@@ -1,6 +1,27 @@
 // ============================================================
 // STscript 引擎 - 游戏集成 Hook
 // ============================================================
+//
+// 【P1修复BUG-7.9】patch.js 与新架构职责重叠
+// -----------------------------------------------
+// 本文件通过猴子补丁 hook PresetManager / RegexManager 实现 STscript 引擎集成：
+//   - Hook 1: PresetManager.loadPreset → gameAdapter.onPresetLoaded
+//   - Hook 3: injectPresetGlobalVars → gameAdapter.parse (setvar/getvar)
+//   - Hook 6: RegexManager.applyToOutput/Input → gameAdapter.processResponse/UserInput
+//   - Hook 7: PresetManager.importPreset → 标准化酒馆预设格式
+//
+// `js/ai-contract/` 目录存在新的 response-parser.js / output-sanitizer.js /
+// prompt-builder.js，与 Hook 6（gameAdapter.processResponse）+ Hook 3（gameAdapter.parse）
+// 在职责上重合：都是「正则脚本 / prompt 构建」的执行入口。
+//
+// 修复路线（短期文档化 + 中期迁移）：
+//   - 短期（本注释 + 死代码清理）：删除已移除的 Hook 2/4/5 注释占位、空章节注释
+//   - 中期：将本文件 hook 逻辑迁入 `ai-contract/stscript-bridge.js`，与新架构合并为
+//            单一入口；删除 patch.js
+//   - 迁移要点：所有 hook 必须保留「先调原始方法再调 gameAdapter」的语义，
+//              否则会破坏 PresetManager/RegexManager 的现有调用方
+//
+// 注：本会话内仅完成短期死代码清理，物理迁移延后到独立重构任务。
 (function() {
     'use strict';
 
@@ -49,9 +70,6 @@
             return result;
         };
 
-        // ── Hook 2: sendAIRequest - 已移除 ──
-        // 原本计划在此预处理用户输入，但 RegexManager.applyToInput 已覆盖该功能，无需重复
-
         // ── Hook 3: 增强 injectPresetGlobalVars ──
         // 在全局变量注入时同时处理STscript变量
         // 性能优化：使用缓存，只在预设切换时重新解析，避免每次发消息都全量遍历
@@ -86,12 +104,6 @@
 
             // 注意：预设切换时的缓存清除已合并到 Hook 1 (PresetManager.loadPreset) 中
         }
-
-        // ── Hook 4: onStreamChunk - 已移除 ──
-        // 流式chunk不应用美化正则（避免频繁DOM操作），正则在最终渲染时通过 Hook 6 处理
-
-        // ── Hook 5: renderStory - 已移除 ──
-        // 与 Hook 6 (RegexManager.applyToOutput) 重复，已在 Hook 6 中统一处理
 
         // ── Hook 6: 增强 RegexManager 支持月读/蛾摩拉正则格式 ──
         if (typeof RegexManager !== 'undefined') {
@@ -196,22 +208,7 @@
     'use strict';
     
     console.log('[Fix Patch v3.0] 加载安全修复补丁...');
-    
-    // ============================================================================
-    // 1. 内存泄漏修复 - 定时器管理器
-    // ============================================================================
-    // TimerManager 已在 utils.js 中统一定义（带ID管理），此处不再重复声明
 
-    // ============================================================================
-    // 2. 安全的状态访问工具
-    // ============================================================================
-    // StateUtils 已移除——StateManager.get/set 提供相同能力且支持路径翻译与通知
-    
-    // ============================================================================
-    // 3. 防抖/节流工具
-    // ============================================================================
-    // debounce/throttle 已在 utils.js 中统一定义，此处不再重复声明
-    
     // ============================================================================
     // 4. 全局错误处理增强
     // ============================================================================
@@ -225,7 +222,7 @@
             UI.toast('发生错误: ' + e.message);
         }
     }, true);
-    
+
     GlobalCleanup.registerListener(window, 'unhandledrejection', (e) => {
         console.error('[未处理的Promise]', e.reason);
         if (typeof UI !== 'undefined' && UI.toast) {
@@ -233,11 +230,7 @@
         }
         e.preventDefault();
     });
-    
-    // ============================================================================
-    // 5. 页面生命周期管理 (Fix Issue 36: merged into first beforeunload handler)
-    // ============================================================================
-    
+
     // ============================================================================
     // 6. 移动端触摸优化
     // ============================================================================
