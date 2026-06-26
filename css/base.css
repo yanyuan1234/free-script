@@ -2558,7 +2558,11 @@ a,
     gap: 16px;
     transition: opacity 0.3s ease;
 }
-.app-loading.hidden {
+/* 【P0修复BUG-009】使用独立的 .is-hidden 状态类，避免与 .hidden{display:none!important} 冲突。
+   原选择器 .app-loading.hidden 被 .hidden 的 !important display:none 覆盖，
+   opacity 过渡无法触发（元素先被 display:none 立即移除）。
+   .is-hidden 仅设置 opacity 与 pointer-events，保留 display:flex 让过渡正常工作。*/
+.app-loading.is-hidden {
     opacity: 0;
     pointer-events: none;
 }

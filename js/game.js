@@ -1873,11 +1873,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 gameState._lastSceneTitle = fallbackTurnTitle;
             }
             // 保存HUD数据到gameState，确保读档后能恢复
-            // 【阶段2清理】AIResponseMutator._applyHUD 已写 ui.lastHUD，
-            // _syncLegacyMirror 自动同步到 _lastHUD，无需手动写 StateManager
-            if (data.hud && gameState) {
-                gameState._lastHUD = data.hud;
-            }
+            // 【P0修复BUG-011】移除冗余手动写 gameState._lastHUD：
+            // AIResponseMutator._applyHUD 已 set('ui.lastHUD')，_syncLegacyMirror 自动同步到 _lastHUD
             // 兜底：就算AI没返回characters，也尝试从原文提取
             if (!data.characters) {
                 var rescuedChars = extractObjArr(response, 'characters');
@@ -1900,11 +1897,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 【修复】AI 没返回 relationships 但返回了角色时，自动推断关系网
                 _inferRelationshipsFromCharacters();
             }
-            if (data.contextSummary) {
-                // 【阶段2清理】AIResponseMutator._applyContextSummary 已写 progress.rollingSummary，
-                // _syncLegacyMirror 自动同步到 gameState.rollingSummary，此处无需手动写
-                gameState.rollingSummary = data.contextSummary;
-            }
+            // 【P0修复BUG-011】移除冗余手动写 gameState.rollingSummary：
+            // AIResponseMutator._applyContextSummary 已 set('progress.rollingSummary')，
+            // _syncLegacyMirror 自动同步到 gameState.rollingSummary
             // 从 AI 返回的 title/story 中提取地点
             if (StateManager && (data.title || storyText)) {
                 var extractedLocations = _extractLocations(String(data.title || '') + ' ' + String(storyText || ''));
@@ -2552,10 +2547,15 @@ function _parseStructuredSummary(summary) {
     // 解析当前状态
     var stateMatch = summary.match(/【当前状态】\n([\s\S]*?)(?=【|$)/);
     if (stateMatch) {
-        gameState.worldSnapshot = {
-            lastUpdate: Date.now(),
-            summary: stateMatch[1].trim()
-        };
+        // 【P0 修复】原代码用整对象赋值覆盖 worldSnapshot，会丢失 sendAIRequest 中设置的
+        // {player, hud, bag, quests, characters} 完整结构。改为局部更新保留其他字段。
+        if (typeof gameState !== 'undefined') {
+            if (!gameState.worldSnapshot || typeof gameState.worldSnapshot !== 'object') {
+                gameState.worldSnapshot = {};
+            }
+            gameState.worldSnapshot.lastUpdate = Date.now();
+            gameState.worldSnapshot.summary = stateMatch[1].trim();
+        }
     }
 }
 // 提取重要信息存入表格
@@ -2674,12 +2674,20 @@ async function autoCompressContext() {
         autoSave();
         // 【修复P0-3】压缩成功后才设置完整冷却时间
         window.lastCompressTime = Date.now();
+        // 【P0修复】同步更新 lastCompressionTurn，使 shouldTriggerCompression 事件触发冷却生效
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
+            EnhancedMemory.recordCompression(true);
+        }
     } catch (e) {
         console.error('自动压缩失败:', e);
         // 【修复P0-3】失败时只设 1 分钟短冷却，允许尽快重试，
         // 同时避免在 API 持续异常时被瞬间反复触发
         var _fullCooldownMs = ((EnhancedMemory && EnhancedMemory.compressionConfig && EnhancedMemory.compressionConfig.cooldownMinutes) || 15) * 60 * 1000;
         window.lastCompressTime = Date.now() - _fullCooldownMs + (60 * 1000);
+        // 【P0修复】同步更新 lastCompressionTurn（失败=1回合短冷却），与 window.lastCompressTime 保持一致
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
+            EnhancedMemory.recordCompression(false);
+        }
     } finally {
         isCompressing = false;
         if (!_wasWaiting) isWaiting = false;
@@ -2749,6 +2757,10 @@ async function manualCompress(btn) {
         gameState.rollingSummary = summary;
         console.log('手动压缩完成，保留', gameState.conversationHistory.length, '条');
         autoSave();
+        // 【P0修复】手动压缩也更新冷却计数，防止手动压缩后立即触发自动压缩
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
+            EnhancedMemory.recordCompression(true);
+        }
         UI.toast('压缩完成！已总结 ' + removed.length + ' 条对话');
     } catch (e) {
         console.error('手动压缩失败:', e);
@@ -3971,6 +3983,8 @@ async function requestNpcReply(playerText) {
         // 好感度可能变化，更新到权威源 CharacterMutator（→ StateManager → allCharacters 镜像）
         // 【全量修复-P0】原代码直接改 gameState.allCharacters[name].favorability，
         // 绕过 CharacterMutator 导致 StateManager.get('entities.characters') 返回陈旧好感度
+        // 【P0 修复】删除 CharacterMutator 不可用时的 else 兜底——character-mutator.js 由
+        // index.html 静态加载，运行时必然存在；保留兜底反而让陈旧数据流入视图别名
         if (parsed && parsed.favorability !== undefined) {
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateCharacter) {
                 CharacterMutator.updateCharacter(name, function(c) {
@@ -3978,10 +3992,6 @@ async function requestNpcReply(playerText) {
                     c.favor = parsed.favorability;  // 兼容旧字段
                     return c;
                 });
-            } else if (gameState && gameState.allCharacters && gameState.allCharacters[name]) {
-                // 兜底：CharacterMutator 不可用时直接改视图别名
-                gameState.allCharacters[name].favorability = parsed.favorability;
-                gameState.allCharacters[name].favor = parsed.favorability;
             }
             // 【数据联通】触发记忆页/回顾页等所有依赖页面刷新
             if (typeof GameLinker !== 'undefined') GameLinker.refreshByDataChange('allCharacters');

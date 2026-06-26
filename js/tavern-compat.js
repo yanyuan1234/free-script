@@ -876,6 +876,11 @@ var GameMemory = {
 
     version: 3,
     currentTurn: 0,
+    // 【P0修复】longTermMemory getter 缓存：原 getter 每次访问都重建 worldAnchors 数组
+    // （遍历 permanentFacts 全量映射）+ defineProperty(masterSummary)，单次 _parseStructuredSummary
+    // 可触发 35+ 次 getter 调用。现按 dirty 标志缓存，permanentFacts 变更时置 dirty。
+    _ltmCache: null,
+    _ltmDirty: true,
     lastInjectionTurn: -1,
     gameClock: { day: 1, period: '早晨', lastUpdateTurn: 0 },
 
@@ -1076,6 +1081,8 @@ var GameMemory = {
         if (old.compressionConfig) { self.compressionConfig.triggerThreshold = old.compressionConfig.triggerThreshold || 0.75; self.compressionConfig.incrementalUpdate = old.compressionConfig.incrementalUpdate !== false; }
         self.saveToStorage();
         console.log('[GameMemory] 旧版数据迁移完成');
+        // 【P0修复】permanentFacts 已从旧版数据迁移恢复，失效 longTermMemory 缓存
+        self._ltmDirty = true;
         return true;
     },
 
@@ -1849,6 +1856,9 @@ var GameMemory = {
             }
         }
 
+        // 【P0修复】permanentFacts 已变更（pcIdentity/worldRules/promises/npcProfiles/settings），
+        // 失效 longTermMemory 缓存（覆盖本方法所有 permanentFacts 写入点）
+        self._ltmDirty = true;
         // 通知UI刷新
         if (typeof GameLinker !== 'undefined') {
             GameLinker.refreshByDataChange('_memory');
@@ -2887,6 +2897,8 @@ var GameMemory = {
                     if (!alreadyExists) {
                         self.permanentFacts.npcProfiles.push({ content: profileContent, locked: false, source: 'runtime', createdTurn: turn });
                         console.log('[记忆系统] 新角色加入永久事实:', char.name);
+                        // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
+                        self._ltmDirty = true;
                     }
                 }
             });
@@ -3103,6 +3115,8 @@ var GameMemory = {
                 }
             });
         }
+        // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
+        self._ltmDirty = true;
         return anchor;
     },
 
@@ -3110,6 +3124,8 @@ var GameMemory = {
         var self = this; var removed = 0;
         Object.keys(self.permanentFacts).forEach(function(key) { var before = self.permanentFacts[key].length; self.permanentFacts[key] = self.permanentFacts[key].filter(function(a) { return !(a && a.source && a.source.indexOf(sourcePrefix) === 0); }); removed += before - self.permanentFacts[key].length; });
         if (removed > 0) try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] removeWorldAnchorsBySource 保存失败:', e); }
+        // 【P0修复】permanentFacts 可能已变更，失效 longTermMemory 缓存
+        if (removed > 0) self._ltmDirty = true;
         return removed;
     },
 
@@ -3363,8 +3379,8 @@ var GameMemory = {
     shouldTriggerCompression: function(currentTokenCount, maxTokens) {
         var config = this.compressionConfig;
         var messageCount = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.length : 0;
-        // 【修复 P2】冷却检查改用 compressionConfig.lastCompressionTurn（回合维度），而非未初始化的 window.lastCompressTime
-        // 旧代码 window.lastCompressTime 从未被赋值，导致 lastCompressTime = Date.now()（约1.7万亿），冷却形同虚设
+        // 【P0修复】冷却检查使用 compressionConfig.lastCompressionTurn（回合维度）
+        // 该字段由 recordCompression() 在压缩完成后更新（成功=完整冷却，失败=1回合短冷却）
         var currentTurn = (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
         var lastCompressTurn = config.lastCompressionTurn || 0;
         var turnsSinceLastCompress = currentTurn - lastCompressTurn;
@@ -3374,6 +3390,21 @@ var GameMemory = {
         // 冷却：至少经过 cooldownMinutes 等效回合数（用消息数估算，约10条/回合）后才考虑事件触发压缩
         if (turnsSinceLastCompress >= config.cooldownMinutes && messageCount >= 60) { var recentMessages = (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory)) ? gameState.conversationHistory.slice(-5) : []; if (recentMessages.some(function(m) { var c = (m && m.content) || ''; return c.indexOf('重要') >= 0 || c.indexOf('关键') >= 0 || c.indexOf('转折') >= 0; })) return { shouldCompress: true, reason: '检测到重要事件，建议压缩' }; }
         return { shouldCompress: false, reason: '暂不需要压缩' };
+    },
+
+    // 【P0修复】记录压缩完成，更新 lastCompressionTurn 回合基准
+    // success: true=压缩成功（设完整冷却 cooldownMinutes 回合），false=压缩失败（设 1 回合短冷却）
+    // 原 BUG：lastCompressionTurn 初始化为 0 后从未更新，导致 turnsSinceLastCompress 永远 = currentTurn，
+    // 15 回合后事件触发冷却形同虚设（turnsSinceLastCompress >= cooldownMinutes 恒为 true）
+    recordCompression: function(success) {
+        var currentTurn = (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
+        var cd = (this.compressionConfig && this.compressionConfig.cooldownMinutes) || 15;
+        if (success) {
+            this.compressionConfig.lastCompressionTurn = currentTurn;
+        } else {
+            // 失败：设 1 回合短冷却，使下一回合 turnsSinceLastCompress = cd，冷却刚好解除
+            this.compressionConfig.lastCompressionTurn = currentTurn - cd + 1;
+        }
     },
 
     search: function(keyword, options) {
@@ -3397,7 +3428,7 @@ var GameMemory = {
         try {
             // 保存前清理 _changeLog，只保留最近20条
             if (self._changeLog && self._changeLog.length > 20) self._changeLog = self._changeLog.slice(-20);
-            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, savedAt: Date.now() };
+            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, _worldNotes: self._worldNotes || [], savedAt: Date.now() };
             var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
@@ -3410,7 +3441,7 @@ var GameMemory = {
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
-            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, stats: this.stats, savedAt: Date.now() };
+            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
             var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
             if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
             else console.error('[GameMemory] 降级保存仍然失败：', r2);
@@ -3445,7 +3476,7 @@ var GameMemory = {
             console.log('[GameMemory] 迁移到 v3 完成');
         }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
-        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig'];
+        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
         for (let i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
         // 嵌套对象默认值补全
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
@@ -3458,6 +3489,8 @@ var GameMemory = {
         if (!self._setupLayers.setupKeywords) self._setupLayers.setupKeywords = [];
         // 加载后初始化休眠追踪（兼容旧存档）
         self._initDormantTracking();
+        // 【P0修复】permanentFacts 已从存档恢复，失效 longTermMemory 缓存
+        self._ltmDirty = true;
         // 迁移成功后异步保存
         if (this._migratedData) {
             this._migratedData = null;
@@ -3487,6 +3520,7 @@ var GameMemory = {
             if (!migrated.stats) migrated.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
             if (!migrated._dormantTracking) migrated._dormantTracking = { characters: {}, items: {}, locations: {} };
             if (!migrated._storytellingConfig) migrated._storytellingConfig = {};
+            if (!migrated._worldNotes) migrated._worldNotes = [];
             if (!migrated._summaryLayers) migrated._summaryLayers = { near: [], mid: [], far: [] };
             if (!migrated._setupLayers) migrated._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
             migrated.version = 3;
@@ -3534,9 +3568,16 @@ window.EnhancedMemory = GameMemory;
 GlobalCleanup.registerListener(document, 'DOMContentLoaded', function() { GameMemory.init(); });
 
 // 向后兼容 getter
+// 【P0修复】缓存 longTermMemory 结果：worldAnchors 是 permanentFacts 的只读快照（需遍历重建），
+// 其余字段均为实时引用（characterTable/itemTable/importantEvents 等）。
+// 缓存后高频调用（如 _parseStructuredSummary 单次 35+ 次访问）只重建 1 次，
+// permanentFacts 变更时由各写入点置 _ltmDirty=true 触发下次重建。
 Object.defineProperty(GameMemory, 'longTermMemory', {
     get: function() {
         var self = this;
+        if (self._ltmCache && !self._ltmDirty) {
+            return self._ltmCache;
+        }
         // worldAnchors: 从 permanentFacts 映射（只读快照）
         var worldAnchors = [];
         var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
@@ -3569,6 +3610,8 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
             set: function(val) { if (typeof val === 'string') { var parts = val.split('\n'); _self.plot.worldSetting = parts[0] || ''; _self.plot.currentChapter = parts.slice(1).join('\n') || val; } },
             configurable: true
         });
+        self._ltmCache = result;
+        self._ltmDirty = false;
         return result;
     },
     set: function(val) {
@@ -3632,6 +3675,8 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         if (val.activeQuests && Array.isArray(val.activeQuests)) {
             self.quests = val.activeQuests;
         }
+        // 【P0修复】permanentFacts 已通过 setter 恢复，失效 longTermMemory 缓存
+        self._ltmDirty = true;
     }, configurable: true
 });
 
@@ -4063,6 +4108,8 @@ var MemoryManagerUI = {
         //   编辑后 cacheVersion 不变、currentTurn 不变 → buildInjection 命中缓存返回旧文本，
         //   AI 本轮仍看到旧设定，用户以为编辑没保存
         gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
+        // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
+        gm._ltmDirty = true;
         UI.afterMemoryChange('permanentFacts', '_memory', '已保存');
     },
 
@@ -4074,6 +4121,8 @@ var MemoryManagerUI = {
             gm.permanentFacts[type].splice(idx, 1);
             // 【v3审查修复】同 savePermanentFact，失效注入缓存
             gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
+            // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
+            gm._ltmDirty = true;
             UI.afterMemoryChange('permanentFacts', '_memory', '已删除');
         });
     },

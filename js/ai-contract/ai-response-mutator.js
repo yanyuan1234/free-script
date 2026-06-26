@@ -46,7 +46,10 @@ const AIResponseMutator = {
             { name: 'bag',              fn: () => this._applyBag(data) },
             { name: 'currency',         fn: () => this._applyCurrency(data) },
             { name: 'quests',           fn: () => this._applyQuests(data) },
-            { name: 'gameTime',         fn: () => this._applyGameTime(data) },
+            // 【P0修复BUG-006】移除 gameTime 步骤：原 _applyGameTime 调用 TimeMutator.setTime，
+            // 而 game.js:1930 的 GameTimeSystem.parseFromAI 也会调用 setTime，导致同一份数据写入两次。
+            // 现统一由 GameTimeSystem.parseFromAI 作为时间写入的唯一入口（含 story 兜底提取 + 默认时间），
+            // 该方法在 AIResponseMutator.apply 之后执行，覆盖 data.gameTime 与纯文本两种场景。
             { name: 'locations',        fn: () => this._applyLocations(data) },
             { name: 'keyEvents',        fn: () => this._applyKeyEvents(data) },
             { name: 'relationships',    fn: () => this._applyRelationships(data) },
@@ -206,7 +209,8 @@ const AIResponseMutator = {
             personality: player.personality !== undefined ? player.personality : current.personality
         };
         StateManager.set('entities.player', normalized, { silent: true });
-        StateManager.setLegacy('playerData', normalized, { silent: true });
+        // 【P0修复BUG-011】移除冗余 setLegacy('playerData')：set('entities.player') 已触发
+        // _syncLegacyMirror 自动同步到 gameState.playerData，无需二次写入。
         // 同步到 playerName，确保全项目读取一致
         if (typeof gameState !== 'undefined') {
             gameState.playerName = normalized.name;
@@ -220,8 +224,9 @@ const AIResponseMutator = {
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
             CharacterMutator.mergeCharacters(characters, { silent: true });
         } else {
+            // 【P0修复BUG-011】移除冗余 setLegacy('allCharacters')：set('entities.characters')
+            // 已触发 _syncLegacyMirror（含数组→对象转换）同步到 gameState.allCharacters
             StateManager.set('entities.characters', characters, { silent: true });
-            StateManager.setLegacy('allCharacters', characters, { silent: true });
         }
     },
 
@@ -232,8 +237,8 @@ const AIResponseMutator = {
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
             BagMutator.mergeItems(bag, { silent: true });
         } else {
+            // 【P0修复BUG-011】移除冗余 setLegacy('currentBag')：set('entities.bag') 已触发镜像
             StateManager.set('entities.bag', bag, { silent: true });
-            StateManager.setLegacy('currentBag', bag, { silent: true });
         }
     },
 
@@ -247,11 +252,8 @@ const AIResponseMutator = {
         if (data.currencyName) {
             StateManager.set('entities.currencyName', String(data.currencyName), { silent: true });
         }
-        // 同步到旧字段，确保 phone-ui 等读取 gameState.currency 的模块一致
-        if (typeof gameState !== 'undefined') {
-            gameState.currency = num;
-            if (data.currencyName) gameState.currencyName = String(data.currencyName);
-        }
+        // 【P0修复BUG-011】移除冗余手动写 gameState.currency/currencyName：
+        // set('entities.currency'/'entities.currencyName') 已触发 _syncLegacyMirror 同步
     },
 
     // 任务
@@ -261,8 +263,8 @@ const AIResponseMutator = {
             if (typeof QuestMutator !== 'undefined' && QuestMutator.setQuests) {
                 QuestMutator.setQuests(quests, { silent: true });
             } else {
+                // 【P0修复BUG-011】移除冗余 setLegacy('currentQuests')：set('entities.quests') 已触发镜像
                 StateManager.set('entities.quests', quests, { silent: true });
-                StateManager.setLegacy('currentQuests', quests, { silent: true });
             }
         }
         // 【修复任务进度】根据剧情文本自动推进任务进度
@@ -273,16 +275,10 @@ const AIResponseMutator = {
     },
 
     // 游戏时间
-    _applyGameTime(data) {
-        const time = data.gameTime || data.time || {};
-        if (!time || typeof time !== 'object') return;
-        if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
-            TimeMutator.setTime(time, { silent: true });
-        } else {
-            StateManager.set('time', time, { silent: true });
-            StateManager.setLegacy('gameTime', time, { silent: true });
-        }
-    },
+    // 【P0修复BUG-006】_applyGameTime 已删除：与 GameTimeSystem.parseFromAI 重复调用 setTime。
+    // 时间写入统一收敛到 GameTimeSystem.parseFromAI（game.js:1930），该方法包含完整的
+    // 解析链路：data.gameTime → story 兜底提取 → 默认时间，调用 setTime 仅一次。
+    // _syncLegacyMirror 自动将 StateManager.time 镜像到 gameState.gameTime，无需此处重复写入。
 
     // 地点
     _applyLocations(data) {
@@ -419,6 +415,8 @@ const AIResponseMutator = {
                 }
             }
         }
+        // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
+        if (typeof EnhancedMemory !== 'undefined') EnhancedMemory._ltmDirty = true;
     },
 
     // 关键事件
@@ -550,16 +548,16 @@ const AIResponseMutator = {
     _applyHUD(data) {
         const hud = data.hud || data.status || {};
         if (!hud || typeof hud !== 'object') return;
+        // 【P0修复BUG-011】移除冗余 setLegacy('_lastHUD')：set('ui.lastHUD') 已触发镜像
         StateManager.set('ui.lastHUD', hud, { silent: true });
-        StateManager.setLegacy('_lastHUD', hud, { silent: true });
     },
 
     // 上下文摘要
     _applyContextSummary(data) {
         const summary = data.contextSummary || data.summary || '';
         if (!summary) return;
+        // 【P0修复BUG-011】移除冗余 setLegacy('rollingSummary')：set('progress.rollingSummary') 已触发镜像
         StateManager.set('progress.rollingSummary', summary, { silent: true });
-        StateManager.setLegacy('rollingSummary', summary, { silent: true });
     },
 
     // 收集变更路径（用于测试/调试）

@@ -650,6 +650,19 @@ function buildModuleHTML(mod) {
                 '<div class="world-module-content">' + content + '</div></div>';
     }
 }
+// 模块级：根据 gameState._worldModules 控制 logFeat-calendar / logFeat-author_note 元素显隐
+// 【P0 修复】原定义嵌套在 renderLogPage 内部，外层 typeof 检查永远返回 'undefined'，
+// 导致 renderWorldModules 三处调用永远不执行，日历/作者备注入口无法及时刷新。
+function updateLogFeatureVisibility() {
+    if (typeof gameState === 'undefined') return;
+    var mods = gameState._worldModules || [];
+    var hasCalendar = mods.some(function(m) { return m.type === 'calendar'; });
+    var hasAuthorNote = mods.some(function(m) { return m.type === 'author_note'; });
+    var calEl = document.getElementById('logFeat-calendar');
+    if (calEl) calEl.style.display = hasCalendar ? '' : 'none';
+    var anEl = document.getElementById('logFeat-author_note');
+    if (anEl) anEl.style.display = hasAuthorNote ? '' : 'none';
+}
 function renderWorldModules(modules) {
     modules = modules || [];
     // 增量更新：保留旧模块。
@@ -1160,15 +1173,6 @@ function renderLogPage() {
     // 渲染预设动态app入口
     _renderPresetApps();
 
-    function updateLogFeatureVisibility() {
-        var mods = gameState._worldModules || [];
-        var hasCalendar = mods.some(function(m) { return m.type === 'calendar'; });
-        var hasAuthorNote = mods.some(function(m) { return m.type === 'author_note'; });
-        var calEl = document.getElementById('logFeat-calendar');
-        if (calEl) calEl.style.display = hasCalendar ? '' : 'none';
-        var anEl = document.getElementById('logFeat-author_note');
-        if (anEl) anEl.style.display = hasAuthorNote ? '' : 'none';
-    }
     updateLogFeatureVisibility();
 
     // 近期记忆已迁移到记忆管理页面的"近期记忆"标签页
@@ -3598,7 +3602,7 @@ function showPresetAction(idx) {
     var preset = presets[idx];
     var nameEl = document.getElementById('presetActionName');
     var metaEl = document.getElementById('presetActionMeta');
-    var emojiEl = document.getElementById('presetActionEmoji');
+    var emojiEl = document.getElementById('presetActionIcon');
     if (nameEl) nameEl.textContent = preset.name;
     if (metaEl) metaEl.textContent = preset.time || '自定义预设';
     if (emojiEl) emojiEl.textContent = '包';

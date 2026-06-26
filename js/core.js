@@ -2370,57 +2370,60 @@ var GameTimeSystem = {
     },
 
     // 从AI回复的JSON中解析时间字段并更新gameTime
+    // 【P0修复BUG-006】时间写入唯一入口：原实现与 AIResponseMutator._applyGameTime 重复调用
+    // TimeMutator.setTime（同一份数据写入两次），且直接修改 gameState.gameTime 绕过 _syncLegacyMirror。
+    // 现统一由本方法解析时间（data.gameTime → story 兜底 → 默认时间），调用 setTime 仅一次，
+    // _syncLegacyMirror 自动将 StateManager.time 镜像到 gameState.gameTime，无需手动赋值。
     parseFromAI(data) {
         if (!gameState) return;
-        if (!gameState.gameTime) {
-            gameState.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
-        }
-        var gt = gameState.gameTime;
+        // 从权威源 StateManager.time 读取当前时间（_syncLegacyMirror 保证与 gameState.gameTime 一致）
+        var current = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? (StateManager.get('time') || {})
+            : (gameState.gameTime || {});
         // 记录初始时间，用于后续检测剧情回退
-        if (!gameState._initialGameTime && (gt.time || gt.period || gt.date)) {
-            gameState._initialGameTime = StateSchema.deepClone(gt);
+        if (!gameState._initialGameTime && (current.time || current.period || current.date)) {
+            gameState._initialGameTime = StateSchema.deepClone(current);
         }
+        // 解析目标时间：以当前时间为基底，叠加 AI 返回的字段
+        var resolved = {
+            date: current.date || '',
+            time: current.time || '',
+            period: current.period || '',
+            weather: current.weather || '',
+            era: current.era || ''
+        };
         // AI在JSON中返回 gameTime 字段
         if (data && data.gameTime) {
-            if (data.gameTime.date) gt.date = data.gameTime.date;
-            if (data.gameTime.time) gt.time = data.gameTime.time;
-            if (data.gameTime.period) gt.period = data.gameTime.period;
-            if (data.gameTime.weather) gt.weather = data.gameTime.weather;
-            if (data.gameTime.era) gt.era = data.gameTime.era;
+            if (data.gameTime.date) resolved.date = data.gameTime.date;
+            if (data.gameTime.time) resolved.time = data.gameTime.time;
+            if (data.gameTime.period) resolved.period = data.gameTime.period;
+            if (data.gameTime.weather) resolved.weather = data.gameTime.weather;
+            if (data.gameTime.era) resolved.era = data.gameTime.era;
         }
         // 兜底：没有gameTime或全部为空时，从story中提取
-        if ((!gt.date && !gt.time && !gt.period) && data && data.story) {
+        if ((!resolved.date && !resolved.time && !resolved.period) && data && data.story) {
             var extracted = this._extractTimeFromStory(data.story);
             if (extracted) {
-                if (extracted.date) gt.date = extracted.date;
-                if (extracted.time) gt.time = extracted.time;
-                if (extracted.period) gt.period = extracted.period;
+                if (extracted.date) resolved.date = extracted.date;
+                if (extracted.time) resolved.time = extracted.time;
+                if (extracted.period) resolved.period = extracted.period;
             }
         }
         // 【修复X10】data 为 null 时也要给默认时间，避免 UI 显示 "--"
-        // 旧代码在 data 为 null 时直接 return，导致 gameTime 一直为空
         // 最终兜底：游戏开局给一个默认时间，避免UI显示"--"
-        if (!gt.date && !gt.time && !gt.period) {
-            gt.date = '游戏开始';
-            gt.period = '初始时刻';
+        if (!resolved.date && !resolved.time && !resolved.period) {
+            resolved.date = '游戏开始';
+            resolved.period = '初始时刻';
         }
-        // 【状态层同步】将 gameTime 同步到 StateManager.time
-        if (StateManager && TimeMutator) {
-            TimeMutator.setTime({
-                date: gt.date,
-                time: gt.time,
-                period: gt.period,
-                weather: gt.weather,
-                era: gt.era
-            }, { silent: true });
-        } else if (StateManager) {
-            StateManager.set('time', {
-                date: gt.date,
-                time: gt.time,
-                period: gt.period,
-                weather: gt.weather,
-                era: gt.era
-            }, { silent: true });
+        // 【状态层同步】单一写入点：通过 TimeMutator.setTime 写入 StateManager.time
+        // _syncLegacyMirror 自动同步到 gameState.gameTime（无需手动赋值）
+        if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
+            TimeMutator.setTime(resolved, { silent: true });
+        } else if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('time', resolved, { silent: true });
+        } else {
+            // 兜底：StateManager 不可用时直接写 gameState.gameTime
+            gameState.gameTime = resolved;
         }
     },
 

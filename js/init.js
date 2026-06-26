@@ -100,9 +100,12 @@ async function initApp() {
         }
 
         // 隐藏加载指示器
+        // 【P0修复BUG-009】改用 .is-hidden 状态类触发 opacity 过渡（0.3s 淡出），
+        // 原 .hidden 类被 base.css .hidden{display:none!important} 覆盖，
+        // 导致淡出动画失效、元素立即消失。400ms 后从 DOM 移除（略长于 300ms 过渡）。
         const loadingEl = document.getElementById('appLoading');
         if (loadingEl) {
-            loadingEl.classList.add('hidden');
+            loadingEl.classList.add('is-hidden');
             TimerManager.setTimeout('hideLoading', () => { if (loadingEl.parentNode) loadingEl.remove(); }, 400);
         }
 

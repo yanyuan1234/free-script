@@ -3,13 +3,18 @@
 // ========================================
 const TimeMutator = {
     // 设置完整时间
+    // 【P0修复BUG-006】保留 weather/era 字段：原实现仅保留 date/time/period，
+    // 导致 GameTimeSystem.parseFromAI 通过 setTime 写入的 weather/era 被丢弃，
+    // gameState.gameTime 镜像后 weather/era 为空，UI 显示缺失天气/纪元信息。
     setTime(time, options) {
             const normalized = (!time || typeof time !== 'object')
-                ? { date: '', time: '', period: '' }
+                ? { date: '', time: '', period: '', weather: '', era: '' }
                 : {
                     date: String(time.date || '').trim(),
                     time: String(time.time || '').trim(),
-                    period: String(time.period || time.phase || '').trim()
+                    period: String(time.period || time.phase || '').trim(),
+                    weather: String(time.weather || '').trim(),
+                    era: String(time.era || '').trim()
                 };
             // 【修复BUG-06】时间单调性校验：若新时间早于当前时间，拒绝更新
             // 防止 AI 返回不一致时间导致剧情时间倒流（如 R5 09:30→08:45）
