@@ -2,16 +2,14 @@
 // 任务系统 - Quest System
 // ========================================
 var QuestSystem = {
-    STATUS: {
-        ACTIVE: '进行中',
-        COMPLETED: '已完成',
-        FAILED: '已失败',
-        ABANDONED: '已放弃'
+    // 【P2-阶段3-20】常量改引用 QuestMutator（权威 schema 源），避免重复定义
+    // QuestMutator 在 systems.js 之前加载（见 index.html），故可安全引用；
+    // typeof 守卫仅在 QuestMutator 缺失的边缘场景（如 legacy 单元测试）下回退到字面量
+    STATUS: (typeof QuestMutator !== 'undefined') ? QuestMutator.STATUS : {
+        ACTIVE: '进行中', COMPLETED: '已完成', FAILED: '已失败', ABANDONED: '已放弃'
     },
-    TYPE: {
-        MAIN: '主线',
-        SIDE: '支线',
-        HIDDEN: '隐藏'
+    TYPE: (typeof QuestMutator !== 'undefined') ? QuestMutator.TYPE : {
+        MAIN: '主线', SIDE: '支线', HIDDEN: '隐藏'
     },
     // 【P2清理】删除动态类型注册系统（registerType / registerStatus / getAllTypes / getAllStatuses）—— 全项目零调用，动态类型从未被注册
     getAllQuests() {

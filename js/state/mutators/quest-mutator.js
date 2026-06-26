@@ -25,6 +25,7 @@ const QuestMutator = {
         'done': '已完成',
         'finished': '已完成',
         'success': '已完成',
+        'resolved': '已完成',
         'failed': '已失败',
         'failure': '已失败',
         'fail': '已失败',
