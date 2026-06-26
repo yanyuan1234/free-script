@@ -202,9 +202,9 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         if (_forumMemText) sysMsg += '【剧情记忆】\n' + _forumMemText + '\n\n';
     }
     // 注入世界书（让NPC知道世界设定）
-    // 【P1性能优化】优先使用本轮已缓存的世界书扫描结果
-    if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-        var _forumWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
+    // 【P1修复BUG-011-世界书入口】删除 `: WorldInfo.buildInjection(...)` 兜底分支
+    if (typeof getWorldInfoInjection === 'function') {
+        var _forumWI = getWorldInfoInjection();
         var _forumWIText = isObject(_forumWI) ? (_forumWI.text || '') : (_forumWI || '');
         if (_forumWIText) sysMsg += '【世界知识】\n' + _forumWIText + '\n\n';
     }
@@ -290,8 +290,9 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         if (_spawnMemText) sysMsg += '【剧情记忆】\n' + _spawnMemText + '\n\n';
     }
     // 注入世界书（让新帖符合世界设定——P1 修复：跨帖生成前漏注世界书）
-    if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-        var _spawnWI = WorldInfo.buildInjection(gameState.conversationHistory || []);
+    // 【P1修复BUG-011-世界书入口】删除直调 WorldInfo.buildInjection，统一走 getWorldInfoInjection
+    if (typeof getWorldInfoInjection === 'function') {
+        var _spawnWI = getWorldInfoInjection();
         var _spawnWIText = isObject(_spawnWI) ? (_spawnWI.text || '') : (_spawnWI || '');
         if (_spawnWIText) sysMsg += '【世界知识】\n' + _spawnWIText + '\n\n';
     }
@@ -4603,9 +4604,9 @@ async function _generateEndingRender(stories) {
             if (_endingMemText) prompt += '【剧情记忆】\n' + _endingMemText + '\n\n';
         }
         // 注入世界书（让结局风格符合世界设定——P1 修复：结局生成前漏注世界书）
-        // 【P1性能优化】优先使用本轮已缓存的世界书扫描结果
-        if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-            var _endingWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
+        // 【P1修复BUG-011-世界书入口】删除 `: WorldInfo.buildInjection(...)` 兜底分支
+        if (typeof getWorldInfoInjection === 'function') {
+            var _endingWI = getWorldInfoInjection();
             var _endingWIText = isObject(_endingWI) ? (_endingWI.text || '') : (_endingWI || '');
             if (_endingWIText) prompt += '【世界知识】\n' + _endingWIText + '\n\n';
         }

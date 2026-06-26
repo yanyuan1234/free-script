@@ -573,19 +573,12 @@ function buildSystemPrompt(includeFormatRules) {
         return prompt;
     }
 
-    // 兜底：原函数简化保留（PromptBuilder 不可用时）
-    var _legacyParts = [
-        '你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。',
-        _setupText,
-        _narrativeEnhancement,
-        _protagonist,
-        _memoryText ? '【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText : '',
-        _chatContextText,
-        _termsPrompt,
-        _formatAnchor,
-        _formatRules
-    ];
-    return _legacyParts.filter(Boolean).join('\n\n');
+    // 【P1修复BUG-011-prompt构建】删除 legacy 双路径：PromptBuilder 已稳定接入
+    // （index.html:2806 通过 defer 加载，DOMContentLoaded 后保证可用；sendAIRequest
+    // 仅在初始化完成后被调用）。此处仅保留极简兜底：万一 PromptBuilder 缺失，
+    // 直接抛错而非用另一套拼装逻辑污染双路径（旧兜底使用 _legacyParts 9 段拼装，
+    // 与 PromptBuilder 的 section 注册机制并行，难以维护且会产出不同 prompt 形态）。
+    throw new Error('[buildSystemPrompt] PromptBuilder 未加载，请检查 js/ai-contract/prompt-builder.js');
 }
 
 // 格式锚点（硬性要求，始终存在）
@@ -1915,10 +1908,12 @@ async function sendAIRequest(userMessage, isInit = false) {
             var _preGameTime = StateManager ? StateManager.get('progress.preAIState.gameTime') : (gameState && gameState._preAIState && gameState._preAIState.gameTime);
             if (_aiTitleReset && _preGameTime) {
                 var restoredTime = StateSchema.deepClone(_preGameTime);
+                // 【P1修复P1-I】删除直接写 gameState.gameTime 的兜底分支：该分支绕过
+                // TimeMutator 单调性校验。StateManager/TimeMutator 是必加载层，不可用时抛错。
                 if (StateManager && TimeMutator) {
                     TimeMutator.setTime(restoredTime, { silent: true });
                 } else {
-                    gameState.gameTime = restoredTime;
+                    throw new Error('[时间防御] TimeMutator/StateManager 未加载，无法回退时间');
                 }
                 console.warn('[时间防御] AI 标题疑似回退，已沿用上一回合时间:', restoredTime);
             } else {
@@ -1969,31 +1964,28 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         if (data) {
             // === 货币系统 ===
-            if (gameState) {
-                // 【数据断层修复】通过 StateManager 写入，确保新旧路径同步
+            // 【P1修复BUG-011-货币写入】统一走 StateManager.set('entities.currency'/'entities.currencyName')
+            // 原代码三条路径并存：① StateManager 可用走 set；② 不可用走 gameState.currency 直写；
+            // ③ 故事文本兜底提取 reconcileFromStory 后又走 set + gameState.currency 双写。
+            // 现统一为：所有写入走 StateManager.set，由 _syncLegacyMirror 自动同步到 gameState.currency。
+            // StateManager 在 StateManager.init 后始终可用（init.js:25 在 DOMContentLoaded 早期调用），
+            // 此处仅作最小防御：StateManager 缺失时抛错而非静默双写。
+            if (gameState && (data.currency !== undefined || data.currencyName)) {
+                if (typeof StateManager === 'undefined' || !StateManager.set) {
+                    throw new Error('[货币] StateManager 未加载，无法写入');
+                }
                 if (data.currency !== undefined) {
-                    if (typeof StateManager !== 'undefined') {
-                        StateManager.set('entities.currency', Number(data.currency) || 0, { silent: true });
-                    } else {
-                        gameState.currency = data.currency;
-                    }
+                    StateManager.set('entities.currency', Number(data.currency) || 0, { silent: true });
                 }
                 if (data.currencyName) {
-                    if (typeof StateManager !== 'undefined') {
-                        StateManager.set('entities.currencyName', data.currencyName, { silent: true });
-                    } else {
-                        gameState.currencyName = data.currencyName;
-                    }
+                    StateManager.set('entities.currencyName', data.currencyName, { silent: true });
                 }
                 // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
                 if (storyText && typeof storyText === 'string') {
-                    var currentBalance = parseFloat(gameState.currency || gameState.money || gameState.coins || (typeof StateManager !== 'undefined' ? StateManager.get('entities.currency') : 0) || 0) || 0;
+                    var currentBalance = parseFloat(StateManager.get('entities.currency') || gameState.money || gameState.coins || 0) || 0;
                     var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
                     if (recon.changed) {
-                        if (typeof StateManager !== 'undefined') {
-                            StateManager.set('entities.currency', recon.balance, { silent: true });
-                        }
-                        gameState.currency = recon.balance; // 兜底直接写
+                        StateManager.set('entities.currency', recon.balance, { silent: true });
                         console.log('[货币兜底] 从故事文本提取金额:', recon.balance, recon.changes);
                     }
                 }
@@ -2169,28 +2161,13 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
         }
-        // 兜底选项
-        if (!data || !data.choices) {
-            if (gameState && gameState.generateChoices !== false) {
-                var rescuedChoices = extractObjArr(response, 'choices') || extractArr(response,
-                    'choices');
-                if (rescuedChoices && rescuedChoices.length > 0) {
-                    renderChoices(rescuedChoices);
-                } else {
-                    renderChoices([{
-                        id: 'A',
-                        text: '继续'
-                    }, {
-                        id: 'B',
-                        text: '换个方向'
-                    }, {
-                        id: 'C',
-                        text: '停下来思考'
-                    }]);
-                }
-            } else {
-                renderChoices([]);
-            }
+        // 【P1修复BUG-011-选项路径】删除路径 3、4（重复兜底）
+        // 上方 1941 行已实现智能兜底：data.choices 为空时调 _generateAutoChoices(storyText)
+        // 若 _generateAutoChoices 也失败（autoChoices.length===0），说明 storyText 不可推断选项，
+        // 此时直接渲染空选项让玩家通过自定义输入框行动（项目本就支持自定义输入），
+        // 不再走"再次从 response 正则提取 + 硬编码三选项"双重兜底，避免 AI 重复学习硬编码套路。
+        if ((!data || !data.choices) && gameState && gameState.generateChoices === false) {
+            renderChoices([]);
         }
         // 存历史（存储清理后的story文本，减少token浪费）
         // 【修复P1-3】JSON模式下原存纯文本 storyText，导致历史里 assistant 消息全是纯文本。
@@ -2509,23 +2486,11 @@ function _parseStructuredSummary(summary) {
             if (parts.length >= 2) {
                 var name = parts[0].trim();
                 var change = parts[1].trim();
-                if (!EnhancedMemory.longTermMemory.characterTable[name]) {
-                    EnhancedMemory.longTermMemory.characterTable[name] = {
-                        name: name,
-                        firstAppearance: Date.now(),
-                        changes: [],
-                        gameTime: typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : '',
-                        accessCount: 0,
-                        lastChangedTurn: typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : 0
-                    };
+                // 【P1修复BUG-011-longTermMemory只读快照】改用 GameMemory.recordCharacterChange API
+                // 原 longTermMemory.characterTable[name] 直接写入已失效（getter 返回深拷贝快照）
+                if (typeof EnhancedMemory.recordCharacterChange === 'function') {
+                    EnhancedMemory.recordCharacterChange(name, change);
                 }
-                EnhancedMemory.longTermMemory.characterTable[name].lastUpdate = Date.now();
-                EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn = typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : (EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn || 0);
-                EnhancedMemory.longTermMemory.characterTable[name].gameTime = typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : (EnhancedMemory.longTermMemory.characterTable[name].gameTime || '');
-                EnhancedMemory.longTermMemory.characterTable[name].changes.push({
-                    time: Date.now(),
-                    change: change
-                });
             }
         });
     }
@@ -2568,12 +2533,11 @@ function _extractAndStoreImportantInfo(message) {
         if (match) {
             var name = (match[1] || match[2]).replace(/[首次登场出现走进来到新角色新人物：:]/g, '').trim();
             if (name.length >= 2 && name.length <= 10) {
-                if (!EnhancedMemory.longTermMemory.characterTable[name]) {
-                    EnhancedMemory.longTermMemory.characterTable[name] = { name: name, firstAppearance: Date.now(), changes: [], gameTime: typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : '', accessCount: 0, lastChangedTurn: typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : 0 };
+                // 【P1修复BUG-011-longTermMemory只读快照】改用 GameMemory.recordCharacterChange API
+                // 旧代码直接 longTermMemory.characterTable[name] = {...} 已失效（getter 返回深拷贝快照）
+                if (typeof EnhancedMemory.recordCharacterChange === 'function') {
+                    EnhancedMemory.recordCharacterChange(name, null);
                 }
-                EnhancedMemory.longTermMemory.characterTable[name].lastUpdate = Date.now();
-                EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn = typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : (EnhancedMemory.longTermMemory.characterTable[name].lastChangedTurn || 0);
-                EnhancedMemory.longTermMemory.characterTable[name].gameTime = typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : (EnhancedMemory.longTermMemory.characterTable[name].gameTime || '');
             }
         }
     });
@@ -2582,8 +2546,11 @@ function _extractAndStoreImportantInfo(message) {
         var match = content.match(pattern);
         if (match) {
             var item = match[2].trim();
-            if (item.length >= 2 && !EnhancedMemory.longTermMemory.itemTable[item]) {
-                EnhancedMemory.longTermMemory.itemTable[item] = { name: item, obtainedTime: Date.now(), desc: '玩家持有', gameTime: typeof EnhancedMemory.getGameTimeStr === 'function' ? EnhancedMemory.getGameTimeStr() : '', accessCount: 0, lastChangedTurn: typeof EnhancedMemory.currentTurn === 'number' ? EnhancedMemory.currentTurn : 0 };
+            if (item.length >= 2) {
+                // 【P1修复BUG-011-longTermMemory只读快照】改用 GameMemory.recordItemObtained API
+                if (typeof EnhancedMemory.recordItemObtained === 'function') {
+                    EnhancedMemory.recordItemObtained(item, '玩家持有');
+                }
             }
         }
     });
@@ -3865,9 +3832,11 @@ async function requestNpcReply(playerText) {
             }
         }
         // 注入世界书（让NPC知道世界设定细节）
-        // 【P1性能优化】走统一入口，本轮内复用主路径的扫描结果
-        if (typeof WorldInfo !== 'undefined' && WorldInfo.buildInjection) {
-            var _npcWI = (typeof getWorldInfoInjection === 'function') ? getWorldInfoInjection() : WorldInfo.buildInjection(gameState.conversationHistory || []);
+        // 【P1修复BUG-011-世界书入口】删除 `: WorldInfo.buildInjection(...)` 兜底分支：
+        // getWorldInfoInjection() 已是统一入口（game.js:204-223），内部自带缓存 + 异常保护，
+        // 走旧 WorldInfo.buildInjection 直调会绕过本轮缓存，产生重复扫描。
+        if (typeof getWorldInfoInjection === 'function') {
+            var _npcWI = getWorldInfoInjection();
             var _npcWIText = (isObject(_npcWI)) ? (_npcWI.text || '') : (_npcWI || '');
             if (_npcWIText) {
                 systemMsg += '\n【世界知识】\n' + _npcWIText + '\n';

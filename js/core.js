@@ -139,6 +139,8 @@ function _syncItemsToBag() {
 // 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式) + StateManager
 // 【全量修复】此函数是 quests 写入的同步点之一：
 // 由它统一更新 gameState.currentQuests 旧字段 + StateManager.set('entities.quests') 新状态层
+// 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
+// 无需 title↔content 别名映射，直接透传 title/type/status/progress/hint
 function _syncQuestsToGameState() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
@@ -146,7 +148,7 @@ function _syncQuestsToGameState() {
     if (!Array.isArray(gm.quests)) return;
     var arr = gm.quests.map(function(q) {
         return {
-            title: q.content || '',
+            title: q.title || '',
             type: q.type || 'quest',
             status: q.status || 'pending',
             progress: q.progress || '',
@@ -272,6 +274,8 @@ function _pushCurrentBagToGM() {
 }
 
 // 把 gameState.currentQuests 反向推送到 gm.quests
+// 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
+// 无需 title↔content 别名映射，直接用 title 作为去重键
 function _pushCurrentQuestsToGM() {
     if (typeof gameState === 'undefined' || !gameState) return;
     if (typeof window === 'undefined' || !window.GameMemory) return;
@@ -279,12 +283,12 @@ function _pushCurrentQuestsToGM() {
     if (!Array.isArray(gm.quests)) gm.quests = [];
     if (!Array.isArray(gameState.currentQuests)) return;
     var titleMap = {};
-    gm.quests.forEach(function(q) { if (q && q.content) titleMap[q.content] = q; });
+    gm.quests.forEach(function(q) { if (q && q.title) titleMap[q.title] = q; });
     gameState.currentQuests.forEach(function(cq) {
         if (!cq || !cq.title) return;
         var gq = titleMap[cq.title];
         if (!gq) {
-            gq = { content: cq.title, type: cq.type || 'quest', status: 'pending', createdTurn: gm.currentTurn || 0, resolvedTurn: 0 };
+            gq = { title: cq.title, type: cq.type || 'quest', status: 'pending', createdTurn: gm.currentTurn || 0, resolvedTurn: 0 };
             gm.quests.push(gq);
             titleMap[cq.title] = gq;
         }
@@ -2417,13 +2421,15 @@ var GameTimeSystem = {
         }
         // 【状态层同步】单一写入点：通过 TimeMutator.setTime 写入 StateManager.time
         // _syncLegacyMirror 自动同步到 gameState.gameTime（无需手动赋值）
+        // 【P1修复P1-I】删除直接写 gameState.gameTime 的兜底分支：该分支绕过
+        // TimeMutator 的单调性校验（time 不允许倒退），与 5.7 时间单调性契约冲突。
+        // StateManager/TimeMutator 是必加载的状态层，不可用时应抛错而非静默写入。
         if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
             TimeMutator.setTime(resolved, { silent: true });
         } else if (typeof StateManager !== 'undefined' && StateManager.set) {
             StateManager.set('time', resolved, { silent: true });
         } else {
-            // 兜底：StateManager 不可用时直接写 gameState.gameTime
-            gameState.gameTime = resolved;
+            throw new Error('[GameTimeSystem.parseFromAI] TimeMutator/StateManager 未加载，无法写入时间');
         }
     },
 
@@ -2694,18 +2700,14 @@ function _applyMemsToGameState(mems) {
                 case 'event':
                     if (mem.action === 'add' && mem._content) {
                         // 【阶段1-A2】统一通过 gm.addImportantEvent 写入事件
-                        // 旧代码直接 push 到 gameState.keyEvents（字符串数组），绕过了 gm.events，
-                        // 导致 EnhancedMemory 记忆注入看不到 <mem> 添加的事件
+                        // 【P1修复BUG-011-legacy兜底】删除 gm 不可用时直接写 keyEvents 的兜底分支：
+                        // GameMemory 在 tavern-compat.js 顶部初始化（window.GameMemory = new EnhancedMemory(...)），
+                        // defer 加载后必然可用。如真不可用应抛错暴露问题而非静默写入数据孤岛。
                         var _gm = (typeof window !== 'undefined') ? window.GameMemory : null;
                         if (_gm && _gm.addImportantEvent) {
                             _gm.addImportantEvent(mem._content);
-                        } else if (typeof gameState !== 'undefined' && gameState) {
-                            // 兜底：gm 不可用时直接写 keyEvents
-                            if (!gameState.keyEvents) gameState.keyEvents = [];
-                            if (gameState.keyEvents.indexOf(mem._content) === -1) {
-                                gameState.keyEvents.push(mem._content);
-                                if (gameState.keyEvents.length > 20) gameState.keyEvents.shift();
-                            }
+                        } else {
+                            throw new Error('[<mem> event] GameMemory 未加载，无法写入事件');
                         }
                     }
                     break;
@@ -2733,52 +2735,32 @@ function _applyMemsToGameState(mems) {
                     break;
                 case 'character':
                     // 【阶段1统一】<mem> 标签角色变更委托 CharacterMutator
-                    // 替代原直接操作 gameState.allCharacters[name]（绕过 StateManager 导致不同步）
-                    if (typeof CharacterMutator !== 'undefined') {
-                        var _memName = mem.name;
-                        var _existing = CharacterMutator.getCharacter(_memName);
-                        if (_existing) {
-                            if (mem.field && mem.value !== undefined) {
-                                var _numVal = parseFloat(mem.value);
-                                var _fieldVal = !isNaN(_numVal) ? _numVal : mem.value;
-                                CharacterMutator.updateCharacter(_memName, function(c) {
-                                    c[mem.field] = _fieldVal;
-                                    return c;
-                                });
-                            }
-                        } else if (_memName) {
-                            // 新角色
-                            var _newCh = { name: _memName };
-                            if (mem.field && mem.value !== undefined) {
-                                var _nv = parseFloat(mem.value);
-                                _newCh[mem.field] = !isNaN(_nv) ? _nv : mem.value;
-                            }
-                            CharacterMutator.mergeCharacters([_newCh]);
+                    // 【P1修复BUG-011-legacy兜底】删除 CharacterMutator 不可用时回退旧逻辑的兜底分支：
+                    // CharacterMutator 在 js/state/mutators/character-mutator.js 中定义，defer 加载后必然可用。
+                    // 旧兜底直接写 gameState.allCharacters 会绕过 _syncLegacyMirror，导致 StateManager.entities.characters
+                    // 与 gameState.allCharacters 不一致（数据断层）。现统一委托 CharacterMutator，缺失即抛错。
+                    if (typeof CharacterMutator === 'undefined') {
+                        throw new Error('[<mem> character] CharacterMutator 未加载，无法写入角色');
+                    }
+                    var _memName = mem.name;
+                    var _existing = CharacterMutator.getCharacter(_memName);
+                    if (_existing) {
+                        if (mem.field && mem.value !== undefined) {
+                            var _numVal = parseFloat(mem.value);
+                            var _fieldVal = !isNaN(_numVal) ? _numVal : mem.value;
+                            CharacterMutator.updateCharacter(_memName, function(c) {
+                                c[mem.field] = _fieldVal;
+                                return c;
+                            });
                         }
-                    } else {
-                        // 兜底：CharacterMutator 不可用时回退旧逻辑
-                        if (!gameState.allCharacters) {
-                            if (typeof GameMemory !== 'undefined' && GameMemory.tables && GameMemory.tables.characters) {
-                                gameState.allCharacters = GameMemory.tables.characters;
-                            } else {
-                                gameState.allCharacters = {};
-                            }
+                    } else if (_memName) {
+                        // 新角色
+                        var _newCh = { name: _memName };
+                        if (mem.field && mem.value !== undefined) {
+                            var _nv = parseFloat(mem.value);
+                            _newCh[mem.field] = !isNaN(_nv) ? _nv : mem.value;
                         }
-                        var ch = gameState.allCharacters[mem.name];
-                        if (ch) {
-                            if (mem.field && mem.value !== undefined) {
-                                var numVal = parseFloat(mem.value);
-                                if (!isNaN(numVal)) {
-                                    ch[mem.field] = numVal;
-                                } else {
-                                    ch[mem.field] = mem.value;
-                                }
-                            }
-                        } else if (mem.name) {
-                            var newCh = { name: mem.name };
-                            if (mem.field && mem.value !== undefined) newCh[mem.field] = mem.value;
-                            gameState.allCharacters[mem.name] = newCh;
-                        }
+                        CharacterMutator.mergeCharacters([_newCh]);
                     }
                     break;
                 case 'quest':
@@ -2801,9 +2783,19 @@ function _applyMemsToGameState(mems) {
                     break;
                 case 'time':
                     // 【修复 P1】写入 gameTime.date（StateSchema 标准字段），而非 gameTime.day（非标准，UI 读不到）
-                    if (!gameState.gameTime) gameState.gameTime = { date: '', time: '', period: '' };
-                    if (mem.day) gameState.gameTime.date = mem.day;
-                    if (mem.period) gameState.gameTime.period = mem.period;
+                    // 【P1修复BUG-011-时间】改为通过 TimeMutator.setTime 写入，由 _syncLegacyMirror 同步到 gameTime，
+                    // 避免直接改 gameState.gameTime 绕过时间单调性校验（详见 5.7 时间单调性校验被绕过）。
+                    // 【P1修复P1-I】删除 else 分支直接写 gameState.gameTime：该分支绕过单调性校验，
+                    // 与 P1-I 时间契约冲突。TimeMutator 是必加载层，不可用时抛错。
+                    if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
+                        var _timeMem = {};
+                        if (mem.day) _timeMem.date = mem.day;
+                        if (mem.period) _timeMem.period = mem.period;
+                        if (mem.time) _timeMem.time = mem.time;
+                        TimeMutator.setTime(_timeMem, { silent: true });
+                    } else {
+                        throw new Error('[<mem> time] TimeMutator 未加载，无法写入时间');
+                    }
                     break;
                 case 'location':
                     // 【C1修复】直接写 StateManager.entities.locations，不再操作 gameState.world（数据孤岛）
@@ -2822,21 +2814,11 @@ function _applyMemsToGameState(mems) {
             console.warn('[<mem>应用失败]', mem, e.message);
         }
     });
-    // 【C1修复】反向同步清理：item/quest/location 分支已委托 mutator / 直接写 StateManager，
-    // 不再需要从 gameState.bag/quests/world 反向同步。仅保留：
-    // 1. characters 兜底分支（CharacterMutator 不可用时）的反向同步
-    // 2. time 分支的反向同步（gameTime 写入是 time 标准字段，需同步到 StateManager.time）
-    if (typeof StateManager !== 'undefined') {
-        try {
-            // characters 仅在兜底分支（CharacterMutator 不可用）时需要反向同步
-            if (typeof CharacterMutator === 'undefined' && gameState.allCharacters) {
-                StateManager.set('entities.characters', Object.values(gameState.allCharacters), { silent: true });
-            }
-            // 【阶段1-A2】keyEvents 不再直接写 StateManager——<mem> 事件已走 gm.addImportantEvent
-            // 统一入口，由 _syncEventsToKeyEvents 写入对象数组到 StateManager.entities.events。
-            if (gameState.gameTime) StateManager.set('time', gameState.gameTime, { silent: true });
-        } catch (e) { console.warn('[<mem>同步 StateManager 失败]', e.message); }
-    }
+    // 【C1修复】反向同步清理：item/quest/location/character/time 分支均已委托 mutator / 直接写 StateManager，
+    // 不再需要任何反向同步。原代码保留的反向同步逻辑（characters 兜底分支 + time 分支）随 P1 修复
+    // 删除 CharacterMutator/time 兜底分支后已无存在必要。
+    // - characters: CharacterMutator 不可用时已抛错而非走兜底，无需反向同步
+    // - time: 已改走 TimeMutator.setTime，由 mutator 内部写 StateManager.time，无需此处二次同步
 }
 
 function parseAIResponse(reply) {

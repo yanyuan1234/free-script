@@ -4,7 +4,8 @@ var TavernHelperCompat = {
     _scripts: [],
     _quickReplies: [],
     _eventListeners: {},
-    _presetConfig: null,
+    // 【P1修复P1-L】删除 _presetConfig 字段：仅由 _loadPresetConfigs 写入、由 getPresetConfig
+    // 读取，但 getPresetConfig 全项目零外部调用，构成死字段。
     // 【修复B P2-1】控制流命令收集模式
     _collectingMode: null,  // null | 'while' | 'foreach'
     
@@ -757,7 +758,7 @@ loadFromPreset: function(presetData) {
 
 _loadPresetConfigs: function(presets) {
     if(!presets||!presets.default) return;
-    this._presetConfig = presets.default;
+    // 【P1修复P1-L】删除 this._presetConfig = presets.default 赋值：死字段（无外部读取点）
     if(presets.default.commands){
         var self=this;
         Object.keys(presets.default.commands).forEach(function(cmdName){
@@ -794,10 +795,11 @@ _loadPresetConfigs: function(presets) {
             }
         }
     }
-},
-
-getPresetConfig: function() { return this._presetConfig||{}; }
+}
 };
+
+// 【P1修复P1-L】删除 getPresetConfig 方法：返回 _presetConfig，但 _presetConfig 已删除
+// （死字段清理的连锁：_presetConfig 无写入点后，getPresetConfig 也无意义）
 
 // 全局暴露（酒馆脚本需要）
 window.getContext = function(){return TavernHelperCompat.getContext();};
@@ -874,7 +876,9 @@ TavernHelperCompat.init();
 
 var GameMemory = {
 
-    version: 3,
+    // 【P1修复P1-M】版本升至 v4：quests 条目 content 字段重命名为 title，
+    // 与 QuestMutator schema 对齐，消除 core.js 内 title↔content 别名映射
+    version: 4,
     currentTurn: 0,
     // 【P0修复】longTermMemory getter 缓存：原 getter 每次访问都重建 worldAnchors 数组
     // （遍历 permanentFacts 全量映射）+ defineProperty(masterSummary)，单次 _parseStructuredSummary
@@ -992,7 +996,7 @@ var GameMemory = {
             }
         });
         (self.quests || []).forEach(function(q, idx) {
-            var key = q.content || ('quest_' + idx);
+            var key = q.title || ('quest_' + idx);
             if (!self._dormantTracking.quests[key]) {
                 self._dormantTracking.quests[key] = {
                     status: q.status === 'pending' ? 'active' : 'dormant',
@@ -1074,7 +1078,8 @@ var GameMemory = {
             self.timeline = ltm.timeline.map(function(t) { return { turn: t.turn || 0, gameTime: t.relativeTime || '', summary: t.title || '' }; });
         }
         if (ltm.activeQuests && ltm.activeQuests.length > 0) {
-            self.quests = ltm.activeQuests.map(function(q) { return { content: q.content || '', type: q.type || 'promise', status: q.status || 'pending', createdTurn: q.createdTurn || 0, resolvedTurn: q.resolvedAt ? turn : 0, stale: q.stale || false }; });
+            // 【P1修复P1-M】写入 title 字段（与 QuestMutator schema 对齐），兼容旧数据 content
+            self.quests = ltm.activeQuests.map(function(q) { return { title: q.content || q.title || '', type: q.type || 'promise', status: q.status || 'pending', createdTurn: q.createdTurn || 0, resolvedTurn: q.resolvedAt ? turn : 0, stale: q.stale || false }; });
         }
         if (ltm.worldSetting) self.plot.worldSetting = ltm.worldSetting;
         if (old.stats) self.stats = { totalMessages: old.stats.totalMessages || 0, totalSummaries: old.stats.totalSummaries || 0, lastUpdateTime: old.stats.lastUpdateTime || null, tokenSaved: old.stats.tokenSaved || 0 };
@@ -1138,7 +1143,7 @@ var GameMemory = {
                 self.addImportantEvent({ content: innerContent, importance: 7, source: 'ai_edit' });
                 edit.content = innerContent;
             } else if (type === 'quest') {
-                if (action === 'add' && innerContent) { self.addQuest({ content: innerContent, type: 'quest', status: 'pending' }); edit.content = innerContent; }
+                if (action === 'add' && innerContent) { self.addQuest({ title: innerContent, type: 'quest', status: 'pending' }); edit.content = innerContent; }
                 else if (action === 'resolve' && innerContent) { self.resolveQuest(innerContent, 'resolved'); edit.content = innerContent; }
             } else if (type === 'time') {
                 if (attrs.day) self.gameClock.day = parseInt(attrs.day) || self.gameClock.day;
@@ -1443,7 +1448,7 @@ var GameMemory = {
 
         // 更新任务休眠状态
         (self.quests || []).forEach(function(q) {
-            var key = q.content || q.id || '';
+            var key = q.title || q.id || '';
             if (!key) return;
             var track = self._dormantTracking.quests[key];
             if (!track) {
@@ -2351,8 +2356,8 @@ var GameMemory = {
         var dormantQuests = [];
 
         self.quests.forEach(function(q) {
-            if (!q || !q.content) return;
-            var track = self._dormantTracking && self._dormantTracking.quests ? self._dormantTracking.quests[q.content] : null;
+            if (!q || !q.title) return;
+            var track = self._dormantTracking && self._dormantTracking.quests ? self._dormantTracking.quests[q.title] : null;
             var status = track ? track.status : 'active';
 
             if (q.status !== 'pending') {
@@ -2373,7 +2378,7 @@ var GameMemory = {
         if (activeQuests.length > 0) {
             lines.push('【活跃约定（近期提及）】');
             activeQuests.forEach(function(q) {
-                lines.push('• ' + q.content);
+                lines.push('• ' + q.title);
             });
         }
 
@@ -2381,7 +2386,7 @@ var GameMemory = {
         if (linkedQuests.length > 0) {
             lines.push('【待办约定（一段时间未推进）】');
             linkedQuests.forEach(function(q) {
-                lines.push('• ' + q.content);
+                lines.push('• ' + q.title);
             });
         }
 
@@ -2389,7 +2394,7 @@ var GameMemory = {
         if (dormantQuests.length > 0) {
             lines.push('【休眠约定（长期未推进，AI可考虑发展或放弃）】');
             dormantQuests.forEach(function(q) {
-                lines.push('• ' + q.content);
+                lines.push('• ' + q.title);
             });
         }
 
@@ -2677,7 +2682,7 @@ var GameMemory = {
             lines.push('【任务推进建议】');
             lines.push('以下约定/任务已长期未推进，建议AI设计剧情推动进展或给出放弃理由：');
             dormantQuests.forEach(function(q) {
-                lines.push('• ' + q.content + '（已休眠' + q.rounds + '回合）');
+                lines.push('• ' + q.title + '（已休眠' + q.rounds + '回合）');
             });
         }
 
@@ -3151,9 +3156,11 @@ var GameMemory = {
         return created;
     },
 
+    // 【P1修复P1-M】任务 schema 统一为 QuestMutator 版本：以 title 为身份字段
+    // （原 content 字段已废弃，旧存档由 _migrateDataToV3 重命名）
     addQuest: function(quest) {
-        if (!quest || !quest.content) return null;
-        if (this.quests.some(function(q) { return q && q.content === quest.content && q.status === 'pending'; })) return null;
+        if (!quest || !quest.title) return null;
+        if (this.quests.some(function(q) { return q && q.title === quest.title && q.status === 'pending'; })) return null;
         if (!quest.createdTurn) quest.createdTurn = this.currentTurn;
         if (!quest.status) quest.status = 'pending';
         if (!quest.type) quest.type = 'promise';
@@ -3165,7 +3172,7 @@ var GameMemory = {
 
     resolveQuest: function(contentFragment, newStatus) {
         var self = this; var count = 0;
-        self.quests.forEach(function(q) { if (q.status === 'pending' && q.content.indexOf(contentFragment) >= 0) { q.status = newStatus || 'resolved'; q.resolvedTurn = self.currentTurn; count++; } });
+        self.quests.forEach(function(q) { if (q.status === 'pending' && q.title.indexOf(contentFragment) >= 0) { q.status = newStatus || 'resolved'; q.resolvedTurn = self.currentTurn; count++; } });
         return count;
     },
 
@@ -3197,7 +3204,7 @@ var GameMemory = {
         self.extractPromisesFromText(content).forEach(function(p) {
             var anchor = self.addWorldAnchor('promise', p.content, message.role === 'user' ? 'player' : 'ai', self.currentTurn);
             if (anchor) registered.push(anchor);
-            var quest = self.addQuest({ type: 'promise', content: p.content, status: 'pending' });
+            var quest = self.addQuest({ type: 'promise', title: p.content, status: 'pending' });
             if (quest) registered.push(quest);
         });
         return registered;
@@ -3451,11 +3458,12 @@ var GameMemory = {
     loadFromStorage: function() {
         var self = this; var data = null;
         try { data = Storage.getJSON(Storage.KEYS.MEMORY, null); } catch(e) { data = null; }
-        // 【修复 P0-6】链式迁移：支持 v1/v2/v3 → 当前 v3，旧版本不再静默丢弃
+        // 【修复 P0-6】链式迁移：支持 v1/v2/v3/v4 → 当前 v4，旧版本不再静默丢弃
         // 旧代码 `if (!data || data.version !== 3) return false;` 会让 v2 数据被静默丢弃
+        // 【P1修复P1-M】版本升至 v4：quests 条目 content 字段重命名为 title
         if (!data) return false;
-        if (data.version !== 3) {
-            console.warn('[GameMemory] 检测到旧版本数据 v' + data.version + '，开始迁移到 v3');
+        if (data.version !== 4) {
+            console.warn('[GameMemory] 检测到旧版本数据 v' + data.version + '，开始迁移到 v4');
             // 备份原始数据，防止迁移失败导致数据丢失
             try {
                 Storage.setJSON(Storage.KEYS.MEMORY + '_backup_v' + (data.version || 0), data);
@@ -3473,7 +3481,7 @@ var GameMemory = {
             // 迁移成功后立即保存为新版本
             // 【I修复】移除冗余 try/catch：简单属性赋值无抛错可能
             this._migratedData = data;
-            console.log('[GameMemory] 迁移到 v3 完成');
+            console.log('[GameMemory] 迁移到 v4 完成');
         }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
         var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
@@ -3500,12 +3508,15 @@ var GameMemory = {
         return true;
     },
 
-    // 【修复 P0-6】将旧版本数据结构迁移到 v3
-    // 支持 v1（无 version 字段）、v2（旧 EnhancedMemory 格式）→ v3
+    // 【修复 P0-6】将旧版本数据结构迁移到当前版本
+    // 支持 v1（无 version 字段）、v2（旧 EnhancedMemory 格式）、v3 → v4
+    // 【P1修复P1-M】v3→v4：任务 schema 统一为 QuestMutator 版本，quests 条目
+    // 的 content 字段重命名为 title（与 QuestMutator.normalizeQuest 输出对齐），
+    // 消除 core.js 内 title↔content 别名映射。
     _migrateDataToV3: function(data) {
         try {
             var v = data.version || 1;
-            // v1/v2 → v3：字段结构基本兼容，只需补全缺失字段并修正版本号
+            // v1/v2/v3 → v4：字段结构基本兼容，只需补全缺失字段并修正版本号
             var migrated = StateSchema.deepClone(data);
             // 补全 v3 新增字段
             if (!migrated.permanentFacts) migrated.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [], worldPlaces: [] };
@@ -3523,7 +3534,18 @@ var GameMemory = {
             if (!migrated._worldNotes) migrated._worldNotes = [];
             if (!migrated._summaryLayers) migrated._summaryLayers = { near: [], mid: [], far: [] };
             if (!migrated._setupLayers) migrated._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
-            migrated.version = 3;
+            // 【P1修复P1-M】v3→v4：quests 条目 content 字段重命名为 title
+            // （与 QuestMutator schema 对齐，消除 title↔content 别名映射）
+            // 注：_dormantTracking.quests 的 key 是任务标识字符串本身（非字段名），无需迁移
+            if (Array.isArray(migrated.quests)) {
+                migrated.quests.forEach(function(q) {
+                    if (q && q.content && q.title === undefined) {
+                        q.title = q.content;
+                        delete q.content;
+                    }
+                });
+            }
+            migrated.version = 4;
             return migrated;
         } catch(e) {
             console.error('[GameMemory] _migrateDataToV3 失败:', e);
@@ -3558,7 +3580,130 @@ var GameMemory = {
     getCharacterInfo: function(name) { return this.tables.characters[name] || null; },
     getItemHistory: function(name) { var it = this.tables.items[name]; return it ? it.history : null; },
     getTimeline: function(startTurn, endTurn) { return this.timeline.filter(function(t) { return t.turn >= (startTurn || 0) && t.turn <= (endTurn || Infinity); }); },
-    getRelationshipNetwork: function(charName) { var network = []; var self = this; Object.keys(self.tables.relationships).forEach(function(key) { var rel = self.tables.relationships[key]; if (rel && (rel.from === charName || rel.to === charName)) network.push(rel); }); return network; }
+    getRelationshipNetwork: function(charName) { var network = []; var self = this; Object.keys(self.tables.relationships).forEach(function(key) { var rel = self.tables.relationships[key]; if (rel && (rel.from === charName || rel.to === charName)) network.push(rel); }); return network; },
+
+    // 【P1修复BUG-011-longTermMemory只读快照】配套写入 API
+    // longTermMemory getter 已改为只读快照，旧代码直接 `longTermMemory.characterTable[name] = {...}`
+    // 等写入方式不再生效（写入的是快照副本，不影响源 tables.characters）。现提供以下 API 替代。
+    recordCharacterChange: function(name, changeDesc) {
+        // 替代旧代码：EnhancedMemory.longTermMemory.characterTable[name].changes.push({time, change: changeDesc})
+        // + 自动维护 firstAppearance/lastUpdate/lastChangedTurn/gameTime/accessCount 等运行时字段
+        if (!name || typeof name !== 'string') return;
+        var self = this;
+        var c = self.tables.characters[name];
+        var gtStr = (typeof self.getGameTimeStr === 'function') ? self.getGameTimeStr() : '';
+        if (!c) {
+            // 新角色首次登场记录
+            c = {
+                name: name,
+                firstAppearance: Date.now(),
+                changes: [],
+                gameTime: gtStr,
+                accessCount: 0,
+                lastChangedTurn: (typeof self.currentTurn === 'number') ? self.currentTurn : 0
+            };
+            self.tables.characters[name] = c;
+        }
+        c.lastUpdate = Date.now();
+        c.lastChangedTurn = (typeof self.currentTurn === 'number') ? self.currentTurn : (c.lastChangedTurn || 0);
+        c.gameTime = gtStr || (c.gameTime || '');
+        if (changeDesc) {
+            if (!Array.isArray(c.changes)) c.changes = [];
+            c.changes.push({ time: Date.now(), change: changeDesc });
+        }
+        self._ltmDirty = true;
+    },
+    recordItemObtained: function(itemName, desc) {
+        // 替代旧代码：EnhancedMemory.longTermMemory.itemTable[item] = {name, obtainedTime, desc, ...}
+        if (!itemName || typeof itemName !== 'string') return;
+        var self = this;
+        if (self.tables.items[itemName]) return; // 已存在不重复记录
+        var gtStr = (typeof self.getGameTimeStr === 'function') ? self.getGameTimeStr() : '';
+        self.tables.items[itemName] = {
+            name: itemName,
+            obtainedTime: Date.now(),
+            desc: desc || '玩家持有',
+            gameTime: gtStr,
+            accessCount: 0,
+            lastChangedTurn: (typeof self.currentTurn === 'number') ? self.currentTurn : 0
+        };
+        self._ltmDirty = true;
+    },
+
+    // 【P1修复BUG-011-permanentFacts责任越界】公共 API：upsert 单条 permanentFact
+    // 替代 AIResponseMutator._applyPermanentFacts 内部直接操纵 self.permanentFacts[category] 的旧实现。
+    // category ∈ ['worldPlaces','npcProfiles','pcIdentity','settings','worldRules','promises']
+    // fact = { content, locked, source, createdTurn, keywords? }
+    // 返回值：'added' 新增 | 'updated' 已存在且更新 | 'noop' 已存在且无变化
+    upsertPermanentFact: function(category, fact) {
+        if (!category || !fact || !fact.content) return 'noop';
+        var self = this;
+        if (!self.permanentFacts) self.permanentFacts = {};
+        if (!Array.isArray(self.permanentFacts[category])) self.permanentFacts[category] = [];
+        var list = self.permanentFacts[category];
+        // 去重键：按 content 字段的首段（split '：')[0] 匹配，避免同名条目重复
+        var key = String(fact.content).split('：')[0];
+        var idx = list.findIndex(function(a) {
+            if (!a || !a.content) return false;
+            return a.content === fact.content || a.content.split('：')[0] === key;
+        });
+        if (idx === -1) {
+            list.push({
+                content: fact.content,
+                locked: fact.locked !== false,
+                source: fact.source || 'runtime',
+                createdTurn: fact.createdTurn || self.currentTurn || 0,
+                keywords: fact.keywords
+            });
+            self._ltmDirty = true;
+            return 'added';
+        }
+        // 已存在：合并新信息（追加旧条目没有的字段，不覆盖）
+        var old = list[idx];
+        var changed = false;
+        if (fact.keywords && Array.isArray(fact.keywords)) {
+            if (!Array.isArray(old.keywords)) { old.keywords = []; changed = true; }
+            fact.keywords.forEach(function(k) {
+                if (k && old.keywords.indexOf(k) === -1) { old.keywords.push(k); changed = true; }
+            });
+        }
+        // 仅当旧条目 content 缺少信息时合并（追加 旧 content 中没有的子段）
+        if (String(fact.content).length > String(old.content).length) {
+            var oldParts = String(old.content).split('：');
+            var newParts = String(fact.content).split('：');
+            var merged = oldParts.slice();
+            newParts.forEach(function(p, i) {
+                if (i === 0) return; // 跳过名字段
+                if (p && oldParts.indexOf(p) === -1) { merged.push(p); changed = true; }
+            });
+            if (changed) old.content = merged.join('：');
+        }
+        if (fact.locked === true && !old.locked) { old.locked = true; changed = true; }
+        if (changed) self._ltmDirty = true;
+        return changed ? 'updated' : 'noop';
+    },
+
+    // 【P1修复BUG-011】替换式写入：用单条 fact 替换整个 category 数组。
+    // 适用场景：pcIdentity（主角身份）——语义为"最新值覆盖"，不像 worldPlaces/npcProfiles 需要累积合并。
+    // 调用方：AIResponseMutator._applyPermanentFacts 第 3 段（pcIdentity）
+    setPermanentFact: function(category, fact) {
+        if (!category || !fact || !fact.content) return 'noop';
+        var self = this;
+        if (!self.permanentFacts) self.permanentFacts = {};
+        var list = Array.isArray(self.permanentFacts[category]) ? self.permanentFacts[category] : [];
+        var oldContent = (list[0] && list[0].content) ? String(list[0].content) : '';
+        var newContent = String(fact.content).trim();
+        if (oldContent === newContent) return 'noop';
+        self.permanentFacts[category] = [{
+            content: newContent,
+            locked: fact.locked !== false,
+            source: fact.source || 'runtime',
+            createdTurn: fact.createdTurn || self.currentTurn || 0,
+            keywords: fact.keywords
+        }];
+        self._ltmDirty = true;
+        return 'updated';
+    }
 };
 
 // 全局暴露
@@ -3582,19 +3727,23 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         var worldAnchors = [];
         var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
         Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; var list = self.permanentFacts[key]; if (Array.isArray(list)) list.forEach(function(a) { if (a) worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
-        // itemTable: 直接引用 tables.items（允许旧代码写入，格式兼容）
-        var itemTable = self.tables.items;
-        // worldNotes: 持久化数组
+        // 【P1修复BUG-011-longTermMemory只读快照】characterTable/itemTable/locationTable/relationships
+        // 改为深拷贝快照，禁止外部通过引用直接写入 tables.characters/items/locations/relationships。
+        // 旧实现返回实时引用，game.js:2487-2561 多处直接 `longTermMemory.characterTable[name] = {...}`
+        // 写入会改到 tables.characters，与 longTermMemory.worldAnchors.push（无效）语义不一致。
+        // 现统一为只读：写入必须通过 GameMemory API（recordCharacterChange / recordItemObtained 等）。
+        var deepClone = (typeof StateSchema !== 'undefined' && StateSchema.deepClone)
+            ? StateSchema.deepClone
+            : function(o) { return JSON.parse(JSON.stringify(o)); };
+        // worldNotes: 持久化数组（_worldNotes 由各写入点懒初始化 + push，此处返回引用以保留 push 语义）
         if (!self._worldNotes) self._worldNotes = [];
-        // 返回的对象中 characterTable / importantEvents / quests / timeline 是实时引用
-        // masterSummary 写入通过 setter 回写
         var result = {
             worldAnchors: worldAnchors,
             activeQuests: self.quests,
-            characterTable: self.tables.characters,
-            itemTable: itemTable,
-            locationTable: self.tables.locations,
-            relationships: self.tables.relationships,
+            characterTable: deepClone(self.tables.characters) || {},
+            itemTable: deepClone(self.tables.items) || {},
+            locationTable: deepClone(self.tables.locations) || {},
+            relationships: deepClone(self.tables.relationships) || {},
             mainPlot: self.plot.chapters,
             currentChapterSummary: self.plot.currentChapter,
             importantEvents: self.events,
@@ -3603,11 +3752,11 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
             worldNotes: self._worldNotes,
             masterSummary: self.plot.worldSetting + '\n' + (self.plot.currentChapter || '')
         };
-        // masterSummary setter：写入时回写到 plot
+        // masterSummary setter：写入时回写到 plot（保留：摘要写入是合法的 plot 更新入口）
         var _self = self;
         Object.defineProperty(result, 'masterSummary', {
             get: function() { return _self.plot.worldSetting + '\n' + (_self.plot.currentChapter || ''); },
-            set: function(val) { if (typeof val === 'string') { var parts = val.split('\n'); _self.plot.worldSetting = parts[0] || ''; _self.plot.currentChapter = parts.slice(1).join('\n') || val; } },
+            set: function(val) { if (typeof val === 'string') { var parts = val.split('\n'); _self.plot.worldSetting = parts[0] || ''; _self.plot.currentChapter = parts.slice(1).join('\n') || val; _self._ltmDirty = true; } },
             configurable: true
         });
         self._ltmCache = result;
@@ -4473,7 +4622,7 @@ var MemoryManagerUI = {
             pending.forEach(function(q, i) {
                 var icon = typeIcons[q.type] || '◇'; var age = gm.currentTurn - (q.createdTurn || 0);
                 var staleWarn = q.stale || age > 30 ? '<span style="color:#f44;font-size:11px;margin-left:6px;">[长期未兑现]</span>' : '';
-                html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + escapeHtml(q.content) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + escapeHtml(q.createdTurn || 0) + '回合</div></div>' + self._btn('resolve', 'resolveQuestByIndex', quests.indexOf(q)) + '</div>';
+                html += '<div style="padding:10px;background:var(--bg);border-radius:8px;margin-bottom:6px;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;"><div style="flex:1;"><div style="font-weight:600;">' + icon + ' ' + escapeHtml(q.title) + staleWarn + '</div><div style="font-size:11px;color:var(--text-tertiary);">创建于第' + escapeHtml(q.createdTurn || 0) + '回合</div></div>' + self._btn('resolve', 'resolveQuestByIndex', quests.indexOf(q)) + '</div>';
             });
             html += '</div>';
         }
@@ -4481,7 +4630,7 @@ var MemoryManagerUI = {
             html += '<div class="memory-card"><div class="memory-card-title">已完成</div>';
             resolved.slice(-5).forEach(function(q) {
                 var icon = typeIcons[q.type] || '◇';
-                html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;opacity:0.6;"><div style="font-size:13px;">✓ ' + icon + ' ' + escapeHtml(q.content) + '</div></div>';
+                html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;opacity:0.6;"><div style="font-size:13px;">✓ ' + icon + ' ' + escapeHtml(q.title) + '</div></div>';
             });
             html += '</div>';
         }
@@ -4492,10 +4641,10 @@ var MemoryManagerUI = {
     resolveQuestByIndex: function(idx) {
         var gm = window.GameMemory; if (!gm || !gm.quests[idx]) return;
         gm.quests[idx].status = 'resolved'; gm.quests[idx].resolvedTurn = gm.currentTurn;
-        if (typeof gameState !== 'undefined' && gameState.currentQuests && gm.quests[idx].content) {
-            var questContent = gm.quests[idx].content;
+        if (typeof gameState !== 'undefined' && gameState.currentQuests && gm.quests[idx].title) {
+            var questTitle = gm.quests[idx].title;
             for (let i = 0; i < gameState.currentQuests.length; i++) {
-                if (gameState.currentQuests[i].title && gameState.currentQuests[i].title.indexOf(questContent.substring(0, 10)) >= 0) {
+                if (gameState.currentQuests[i].title && gameState.currentQuests[i].title.indexOf(questTitle.substring(0, 10)) >= 0) {
                     gameState.currentQuests[i].status = '已完成'; break;
                 }
             }
@@ -5673,178 +5822,17 @@ init();
     'use strict';
 
     // ============================================================================
-    // 月读预设配置
-    // ============================================================================
-    var MoonReadPresetConfig = {
-    name: "【月读】Gemini v1.2 @电波系",
-    version: "1.2",
-    author: "电波系",
-
-    /**
-    * 必须开启的正则脚本
-    */
-    requiredRegex: [
-    "月读必开-[1]清除多余内容",
-    "月读必开-[2]6楼外只发送摘要",
-    "月读必开-[3]10楼外角色关系、绝密档案、伏笔不发送",
-    "月读必开-[4]极光小剧场修正vh",
-    "月读必开-[5]不发送多余内容"
-    ],
-
-    /**
-    * 推荐开启的正则脚本
-    */
-    recommendedRegex: [
-    "月读选开-捕获用户输入",
-    "月读选开-不发送以前的用户输入",
-    "月读选开-统一折叠样式"
-    ],
-
-    /**
-    * 美化类正则（markdownOnly）
-    */
-    beautyRegex: [
-    "月读美化-现代文字标题",
-    "月读美化-古风文字标题",
-    "月读美化-ta的物品|默认版",
-    "月读美化-ta的手机|默认版",
-    "月读美化-叽喳论坛|默认版",
-    "月读美化-文字剧场|默认版",
-    "月读美化-摘要美化|默认版",
-    "月读美化-选项美化|默认版"
-    ],
-
-    /**
-    * 必须开启的Prompt条目
-    */
-    requiredPrompts: [
-    { identifier: "main", name: "静谧之夜" },
-    { identifier: "nsfw", name: "🌌无限月读" },
-    { identifier: "ccb29029-f8b4-43a5-8dd7-433fc42e01a8", name: "==.✟.世界引擎.✟.==" },
-    { identifier: "6af0bf14-7519-4fe0-b9ff-064d928814ff", name: "获取变量" },
-    { identifier: "worldInfoBefore", name: "worldInfoBefore" },
-    { identifier: "worldInfoAfter", name: "worldInfoAfter" },
-    { identifier: "charDescription", name: "charDescription" },
-    { identifier: "charPersonality", name: "charPersonality" },
-    { identifier: "scenario", name: "scenario" },
-    { identifier: "dialogueExamples", name: "dialogueExamples" },
-    { identifier: "chatHistory", name: "chatHistory" }
-    ],
-
-    /**
-    * 叙事视角（多选一）
-    */
-    perspectives: [
-    { id: "third_person_omniscient", name: "第三人称全知", desc: "可在出场人物视角间切换" },
-    { id: "third_person_limited", name: "第三人称有限", desc: "以char视角叙事" },
-    { id: "first_person_limited", name: "第一人称有限", desc: "以角色的\u201c我\u201d叙事" }
-    ],
-
-    /**
-    * 用户代称（多选一）
-    */
-    userPronouns: [
-    { id: "third_person", name: "第三人称", desc: "使用他/她/姓名" },
-    { id: "second_person", name: "第二人称", desc: "使用\u201c你\u201d" },
-    { id: "first_person", name: "第一人称", desc: "使用\u201c我\u201d" }
-    ],
-
-    /**
-    * 推进节奏（多选一）
-    */
-    pacing: [
-    { id: "4d9ce617", name: "🌊慢火浸润", desc: "极度细腻" },
-    { id: "ddafe1ba", name: "🌊稳态推进", desc: "均衡（推荐）" },
-    { id: "617bac07", name: "🌊均衡脉冲", desc: "中等节奏" },
-    { id: "fe598bd2", name: "🌊高压疾行", desc: "快速推进" },
-    { id: "cb91db4c", name: "🌊自由变奏", desc: "自动调节" }
-    ],
-
-    /**
-    * 推荐参数
-    */
-    recommendedParams: {
-        temperature: 1.0,
-        top_p: 0.95,
-        top_k: 64,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-        max_tokens: 8192
-    }
-    };
-
-    // ============================================================================
-    // 果实预设配置（保留v1）
-    // ============================================================================
-    var FruitPresetConfig = {
-    name: "【MoM】果实·叶子版3.0",
-    version: "3.0",
-    recommendedParams: {
-        temperature: 1.3,
-        top_p: 0.91,
-        top_k: 64,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-        max_tokens: 3000
-    }
-    };
-
-    // ============================================================================
-    // 蛾摩拉预设配置
-    // ============================================================================
-    var GomorrahPresetConfig = {
-    name: "[MoM]蛾摩拉☼2.4",
-    version: "2.4",
-    author: "蛾摩拉与弥赛亚",
-
-    requiredRegex: [
-    "MoM必选-[1]清除多余内容",
-    "MoM必选-[2]摘要处理",
-    "MoM必选-[3]seeds处理",
-    "MoM必选-[4]格式过滤"
-    ],
-
-    beautyRegex: [
-    "蛾摩拉说-日间",
-    "蛾摩拉说-夜间",
-    "蛾摩拉-小说标题",
-    "蛾摩拉-日程表",
-    "蛾摩拉-其他"
-    ],
-
-    requiredPrompts: [
-    { identifier: "main", name: "身份定义3" },
-    { identifier: "jailbreak", name: "---❉---" },
-    { identifier: "nsfw", name: "☚长篇剧情规范" },
-    { identifier: "worldInfoBefore", name: "✪角色定义之前" },
-    { identifier: "worldInfoAfter", name: "✪角色定义之后" },
-    { identifier: "charDescription", name: "♚<char>设定" },
-    { identifier: "charPersonality", name: "♚<char>个性" },
-    { identifier: "scenario", name: "🔹是Gemini🔸是Claude" },
-    { identifier: "chatHistory", name: "Chat History" },
-    { identifier: "dialogueExamples", name: "Chat Examples" },
-    { identifier: "personaDescription", name: "♔<user>设定" }
-    ],
-
-    recommendedParams: {
-        temperature: 1.71,
-        top_p: 0.9,
-        top_k: 0,
-        frequency_penalty: 0,
-        presence_penalty: 0,
-        max_tokens: 30000
-    }
-    };
-
-    // ============================================================================
     // 通用预设管理器
     // ============================================================================
+    // 【P1修复P1-L】删除 MoonReadPresetConfig / FruitPresetConfig / GomorrahPresetConfig
+    // 三个对象及其字段（requiredRegex / recommendedRegex / beautyRegex / requiredPrompts /
+    // perspectives / userPronouns / pacing / recommendedParams）—— 这些"详细字段"从未被
+    // 任何代码读取，对应 UI 入口（视角选择 / 节奏选择 / 推荐参数应用）从未实现。
+    // 同时删除 PresetConfigManager.configs / getConfig / getRecommendedParams—— 链式死代码：
+    // getRecommendedParams 零外部调用 → getConfig 仅被它调用 → configs 仅被 getConfig 读取。
+    // 保留 detectPresetType（patch.js:161）与 validatePreset（patch.js:167），二者是真正被
+    // 使用的预设识别/校验逻辑，不依赖任何 config 对象字段。
     var PresetConfigManager = {
-configs: {
-moonread: MoonReadPresetConfig,
-fruit: FruitPresetConfig,
-gomorrah: GomorrahPresetConfig
-},
 
 /**
  * 自动识别预设类型
@@ -5870,26 +5858,6 @@ const hasGomorrah = prompts.some(p =>
 );
 if (hasGomorrah || name.includes('蛾摩拉') || name.includes('gomorrah')) return 'gomorrah';
 return 'generic';
-},
-
-/**
- * 获取预设配置
- */
-getConfig(presetType) {
-return this.configs[presetType] || null;
-},
-
-/**
- * 获取推荐参数
- */
-getRecommendedParams(presetType) {
-const config = this.getConfig(presetType);
-return config?.recommendedParams || {
-    temperature: 1.2,
-    top_p: 0.9,
-    top_k: 64,
-    max_tokens: 4000
-};
 },
 
 /**
@@ -5966,8 +5934,5 @@ return result;
     // 导出
     // ============================================================================
     global.PresetConfigManager = PresetConfigManager;
-    global.MoonReadPresetConfig = MoonReadPresetConfig;
-    global.FruitPresetConfig = FruitPresetConfig;
-    global.GomorrahPresetConfig = GomorrahPresetConfig;
 
 })(window);

@@ -8,7 +8,10 @@ const StateManager = {
     _inTransaction: false,
     _pendingChanges: [],
     _transactionBackup: null,   // 事务快照，用于真正回滚
-    _legacyMode: true,          // 迁移期间允许 getLegacy/setLegacy
+    // 【P1修复P1-J】删除 _legacyMode 字段：原注释"迁移期间允许 getLegacy/setLegacy"但全项目零读取，
+    // 是一个误导性的"撛设开关"（永远为 true，无切换为 false 的路径）。
+    // getLegacy/setLegacy 当前仍在使用（_syncLegacyMirror 桥接 gameState ↔ StateManager），
+    // 是否可用由方法本身的存在性决定，无需此标志。
     _nextToken: 1,
 
     // 初始化：接管全局 gameState
