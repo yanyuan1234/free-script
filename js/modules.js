@@ -2493,6 +2493,12 @@ var RegexManager = {
         saveBtn.addEventListener('click', function() { self.saveScript(); });
     }
 
+    // 【P0-2修复】测试按钮：保存前验证正则语法 + 试运行示例文本
+    var testBtn = document.getElementById('btnRegexTest');
+    if (testBtn) {
+        testBtn.addEventListener('click', function() { self.testScript(); });
+    }
+
     // 删除按钮
     var deleteBtn = document.getElementById('btnRegexDelete');
     if (deleteBtn) {
@@ -2715,12 +2721,20 @@ scripts.forEach(function(script, idx) {
     if (script.markdownOnly) tags.push('<span style="background:#8b5cf6;color:#fff;">仅MD</span>');
     if (script.promptOnly) tags.push('<span style="background:#6366f1;color:#fff;">仅Prompt</span>');
     if (script.runOnEdit) tags.push('<span style="background:#f59e0b;color:#fff;">编辑时</span>');
+    // 【P0-2修复】错误状态可视化：脚本执行出错时显示错误标签，便于用户排查
+    if (script._lastError) {
+        tags.push('<span style="background:#ef4444;color:#fff;" title="' + escapeHtml(script._lastError) + '">错误</span>');
+    }
 
     var tagsHtml = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">' + tags.map(function(t) { return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;">' + t + '</span>'; }).join('') + '</div>';
 
     var displayName = script.name || script.scriptName || '未命名';
 
-    html += '<div class="pearl-card" style="padding:8px 10px;opacity:' + (isEnabled ? '1' : '0.5') + ';border-left:3px solid ' + (isEnabled ? 'var(--success)' : 'var(--danger)') + ';">' +
+    // 【P0-2修复】有未解决错误时左侧条变橙，正常启用绿、禁用红、出错橙
+    var borderColor = script._lastError ? '#f59e0b' : (isEnabled ? 'var(--success)' : 'var(--danger)');
+    html += '<div class="pearl-card" style="padding:8px 10px;opacity:' + (isEnabled ? '1' : '0.5') + ';border-left:3px solid ' + borderColor + ';">' +
+    // 错误详情行（仅在有错误时显示）
+    (script._lastError ? '<div style="font-size:10px;color:#f59e0b;margin-bottom:4px;word-break:break-all;">⚠ ' + escapeHtml(script._lastError) + (script._errorCount > 1 ? ' (×' + script._errorCount + ')' : '') + '</div>' : '') +
     '<div style="display:flex;justify-content:space-between;align-items:center;">' +
     '<div style="flex:1;min-width:0;cursor:pointer;" data-regex-edit="' + idx + '">' +
     '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(displayName) + '</div>' +
@@ -3083,6 +3097,81 @@ this.renderScriptList();
 UI.toast('正则脚本已保存');
 },
 
+// 【P0-2修复】测试当前编辑中的正则：验证语法 + 应用到示例文本
+// 用户在保存前可发现语法错误，避免保存后在运行时才暴露
+testScript: function() {
+    var findPattern = document.getElementById('regexFindPattern').value.trim();
+    var replaceString = document.getElementById('regexReplaceString').value;
+    if (!findPattern) {
+        UI.toast('请输入查找正则');
+        return;
+    }
+
+    // 解析 flags
+    var flags = 'g';
+    var regexBody = findPattern;
+    var match = findPattern.match(/^\/(.+)\/([gimuy]*)$/);
+    if (match) {
+        regexBody = match[1];
+        flags = match[2] || 'g';
+        if (flags.indexOf('g') === -1) flags += 'g';
+    }
+
+    // 1. 验证语法
+    var regex;
+    try {
+        regex = new RegExp(regexBody, flags);
+    } catch (e) {
+        UI.toast('正则语法错误: ' + e.message);
+        console.warn('[RegexManager] 测试失败 - 语法错误:', e.message, 'pattern:', regexBody);
+        return;
+    }
+
+    // 2. ReDoS 风险检查
+    var redosPatterns = [
+        /\((\([^()]*\)|[^()]*)*\+/,
+        /\([^)]*\)\{[^}]*\}\{[^}]*\}/,
+        /(\.\*|\.\+)[\*\+\?]\*[\*\+\?]/,
+        /\(\.\*\)\+/,
+        /\(\.\+\)\+/
+    ];
+    for (var ri = 0; ri < redosPatterns.length; ri++) {
+        if (redosPatterns[ri].test(regexBody)) {
+            UI.toast('⚠ 检测到潜在 ReDoS 风险，建议优化正则');
+            return;
+        }
+    }
+
+    // 3. 应用到示例文本，让用户看到匹配结果
+    var sampleText = '这是一段示例文本，可用于测试正则匹配。\n英文 hello world 也会被扫描。';
+    var replacement = (replaceString || '').replace(/{{match}}/g, '$&');
+    var result;
+    try {
+        result = sampleText.replace(regex, replacement);
+    } catch (e) {
+        UI.toast('替换执行错误: ' + e.message);
+        console.warn('[RegexManager] 测试失败 - 替换错误:', e.message);
+        return;
+    }
+
+    // 4. 显示结果（用 createModal 弹窗，标题与关闭按钮内嵌在 html 中）
+    var matchCountRe = new RegExp(regexBody, flags.indexOf('g') !== -1 ? flags : flags + 'g');
+    var matchCount = (sampleText.match(matchCountRe) || []).length;
+    var html = '<div style="font-size:12px;line-height:1.6;word-break:break-all;">'
+        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;border-bottom:1px solid var(--border);padding-bottom:8px;">'
+        + '<b style="font-size:14px;">正则测试结果</b>'
+        + '<button class="circle-btn" onclick="UI.hideModal(this.closest(\'.modal-overlay\').id)" style="width:24px;height:24px;padding:0;">×</button>'
+        + '</div>'
+        + '<div style="margin-bottom:8px;color:var(--text-tertiary);">匹配次数: <b style="color:var(--success);">' + matchCount + '</b></div>'
+        + '<div style="margin-bottom:4px;color:var(--text-tertiary);">原文:</div>'
+        + '<pre style="background:var(--bg);padding:8px;border-radius:6px;white-space:pre-wrap;max-height:120px;overflow:auto;border:1px solid var(--border);margin:0 0 8px;">' + escapeHtml(sampleText) + '</pre>'
+        + '<div style="margin:8px 0 4px;color:var(--text-tertiary);">替换后:</div>'
+        + '<pre style="background:var(--bg);padding:8px;border-radius:6px;white-space:pre-wrap;max-height:120px;overflow:auto;border:1px solid var(--border);margin:0;">' + escapeHtml(result) + '</pre>'
+        + '</div>';
+    UI.createModal({ html: html });
+},
+
+
 // 【P2清理】删除 toggleScript / quickDeleteScript（全项目零调用）
 
 // 删除脚本（编辑弹窗内）
@@ -3206,7 +3295,15 @@ if (messageIndex != null) {
 try {
     result = self.applySingleScript(result, script);
 } catch(e) {
-console.warn('Regex error in "' + (script.name || 'unnamed') + '":', e.message);
+    // 【P0-2修复】外层兜底也记录错误状态，与 applySingleScript 内部 try-catch 一致
+    // 捕获 applySingleScript 未覆盖的异常（如 MacroEngine.process、trimStrings 等）
+    if (script) {
+        script._lastError = '执行异常: ' + (e && e.message ? e.message : String(e));
+        script._errorTime = Date.now();
+        script._errorCount = (script._errorCount || 0) + 1;
+    }
+    console.warn('[RegexManager] 脚本 "' + (script && script.name ? script.name : 'unnamed')
+        + '" 执行异常，已跳过: ' + (e && e.message ? e.message : String(e)));
 }
 });
 
@@ -3282,14 +3379,51 @@ if (isDangerous) {
     return text;
 }
 
-var regex = new RegExp(regexBody, flags);
+// 【P0-2修复】正则构造加 try-catch：单个脚本语法错误不影响其他脚本执行
+// 旧实现直接 new RegExp(regexBody, flags)，语法错误抛 SyntaxError 冒泡到 apply 的 try-catch
+// 虽然外层会捕获，但仅 console.warn 不记录错误状态，下次调用又重新抛错，且 UI 无错误提示
+var regex;
+try {
+    regex = new RegExp(regexBody, flags);
+} catch (e) {
+    if (script) {
+        script._lastError = '语法错误: ' + e.message;
+        script._errorTime = Date.now();
+        script._errorCount = (script._errorCount || 0) + 1;
+    }
+    console.warn('[RegexManager] 正则脚本语法错误，已跳过: "'
+        + (script && script.name ? script.name : 'unnamed')
+        + '" pattern: ' + regexBody.substring(0, 80)
+        + ' 错误: ' + e.message);
+    return text;
+}
 
 // 处理替换字符串中的特殊变量
 // $1, $2... 捕获组（原生支持）
 // {{match}} 替换为 $&（整个匹配）
 replacement = replacement.replace(/{{match}}/g, '$&');
 
-var result = text.replace(regex, replacement);
+// 【P0-2修复】replace 调用加 try-catch：replacement 中 $ 特殊字符格式错误（如 $1 但无捕获组）也会抛错
+var result;
+try {
+    result = text.replace(regex, replacement);
+} catch (e) {
+    if (script) {
+        script._lastError = '替换错误: ' + e.message;
+        script._errorTime = Date.now();
+        script._errorCount = (script._errorCount || 0) + 1;
+    }
+    console.warn('[RegexManager] 正则替换执行错误，已跳过: "'
+        + (script && script.name ? script.name : 'unnamed')
+        + '" 错误: ' + e.message);
+    return text;
+}
+
+// 成功执行后清除错误状态（错误恢复可见）
+if (script && script._lastError) {
+    script._lastError = null;
+    script._errorTime = null;
+}
 
 // trimStrings: 从匹配结果中裁剪指定字符串
 if (script.trimStrings && script.trimStrings.length > 0) {

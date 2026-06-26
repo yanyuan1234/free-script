@@ -3231,11 +3231,31 @@ var GameMemory = {
         var normal = this.events.filter(function(e) { return e.importance < 9; });
         epic.sort(function(a, b) { return b.decayScore - a.decayScore; });
         normal.sort(function(a, b) { return b.decayScore - a.decayScore; });
-        // 【动态化】移除 epic.slice(0, 15) 硬上限——重要事件不应被武断截断
-        // 旧代码最多只保留 15 条 epic 事件，长游戏的关键剧情会丢失
-        // 新策略：按 decayScore 排序后，epic 事件优先保留，normal 事件填充剩余预算
-        var keptEpic = epic;
-        this.events = keptEpic.concat(normal.slice(0, Math.max(0, maxCount - keptEpic.length))).sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
+
+        // 【P0-3修复】恢复 epic 上限，按比例分配预算：
+        // - 旧代码 var keptEpic = epic（无上限）导致 epic.length > maxCount 时
+        //   normal.slice(0, max(0, maxCount - epic.length)) = []，等价于无任何裁剪
+        //   长游戏（200 回合）后 events 膨胀到 200-400 条，buildSmartInjection 与
+        //   saveToStorage 体积同步膨胀，最终触发配额错误
+        // - 现策略：epic 占 60% 预算（至少 5 条），normal 占 40%
+        //   保留重要事件优先权的同时强制 epic 也受裁剪
+        // - 若 epic 实际数量 < 预算，剩余预算让渡给 normal
+        var epicBudget = Math.max(5, Math.floor(maxCount * 0.6));
+        var keptEpic = epic.slice(0, Math.min(epic.length, epicBudget));
+        var normalBudget = Math.max(0, maxCount - keptEpic.length);
+        var keptNormal = normal.slice(0, normalBudget);
+        this.events = keptEpic.concat(keptNormal).sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
+
+        // 修复后裁剪监控：被丢弃事件数大于 0 时记录，便于排查
+        if (keptEpic.length < epic.length) {
+            console.log('[GameMemory] _pruneImportantEvents: epic 裁剪 '
+                + (epic.length - keptEpic.length) + '/' + epic.length
+                + ' 条（budget=' + epicBudget + ', maxCount=' + maxCount + '）');
+        }
+        if (keptNormal.length < normal.length) {
+            console.log('[GameMemory] _pruneImportantEvents: normal 裁剪 '
+                + (normal.length - keptNormal.length) + '/' + normal.length + ' 条');
+        }
     },
 
     _smartTruncateSummary: function(text, maxChars) {
@@ -3566,11 +3586,22 @@ var GameMemory = {
         if (!self.permanentFacts) self.permanentFacts = {};
         if (!Array.isArray(self.permanentFacts[category])) self.permanentFacts[category] = [];
         var list = self.permanentFacts[category];
-        // 去重键：按 content 字段的首段（split '：')[0] 匹配，避免同名条目重复
-        var key = String(fact.content).split('：')[0];
+
+        // 【P0-1修复】统一支持中英文冒号切分，并 trim 去除空格
+        // 旧实现 split('：') 仅识别中文全角冒号，AI 输出英文冒号时同一实体被作为新条目重复入库
+        var _splitByColon = function(text) { return String(text).split(/[:：]/).map(function(s) { return s.trim(); }); };
+        // 保留原 content 的冒号风格，避免合并后冒号不一致
+        var _detectColonSep = function(text) {
+            var s = String(text);
+            return s.indexOf('：') !== -1 ? '：' : ':';
+        };
+
+        // 去重键：按 content 字段的首段匹配，避免同名条目重复
+        var key = _splitByColon(fact.content)[0];
         var idx = list.findIndex(function(a) {
             if (!a || !a.content) return false;
-            return a.content === fact.content || a.content.split('：')[0] === key;
+            if (a.content === fact.content) return true;
+            return _splitByColon(a.content)[0] === key;
         });
         if (idx === -1) {
             list.push({
@@ -3594,14 +3625,17 @@ var GameMemory = {
         }
         // 仅当旧条目 content 缺少信息时合并（追加 旧 content 中没有的子段）
         if (String(fact.content).length > String(old.content).length) {
-            var oldParts = String(old.content).split('：');
-            var newParts = String(fact.content).split('：');
+            var oldParts = _splitByColon(old.content);
+            var newParts = _splitByColon(fact.content);
+            // 保留 old.content 的冒号风格，old 无冒号时取 fact 的冒号风格，最终 fallback 中文冒号
+            var sep = oldParts.length > 1 ? _detectColonSep(old.content)
+                    : (newParts.length > 1 ? _detectColonSep(fact.content) : '：');
             var merged = oldParts.slice();
             newParts.forEach(function(p, i) {
                 if (i === 0) return; // 跳过名字段
                 if (p && oldParts.indexOf(p) === -1) { merged.push(p); changed = true; }
             });
-            if (changed) old.content = merged.join('：');
+            if (changed) old.content = merged.join(sep);
         }
         if (fact.locked === true && !old.locked) { old.locked = true; changed = true; }
         if (changed) self._ltmDirty = true;
@@ -4249,13 +4283,47 @@ var MemoryManagerUI = {
 
     saveCharacter: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
-        var char = gm.tables.characters[oldName] || {}; if (oldName !== newName) delete gm.tables.characters[oldName];
+        var char = gm.tables.characters[oldName] || {};
         var _newCharData = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
-        gm.tables.characters[newName] = _newCharData;
-        // 【阶段1统一】通过 CharacterMutator.replaceCharacter 同步到 StateManager（替代直接写 allCharacters）
+
+        // 【P0-4修复】单一写入入口 + 事务性回滚：
+        // 旧实现先改 gm.tables 再调 Mutator，若 Mutator 失败 gm 已被污染（gm.tables[oldName] 已删除、
+        // gm.tables[newName] 已写入新数据），状态不一致；后续 buildSmartInjection 读到错乱状态
+        // 新策略：先走 Mutator（写 StateManager.entities.characters），成功后再同步 gm.tables 运行时字段
+        // Mutator 内部 normalizeCharacter 失败或 StateManager.set 拒绝（非法路径/只读）均返回 false
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.replaceCharacter) {
-            CharacterMutator.replaceCharacter(oldName, _newCharData);
+            var mutatorOk = false;
+            try {
+                mutatorOk = !!CharacterMutator.replaceCharacter(oldName, _newCharData);
+            } catch (e) {
+                console.error('[MemoryManagerUI] CharacterMutator.replaceCharacter 异常:', e);
+            }
+            if (!mutatorOk) {
+                UI.toast('保存失败：状态层拒绝写入（角色名可能为空或非法）');
+                return;  // gm.tables 完全未改动，状态一致
+            }
+            // Mutator 成功 → 适配器已 MERGE 实体字段（name/title/relation/mood/location/outfit/favorability/status）到 gm.tables[newName]
+            // 现在补齐运行时字段（locked/history/gameTime/accessCount/lastChangedTurn）并处理 rename
+            if (oldName !== newName && gm.tables.characters[oldName]) {
+                delete gm.tables.characters[oldName];
+            }
+            // 适配器创建的新条目只有基本字段，需补齐运行时字段
+            if (!gm.tables.characters[newName]) {
+                gm.tables.characters[newName] = { name: newName };
+            }
+            var gmEntry = gm.tables.characters[newName];
+            gmEntry.history = _newCharData.history;
+            gmEntry.gameTime = _newCharData.gameTime;
+            gmEntry.accessCount = _newCharData.accessCount;
+            gmEntry.lastChangedTurn = _newCharData.lastChangedTurn;
+            gmEntry.locked = _newCharData.locked;
+            // outfit/status 虽在适配器字段映射中，但用户编辑的值需显式覆盖（保险）
+            gmEntry.outfit = _newCharData.outfit;
+            gmEntry.status = _newCharData.status;
         } else if (typeof gameState !== 'undefined' && gameState.allCharacters) {
+            // legacy 兜底（无 StateManager 环境）
+            if (oldName !== newName) delete gm.tables.characters[oldName];
+            gm.tables.characters[newName] = _newCharData;
             if (oldName !== newName && gameState.allCharacters[oldName]) delete gameState.allCharacters[oldName];
             gameState.allCharacters[newName] = gameState.allCharacters[newName] || {};
             gameState.allCharacters[newName].name = newName;
@@ -4310,11 +4378,35 @@ var MemoryManagerUI = {
     saveNewCharacter: function() {
         var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { UI.toast && UI.toast('请输入角色名称'); return; }
         var _newCharData = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
-        gm.tables.characters[name] = _newCharData;
-        // 【阶段1统一】新增角色委托 CharacterMutator.mergeCharacters（替代直接写 allCharacters）
+
+        // 【P0-4修复】先走 Mutator，成功后再写 gm.tables 运行时字段（与 saveCharacter 同模式）
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
-            CharacterMutator.mergeCharacters([_newCharData]);
+            var mutatorOk = false;
+            try {
+                mutatorOk = !!CharacterMutator.mergeCharacters([_newCharData]);
+            } catch (e) {
+                console.error('[MemoryManagerUI] CharacterMutator.mergeCharacters 异常:', e);
+            }
+            if (!mutatorOk) {
+                UI.toast('保存失败：状态层拒绝写入');
+                return;
+            }
+            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.characters[name]
+            // 补齐运行时字段
+            if (!gm.tables.characters[name]) {
+                gm.tables.characters[name] = { name: name };
+            }
+            var gmNewChar = gm.tables.characters[name];
+            gmNewChar.history = _newCharData.history;
+            gmNewChar.gameTime = _newCharData.gameTime;
+            gmNewChar.accessCount = _newCharData.accessCount;
+            gmNewChar.lastChangedTurn = _newCharData.lastChangedTurn;
+            gmNewChar.locked = _newCharData.locked;
+            gmNewChar.outfit = _newCharData.outfit;
+            gmNewChar.status = _newCharData.status;
         } else if (typeof gameState !== 'undefined') {
+            // legacy 兜底
+            gm.tables.characters[name] = _newCharData;
             if (!gameState.allCharacters) gameState.allCharacters = {};
             gameState.allCharacters[name] = { name: name, title: _newCharData.title, relation: _newCharData.relation, favorability: _newCharData.favorability };
         }
@@ -4351,25 +4443,102 @@ var MemoryManagerUI = {
 
     saveItem: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editItemName').value.trim(); if (!newName) return;
-        var item = gm.tables.items[oldName] || {}; if (oldName !== newName) delete gm.tables.items[oldName];
-        gm.tables.items[newName] = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
-        // 【全量修复-P0】物品编辑走 BagMutator 统一入口，替代直接操作 gameState.currentBag
-        // 原 _syncItemsToBag 会自动从 gm.tables.items 同步到 StateManager，但此处已改 gm，直接调用同步即可
-        if (typeof _syncItemsToBag === 'function') {
+        var item = gm.tables.items[oldName] || {};
+        var _newItemData = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
+
+        // 【P0-4修复】单一写入入口 + 事务性回滚（与 saveCharacter 同模式）：
+        // 旧实现先改 gm.tables.items 再调 _syncItemsToBag，若同步失败 gm 已被污染
+        // 新策略：先走 BagMutator（写 StateManager.entities.bag），成功后再同步 gm.tables.items 运行时字段
+        // 注意：BagMutator 无 replaceItem，故用 setItems 全量重写 + 处理 rename
+        if (typeof BagMutator !== 'undefined' && BagMutator.setItems) {
+            // 构建 StateManager 视角的 bag（按 gm.tables.items 现状 + 用户编辑）
+            // 此处不能直接复用 _syncItemsToBag 因为它假设 gm.tables 已是最终态
+            var smBag = [];
+            Object.keys(gm.tables.items).forEach(function(name) {
+                var it = gm.tables.items[name];
+                if (!it) return;
+                if (name === oldName) return;  // 跳过旧条目，下面用新名添加
+                smBag.push({
+                    name: it.name || name,
+                    count: it.qty || 1,
+                    unit: it.unit || '个',
+                    rarity: it.rarity || '普通',
+                    desc: it.desc || '',
+                    usable: it.usable || false,
+                    effect: it.effect || '',
+                    equippable: it.equippable || false,
+                    equipped: it.equipped || false,
+                    slot: it.slot || '',
+                    obtainedTurn: it.obtainedTurn || 0,
+                    lastChangedTurn: it.lastChangedTurn || 0,
+                    history: Array.isArray(it.history) ? it.history : []
+                });
+            });
+            // 加入编辑后的新条目（用新名）
+            smBag.push({
+                name: _newItemData.name,
+                count: _newItemData.qty,
+                unit: _newItemData.unit,
+                rarity: _newItemData.rarity,
+                desc: _newItemData.desc,
+                usable: item.usable || false,
+                effect: item.effect || '',
+                equippable: item.equippable || false,
+                equipped: item.equipped || false,
+                slot: item.slot || '',
+                obtainedTurn: _newItemData.obtainedTurn,
+                lastChangedTurn: _newItemData.lastChangedTurn,
+                history: _newItemData.history
+            });
+
+            var mutatorOk = false;
+            try {
+                mutatorOk = !!BagMutator.setItems(smBag);
+            } catch (e) {
+                console.error('[MemoryManagerUI] BagMutator.setItems 异常:', e);
+            }
+            if (!mutatorOk) {
+                UI.toast('保存失败：状态层拒绝写入');
+                return;  // gm.tables 未改动
+            }
+            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[newName]
+            // 补齐运行时字段（accessCount/gameTime）并处理 rename
+            if (oldName !== newName && gm.tables.items[oldName]) {
+                delete gm.tables.items[oldName];
+            }
+            if (!gm.tables.items[newName]) {
+                gm.tables.items[newName] = { name: newName };
+            }
+            var gmItemEntry = gm.tables.items[newName];
+            gmItemEntry.qty = _newItemData.qty;
+            gmItemEntry.unit = _newItemData.unit;
+            gmItemEntry.rarity = _newItemData.rarity;
+            gmItemEntry.desc = _newItemData.desc;
+            gmItemEntry.obtainedTurn = _newItemData.obtainedTurn;
+            gmItemEntry.lastChangedTurn = _newItemData.lastChangedTurn;
+            gmItemEntry.gameTime = _newItemData.gameTime;
+            gmItemEntry.accessCount = _newItemData.accessCount;
+            gmItemEntry.history = _newItemData.history;
+        } else if (typeof _syncItemsToBag === 'function') {
+            // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
+            if (oldName !== newName) delete gm.tables.items[oldName];
+            gm.tables.items[newName] = _newItemData;
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
             // 兜底：_syncItemsToBag 不可用时直接改视图
+            if (oldName !== newName) delete gm.tables.items[oldName];
+            gm.tables.items[newName] = _newItemData;
             if (oldName !== newName) gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== oldName; });
             var found = false;
             for (let i = 0; i < gameState.currentBag.length; i++) {
                 if (gameState.currentBag[i].name === newName) {
-                    gameState.currentBag[i].count = parseInt(document.getElementById('editItemQty').value) || 1;
-                    gameState.currentBag[i].rarity = document.getElementById('editItemRarity').value;
-                    gameState.currentBag[i].desc = document.getElementById('editItemDesc').value.trim();
+                    gameState.currentBag[i].count = _newItemData.qty;
+                    gameState.currentBag[i].rarity = _newItemData.rarity;
+                    gameState.currentBag[i].desc = _newItemData.desc;
                     found = true; break;
                 }
             }
-            if (!found) gameState.currentBag.push({ name: newName, count: parseInt(document.getElementById('editItemQty').value) || 1, desc: document.getElementById('editItemDesc').value.trim(), rarity: document.getElementById('editItemRarity').value });
+            if (!found) gameState.currentBag.push({ name: newName, count: _newItemData.qty, desc: _newItemData.desc, rarity: _newItemData.rarity });
         }
         UI.afterMemoryChange('items', 'currentBag', undefined);
     },
@@ -4403,16 +4572,54 @@ var MemoryManagerUI = {
 
     saveNewItem: function() {
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { UI.toast && UI.toast('请输入物品名称'); return; }
-        gm.tables.items[name] = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
-        // 【全量修复-P0】新增物品走 _syncItemsToBag 统一同步点，替代直接操作 gameState.currentBag
-        // _syncItemsToBag 会从 gm.tables.items 重新构建 bag 并写 StateManager
-        if (typeof _syncItemsToBag === 'function') {
+        var _newItemData = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
+
+        // 【P0-4修复】先走 BagMutator，成功后再写 gm.tables.items 运行时字段
+        if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
+            var mutatorOk = false;
+            try {
+                mutatorOk = !!BagMutator.mergeItems([{
+                    name: _newItemData.name,
+                    count: _newItemData.qty,
+                    unit: _newItemData.unit,
+                    rarity: _newItemData.rarity,
+                    desc: _newItemData.desc,
+                    obtainedTurn: _newItemData.obtainedTurn,
+                    lastChangedTurn: _newItemData.lastChangedTurn,
+                    history: _newItemData.history
+                }]);
+            } catch (e) {
+                console.error('[MemoryManagerUI] BagMutator.mergeItems 异常:', e);
+            }
+            if (!mutatorOk) {
+                UI.toast('保存失败：状态层拒绝写入');
+                return;
+            }
+            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[name]
+            // 补齐运行时字段
+            if (!gm.tables.items[name]) {
+                gm.tables.items[name] = { name: name };
+            }
+            var gmNewItem = gm.tables.items[name];
+            gmNewItem.qty = _newItemData.qty;
+            gmNewItem.unit = _newItemData.unit;
+            gmNewItem.rarity = _newItemData.rarity;
+            gmNewItem.desc = _newItemData.desc;
+            gmNewItem.obtainedTurn = _newItemData.obtainedTurn;
+            gmNewItem.lastChangedTurn = _newItemData.lastChangedTurn;
+            gmNewItem.gameTime = _newItemData.gameTime;
+            gmNewItem.accessCount = _newItemData.accessCount;
+            gmNewItem.history = _newItemData.history;
+        } else if (typeof _syncItemsToBag === 'function') {
+            // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
+            gm.tables.items[name] = _newItemData;
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined') {
             // 兜底：_syncItemsToBag 不可用时直接改视图
+            gm.tables.items[name] = _newItemData;
             if (!gameState.currentBag) gameState.currentBag = [];
             var exists = gameState.currentBag.some(function(b) { return b.name === name; });
-            if (!exists) gameState.currentBag.push({ name: name, count: parseInt(document.getElementById('addItemQty').value) || 1, desc: document.getElementById('addItemDesc').value.trim(), rarity: document.getElementById('addItemRarity').value });
+            if (!exists) gameState.currentBag.push({ name: name, count: _newItemData.qty, desc: _newItemData.desc, rarity: _newItemData.rarity });
         }
         UI.afterMemoryChange('items', 'currentBag', undefined);
     },
@@ -4445,8 +4652,61 @@ var MemoryManagerUI = {
 
     saveLocation: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editLocName').value.trim(); if (!newName) { UI.toast && UI.toast('请输入地点名称'); return; }
-        var loc = gm.tables.locations[oldName]; if (!loc) return; if (newName !== oldName) delete gm.tables.locations[oldName];
-        gm.tables.locations[newName] = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
+        var loc = gm.tables.locations[oldName]; if (!loc) return;
+        var _newLocData = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
+
+        // 【P0-4修复】单一写入入口 + 事务性回滚：
+        // 旧实现只改 gm.tables.locations 不同步 StateManager，导致用户编辑对 StateManager.entities.locations
+        // 不可见——后续 AI 写入新 locations 时 StateManager.set('entities.locations') 会覆盖，
+        // 但 gm.tables 中用户编辑的 entry 因适配器 MERGE 语义被保留（孤儿条目），
+        // 造成"用户改了地点锁定但 AI 看不到"的不一致
+        // 新策略：先写 StateManager.entities.locations（无 LocMutator，直接操作数组），成功后再同步 gm.tables
+        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            // 构建 StateManager 视角的 locations（按现有 + 用户编辑）
+            var smLocs = [];
+            var rawLocs = StateManager.get('entities.locations') || [];
+            rawLocs.forEach(function(l) {
+                if (l && l.name && l.name !== oldName) {
+                    smLocs.push({ name: l.name, desc: l.desc || '', features: l.features || '', charactersPresent: l.charactersPresent || '' });
+                }
+            });
+            // 加入编辑后的新条目
+            smLocs.push({
+                name: _newLocData.name,
+                desc: _newLocData.desc,
+                features: _newLocData.features,
+                charactersPresent: _newLocData.charactersPresent
+            });
+
+            var smOk = false;
+            try {
+                smOk = !!StateManager.set('entities.locations', smLocs, { silent: true });
+            } catch (e) {
+                console.error('[MemoryManagerUI] StateManager.set entities.locations 异常:', e);
+            }
+            if (!smOk) {
+                UI.toast('保存失败：状态层拒绝写入');
+                return;  // gm.tables 未改动
+            }
+            // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[newName]
+            // 补齐运行时字段（locked/lastChangedTurn）并处理 rename
+            if (newName !== oldName && gm.tables.locations[oldName]) {
+                delete gm.tables.locations[oldName];
+            }
+            if (!gm.tables.locations[newName]) {
+                gm.tables.locations[newName] = { name: newName };
+            }
+            var gmLocEntry = gm.tables.locations[newName];
+            gmLocEntry.desc = _newLocData.desc;
+            gmLocEntry.features = _newLocData.features;
+            gmLocEntry.charactersPresent = _newLocData.charactersPresent;
+            gmLocEntry.lastChangedTurn = _newLocData.lastChangedTurn;
+            gmLocEntry.locked = _newLocData.locked;
+        } else {
+            // legacy 兜底（无 StateManager 环境）
+            if (newName !== oldName) delete gm.tables.locations[oldName];
+            gm.tables.locations[newName] = _newLocData;
+        }
         UI.afterMemoryChange('locations', 'worldSnapshot', undefined);
     },
 
@@ -4469,7 +4729,44 @@ var MemoryManagerUI = {
 
     saveNewLocation: function() {
         var gm = window.GameMemory; var name = document.getElementById('addLocName').value.trim(); if (!name) { UI.toast && UI.toast('请输入地点名称'); return; }
-        gm.tables.locations[name] = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
+        var _newLocData = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
+
+        // 【P0-4修复】先写 StateManager.entities.locations（无 LocMutator，直接操作数组）
+        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            var rawLocs = StateManager.get('entities.locations') || [];
+            var smLocs = rawLocs.filter(function(l) { return l && l.name; }).map(function(l) {
+                return { name: l.name, desc: l.desc || '', features: l.features || '', charactersPresent: l.charactersPresent || '' };
+            });
+            // 检查是否已存在同名条目，避免重复
+            var exists = smLocs.some(function(l) { return l.name === name; });
+            if (!exists) {
+                smLocs.push({ name: _newLocData.name, desc: _newLocData.desc, features: _newLocData.features, charactersPresent: _newLocData.charactersPresent });
+            }
+            var smOk = false;
+            try {
+                smOk = !!StateManager.set('entities.locations', smLocs, { silent: true });
+            } catch (e) {
+                console.error('[MemoryManagerUI] StateManager.set entities.locations 异常:', e);
+            }
+            if (!smOk) {
+                UI.toast('保存失败：状态层拒绝写入');
+                return;
+            }
+            // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[name]
+            // 补齐运行时字段
+            if (!gm.tables.locations[name]) {
+                gm.tables.locations[name] = { name: name };
+            }
+            var gmNewLoc = gm.tables.locations[name];
+            gmNewLoc.desc = _newLocData.desc;
+            gmNewLoc.features = _newLocData.features;
+            gmNewLoc.charactersPresent = _newLocData.charactersPresent;
+            gmNewLoc.lastChangedTurn = _newLocData.lastChangedTurn;
+            gmNewLoc.locked = _newLocData.locked;
+        } else {
+            // legacy 兜底
+            gm.tables.locations[name] = _newLocData;
+        }
         UI.afterMemoryChange('locations', 'worldSnapshot', undefined);
     },
 

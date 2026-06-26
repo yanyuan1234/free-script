@@ -210,15 +210,35 @@ const AIResponseMutator = {
     },
 
     // NPC / 角色
+    // 【P0-6修复】补齐主角过滤逻辑，使 _applyCharacters 成为 legacy mergeCharacters 的完整替代
+    // 原 legacy mergeCharacters (game.js:3361) 会过滤主角（按名匹配，避免 AI 误返回主角时将其作为 NPC 加入），
+    // _applyCharacters 缺失此过滤，导致 _aiMutatorApplied=true 跳过 legacy 时主角可能被误加入 entities.characters
     _applyCharacters(data) {
         const characters = data.characters || data.npcs;
         if (!characters || !Array.isArray(characters) || characters.length === 0) return;
+        // 主角名（与 legacy mergeCharacters 一致的取值优先级）
+        var playerName = '';
+        if (typeof StateManager !== 'undefined' && StateManager.get) {
+            var player = StateManager.get('entities.player');
+            if (player && player.name) playerName = player.name;
+        } else if (typeof gameState !== 'undefined') {
+            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '';
+        }
+        // 过滤主角 + 无效名（与 legacy mergeCharacters 完全一致）
+        var filtered = characters.filter(function(c) {
+            if (!c || !c.name || typeof c.name !== 'string') return false;
+            var name = c.name.trim();
+            if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return false;
+            if (playerName && (name === playerName || name.includes(playerName) || playerName.includes(name))) return false;
+            return true;
+        });
+        if (filtered.length === 0) return;
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
-            CharacterMutator.mergeCharacters(characters, { silent: true });
+            CharacterMutator.mergeCharacters(filtered, { silent: true });
         } else {
             // 【P0修复BUG-011】移除冗余 setLegacy('allCharacters')：set('entities.characters')
             // 已触发 _syncLegacyMirror（含数组→对象转换）同步到 gameState.allCharacters
-            StateManager.set('entities.characters', characters, { silent: true });
+            StateManager.set('entities.characters', filtered, { silent: true });
         }
     },
 
@@ -273,10 +293,31 @@ const AIResponseMutator = {
     // _syncLegacyMirror 自动将 StateManager.time 镜像到 gameState.gameTime，无需此处重复写入。
 
     // 地点
+    // 【P0-6修复】合并两个来源的地名，使 _applyLocations 成为 legacy 文本提取路径的完整替代
+    // 原实现仅处理 data.locations（AI 显式返回），文本提取（_extractLocations）在 game.js legacy
+    // 路径（line 1858-1863）单独写入且用 REPLACE 语义覆盖 _applyLocations 的结果，导致：
+    //   1. AI 显式返回的地名可能被文本提取的覆盖（数据丢失）
+    //   2. 两个写入路径都不在 transaction 内（_applyLocations 在 transaction，legacy 不在）
+    // 现统一在 _applyLocations 内合并两个来源（MERGE 语义：按 name 匹配，存在则更新 desc，新名追加），
+    // legacy 路径在 _aiMutatorApplied=true 时跳过文本提取，避免双写。
     _applyLocations(data) {
-        const locations = data.locations || data.places;
-        if (!locations || !Array.isArray(locations) || locations.length === 0) return;
-        const normalized = locations.map(function(loc) {
+        const aiLocations = data.locations || data.places;
+        // 来源 1：AI 显式返回
+        const fromAI = (Array.isArray(aiLocations) && aiLocations.length > 0) ? aiLocations : [];
+        // 来源 2：从 title + story 文本提取（兜底，AI 可能未在 JSON 中列出但剧情中提到）
+        var fromText = [];
+        var storyText = String(data.story || '') + ' ' + String(data.title || data.sceneTitle || data.chapterTitle || '');
+        if (storyText.trim() && typeof _extractLocations === 'function') {
+            try {
+                fromText = _extractLocations(storyText) || [];
+            } catch (e) {
+                console.warn('[AIResponseMutator] _extractLocations 失败:', e && e.message);
+            }
+        }
+        // 合并两个来源并归一化
+        var allLocations = fromAI.concat(fromText);
+        if (allLocations.length === 0) return;
+        const normalized = allLocations.map(function(loc) {
             if (typeof loc === 'string') return { name: loc.trim(), desc: '' };
             return {
                 name: String(loc.name || loc.title || '').trim(),
@@ -284,7 +325,31 @@ const AIResponseMutator = {
             };
         }).filter(loc => loc.name && loc.name.length > 1 && !/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(loc.name));
         if (normalized.length === 0) return;
-        StateManager.set('entities.locations', normalized, { silent: true });
+        // 合并到现有列表（MERGE 语义：按 name 匹配，存在则更新 desc，新名追加）
+        var existing = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.locations') : null;
+        if (!Array.isArray(existing)) existing = [];
+        var nameToIdx = {};
+        existing.forEach(function(l, i) { if (l && l.name) nameToIdx[l.name] = i; });
+        var changed = false;
+        normalized.forEach(function(loc) {
+            if (nameToIdx.hasOwnProperty(loc.name)) {
+                // 更新现有：新 desc 优先，新 desc 为空则保留旧 desc
+                var idx = nameToIdx[loc.name];
+                var old = existing[idx];
+                var newDesc = loc.desc || old.desc || '';
+                if (old.desc !== newDesc || old.name !== loc.name) {
+                    existing[idx] = { name: loc.name, desc: newDesc };
+                    changed = true;
+                }
+            } else {
+                existing.push(loc);
+                nameToIdx[loc.name] = existing.length - 1;
+                changed = true;
+            }
+        });
+        if (changed) {
+            StateManager.set('entities.locations', existing, { silent: true });
+        }
     },
 
     // 【P1修复BUG-010/011】收割关键世界观/角色信息到 permanentFacts
@@ -442,41 +507,160 @@ const AIResponseMutator = {
         }
     },
 
-    // 关系变化（简化合并到角色）
-    // 【P1修复BUG-4.10】与 systems.js mergeRelationships 职责分离：
-    // - mergeRelationships 负责关系图谱 {from,to,type,desc}（写入 gameState.relationships + 推送 gm.tables）
-    //   这是 UI 渲染（renderRelationships）实际依赖的入口
-    // - _applyRelationships 仅负责好感度增量 {name,delta}（写入 entities.characters.favorability）
-    // 【P1修复BUG-4.7】好感度更新的唯一入口（transaction-safe，可回滚）。
-    // 原 mergeRelationships 内 {name,delta} 分支也会调 CharacterMutator.updateRelationship，
-    // 导致 delta 被叠加两次。现 mergeRelationships 已移除好感度更新，仅保留图谱条目转换。
-    // 原 _applyGraphRelation 写入 characters[].relations 字段全代码库无任何 UI 读取，是死字段，已删除
+    // 关系变化：统一处理图谱格式 {from,to,type,desc} 与好感度格式 {name,delta}
+    // 【P0-6修复】原 _applyRelationships 仅处理 {name,delta}（好感度），
+    // {from,to,type,desc}（图谱）由 systems.js mergeRelationships 在 legacy 路径处理。
+    // 这导致 legacy 路径必须保留 mergeRelationships 调用，造成：
+    //   1. 与 AIResponseMutator 事务边界分离（mergeRelationships 不在 transaction 内，无法回滚）
+    //   2. 与 _applyRelationships 双实现（P1-1）
+    //   3. _aiMutatorApplied=true 跳过 legacy 时图谱数据丢失（_applyRelationships 跳过，legacy 也不调）
+    // 现统一收敛：_applyRelationships 处理两种格式 + 兜底推断，legacy 路径仅做 UI 渲染（renderRelationships）。
+    //   - 图谱格式：合并到 StateManager.entities.relationships（max 10）+ 推送 gm.tables.relationships
+    //   - 好感度格式：CharacterMutator.updateRelationship + 转为图谱条目供 UI 展示
+    //   - data.relationships 为空时：从 entities.characters 自动推断基础关系网（替代 _inferRelationshipsFromCharacters）
+    // 调用方负责：在 _aiMutatorApplied=true 时跳过 mergeRelationships + _inferRelationshipsFromCharacters，
+    //            仅触发 renderRelationships。
     _applyRelationships(data) {
-        const relationships = data.relationships || data.relations;
+        var relationships = data.relationships || data.relations;
+        // 兜底：AI 没返回 relationships 时，从已有角色推断基础关系网
+        // 原 _inferRelationshipsFromCharacters (systems.js:893) 在 legacy 路径调用，
+        // 现统一收敛到 mutator 层，保证事务一致性 + 避免 legacy 双写
+        if (!relationships || !Array.isArray(relationships) || relationships.length === 0) {
+            relationships = this._inferRelationshipsFromCharacters();
+        }
         if (!relationships || !Array.isArray(relationships) || relationships.length === 0) return;
-        // 仅处理 {name,delta} 格式；{from,to,type,desc} 由 game.js 的 mergeRelationships 路径处理
+
+        // 玩家名（用于 {name,delta} → 图谱条目转换）
+        var playerName = '主角';
+        if (typeof StateManager !== 'undefined' && StateManager.get) {
+            var player = StateManager.get('entities.player');
+            if (player && player.name) playerName = player.name;
+        } else if (typeof gameState !== 'undefined') {
+            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
+        }
+
+        // 1. 分类收集：图谱条目 + 好感度更新
+        var graphEntries = [];
+        var favorabilityUpdates = [];
         relationships.forEach(function(r) {
             if (!r) return;
-            // 跳过图谱格式：mergeRelationships 负责写入 gameState.relationships
-            if (r.from && r.to) return;
-            if (!r.name) return;
+            if (r.from && r.to) {
+                // 图谱格式 {from,to,type,desc}
+                graphEntries.push({
+                    from: String(r.from).trim(),
+                    to: String(r.to).trim(),
+                    type: String(r.type || '中立').trim() || '中立',
+                    desc: String(r.desc || '').trim()
+                });
+            } else if (r.name) {
+                // 好感度格式 {name,delta}：转为图谱条目 + 收集 delta
+                var delta = safeInt(r.delta || r.change || r.favor || 0, 0);
+                favorabilityUpdates.push({ name: String(r.name).trim(), delta: delta });
+                graphEntries.push({
+                    from: playerName,
+                    to: String(r.name).trim(),
+                    type: String(r.type || '相识').trim() || '相识',
+                    desc: String(r.desc || '').trim() || (delta > 0 ? '好感+' + delta : (delta < 0 ? '好感' + delta : '关系稳定'))
+                });
+            }
+        });
+
+        // 2. 应用好感度更新（CharacterMutator，transaction-safe，可回滚）
+        // 【P1修复BUG-4.7】好感度更新的唯一入口，避免 mergeRelationships 重复叠加 delta
+        favorabilityUpdates.forEach(function(upd) {
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
-                CharacterMutator.updateRelationship(r.name, safeInt(r.delta || r.change || r.favor || 0, 0), { silent: true });
+                CharacterMutator.updateRelationship(upd.name, upd.delta, { silent: true });
             } else {
+                // 兜底：直接操作 entities.characters（与原 _applyRelationships 一致）
                 const list = StateManager.get('entities.characters') || [];
                 const updated = list.map(function(c) {
-                    if (c.name !== r.name) return c;
+                    if (c.name !== upd.name) return c;
                     const clone = StateSchema.deepClone(c);
-                    // 【修复 P1】双写 favorability（权威字段）和 favor（兼容镜像），
-                    // 与 CharacterMutator.updateRelationship 保持一致，避免 UI 读 favorability 时拿不到更新
-                    var delta = safeInt(r.delta || r.change || r.favor || 0, 0);
-                    clone.favorability = (clone.favorability !== undefined ? clone.favorability : (clone.favor || 0)) + delta;
+                    // 双写 favorability（权威字段）和 favor（兼容镜像），
+                    // 与 CharacterMutator.updateRelationship 保持一致
+                    clone.favorability = (clone.favorability !== undefined ? clone.favorability : (clone.favor || 0)) + upd.delta;
                     clone.favor = clone.favorability;
                     return clone;
                 });
                 StateManager.set('entities.characters', updated, { silent: true });
             }
         });
+
+        // 3. 合并图谱条目到 StateManager.entities.relationships（max 10）
+        // _syncLegacyMirror 自动同步到 gameState.relationships（供 renderRelationships 读取）
+        if (graphEntries.length > 0 && typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            var existing = StateManager.get('entities.relationships') || [];
+            if (!Array.isArray(existing)) existing = [];
+            // 合并：相同 from↔to 对（双向算同一对）更新，新对追加
+            graphEntries.forEach(function(nr) {
+                var existIdx = -1;
+                for (var i = 0; i < existing.length; i++) {
+                    var er = existing[i];
+                    if ((er.from === nr.from && er.to === nr.to) || (er.from === nr.to && er.to === nr.from)) {
+                        existIdx = i;
+                        break;
+                    }
+                }
+                if (existIdx !== -1) {
+                    existing[existIdx] = nr;
+                } else {
+                    existing.push(nr);
+                }
+            });
+            // 上限 10 条（保留最近），与 legacy mergeRelationships 一致
+            if (existing.length > 10) existing = existing.slice(-10);
+            StateManager.set('entities.relationships', existing, { silent: true });
+
+            // 4. 推送到 gm.tables.relationships（供 MemoryManagerUI + 存档读取）
+            // _syncLegacyMirror 已将 entities.relationships 同步到 gameState.relationships，
+            // _pushRelationshipsToGM 从 gameState.relationships 推送到 gm.tables.relationships
+            if (typeof _pushRelationshipsToGM === 'function') {
+                try { _pushRelationshipsToGM(); } catch (e) {
+                    console.warn('[AIResponseMutator] _pushRelationshipsToGM 失败:', e && e.message);
+                }
+            } else if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
+                // 兜底：直接推送（与 core.js _pushRelationshipsToGM 逻辑一致）
+                if (!window.GameMemory.tables.relationships) window.GameMemory.tables.relationships = {};
+                existing.forEach(function(r) {
+                    if (!r || !r.from || !r.to) return;
+                    var key = r.from + '->' + r.to;
+                    if (window.GameMemory.tables.relationships[key]) {
+                        Object.assign(window.GameMemory.tables.relationships[key], r);
+                    } else {
+                        window.GameMemory.tables.relationships[key] = Object.assign({}, r);
+                    }
+                });
+            }
+        }
+    },
+
+    // 【P0-6修复】从已有角色推断基础关系网（替代 systems.js _inferRelationshipsFromCharacters）
+    // 当 AI 没返回 relationships 但返回了角色时，自动生成 玩家→NPC 的基础关系条目
+    // 原 systems.js:893 在 legacy 路径调用（写状态），现收敛到 mutator 层（事务内）
+    _inferRelationshipsFromCharacters() {
+        if (typeof StateManager === 'undefined' || !StateManager.get) return [];
+        var playerName = '';
+        var player = StateManager.get('entities.player');
+        if (player && player.name) playerName = player.name;
+        else if (typeof gameState !== 'undefined') {
+            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
+        } else {
+            playerName = '主角';
+        }
+        var chars = StateManager.get('entities.characters');
+        if (!Array.isArray(chars)) return [];
+        var inferred = [];
+        chars.forEach(function(c) {
+            if (!c || !c.name || c.name === playerName) return;
+            var relType = (c.relation && String(c.relation).trim()) || '相识';
+            inferred.push({
+                from: playerName,
+                to: c.name,
+                type: relType,
+                desc: (c.title ? c.title + '。' : '') + (c.desc || '')
+            });
+        });
+        return inferred;
     },
 
     // HUD 信息
@@ -509,6 +693,8 @@ const AIResponseMutator = {
             'time',
             'entities.locations',
             'entities.events',
+            // 【P0-6修复】_applyRelationships 现统一处理图谱 + 好感度格式，写入 entities.relationships
+            'entities.relationships',
             'ui.lastHUD',
             'progress.rollingSummary'
         ];

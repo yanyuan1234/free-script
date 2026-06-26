@@ -1682,12 +1682,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             gameState.streamFailCount = 0;
         }
 
-        // 【阶段2·AI契约层】使用 AIResponseMutator 把解析结果标准化写入 StateManager
-        // 注意：下方 legacy 路径（mergeCharacters/renderBag/mergeQuests）会再次写入相同数据。
-        // 两条路径都是幂等的智能合并（CharacterMutator.mergeCharacters / QuestMutator._smartMerge），
-        // 不会产生数据冲突。AIResponseMutator 负责标准化写入 StateManager，
-        // legacy 路径负责 UI 渲染（renderNpcList/renderQuests 等）和 gameState 同步。
-        // 保留双写是有意为之，移除任一路径都会丢失功能（UI 渲染或标准化）。
+        // 【阶段2·AI契约层】使用 AIResponseMutator 把解析结果标准化写入 StateManager（事务性，可回滚）
+        // 【P0-6修复】原注释辩护"保留双写是有意为之，幂等合并不冲突"——实际有害：
+        //   1. CharacterMutator.mergeCharacters / BagMutator.mergeItems / QuestMutator.addQuest 被调用两次，
+        //      第二次虽是幂等合并，但仍触发 StateManager.set → 重复订阅通知 + 重复 normalize 计算
+        //   2. mergeRelationships 写 gameState.relationships + gm.tables 不在 transaction 内，
+        //      AIResponseMutator 失败回滚时 legacy 写入不会回滚（状态不一致）
+        //   3. _applyLocations 用 REPLACE 语义，legacy 文本提取也用 REPLACE 语义，
+        //      两者互相覆盖（AI 显式返回的地名可能被文本提取的覆盖）
+        // 现收敛：
+        //   - _aiMutatorApplied=true：legacy 路径仅做 UI 渲染（renderNpcList/renderQuests/renderBag 等），
+        //     不再二次写入 StateManager（消除双写）
+        //   - _aiMutatorApplied=false：legacy 路径走完整状态写入做兜底（保证 AIResponseMutator 失败时玩家仍能看到数据）
+        //   - _applyCharacters/_applyRelationships/_applyLocations 已补齐 legacy 等价逻辑
+        //     （主角过滤、图谱格式处理、文本提取合并），跳过 legacy 不会丢失功能
         var _aiMutatorApplied = false;
         if (typeof AIResponseMutator !== 'undefined' && AIResponseMutator.apply && parseResult && parseResult.success) {
             try {
@@ -1795,7 +1803,16 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.hud) renderHUD(data.hud);
             if (data.choices) renderChoices(data.choices);
             if (data.player) renderPlayerStats(data.player);
-            if (data.characters) mergeCharacters(data.characters);
+            // 【P0-6修复】AIResponseMutator + legacy 双写收敛
+            // _doLegacyStateWrites：_aiMutatorApplied=true 时跳过 legacy 状态写入（仅 UI），
+            //                       false 时走完整 legacy 路径做兜底（保证 mutator 失败时玩家仍能看到数据）
+            // 注意：renderWorldModules 本身是 ui.worldModules 的唯一写入点（无对应 mutator），始终运行
+            //       rescue chars 数据源不同于 AIResponseMutator，始终运行（非双写）
+            var _doLegacyStateWrites = !_aiMutatorApplied;
+            if (data.characters) {
+                if (_doLegacyStateWrites) mergeCharacters(data.characters);
+                else renderNpcList();  // AIResponseMutator 已写 entities.characters，仅刷新 UI
+            }
             // 更新章节标题（如果有）
             var _aiTitleReset = false;
             if (data.title || data.scene) {
@@ -1830,6 +1847,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 【P0修复BUG-011】移除冗余手动写 gameState._lastHUD：
             // AIResponseMutator._applyHUD 已 set('ui.lastHUD')，_syncLegacyMirror 自动同步到 _lastHUD
             // 兜底：就算AI没返回characters，也尝试从原文提取
+            // 注意：rescue 始终运行（数据源不同于 AIResponseMutator，不属于双写范畴）
             if (!data.characters) {
                 var rescuedChars = extractObjArr(response, 'characters');
                 if (rescuedChars && rescuedChars.length > 0) {
@@ -1837,25 +1855,36 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
             if (data.world) renderWorldModules(data.world);
-            if (data.bag) renderBag(data.bag);
+            if (data.bag) {
+                if (_doLegacyStateWrites) renderBag(data.bag);  // 状态写入 + UI
+                else renderBag();  // AIResponseMutator 已写 entities.bag，仅刷新 UI（不传 items）
+            }
             // === 任务系统 ===
             if (data.quests) {
-                mergeQuests(data.quests);
+                if (_doLegacyStateWrites) mergeQuests(data.quests);
                 renderQuests();
             }
             // === 关系网 ===
             if (data.relationships) {
-                mergeRelationships(data.relationships);
+                if (_doLegacyStateWrites) mergeRelationships(data.relationships);
                 renderRelationships();
             } else if (data.characters && typeof _inferRelationshipsFromCharacters === 'function') {
                 // 【修复】AI 没返回 relationships 但返回了角色时，自动推断关系网
-                _inferRelationshipsFromCharacters();
+                // _aiMutatorApplied=true 时由 _applyRelationships 内部推断并写入，跳过 legacy 调用
+                if (_doLegacyStateWrites) {
+                    _inferRelationshipsFromCharacters();
+                } else {
+                    // _applyRelationships 已推断并写入 entities.relationships，仅刷新 UI
+                    renderRelationships();
+                }
             }
             // 【P0修复BUG-011】移除冗余手动写 gameState.rollingSummary：
             // AIResponseMutator._applyContextSummary 已 set('progress.rollingSummary')，
             // _syncLegacyMirror 自动同步到 gameState.rollingSummary
             // 从 AI 返回的 title/story 中提取地点
-            if (StateManager && (data.title || storyText)) {
+            // 【P0-6修复】_aiMutatorApplied=true 时由 _applyLocations 合并 AI-returned + 文本提取，
+            // 跳过 legacy 文本提取（避免 REPLACE 语义覆盖 mutator 的 MERGE 结果）
+            if (_doLegacyStateWrites && StateManager && (data.title || storyText)) {
                 var extractedLocations = _extractLocations(String(data.title || '') + ' ' + String(storyText || ''));
                 if (extractedLocations.length > 0) {
                     StateManager.set('entities.locations', extractedLocations, { silent: true });
