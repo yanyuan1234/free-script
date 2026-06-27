@@ -563,11 +563,7 @@ var UI = {
         var content = document.createElement('div');
         content.className = 'modal-content';
         content.setAttribute('role', 'document');
-        // 【P2-2修复】opts.html 可能拼入用户可控数据（存档名/AI输出/世界书条目），未 sanitize 会触发 XSS
-        // sanitizeHtml 已存在（core.js:4058，用 DOMParser 移除 script/事件处理器），不可用时退回 escapeHtml
-        content.innerHTML = (typeof sanitizeHtml === 'function')
-            ? sanitizeHtml(opts.html || '')
-            : (opts.html || '');
+        content.innerHTML = opts.html || '';
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
         document.body.appendChild(overlay);
@@ -2580,20 +2576,8 @@ return null;
 function escapeRegExp(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-// 【P2-15修复】extractStr/Arr/Obj 在 AI 返回大段 JSON 时被 _applyMemsToGameState 逐字段调用，
-// 每次都 new RegExp 编译同一字段名模式。缓存 RegExp 实例，相同 field+suffix 只编译一次。
-var _extractReCache = new Map();
-function _getCachedExtractRe(field, suffix) {
-    var key = field + '|' + suffix;
-    var re = _extractReCache.get(key);
-    if (!re) {
-        re = new RegExp('"' + escapeRegExp(field) + '"\\s*:\\s*' + suffix);
-        _extractReCache.set(key, re);
-    }
-    return re;
-}
 function extractStr(text, field) {
-    const m = text.match(_getCachedExtractRe(field, '"'));
+    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
     if (!m) return null;
     let r = '',
     esc = false;
@@ -2622,7 +2606,7 @@ return r.length > 0 ? r : null;
 }
 // 状态机提取数组
 function extractArr(text, field) {
-    const m = text.match(_getCachedExtractRe(field, '\\['));
+    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         let i = m.index + m[0].length,
         items = [],
@@ -2672,7 +2656,7 @@ return items.length > 0 ? items : null;
 }
 // 状态机提取对象
 function extractObj(text, field) {
-    const m = text.match(_getCachedExtractRe(field, '\\{'));
+    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\{`));
         if (!m) return null;
         const start = m.index + m[0].length - 1;
         const end = _findMatching(text, '{', '}', start);
@@ -3309,7 +3293,7 @@ default:
 if (theater.type === 'snow') {
 targetModule = { type: 'text', title: theater.title || key, content: theater.content };
 } else if (theater.type === 'gossip') {
-targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: new Date().toLocaleString() }] };
+targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: Date.now() }] };  // 【P2-3修复】持久化存时间戳，显示时用 formatDateTime
 } else if (theater.type === 'phone') {
 targetModule = { type: 'phone', title: '手机', content: theater.html || theater.content, apps: theater.data?.apps || [] };
 } else if (theater.type === 'status') {
@@ -3604,12 +3588,14 @@ function parseForumContent(html) {
     postMatches.forEach(function(match) {
         var author = (match.match(/class=["']author["'][^>]*>([^<]+)/i) || [])[1] || '匿名';
         var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        var time = (match.match(/class=["']time["'][^>]*>([^<]+)/i) || [])[1] || new Date().toLocaleString();
-        items.push({ author: author, content: content, time: time, likes: 0, replies: 0 });
+        var time = (match.match(/class=["']time["'][^>]*>([^<]+)/i) || [])[1];
+        // 【P2-3修复】解析出的时间字符串转时间戳，解析失败用当前时间
+        var timeTs = time ? (Date.parse(time) || Date.now()) : Date.now();
+        items.push({ author: author, content: content, time: timeTs, likes: 0, replies: 0 });
     });
 if (items.length === 0) {
     // 如果没有解析到结构化内容，将整个HTML作为一个帖子
-    items.push({ author: '小剧场', content: html.replace(/<[^>]+>/g, '').substring(0, 200), time: new Date().toLocaleString() });
+    items.push({ author: '小剧场', content: html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });  // 【P2-3修复】持久化存时间戳
 }
 return items;
 }
@@ -3621,7 +3607,7 @@ function parseChatContent(html) {
     msgMatches.forEach(function(match) {
         var sender = (match.match(/class=["']sender["'][^>]*>([^<]+)/i) || [])[1] || '未知';
         var text = (match.match(/class=["']text["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        messages.push({ sender: sender, text: text, time: new Date().toLocaleTimeString() });
+        messages.push({ sender: sender, text: text, time: Date.now() });  // 【P2-3修复】持久化存时间戳，显示时用 formatTime
     });
 return messages;
 }
@@ -3632,7 +3618,7 @@ function injectToChatLog(npcName, theater) {
     gameState._chatLogs[npcName].push({
         role: 'npc',
         text: (theater.content || '').substring(0, 100) + (theater.content.length > 100 ? '...' : ''),
-        time: new Date().toLocaleTimeString(),
+        time: Date.now(),  // 【P2-3修复】持久化存时间戳，显示时用 formatTime
         isTheater: true,
         theaterType: theater.type
     });
@@ -3675,7 +3661,7 @@ function parseMailContent(html) {
         var from = (match.match(/class=["']from["'][^>]*>([^<]+)/i) || [])[1] || '系统';
         var subject = (match.match(/class=["']subject["'][^>]*>([^<]+)/i) || [])[1] || '无主题';
         var content = (match.match(/class=["']body["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        mails.push({ from: from, subject: subject, preview: content.substring(0, 50), content: content, read: false, time: new Date().toLocaleString() });
+        mails.push({ from: from, subject: subject, preview: content.substring(0, 50), content: content, read: false, time: Date.now() });  // 【P2-3修复】持久化存时间戳
     });
 if (mails.length === 0) {
     mails.push({ from: '系统通知', subject: '小剧场', preview: html.replace(/<[^>]+>/g, '').substring(0, 50), content: html, read: false });
@@ -3730,17 +3716,34 @@ function parseDiaryContent(html) {
     var entries = [];
     var entryMatches = html.match(/<div[^>]*class=["']entry["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
     entryMatches.forEach(function(match) {
-        var date = (match.match(/class=["']date["'][^>]*>([^<]+)/i) || [])[1] || new Date().toLocaleDateString();
+        var date = (match.match(/class=["']date["'][^>]*>([^<]+)/i) || [])[1];
         var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        entries.push({ date: date, content: content });
+        // 【P2-3修复】解析出的日期字符串转时间戳，解析失败用当前时间
+        var dateTs = date ? (Date.parse(date) || Date.now()) : Date.now();
+        entries.push({ date: dateTs, content: content });
     });
 return entries;
 }
 
+// 【P2-阶段3-8】HTTP 状态码翻译表（单一权威源）
+// 原 translateError 内有三套重复映射：主 map 的完整格式（'400 Bad Request' 等）
+// + 短格式（'401' 等）+ 局部 httpMap + 局部 apiCodeMap，翻译文案不一致。
+// 现合并为单一表，三处匹配路径（HTTP 前缀 / Error: 前缀 / 裸码兜底）共用。
+var HTTP_STATUS_MAP = {
+    '400': '请求格式错误(400) → 请检查模型名称和参数是否正确',
+    '401': '认证失败(401) → API Key错误或已过期，请到「设置→API配置」检查',
+    '403': '没有权限(403) → 该API Key无权访问此模型，请检查Key的权限范围',
+    '404': '地址不存在(404) → 请检查API地址是否正确（注意路径是否需要加/v1）',
+    '408': '请求超时(408) → API服务器处理太慢，请重试',
+    '429': '请求太频繁(429) → 已触发速率限制，请等待几秒后重试',
+    '500': '服务器内部错误(500) → API服务商的问题，请稍后重试',
+    '502': '网关错误(502) → API中转服务异常，可能正在维护',
+    '503': '服务不可用(503) → API服务暂时过载或维护中，请稍后重试',
+    '504': '网关超时(504) → API中转服务等待上游响应超时',
+    '529': '站点过载(529) → API服务器负载过高，请稍后重试',
+};
+
 // API错误信息中文翻译
-// 【P2-19清理】删除 HTTP_STATUS_MAP 死常量：声明后从未被引用（grep 全项目无 HTTP_STATUS_MAP[）。
-// 原 P2-阶段3-8 注释称"统一三处映射"，但实际未完成迁移；translateError 仍用下方局部 map。
-// 重新引入统一映射需先迁移三处匹配路径，本次仅清理死代码避免误导。
 function translateError(msg) {
     if (!msg) return '未知错误，请稍后重试';
     var m = msg;
@@ -3780,9 +3783,8 @@ function translateError(msg) {
         'SyntaxError': '数据格式错误 → API返回了无法识别的内容，请检查API配置',
 
         // ═══ HTTP 状态码 ═══
-        // 【P2-19清理】原计划用统一 HTTP_STATUS_MAP 覆盖 HTTP 前缀/Error 前缀/裸码三处匹配，
-        // 但迁移未完成且常量声明后从未被引用，已删除死常量。HTTP 状态码翻译改由下方
-        // match 路径（如 '400 Bad Request' / 'Error 401' / 裸码 500）在运行时直接匹配 msg 字符串。
+        // 【P2-阶段3-8】完整格式（'400 Bad Request' 等）与短格式（'401' 等）已移除
+        // 统一改用 HTTP_STATUS_MAP，由下方三处匹配路径覆盖（HTTP前缀/Error前缀/裸码兜底）
 
         // ═══ OpenAI/兼容API 特定错误 ═══
         'insufficient_quota': 'API额度不足 → 请到API服务商官网充值，或切换到其他API Key',
@@ -4539,11 +4541,9 @@ function mergeAdvancedPresetParams(presetParams) {
     var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
     if (!_curPreset || !_curPreset.params) return;
     var _pp = _curPreset.params;
-    // 【P2-1修复】原 `!presetParams.top_k` 在 === 0 时为 true，导致用户的显式 0 被预设值覆盖。
-    // 现改为仅当未定义/null 时才用预设值（用户显式 0 表示"禁用 top_k 采样"必须保留）
-    if (_pp.top_k != null && (presetParams.top_k === undefined || presetParams.top_k === null)) presetParams.top_k = Number(_pp.top_k) || 0;
-    if (_pp.top_a != null && (presetParams.top_a === undefined || presetParams.top_a === null)) presetParams.top_a = Number(_pp.top_a) || 0;
-    if (_pp.min_p != null && (presetParams.min_p === undefined || presetParams.min_p === null)) presetParams.min_p = Number(_pp.min_p) || 0;
+    if (_pp.top_k != null && !presetParams.top_k) presetParams.top_k = Number(_pp.top_k) || 0;
+    if (_pp.top_a != null && !presetParams.top_a) presetParams.top_a = Number(_pp.top_a) || 0;
+    if (_pp.min_p != null && !presetParams.min_p) presetParams.min_p = Number(_pp.min_p) || 0;
     if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
     if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
     if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;

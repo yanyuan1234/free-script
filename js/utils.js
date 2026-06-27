@@ -502,3 +502,50 @@ function shouldSkipPageRender(pageName, dataKey) {
     RenderCache.mark(pageName, dataKey);
     return false;
 }
+
+// 【P2-3修复】时间格式化工具函数：持久化存时间戳（Date.now()），显示时统一格式化
+// 优势：跨时区读档时自动显示为当地时间，数据本身无歧义
+// 入参 ts 支持：number(时间戳)、string(ISO字符串或老格式本地字符串)、Date 对象
+function _coerceTs(ts) {
+    if (ts == null) return Date.now();
+    if (typeof ts === 'number') return ts;
+    if (ts instanceof Date) return ts.getTime();
+    // 字符串：先尝试 ISO 或标准日期格式
+    var t = Date.parse(ts);
+    if (!isNaN(t)) return t;
+    // 兜底：当前时间
+    return Date.now();
+}
+function formatTime(ts) {
+    // 仅时分秒，用于聊天消息、评论等
+    return new Date(_coerceTs(ts)).toLocaleTimeString();
+}
+function formatDate(ts) {
+    // 仅日期，用于日记、成就解锁日等
+    return new Date(_coerceTs(ts)).toLocaleDateString();
+}
+function formatDateTime(ts) {
+    // 完整日期时间，用于存档时间、邮件、论坛帖子等
+    return new Date(_coerceTs(ts)).toLocaleString();
+}
+function formatTimeShort(ts) {
+    // HH:mm 短格式，用于朋友圈等
+    return new Date(_coerceTs(ts)).toLocaleTimeString().slice(0, 5);
+}
+
+// 【P2-3修复】时间字段迁移：将对象数组中指定字段从字符串转为时间戳
+// 只转看起来像老格式（包含中文或冒号的字符串）的，已是数字时间戳不动
+function migrateTimeFields(arr, fieldName) {
+    if (!Array.isArray(arr)) return;
+    for (var i = 0; i < arr.length; i++) {
+        var item = arr[i];
+        if (!item || item[fieldName] == null) continue;
+        if (typeof item[fieldName] === 'number') continue;
+        if (typeof item[fieldName] === 'string') {
+            var parsed = Date.parse(item[fieldName]);
+            if (!isNaN(parsed)) {
+                item[fieldName] = parsed;
+            }
+        }
+    }
+}

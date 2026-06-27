@@ -1,10 +1,6 @@
 // ========================================
 var WorldInfo = {
     books: [],
-    // 【P2-16修复】matchKeysAll 在世界书扫描时为每个 key + 每个 entry 调用 new RegExp，
-    // 100 个 entry × 平均 3 个 key = 300 次编译。缓存已编译正则，相同 (key,caseSensitive,wholeWords) 复用。
-    // entry 修改时通过 saveEntry 等写入点清空缓存（避免脏数据命中）。
-    _keyRegexCache: {},
     settings: {
         // scanDepth默认值改为2（与酒馆一致）
         scanDepth: 2,
@@ -65,49 +61,10 @@ var WorldInfo = {
     init: function() {
         this.load();
         this.bindEvents();
-        // 【P2-11修复】为 .wi-checkbox 元素补齐可访问性属性：
-        // - role="checkbox" 让屏幕阅读器识别为可交互
-        // - tabindex="0" 让键盘 Tab 可聚焦
-        // - aria-checked 同步状态（点击/空格/回车时更新）
-        // - keydown 处理 Space/Enter 触发 toggle（与鼠标点击等效）
-        // 静态 HTML 原仅 onclick，键盘用户与辅助技术用户无法操作。
-        this._enhanceCheckboxAccessibility();
         // 【世界书↔记忆联动】首次启动时一次性收割已存在条目
         // 避免老玩家世界书里的核心设定没进永久事实区
         this._harvestAllEntriesToMemory();
         },
-
-    // 【P2-11修复】批量增强 .wi-checkbox 的可访问性
-    _enhanceCheckboxAccessibility: function() {
-        try {
-            var boxes = document.querySelectorAll('.wi-checkbox');
-            for (var i = 0; i < boxes.length; i++) {
-                var box = boxes[i];
-                if (box.getAttribute('role') === 'checkbox') continue;  // 已增强，跳过
-                box.setAttribute('role', 'checkbox');
-                box.setAttribute('tabindex', '0');
-                box.setAttribute('aria-checked', box.classList.contains('checked') ? 'true' : 'false');
-                // 避免重复绑定：用标记位
-                if (box._a11yBound) continue;
-                box._a11yBound = true;
-                // 包装原 onclick 的 toggle 行为，同时更新 aria-checked
-                // 这里不替换 onclick 属性，而是在 click 事件后同步 aria-checked
-                box.addEventListener('click', function() {
-                    this.setAttribute('aria-checked', this.classList.contains('checked') ? 'true' : 'false');
-                });
-                // 键盘等价：Space/Enter 触发原生 click（HTML 已绑定 onclick 会 toggle 'checked' class，
-                // 上面绑定的 click 监听器会同步 aria-checked）。不手动 toggle 避免与 onclick 重复切换。
-                box.addEventListener('keydown', function(e) {
-                    if (e.key === ' ' || e.key === 'Enter' || e.keyCode === 32 || e.keyCode === 13) {
-                        e.preventDefault();  // 阻止 Space 滚动页面
-                        this.click();
-                    }
-                });
-            }
-        } catch (e) {
-            console.warn('[WorldInfo] _enhanceCheckboxAccessibility 失败:', e);
-        }
-    },
 
     // 【世界书↔记忆联动】把当前所有世界书条目收割到永久事实区
     // 仅收割：constant 标记的 + 命中核心关键词的
@@ -180,9 +137,6 @@ var WorldInfo = {
         // 导致缓存可能命中过期数据（game.js 的缓存逻辑会检查 _wiCachedTurn === currentTurn）
         gameState._wiCachedResult = null;
         if (gameState) gameState._wiCachedTurn = null;
-        // 【P2-16修复】清空 key 正则缓存：entry 可能被修改/删除，缓存的 RegExp 仍可能命中
-        // 但 key 内容已变。统一在 save 时清空，下次 matchKeysAll 重新编译。
-        this._keyRegexCache = {};
         },
 
     // 绑定事件
@@ -1713,7 +1667,6 @@ var WorldInfo = {
     // 关键词匹配（全部匹配）
     matchKeysAll: function(haystack, keys, entry) {
         if (!keys || keys.length === 0) return false;
-        var self = this;
         var matchWholeWords = entry.matchWholeWords || false;
         var caseSensitive = entry.caseSensitive || false;
 
@@ -1723,19 +1676,7 @@ var WorldInfo = {
             if (!key) return true;
             var k = caseSensitive ? key : key.toLowerCase();
             if (matchWholeWords) {
-                // 【P2-16修复】使用缓存的 RegExp，避免每次扫描都重新编译
-                var cacheKey = k + '|' + (caseSensitive ? '1' : '0') + '|' + '1';
-                var regex = self._keyRegexCache[cacheKey];
-                if (!regex) {
-                    var escaped = k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                    var pattern = '(?:^|\\W)(' + escaped + ')(?:$|\\W)';
-                    try {
-                        regex = new RegExp(pattern, caseSensitive ? '' : 'i');
-                        self._keyRegexCache[cacheKey] = regex;
-                    } catch (e) {
-                        return false;
-                    }
-                }
+                var regex = new RegExp('(?:^|\\W)(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
                 return regex.test(haystack);
                 } else {
                 return text.indexOf(k) !== -1;

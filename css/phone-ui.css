@@ -2184,16 +2184,14 @@
 }
 
 /* 邮件详情 */
-/* 【P2-14修复】原硬编码 #fff/#f0f0f0/#333 在暗色模式下显示白底黑字，
-   改用 CSS 变量自动适配主题。 */
 .mail-detail-nav {
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
+    background: #fff;
+    border-bottom: 1px solid #f0f0f0;
 }
 
 .mail-detail-back {
     font-size: 20px;
-    color: var(--text);
+    color: #333;
     cursor: pointer;
     width: 28px;
     display: flex;
@@ -2204,7 +2202,7 @@
     display: flex;
     gap: 16px;
     font-size: 18px;
-    color: var(--text);
+    color: #333;
 }
 
 .mail-detail-action-btn {
