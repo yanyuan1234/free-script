@@ -2038,7 +2038,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                         gameState._chatLogs[msg.from].push({
                             role: 'npc',
                             text: msg.text,
-                            time: new Date().toLocaleTimeString()
+                            time: Date.now()  // 【P2-3修复】持久化存时间戳
                         });
                         // 【性能优化】限制每个NPC聊天记录最多 50 条，防止长会话内存泄漏
                         if (gameState._chatLogs[msg.from].length > 50) {
@@ -3464,7 +3464,7 @@ function buildSaveData(customName, useCache) {
         return {
             name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
             prompt: (gameState && gameState.userPrompt) || '',
-            time: new Date().toLocaleString(),
+            time: Date.now(),  // 【P2-3修复】持久化存时间戳，显示用 formatDateTime
             version: GAME_VERSION,
             state: gameState._lastSaveState,
             memoryData: gameState._lastSaveMemoryData
@@ -3492,7 +3492,7 @@ function buildSaveData(customName, useCache) {
     var saveData = {
         name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
         prompt: (gameState && gameState.userPrompt) || '',
-        time: new Date().toLocaleString(),
+        time: Date.now(),  // 【P2-3修复】持久化存时间戳
         version: GAME_VERSION,
         state: gameState ? JSON.stringify(gameState) : '{}',
         memoryData: memoryData ? JSON.stringify(memoryData) : null
@@ -3512,7 +3512,7 @@ function buildSaveData(customName, useCache) {
 // 每次 schema 变更时递增 CURRENT_SCHEMA_VERSION，并注册对应迁移函数。
 // loadFromSlot 会按顺序应用从旧 schemaVersion 到当前版本的所有迁移。
 var SaveMigrator = {
-    CURRENT_SCHEMA_VERSION: 1,
+    CURRENT_SCHEMA_VERSION: 2,  // 【P2-3修复】v2: 时间字段从字符串迁移为数字时间戳
     _migrations: [],
     register: function(version, fn, desc) {
         this._migrations[version] = { fn: fn, desc: desc || '' };
@@ -3588,6 +3588,89 @@ SaveMigrator.register(1, function(parsed) {
     if (parsed._lastAIReply === undefined) parsed._lastAIReply = null;
     return parsed;
 }, '旧版字段迁移（worldInfo 及缺失字段默认值）');
+
+// 【P2-3修复】v2 迁移：所有时间字段从字符串改为数字时间戳
+// 老存档中 time/date/unlockedAt 等字段是 toLocaleString 结果（本地时区字符串），
+// 跨时区读档会显示错误。统一转为 Date.now() 时间戳，显示时再格式化。
+SaveMigrator.register(2, function(parsed) {
+    function _ts(v) {
+        if (v == null) return v;
+        if (typeof v === 'number') return v;
+        if (typeof v === 'string') {
+            var t = Date.parse(v);
+            return isNaN(t) ? v : t;
+        }
+        return v;
+    }
+    function _migrateArr(arr, field) {
+        if (!Array.isArray(arr)) return;
+        for (var i = 0; i < arr.length; i++) {
+            var it = arr[i];
+            if (!it || typeof it !== 'object') continue;
+            if (it[field] !== undefined) it[field] = _ts(it[field]);
+        }
+    }
+    function _migrateObjDict(dict, field) {
+        if (!dict || typeof dict !== 'object') return;
+        Object.keys(dict).forEach(function(k) {
+            var v = dict[k];
+            if (Array.isArray(v)) _migrateArr(v, field);
+            else if (v && typeof v === 'object' && v[field] !== undefined) v[field] = _ts(v[field]);
+        });
+    }
+    // _chatLogs: { npcName: [{ time }] }
+    if (parsed._chatLogs) _migrateObjDict(parsed._chatLogs, 'time');
+    // _mail: [{ time }]
+    if (parsed._mail) _migrateArr(parsed._mail, 'time');
+    // _diary: [{ date }]
+    if (parsed._diary) _migrateArr(parsed._diary, 'date');
+    // _moments: [{ posts: [{ time }] }] 或直接是 posts 数组
+    if (Array.isArray(parsed._moments)) {
+        for (var mi = 0; mi < parsed._moments.length; mi++) {
+            var m = parsed._moments[mi];
+            if (m && Array.isArray(m.posts)) _migrateArr(m.posts, 'time');
+        }
+    }
+    // _worldModules: 数组，各模块类型不同
+    // 遍历所有模块，对常见的 items/posts/comments/messages 数组做 time/date 迁移
+    if (Array.isArray(parsed._worldModules)) {
+        parsed._worldModules.forEach(function(mod) {
+            if (!mod || typeof mod !== 'object') return;
+            ['items', 'posts', 'comments', 'messages', 'entries'].forEach(function(arrKey) {
+                if (Array.isArray(mod[arrKey])) {
+                    _migrateArr(mod[arrKey], 'time');
+                    _migrateArr(mod[arrKey], 'date');
+                }
+            });
+            // 模块级 time/date（如 mail 模块单条）
+            if (mod.time !== undefined) mod.time = _ts(mod.time);
+            if (mod.date !== undefined) mod.date = _ts(mod.date);
+        });
+    }
+    // _theaterContent: { key: { content, time } }
+    if (parsed._theaterContent && typeof parsed._theaterContent === 'object') {
+        Object.keys(parsed._theaterContent).forEach(function(k) {
+            var t = parsed._theaterContent[k];
+            if (t && t.time !== undefined) t.time = _ts(t.time);
+        });
+    }
+    // _stats.recentLogs: [{ time }]
+    if (parsed._stats && parsed._stats.recentLogs) _migrateArr(parsed._stats.recentLogs, 'time');
+    // pinnedModules 中的模块
+    if (parsed.pinnedModules && typeof parsed.pinnedModules === 'object') {
+        Object.keys(parsed.pinnedModules).forEach(function(k) {
+            var mod = parsed.pinnedModules[k];
+            if (!mod || typeof mod !== 'object') return;
+            ['items', 'posts', 'comments', 'messages'].forEach(function(arrKey) {
+                if (Array.isArray(mod[arrKey])) {
+                    _migrateArr(mod[arrKey], 'time');
+                    _migrateArr(mod[arrKey], 'date');
+                }
+            });
+        });
+    }
+    return parsed;
+}, '时间字段从字符串迁移为数字时间戳（跨时区兼容）');
 
 function safeSaveSlot(slot) {
     saveToSlot(slot).catch(function(e) {
@@ -4062,7 +4145,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         if (storyText) {
             var sentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 10; }).slice(0, 2);
             sentences.forEach(function(s) {
-                posts.push({ author: playerName, text: s.trim().slice(0, 60), time: new Date().toLocaleTimeString().slice(0, 5) });
+                posts.push({ author: playerName, text: s.trim().slice(0, 60), time: Date.now() });  // 【P2-3修复】持久化存时间戳
             });
         }
         charList.slice(0, 3).forEach(function(c, idx) {
@@ -4078,7 +4161,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
                 var _evText = typeof _ev === 'string' ? _ev : (_ev.content || _ev.title || '');
                 if (_evText) _npcText = _tpl + ' 听说' + _evText.slice(0, 24);
             }
-            posts.push({ author: cName, text: _npcText.slice(0, 60), time: new Date().toLocaleTimeString().slice(0, 5) });
+            posts.push({ author: cName, text: _npcText.slice(0, 60), time: Date.now() });  // 【P2-3修复】持久化存时间戳
         });
         if (posts.length > 0) {
             modules.push({ type: 'moments', title: '朋友圈', posts: posts });
@@ -4099,7 +4182,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         var _turnMailSubject = '第 ' + turn + ' 轮冒险记录';
         var _hasTurnMail = _allMails.some(function(ml) { return ml && ml.subject === _turnMailSubject; });
         if (!_hasTurnMail) {
-            var newMail = { from: '系统', subject: _turnMailSubject, content: '你的旅程已进入第 ' + turn + ' 轮，世界正因你的选择而改变。', read: false, time: new Date().toLocaleString() };
+            var newMail = { from: '系统', subject: _turnMailSubject, content: '你的旅程已进入第 ' + turn + ' 轮，世界正因你的选择而改变。', read: false, time: Date.now() };  // 【P2-3修复】持久化存时间戳
             // 追加到已有 mail 模块，或新建
             if (_existingMailMods.length > 0) {
                 if (!_existingMailMods[0].items) _existingMailMods[0].items = [];
@@ -4111,7 +4194,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         // 任务邮件：仅在完全没有邮件时生成（避免每轮重复推送相同任务邮件）
         if (_allMails.length === 0 && quests.length > 0) {
             var questMails = quests.slice(0, 2).map(function(q) {
-                if (q && q.title) return { from: '任务委员会', subject: q.title, content: q.desc || '请查看任务详情并尽快完成。', read: false, time: new Date().toLocaleString() };
+                if (q && q.title) return { from: '任务委员会', subject: q.title, content: q.desc || '请查看任务详情并尽快完成。', read: false, time: Date.now() };  // 【P2-3修复】持久化存时间戳
                 return null;
             }).filter(Boolean);
             if (questMails.length > 0) {
@@ -4131,14 +4214,14 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 改为按本轮是否返回判断，让日记随轮次持续增长。
     if (!_aiReturned('diary') && storyText) {
         var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
-        var diaryEntries = [{ npc: playerName, date: new Date().toLocaleDateString(), content: summary, mood: '平静', memos: [] }];
+        var diaryEntries = [{ npc: playerName, date: Date.now(), content: summary, mood: '平静', memos: [] }];  // 【P2-3修复】持久化存时间戳
         // 为每个 NPC 也生成日记条目（用 desc/mood 作为内容）
         charList.forEach(function(c) {
             if (!c.name) return;
             var npcContent = c.desc || c.mood || ('今天遇到了' + playerName + '。');
             diaryEntries.push({
                 npc: c.name,
-                date: new Date().toLocaleDateString(),
+                date: Date.now(),  // 【P2-3修复】持久化存时间戳
                 content: npcContent.slice(0, 80),
                 mood: c.mood || '平静',
                 memos: []
@@ -4196,8 +4279,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
                 role: 'npc',
                 from: name,
                 text: greetText.slice(0, 60),
-                time: new Date().toLocaleTimeString(),
-                _ts: Date.now()
+                time: Date.now()  // 【P2-3修复】统一用时间戳，删除冗余 _ts 字段
             });
         }
     });
@@ -4237,8 +4319,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
                     role: 'npc',
                     from: _npc.name,
                     text: _topic,
-                    time: new Date().toLocaleTimeString(),
-                    _ts: Date.now(),
+                    time: Date.now(),  // 【P2-3修复】统一用时间戳，删除冗余 _ts 字段
                     _turnTag: _turnTag
                 });
             }

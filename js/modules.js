@@ -1174,7 +1174,7 @@ var PresetManager = {
         // 酒馆兼容：工具推理模式
         tool_reasoning_mode: data.tool_reasoning_mode || 'disabled',
         imported: true,
-        time: new Date().toLocaleString()
+        time: Date.now()  // 【P2-3修复】持久化存时间戳
         };
     },
 
@@ -1185,7 +1185,7 @@ var PresetManager = {
             name: name,
             params: Object.assign({}, this.currentParams),
             imported: false,
-            time: new Date().toLocaleString()
+            time: Date.now()  // 【P2-3修复】持久化存时间戳
             };
 
         // 检查是否已存在同名预设
@@ -3798,10 +3798,10 @@ var MacroEngine = {
             var author = (post.match(/author=["']([^"']+)["']/i) || [])[1] || '匿名';
             var title = (post.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || '';
             var body = (post.match(/<body>([\s\S]*?)<\/body>/i) || [])[1] || post.replace(/<[^>]+>/g, '');
-            posts.push({ author: author, title: title, content: body, time: new Date().toLocaleString() });
+            posts.push({ author: author, title: title, content: body, time: Date.now() });  // 【P2-3修复】持久化存时间戳
             });
         if (posts.length === 0) {
-            posts.push({ author: '小剧场', content: result.html.replace(/<[^>]+>/g, '').substring(0, 200), time: new Date().toLocaleString() });
+            posts.push({ author: '小剧场', content: result.html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });  // 【P2-3修复】持久化存时间戳
         }
     result.data = { posts: posts };
     return result;

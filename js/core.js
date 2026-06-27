@@ -3293,7 +3293,7 @@ default:
 if (theater.type === 'snow') {
 targetModule = { type: 'text', title: theater.title || key, content: theater.content };
 } else if (theater.type === 'gossip') {
-targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: new Date().toLocaleString() }] };
+targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: Date.now() }] };  // 【P2-3修复】持久化存时间戳，显示时用 formatDateTime
 } else if (theater.type === 'phone') {
 targetModule = { type: 'phone', title: '手机', content: theater.html || theater.content, apps: theater.data?.apps || [] };
 } else if (theater.type === 'status') {
@@ -3588,12 +3588,14 @@ function parseForumContent(html) {
     postMatches.forEach(function(match) {
         var author = (match.match(/class=["']author["'][^>]*>([^<]+)/i) || [])[1] || '匿名';
         var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        var time = (match.match(/class=["']time["'][^>]*>([^<]+)/i) || [])[1] || new Date().toLocaleString();
-        items.push({ author: author, content: content, time: time, likes: 0, replies: 0 });
+        var time = (match.match(/class=["']time["'][^>]*>([^<]+)/i) || [])[1];
+        // 【P2-3修复】解析出的时间字符串转时间戳，解析失败用当前时间
+        var timeTs = time ? (Date.parse(time) || Date.now()) : Date.now();
+        items.push({ author: author, content: content, time: timeTs, likes: 0, replies: 0 });
     });
 if (items.length === 0) {
     // 如果没有解析到结构化内容，将整个HTML作为一个帖子
-    items.push({ author: '小剧场', content: html.replace(/<[^>]+>/g, '').substring(0, 200), time: new Date().toLocaleString() });
+    items.push({ author: '小剧场', content: html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });  // 【P2-3修复】持久化存时间戳
 }
 return items;
 }
@@ -3605,7 +3607,7 @@ function parseChatContent(html) {
     msgMatches.forEach(function(match) {
         var sender = (match.match(/class=["']sender["'][^>]*>([^<]+)/i) || [])[1] || '未知';
         var text = (match.match(/class=["']text["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        messages.push({ sender: sender, text: text, time: new Date().toLocaleTimeString() });
+        messages.push({ sender: sender, text: text, time: Date.now() });  // 【P2-3修复】持久化存时间戳，显示时用 formatTime
     });
 return messages;
 }
@@ -3616,7 +3618,7 @@ function injectToChatLog(npcName, theater) {
     gameState._chatLogs[npcName].push({
         role: 'npc',
         text: (theater.content || '').substring(0, 100) + (theater.content.length > 100 ? '...' : ''),
-        time: new Date().toLocaleTimeString(),
+        time: Date.now(),  // 【P2-3修复】持久化存时间戳，显示时用 formatTime
         isTheater: true,
         theaterType: theater.type
     });
@@ -3659,7 +3661,7 @@ function parseMailContent(html) {
         var from = (match.match(/class=["']from["'][^>]*>([^<]+)/i) || [])[1] || '系统';
         var subject = (match.match(/class=["']subject["'][^>]*>([^<]+)/i) || [])[1] || '无主题';
         var content = (match.match(/class=["']body["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        mails.push({ from: from, subject: subject, preview: content.substring(0, 50), content: content, read: false, time: new Date().toLocaleString() });
+        mails.push({ from: from, subject: subject, preview: content.substring(0, 50), content: content, read: false, time: Date.now() });  // 【P2-3修复】持久化存时间戳
     });
 if (mails.length === 0) {
     mails.push({ from: '系统通知', subject: '小剧场', preview: html.replace(/<[^>]+>/g, '').substring(0, 50), content: html, read: false });
@@ -3714,9 +3716,11 @@ function parseDiaryContent(html) {
     var entries = [];
     var entryMatches = html.match(/<div[^>]*class=["']entry["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
     entryMatches.forEach(function(match) {
-        var date = (match.match(/class=["']date["'][^>]*>([^<]+)/i) || [])[1] || new Date().toLocaleDateString();
+        var date = (match.match(/class=["']date["'][^>]*>([^<]+)/i) || [])[1];
         var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        entries.push({ date: date, content: content });
+        // 【P2-3修复】解析出的日期字符串转时间戳，解析失败用当前时间
+        var dateTs = date ? (Date.parse(date) || Date.now()) : Date.now();
+        entries.push({ date: dateTs, content: content });
     });
 return entries;
 }

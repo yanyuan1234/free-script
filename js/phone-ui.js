@@ -157,7 +157,7 @@ function sendForumComment(postIdx, replyToName) {
     var newComment = {
         name: playerName,
         text: text,
-        time: new Date().toLocaleTimeString(),
+        time: Date.now(),  // 【P2-3修复】持久化存时间戳
         isPlayer: true,
         replyTo: replyToName || ''
     };
@@ -295,13 +295,13 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
                     commentMods[postIdx].comments.push({
                         name: r.name,
                         text: r.text,
-                        time: new Date().toLocaleTimeString(),
+                        time: Date.now(),  // 【P2-3修复】持久化存时间戳
                         replyTo: r.replyTo || ''
                     });
                     appendForumReply(postIdx, {
                         name: r.name,
                         text: r.text,
-                        time: new Date().toLocaleTimeString(),
+                        time: Date.now(),  // 【P2-3修复】持久化存时间戳
                         replyTo: r.replyTo || ''
                     });
                     autoSave();
@@ -2722,7 +2722,7 @@ function renderAuthorNotePage() {
                     source: key,
                     content: theater.content,
                     html: theater.html,
-                    time: new Date().toLocaleString()
+                    time: Date.now()  // 【P2-3修复】持久化存时间戳
                 });
             }
         });
@@ -3859,7 +3859,7 @@ function bindEvents() {
             name: name,
             prompt: prompt,
             mc: mc,
-            time: new Date().toLocaleString()
+            time: Date.now()  // 【P2-3修复】持久化存时间戳
         });
         if (presets.length > 20) presets = presets.slice(0, 20);
         savePresets(presets);
@@ -4325,6 +4325,153 @@ function bindEvents() {
     if (_incrementalEl && typeof EnhancedMemory !== 'undefined') {
         _incrementalEl.checked = !!EnhancedMemory.compressionConfig.incrementalUpdate;
     }
+
+    // ★ CSP兼容：事件委托类绑定（替代内联 onclick）
+    // wi-checkbox 点击切换勾选状态
+    document.addEventListener('click', function(e) {
+        var target = e.target;
+        // .wi-checkbox 切换
+        if (target.matches('.wi-checkbox')) {
+            target.classList.toggle('checked');
+            return;
+        }
+        // .collapse-header 折叠/展开
+        if (target.matches('.collapse-header')) {
+            var content = target.nextElementSibling;
+            if (content) content.classList.toggle('collapsed');
+            target.classList.toggle('collapsed');
+            return;
+        }
+        // .setting-header 设置面板折叠
+        if (target.matches('.setting-header')) {
+            var section = target.closest('.setting-section');
+            if (section) section.classList.toggle('collapsed');
+            return;
+        }
+        // .memory-tab 记忆面板标签切换
+        if (target.matches('.memory-tab')) {
+            if (typeof MemoryManagerUI !== 'undefined') {
+                MemoryManagerUI.switchTab(target.dataset.tab);
+            }
+            return;
+        }
+        // .archetype-card 原型卡片选择
+        if (target.matches('.archetype-card') || target.closest('.archetype-card')) {
+            var card = target.matches('.archetype-card') ? target : target.closest('.archetype-card');
+            if (typeof MemoryManagerUI !== 'undefined') {
+                MemoryManagerUI.selectArchetype(card.dataset.archetype);
+            }
+            return;
+        }
+        // .param-preset 参数预设点击
+        if (target.matches('.param-preset') || target.closest('.param-preset')) {
+            var presetEl = target.matches('.param-preset') ? target : target.closest('.param-preset');
+            if (typeof PresetManager !== 'undefined') {
+                PresetManager.applyPreset(presetEl.dataset.paramPreset);
+            }
+            return;
+        }
+    });
+
+    // ★ CSP兼容：集中绑定类（有明确id的元素）
+    // 世界信息按钮
+    bindEvent('btnWiNewBook', 'click', function() {
+        if (typeof WorldInfo !== 'undefined') WorldInfo.addNewBook();
+    });
+    bindEvent('btnWiNewEntry', 'click', function() {
+        if (typeof WorldInfo !== 'undefined') WorldInfo.addEntry();
+    });
+    bindEvent('btnWiBack', 'click', function() {
+        if (typeof WorldInfo !== 'undefined') WorldInfo.goBack();
+    });
+
+    // 预设管理器相关
+    bindEvent('setupPresetSelector', 'click', function() {
+        if (typeof PresetManager !== 'undefined') PresetManager.showModal();
+    });
+    bindEvent('btnManagePresets', 'click', function() {
+        if (typeof PresetManager !== 'undefined') PresetManager.showModal();
+    });
+    bindEvent('btnImportPreset', 'click', function() {
+        var input = document.getElementById('presetFileInput');
+        if (input) input.click();
+    });
+    bindEvent('presetManagerCloseBtn', 'click', function() {
+        if (typeof PresetManager !== 'undefined') PresetManager.updateSetupPresetDisplay();
+    });
+
+    // 设置页跳转到预设管理
+    function _goPresetFromSettings() {
+        var modal = document.getElementById('settingsModal');
+        if (modal) modal.style.display = 'none';
+        if (typeof PresetManager !== 'undefined') PresetManager.showModal();
+    }
+    bindEvent('btnGoPreset1', 'click', _goPresetFromSettings);
+    bindEvent('btnGoPreset2', 'click', _goPresetFromSettings);
+
+    // 聊天相关
+    bindEvent('chatDetailBack', 'click', function() {
+        if (typeof closeNpcChat === 'function') closeNpcChat();
+    });
+    bindEvent('chatDetailMore', 'click', function() {
+        if (typeof toggleChatMenu === 'function') toggleChatMenu();
+    });
+    bindEvent('chatEmojiBtn', 'click', function() {
+        if (typeof toggleEmojiPanel === 'function') toggleEmojiPanel();
+    });
+    bindEvent('npcChatSend', 'click', function() {
+        if (typeof sendNpcChat === 'function') sendNpcChat();
+    });
+    // 聊天输入框回车发送
+    bindEvent('npcChatInput', 'keydown', function(e) {
+        if (e.key === 'Enter' && typeof sendNpcChat === 'function') {
+            sendNpcChat();
+        }
+    });
+
+    // 剧情总结按钮
+    bindEvent('btnSummaryChapter', 'click', function() {
+        if (typeof triggerGrandSummary === 'function') triggerGrandSummary('chapter');
+    });
+    bindEvent('btnSummaryFull', 'click', function() {
+        if (typeof triggerGrandSummary === 'function') triggerGrandSummary('full');
+    });
+    bindEvent('btnSummaryCheck', 'click', function() {
+        if (typeof triggerGrandSummary === 'function') triggerGrandSummary('check');
+    });
+
+    // ★ CSP兼容：onchange 类绑定
+    // 字数控制长度预设
+    bindEvent('wcLengthPreset', 'change', function() {
+        if (typeof applyLengthPreset === 'function') {
+            applyLengthPreset(this.value);
+        }
+        var d = document.getElementById('wcCustomDetail');
+        if (d) {
+            d.style.display = this.value === 'custom' ? 'block' : 'none';
+        }
+    });
+
+    // 文风选择
+    bindEvent('settingWritingStyle', 'change', function() {
+        if (typeof gameState !== 'undefined') {
+            gameState.writingStyle = this.value;
+        }
+    });
+
+    // 思维链模式
+    bindEvent('settingCotMode', 'change', function() {
+        if (typeof gameState !== 'undefined') {
+            gameState.cotMode = this.value;
+        }
+    });
+
+    // 写作节奏
+    bindEvent('settingChapterMode', 'change', function() {
+        if (typeof gameState !== 'undefined') {
+            gameState.chapterMode = this.value;
+        }
+    });
 }
 function startNewGame() {
     var prompt = document.getElementById('worldDescription').value.trim();
@@ -5944,7 +6091,7 @@ async function exportSaves() {
             _exportInfo: {
                 game: 'freeScript',
                 version: 1,
-                exportTime: new Date().toLocaleString(),
+                exportTime: Date.now(),  // 【P2-3修复】持久化存时间戳
                 slotCount: Object.keys(allSaves).length
             },
             saves: allSaves
