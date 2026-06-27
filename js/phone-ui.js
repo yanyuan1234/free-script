@@ -4142,6 +4142,10 @@ function bindEvents() {
     // 自动压缩
     bindEvent('autoCompressToggle', 'change', function() {
         gameState.autoCompress = this.checked;
+        // 【P1-PU9 阶段4】同步状态层
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('settings.autoCompress', this.checked, { silent: true });
+        }
         saveGameSettings();
     });
     // 增量更新开关
@@ -6294,6 +6298,11 @@ function loadGameSettings() {
             // 【修复P0-1】不再恢复 gameState.temperature——统一由 PresetManager.currentParams 管理
             gameState.fontSize = d.fontSize || 16;
             gameState.autoCompress = d.autoCompress !== false;
+            // 【P1-PU9 阶段4】加载时一次性同步到状态层
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('settings.fontSize', gameState.fontSize, { silent: true });
+                StateManager.set('settings.autoCompress', gameState.autoCompress, { silent: true });
+            }
             gameState.summaryThreshold = d.summaryThreshold !== undefined ? d.summaryThreshold : 6;
             gameState.useStream = d.useStream !== false;
             gameState.generateChoices = true;

@@ -71,6 +71,17 @@ const StateSchema = {
                 // 【阶段5】worldModules 纳入 schema 管理（原为 gameState._worldModules 旧字段）
                 // 40处UI读取点依赖，原 _syncLegacyMirror 完全未覆盖
                 worldModules: []
+            },
+            // 【P1-PU9 阶段4】UI/UX 设置字段
+            // 替代原 gameState.fontSize / autoCompress / summaryThreshold / useStream / writingStyle
+            // / pinnedModules 直写，纳入 StateManager 统一管理
+            settings: {
+                fontSize: 16,
+                autoCompress: true,
+                summaryThreshold: 6,
+                useStream: true,
+                writingStyle: '',
+                pinnedModules: {}
             }
         };
     },
@@ -104,7 +115,14 @@ const StateSchema = {
         'gameTime': 'time',
         '_lastChoices': 'ui.lastChoices',
         '_lastHUD': 'ui.lastHUD',
-        'currentPage': 'ui.currentPage'
+        'currentPage': 'ui.currentPage',
+        // 【P1-PU9 阶段4】UI/UX 设置字段纳入状态层
+        'fontSize': 'settings.fontSize',
+        'autoCompress': 'settings.autoCompress',
+        'summaryThreshold': 'settings.summaryThreshold',
+        'useStream': 'settings.useStream',
+        'writingStyle': 'settings.writingStyle',
+        'pinnedModules': 'settings.pinnedModules'
     },
 
     // 新路径 -> 旧字段名映射
