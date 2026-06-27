@@ -2224,15 +2224,15 @@ function renderRankPage() {
             }
             return '<div class="rank-row' + (isPlayer ? ' rank-self' : '') + '">' +
                 '<div class="rank-num ' + rankClass + '">' + (i + 1) + '</div>' +
-                '<div class="rank-id' + (isPlayer ? ' rank-id-self' : '') + '">' + it.name + (
+                '<div class="rank-id' + (isPlayer ? ' rank-id-self' : '') + '">' + escapeHtml(it.name) + (
                     isPlayer ? ' (我)' : '') + changeTag + '</div>' +
                 '<div class="rank-calls">' + valueDisplay + '</div>' +
                 (extraDisplay ? '<div class="rank-duration">' + extraDisplay + '</div>' : '') +
                 '</div>';
         }).join('');
     }
-    // 更新快照（在异步生成完后会被覆盖）
-    gameState._lastRankSnapshot = currentNameToRank;
+    // 更新快照（【阶段1】走 StateManager.set('ui.lastRankSnapshot')，由 _syncLegacyMirror 自动镜像到 gameState._lastRankSnapshot）
+    StateManager.set('ui.lastRankSnapshot', currentNameToRank, { silent: true });
 
     // 查找玩家排名
     var playerRank = -1;
@@ -2603,8 +2603,8 @@ function renderShopPage() {
     var catHtml = '';
     if (categories.length > 0) {
         catHtml = categories.map(function(c) {
-            return '<div class="shop-cat-item"><div class="shop-cat-icon">' + c.icon +
-                '</div><div class="shop-cat-name">' + c.name + '</div></div>';
+            return '<div class="shop-cat-item"><div class="shop-cat-icon">' + escapeHtml(c.icon || '📦') +
+                '</div><div class="shop-cat-name">' + escapeHtml(c.name || '未命名') + '</div></div>';
         }).join('');
     }
 
@@ -5147,7 +5147,6 @@ function renderAPISettings() {
         var urlDisplay = cfg.baseUrl ? cfg.baseUrl.replace(/^https?:\/\//, '').split('/')[0] :
         '未设置';
         var apiName = cfg.name || 'API ' + (i + 1);
-        var isConnected = connectionStatus[i] === true;
         var isFailed = connectionStatus[i] === false;
         // 失败模型只是 UI 提醒，玩家依然能正常用（下架检测已删除，恒为 false）
         var modelIsFailed = cfg.model && LocalGameAPI.isModelFailed(cfg.model);
@@ -7274,10 +7273,8 @@ function openNpcDetail(name) {
         '</div>';
 
     // 基本信息字段（key-value 行）
-    var baseFields = [{
-            key: '身份',
-            value: c.title || '-'
-        },
+    // 【P2-D9 阶段1】删除 key:'身份' 重复字段：<h3> 已展示 c.title,避免下方行重复渲染
+    var baseFields = [
         {
             key: '关系',
             value: c.relation || '-'
