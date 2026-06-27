@@ -600,3 +600,34 @@ function migrateTimeFields(arr, fieldName) {
         }
     }
 }
+
+// ========================================
+// bindFresh：通用一次性事件绑定（替代 cloneNode + replaceChild + addEventListener 三步反模式）
+// 阶段1：showApiDetail 等 13 处 cloneNode 模式统一替换
+// ========================================
+/**
+ * 一次性绑定事件：
+ * 1. 每次绑定前先 removeEventListener 旧 listener（用节点自定义属性 _handler_<event> 持有引用）
+ * 2. 然后 addEventListener 新 listener
+ * 3. 内联 onclick 一次性调用
+ *
+ * @param {HTMLElement|string} elOrId 元素或元素 id
+ * @param {string} event 事件名（不含 on）
+ * @param {Function} handler 事件 handler
+ * @param {string} [refKey] 节点属性 key，默认 '_handler_' + event
+ * @returns {HTMLElement|null} 元素
+ */
+function bindFresh(elOrId, event, handler, refKey) {
+    var el = (typeof elOrId === 'string') ? document.getElementById(elOrId) : elOrId;
+    if (!el) return null;
+    var key = refKey || ('_handler_' + event);
+    if (el[key]) {
+        el.removeEventListener(event, el[key]);
+    }
+    el[key] = handler;
+    el.addEventListener(event, handler);
+    return el;
+}
+
+if (typeof window !== 'undefined') window.bindFresh = bindFresh;
+if (typeof module !== 'undefined' && module.exports) module.exports.bindFresh = bindFresh;

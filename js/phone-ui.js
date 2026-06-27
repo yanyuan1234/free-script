@@ -5343,40 +5343,29 @@ function showApiDetail(slot) {
     }
 
     // 绑定清空最近请求按钮
-    var clearRecentBtn = document.getElementById('btnClearApiRecent');
-    if (clearRecentBtn) {
-        var newClearRecentBtn = clearRecentBtn.cloneNode(true);
-        clearRecentBtn.parentNode.replaceChild(newClearRecentBtn, clearRecentBtn);
-        newClearRecentBtn.addEventListener('click', function() {
-            LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
-                return l.slot !== slot;
-            });
-            if (recentEl) recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
-            UI.toast('已清空该配置的请求记录');
+    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
+    bindFresh('btnClearApiRecent', 'click', function() {
+        LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
+            return l.slot !== slot;
         });
-    }
+        if (recentEl) recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
+        UI.toast('已清空该配置的请求记录');
+    });
 
     // 绑定清空错误按钮
-    var clearErrorsBtn = document.getElementById('btnClearApiErrors');
-    if (clearErrorsBtn) {
-        var newClearBtn = clearErrorsBtn.cloneNode(true);
-        clearErrorsBtn.parentNode.replaceChild(newClearBtn, clearErrorsBtn);
-        newClearBtn.addEventListener('click', function() {
-            LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
-                return l.slot !== slot || l.success;
-            });
-            errorListEl.innerHTML = '<div class="empty-state">暂无错误记录</div>';
-            UI.toast('已清空该配置的错误记录');
+    bindFresh('btnClearApiErrors', 'click', function() {
+        LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
+            return l.slot !== slot || l.success;
         });
-    }
+        if (errorListEl) errorListEl.innerHTML = '<div class="empty-state">暂无错误记录</div>';
+        UI.toast('已清空该配置的错误记录');
+    });
 
     UI.showModal('apiDetailModal');
 
     // 绑定保存按钮
-    var saveBtn = document.getElementById('btnSaveApiDetail');
-    var newSaveBtn = saveBtn.cloneNode(true);
-    saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-    newSaveBtn.addEventListener('click', function() {
+    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
+    bindFresh('btnSaveApiDetail', 'click', function() {
         var compatibleMode = document.getElementById('detailApiCompatibleMode');
         LocalGameAPI.setConfig(slot, {
             name: document.getElementById('detailApiName').value.trim() || cfg.name,
@@ -5393,10 +5382,8 @@ function showApiDetail(slot) {
     });
 
     // 绑定设为当前按钮
-    var setCurrentBtn = document.getElementById('btnSetCurrentApi');
-    var newSetCurrentBtn = setCurrentBtn.cloneNode(true);
-    setCurrentBtn.parentNode.replaceChild(newSetCurrentBtn, setCurrentBtn);
-    newSetCurrentBtn.addEventListener('click', function() {
+    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
+    bindFresh('btnSetCurrentApi', 'click', function() {
         LocalGameAPI.setCurrentSlot(slot);
         UI.hideModal('apiDetailModal');
         renderAPISettings();
@@ -5404,19 +5391,16 @@ function showApiDetail(slot) {
     });
 
     // 绑定测试按钮
-    var testBtn = document.getElementById('btnTestApiDetail');
-    var cancelTestBtn = document.getElementById('btnCancelTestApi');
-    var newTestBtn = testBtn.cloneNode(true);
-    testBtn.parentNode.replaceChild(newTestBtn, testBtn);
-    var newCancelBtn = cancelTestBtn.cloneNode(true);
-    cancelTestBtn.parentNode.replaceChild(newCancelBtn, cancelTestBtn);
+    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
     // 【P0-2.4 阶段1】改用 let 块作用域，避免 50ms 间隔内连开 2 个 slot 时旧 controller 被覆盖
     // 旧实现：var 在 showApiDetail 函数体内被 hoisting 共享同一变量，导致引用错乱
     let _testAbortCtrl = null;
-    newTestBtn.addEventListener('click', async function() {
+    bindFresh('btnTestApiDetail', 'click', async function() {
+        var newTestBtn = this;  // bindFresh 内部 this 指向元素
+        var newCancelBtn = document.getElementById('btnCancelTestApi');
         newTestBtn.textContent = '测试中...';
         newTestBtn.disabled = true;
-        newCancelBtn.style.display = '';
+        if (newCancelBtn) newCancelBtn.style.display = '';
 
         // 创建 AbortController 用于取消测试
         _testAbortCtrl = new AbortController();
