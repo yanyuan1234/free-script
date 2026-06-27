@@ -3713,6 +3713,11 @@ var GameMemory = {
         var unlocked = list.filter(function(a) { return a && !a.locked; });
         // locked 全保留，unlocked 按 createdTurn 降序（最近优先）保留剩余额度
         unlocked.sort(function(a, b) { return (b.createdTurn || 0) - (a.createdTurn || 0); });
+        // 边界：locked 超过 maxCount 时，按 createdTurn 降序截断到 maxCount
+        if (locked.length > maxCount) {
+            locked.sort(function(a, b) { return (b.createdTurn || 0) - (a.createdTurn || 0); });
+            locked = locked.slice(0, maxCount);
+        }
         var remaining = Math.max(0, maxCount - locked.length);
         var keptUnlocked = unlocked.slice(0, remaining);
         var before = list.length;
