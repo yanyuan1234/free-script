@@ -64,6 +64,23 @@ function getModulesByType(type) {
 }
 
 // ========================================
+// 【P2-R1 阶段4】邮件扁平化 helper
+// 抽取前：phone-ui.js 内 2 处完全相同 6 行嵌套循环
+//   - renderMailPage (2497-2504)
+//   - openMailDetail (599-606)
+// 抽取后：所有调用走 collectMailsFromModules() 一处定义。
+// ========================================
+function collectMailsFromModules() {
+    var mails = [];
+    getModulesByType('mail').forEach(function(mod) {
+        if (mod && mod.items && Array.isArray(mod.items)) {
+            mod.items.forEach(function(item) { mails.push(item); });
+        }
+    });
+    return mails;
+}
+
+// ========================================
 // 【P2-R2/A1 阶段4】好感度 → 颜色映射 helper
 // 抽取前：phone-ui.js 内 2 处 7 档 favColor 重复硬编码
 //   - renderNpcList 卡片 favColor (7210-7217)
@@ -114,7 +131,7 @@ var MC_FIELD_MAP = {
  * @returns {string} HTML 字符串
  */
 function renderLogItemHtml(log) {
-    var timeStr = new Date(log.time).toLocaleTimeString();
+    var timeStr = _formatLogTime(log.time, 'time');
     var icon = log.success ? '✓' : '✕';
     var errText = log.error
         ? '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
@@ -133,12 +150,27 @@ function renderLogItemHtml(log) {
  * @returns {string} HTML 字符串
  */
 function renderErrorItemHtml(log) {
-    var timeStr = new Date(log.time).toLocaleString();
+    var timeStr = _formatLogTime(log.time, 'full');
     return '<div class="pearl-card" style="padding:12px;border-left:3px solid #e74c3c;">' +
         '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">' +
         '<span>' + escapeHtml(log.model || '') + '</span><span>' + escapeHtml(timeStr) + '</span></div>' +
         '<div style="font-size:13px;color:#e74c3c;word-break:break-all;">' +
         escapeHtml(log.error || '未知错误') + '</div></div>';
+}
+
+// ========================================
+// 【P3-P1 阶段4】日志时间格式化 helper
+// 抽取前：phone-ui.js 内 3 处 `new Date(log.time).toLocaleString()` 每次新建 Date
+//   - renderLogItemHtml (134)
+//   - renderErrorItemHtml (153)
+//   - 错误列表内联 (5364)
+// 抽取后：复用同一个 Date 对象，仅按 mode 切 toLocaleTimeString / toLocaleString。
+// mode: 'time' → 时分秒；'full' → 完整本地化时间。
+// ========================================
+function _formatLogTime(timestamp, mode) {
+    if (!timestamp) return '';
+    var d = new Date(timestamp);
+    return mode === 'time' ? d.toLocaleTimeString() : d.toLocaleString();
 }
 
 
@@ -2494,14 +2526,8 @@ function renderMailPage() {
     var _lastSig = _lastMod ? (_lastMod.items ? _lastMod.items.length : 0) : 0;
     var _key = 'mail:' + mailModules.length + '|' + _lastSig;
     if (shouldSkipPageRender('renderMailPage', _key)) return;
-    var allMails = [];
-    mailModules.forEach(function(mod) {
-        if (mod.items && Array.isArray(mod.items)) {
-            mod.items.forEach(function(item) {
-                allMails.push(item);
-            });
-        }
-    });
+    // 【P2-R1 阶段4】抽 collectMailsFromModules() 消除 2 处重复
+    var allMails = collectMailsFromModules();
     // 【阶段3清理】原 if (allMails.length === 0) allMails = gameState._mails || [];
     // _mails 从未被任何代码写入（死字段），删除 fallback。
     // 所有邮件数据统一来自 _worldModules 的 type:'mail' 模块。
@@ -5350,7 +5376,7 @@ function showApiDetail(slot) {
         }).slice(-10).reverse();
         if (errorLogs.length > 0) {
             errorListEl.innerHTML = errorLogs.map(function(log) {
-                var timeStr = new Date(log.time).toLocaleString();
+                var timeStr = _formatLogTime(log.time, 'full');
                 return '<div class="pearl-card" style="padding:12px;border-left:3px solid #e74c3c;">' +
                     '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">' +
                     '<span>' + escapeHtml(log.model) + '</span><span>' + timeStr + '</span></div>' +

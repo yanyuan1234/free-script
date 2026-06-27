@@ -1099,10 +1099,12 @@ var LocalGameAPI = {
     }
     // 【修复P0-1】最终错误附带各配置失败原因，让用户知道真正失败原因
     // 只保留前 3 条原因避免过长，每条截断到 100 字符
-    var shortReasons = failReasons.slice(0, 3).map(function(r) {
-        return r.length > 100 ? truncateByChars(r, 100, '...') : r;
-    });
-    var reasonSummary = shortReasons.length > 0 ? '\n失败原因：\n' + shortReasons.join('\n') : '';
+    // 【P3-M5 阶段4】内联 shortReasons（仅 1 处使用，省一个中间变量）
+    var reasonSummary = failReasons.length > 0
+        ? '\n失败原因：\n' + failReasons.slice(0, 3).map(function(r) {
+            return r.length > 100 ? truncateByChars(r, 100, '...') : r;
+        }).join('\n')
+        : '';
     throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + reasonSummary);
     },
     _logRequest(slot, success, error, durationMs) {
@@ -2630,6 +2632,8 @@ if (inS && cur.length > 0) items.push(cur);
 return items.length > 0 ? items : null;
 }
 // 状态机提取对象
+// 【P3-M4 阶段4】fp 正则提到模块顶层（避免每次调用重新构造），调用前重置 lastIndex
+var _OBJ_STR_RE = /"(\w+)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
 function extractObj(text, field) {
     const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\{`));
         if (!m) return null;
@@ -2640,12 +2644,12 @@ function extractObj(text, field) {
                 return JSON.parse(text.slice(start, end + 1))
             } catch {}
     }
-// 手动提取
+// 手动提取（JSON.parse 失败时，用正则扫 string 字段兜底）
 const partial = text.slice(start);
 const obj = {};
-const fp = /"(\w+)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
+_OBJ_STR_RE.lastIndex = 0;
 let fm;
-while ((fm = fp.exec(partial)) !== null) obj[fm[1]] = fm[2].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+while ((fm = _OBJ_STR_RE.exec(partial)) !== null) obj[fm[1]] = fm[2].replace(/\\n/g, '\n').replace(/\\"/g, '"');
 return Object.keys(obj).length > 0 ? obj : null;
 }
 // 状态机提取对象数组
