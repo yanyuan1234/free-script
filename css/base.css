@@ -23,6 +23,8 @@
     --transition: 0.2s ease;
     --danger: #ff3b30;
     --success: #34c759;
+    --success-bg: #f6ffed;          /* 成功提示淡色背景（phone-ui.css 成功提示框） */
+    --warning: #ffb800;             /* 警告色（用于"标签输出"小标） */
     --link: #576b95;
     --wechat-green: #95EC69;
     /* 心声系统变量 */
@@ -51,6 +53,19 @@
     --rank-top2: #ff7a45;
     --rank-top3: #ffbb38;
     --rank-self-bg: #f0f7ff;
+    /* 【P1-SY1 阶段3-4】成就系统 4 档色（与物品 rarity 命名不同：common/rare/epic/legendary） */
+    --ach-common-bg: #f5f5f5;
+    --ach-common-text: #616161;
+    --ach-rare-bg: #e3f2fd;
+    --ach-rare-text: #1565c0;
+    --ach-epic-bg: #f3e5f5;
+    --ach-epic-text: #7b1fa2;
+    --ach-legendary-bg: #fff8e1;
+    --ach-legendary-text: #e65100;
+    /* 任务列表 / 通用强调色 */
+    --task-highlight: #a2d2ff;
+    --ach-category-active: #1a73e8;
+    --deadline-warn: #f44336;
 }
 
 /* ================================================================
@@ -83,10 +98,11 @@
     --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.4);
     --danger: #ff453a;
     --success: #32d74b;
+    --success-bg: rgba(52, 199, 89, 0.12);   /* 暗色模式：成功背景用半透明绿 */
+    --warning: #ffb340;
     --thought-bg: #2a2a2a;
     --thought-border: #3a3a3a;
     --bg-secondary: #252525;
-    --warning: #ffb340;
     --dialogue-color: #909090;
     --bg-tertiary: #333333;
     --bg-hover: rgba(255, 255, 255, 0.06);
@@ -103,6 +119,18 @@
     --rank-top2: #ff9c6e;
     --rank-top3: #ffd666;
     --rank-self-bg: rgba(24, 144, 255, 0.16);
+    /* 【P1-SY1 阶段3-4】暗色模式成就色：降低饱和度，避免在暗背景上过亮 */
+    --ach-common-bg: #2a2a2a;
+    --ach-common-text: #a0a0a0;
+    --ach-rare-bg: rgba(21, 101, 192, 0.18);
+    --ach-rare-text: #64b5f6;
+    --ach-epic-bg: rgba(123, 31, 162, 0.18);
+    --ach-epic-text: #ce93d8;
+    --ach-legendary-bg: rgba(230, 81, 0, 0.18);
+    --ach-legendary-text: #ffb74d;
+    --task-highlight: #4a90e2;
+    --ach-category-active: #4a90e2;
+    --deadline-warn: #ff6b6b;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -139,6 +167,18 @@
         --rank-top2: #ff9c6e;
         --rank-top3: #ffd666;
         --rank-self-bg: rgba(24, 144, 255, 0.16);
+        /* 【P1-SY1 阶段3-4】自动暗色模式：与 [data-theme="dark"] 块保持一致 */
+        --ach-common-bg: #2a2a2a;
+        --ach-common-text: #a0a0a0;
+        --ach-rare-bg: rgba(21, 101, 192, 0.18);
+        --ach-rare-text: #64b5f6;
+        --ach-epic-bg: rgba(123, 31, 162, 0.18);
+        --ach-epic-text: #ce93d8;
+        --ach-legendary-bg: rgba(230, 81, 0, 0.18);
+        --ach-legendary-text: #ffb74d;
+        --task-highlight: #4a90e2;
+        --ach-category-active: #4a90e2;
+        --deadline-warn: #ff6b6b;
     }
 }
 

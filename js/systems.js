@@ -199,7 +199,8 @@ var QuestSystem = {
     // 【优化】截止时间显示
     var dh = '';
     if (q.deadline && !isC && !isF) {
-        dh = '<div style="font-size:12px;color:#f44336;margin-top:6px;display:flex;align-items:center;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>截止：' + escapeHtml(q.deadline) + '</div>';
+        // 【P1-SY1 阶段3-4】截止时间警告色用 CSS 变量
+        dh = '<div style="font-size:12px;color:var(--deadline-warn);margin-top:6px;display:flex;align-items:center;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>截止：' + escapeHtml(q.deadline) + '</div>';
     }
     return '<div class="quest-item-card ' + tc + (isC ? ' completed' : '') + (isF ?
     ' failed' : '') +
@@ -241,30 +242,53 @@ var QuestSystem = {
 // ========================================
 // 成就系统 - Achievement System
 // ========================================
+// 【P1-SY1 阶段3-4】成就品质色：硬编码色值替换为 CSS 变量
+// fallback 字符串保留，仅在 DOM 未就绪时使用
+function _cssVar(name, fallback) {
+    try {
+        if (typeof document !== 'undefined' && document.documentElement) {
+            var v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+            if (v) return v;
+        }
+    } catch (e) {}
+    return fallback;
+}
+// 成就稀有度 → 背景色（var(--ach-*-bg)）
+function _achBgColor(rarity) {
+    var map = { common: '--ach-common-bg', rare: '--ach-rare-bg', epic: '--ach-epic-bg', legendary: '--ach-legendary-bg' };
+    var fbMap = { common: '#f5f5f5', rare: '#e3f2fd', epic: '#f3e5f5', legendary: '#fff8e1' };
+    return _cssVar(map[rarity] || '--ach-common-bg', fbMap[rarity] || '#f5f5f5');
+}
+// 成就稀有度 → 文字色（var(--ach-*-text)）
+function _achTextColor(rarity) {
+    var map = { common: '--ach-common-text', rare: '--ach-rare-text', epic: '--ach-epic-text', legendary: '--ach-legendary-text' };
+    var fbMap = { common: '#616161', rare: '#1565c0', epic: '#7b1fa2', legendary: '#e65100' };
+    return _cssVar(map[rarity] || '--ach-common-text', fbMap[rarity] || '#616161');
+}
 var AchievementSystem = {
     RARITY: {
         COMMON: {
             key: 'common',
             label: '普通',
-            color: '#9e9e9e',
+            color: _cssVar('--rarity-common', '#9e9e9e'),
             points: 10
         },
     RARE: {
         key: 'rare',
         label: '稀有',
-        color: '#2196f3',
+        color: _cssVar('--rarity-uncommon', '#2196f3'),
         points: 30
     },
     EPIC: {
         key: 'epic',
         label: '史诗',
-        color: '#9c27b0',
+        color: _cssVar('--rarity-rare', '#9c27b0'),
         points: 60
     },
     LEGENDARY: {
         key: 'legendary',
         label: '传说',
-        color: '#ff9800',
+        color: _cssVar('--rarity-legendary', '#ff9800'),
         points: 100
     }
     },
@@ -487,26 +511,27 @@ var AchievementSystem = {
         '"/></svg><div class="achieve-ring-text">' + cr +
         '%</div></div><div class="achieve-overview-title">成就收集进度</div><div class="achieve-overview-sub">' +
         uc + ' / ' + tc + ' 个成就 · ' + tp +
-        ' 点数</div><div class="achieve-stats-row"><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:#9e9e9e;">' +
+        ' 点数</div><div class="achieve-stats-row"><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:' + this.RARITY.COMMON.color + ';">' +
         this.countByRarity(pd, 'common') +
-        '</div><div class="achieve-stat-label">普通</div></div><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:#2196f3;">' +
+        '</div><div class="achieve-stat-label">普通</div></div><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:' + this.RARITY.RARE.color + ';">' +
         this.countByRarity(pd, 'rare') +
-        '</div><div class="achieve-stat-label">稀有</div></div><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:#9c27b0;">' +
+        '</div><div class="achieve-stat-label">稀有</div></div><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:' + this.RARITY.EPIC.color + ';">' +
         this.countByRarity(pd, 'epic') +
-        '</div><div class="achieve-stat-label">史诗</div></div><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:#ff9800;">' +
+        '</div><div class="achieve-stat-label">史诗</div></div><div class="achieve-stat-box"><div class="achieve-stat-num" style="color:' + this.RARITY.LEGENDARY.color + ';">' +
         this.countByRarity(pd, 'legendary') +
         '</div><div class="achieve-stat-label">传说</div></div></div></div>';
         html +=
         '<div class="achieve-filter-bar"><button class="quest-filter-btn active" data-achieve-filter="all">全部</button><button class="quest-filter-btn" data-achieve-filter="unlocked">已解锁</button><button class="quest-filter-btn" data-achieve-filter="locked">未解锁</button></div>';
         // 分类 tab
-        var tabHtml = '<div class="achieve-cat-tabs" style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#fafafa;border-bottom:1px solid #eee;">';
+        // 【P1-SY1 阶段3-4】背景/边框/文字色统一走 CSS 变量
+        var tabHtml = '<div class="achieve-cat-tabs" style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:var(--bg-secondary);border-bottom:1px solid var(--border);">';
         var totalUc = 0, totalTc = 0;
         Object.keys(this.CATEGORY).forEach(function(ck) {
             var achs = cat[ck];
             if (!achs || achs.length === 0) return;
             var cu = achs.filter(function(a) { return pd.unlocked.some(function(u) { return u.id === a.id; }); }).length;
             totalUc += cu; totalTc += achs.length;
-            tabHtml += '<button class="achieve-cat-tab" data-cat-filter="' + ck + '" style="flex-shrink:0;padding:6px 12px;border:1px solid #ddd;border-radius:14px;background:var(--bg);font-size:12px;cursor:pointer;color:#555;">' + this.CATEGORY[ck].label + ' <span style="color:#999;font-size:11px;">' + cu + '/' + achs.length + '</span></button>';
+            tabHtml += '<button class="achieve-cat-tab" data-cat-filter="' + ck + '" style="flex-shrink:0;padding:6px 12px;border:1px solid var(--border);border-radius:14px;background:var(--bg);font-size:12px;cursor:pointer;color:var(--text-secondary);">' + this.CATEGORY[ck].label + ' <span style="color:var(--text-tertiary);font-size:11px;">' + cu + '/' + achs.length + '</span></button>';
         }.bind(this));
         tabHtml += '</div>';
         html += tabHtml;
@@ -523,7 +548,7 @@ var AchievementSystem = {
                 }).length;
             html += '<div class="achieve-category-header" data-cat-key="' + ck + '">' + c.label +
             '<span class="achieve-category-count">(' + cu + '/' + achs.length + ')</span>' +
-            '<span class="achieve-category-pct" style="margin-left:8px;color:#1a73e8;font-size:11px;">' + Math.round((cu/achs.length)*100) + '%</span>' +
+            '<span class="achieve-category-pct" style="margin-left:8px;color:var(--ach-category-active);font-size:11px;">' + Math.round((cu/achs.length)*100) + '%</span>' +
             '</div>';
             html += achs.map(function(a) {
                 return self.renderAchieveItem(a, pd);
@@ -533,16 +558,17 @@ var AchievementSystem = {
         container.innerHTML = html;
         this.bindAchieveFilter(container);
         // 绑定分类 tab
+        // 【P1-SY1 阶段3-4】active/inactive 颜色统一走 CSS 变量
         container.querySelectorAll('.achieve-cat-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
                 container.querySelectorAll('.achieve-cat-tab').forEach(function(t) {
-                    t.style.background = '#fff';
-                    t.style.color = '#555';
-                    t.style.borderColor = '#ddd';
+                    t.style.background = 'var(--card)';
+                    t.style.color = 'var(--text-secondary)';
+                    t.style.borderColor = 'var(--border)';
                 });
-                this.style.background = '#1a73e8';
+                this.style.background = 'var(--ach-category-active)';
                 this.style.color = '#fff';
-                this.style.borderColor = '#1a73e8';
+                this.style.borderColor = 'var(--ach-category-active)';
                 var cat = this.dataset.catFilter;
                 container.querySelectorAll('.achieve-category-header').forEach(function(h) {
                     h.style.display = (cat === 'all' || h.dataset.catKey === cat) ? '' : 'none';
@@ -639,10 +665,10 @@ var AchievementSystem = {
         '" style="margin:0 auto 16px;width:80px;height:80px;font-size:40px;">' + escapeHtml(String(ach.icon || '')) +
         '<div class="achieve-rarity-badge ' + ach.rarity + '"></div></div>' +
         '<div style="font-size:20px;font-weight:700;margin-bottom:8px;">' + escapeHtml(String(ach.name || '')) + '</div>' +
+        // 【P1-SY1 阶段3-4】成就稀有度徽章背景/文字色统一走 CSS 变量
+        // 通过 inline style 绑定 var(--ach-*) 即可，暗色模式自动适配
         '<div style="margin-bottom:16px;"><span style="padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;background:' +
-        (ach.rarity === 'common' ? '#f5f5f5' : ach.rarity === 'rare' ? '#e3f2fd' : ach.rarity ===
-        'epic' ? '#f3e5f5' : '#fff8e1') + ';color:' + (ach.rarity === 'common' ? '#616161' : ach
-        .rarity === 'rare' ? '#1565c0' : ach.rarity === 'epic' ? '#7b1fa2' : '#e65100') +
+        _achBgColor(ach.rarity) + ';color:' + _achTextColor(ach.rarity) +
         ';">' + rar.label + '</span></div>' +
         '<div style="font-size:14px;color:var(--text-secondary);line-height:1.8;margin-bottom:20px;">' +
         escapeHtml(ach.desc || '') + '</div>' +
@@ -783,7 +809,7 @@ function renderQuests() {
         return (order[a.status] || 0) - (order[b.status] || 0);
     });
     var html =
-        '<div class="module-header" onclick="toggleQuestList()" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:#a2d2ff;transition:transform .2s">▼</span></div>';
+        '<div class="module-header" onclick="toggleQuestList()" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:var(--task-highlight);transition:transform .2s">▼</span></div>';
     html += '<div class="quest-list" id="questListInner">';
     sorted.forEach(function(q) {
         var isDone = q.status === '已完成' || q.status === '失败';
