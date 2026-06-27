@@ -836,57 +836,36 @@ function renderQuests() {
 
 function mergeRelationships(newRels) {
     if (!newRels || !Array.isArray(newRels)) return;
-    if (!gameState.relationships) gameState.relationships = [];
     var playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
-    newRels.forEach(function(nr) {
-        if (!nr) return;
-        // 【修复】兼容两种结构：
-        // 1. 关系图谱格式 {from, to, type, desc}（A→B 的关系）
-        // 2. 好感度增量格式 {name, delta}（玩家→NPC 的好感变化）
-        // 【P1修复BUG-4.7】好感度增量由 AIResponseMutator._applyRelationships 在 transaction 内
-        // 统一处理（transaction-safe，可回滚）。此处不再重复更新好感度，避免双写导致
-        // delta 被叠加两次。仅保留 {name,delta} → 关系图谱条目的转换（UI 展示用）。
+    // 标准化输入：把 {name, delta} 格式转为关系图谱条目
+    var normalized = newRels.map(function(nr) {
+        if (!nr) return null;
+        // 格式2：{name, delta} → 转换为 玩家→NPC 关系（仅图谱条目，好感度已由 mutator 处理）
         if (!nr.from || !nr.to) {
-            // 格式2：{name, delta} → 转换为 玩家→NPC 关系（仅图谱条目，好感度已由 mutator 处理）
             if (nr.name) {
                 var delta = safeInt(nr.delta || nr.change || nr.favor || 0, 0);
-                // 转为关系图谱条目（desc 中保留 delta 信息供 UI 展示）
-                nr = {
+                return {
                     from: playerName,
                     to: nr.name,
                     type: nr.type || '相识',
                     desc: nr.desc || (delta > 0 ? '好感+' + delta : (delta < 0 ? '好感' + delta : '关系稳定'))
                 };
-            } else {
-                return;
             }
+            return null;
         }
-        // 找已有的相同关系对（A→B 或 B→A 算同一对）
-        var existIdx = -1;
-        for (var i = 0; i < gameState.relationships.length; i++) {
-            var r = gameState.relationships[i];
-            if ((r.from === nr.from && r.to === nr.to) || (r.from === nr.to && r.to === nr.from)) {
-                existIdx = i;
-                break;
-            }
-        }
-        if (existIdx !== -1) {
-            // 更新已有关系
-            gameState.relationships[existIdx] = nr;
-        } else {
-            // 新关系
-            gameState.relationships.push(nr);
-        }
-    });
-    // 上限10条
-    if (gameState.relationships.length > 10) {
-        gameState.relationships = gameState.relationships.slice(-10);
+        return nr;
+    }).filter(Boolean);
+    // 【P0-2.9 阶段3-3】统一走 RelationshipMutator → entities.relationships，
+    // StateManager._syncLegacyMirror 自动同步 gameState.relationships 旧字段
+    if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
+        RelationshipMutator.mergeRelationships(normalized);
+    } else {
+        // 【P0-2.9】RelationshipMutator 不可用时直接抛错，不再静默双写
+        throw new Error('[mergeRelationships] RelationshipMutator 未加载，无法同步关系');
     }
-    // 【数据联通】推送到权威源 gm.tables.relationships，再触发同步 + UI 刷新
+    // 兼容旧流程：仍触发 _pushRelationshipsToGM 让 gm.tables.relationships 同步
+    // （GameMemory 是 EnhancedMemory 持久化层，仍是 gm 内部的存储源）
     if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
-    if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
-    // 联动：广播关系数据变更
-    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
 }
 
 // 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网

@@ -34,31 +34,20 @@
 
 
 // ========================================
-// 【P1-PU1 阶段2-1】玩家货币读写 helper —— 全部走 CurrencyMutator
-// 历史包袱：getPlayerMoney/subtractPlayerMoney/getCurrencyName 4 套 fallback 链 +
-// 直写 gameState.currency 绕开 StateManager。改用 CurrencyMutator 后，
-// 所有读写统一走 StateManager → _syncLegacyMirror 自动同步 gameState 旧字段。
-// 兜底：CurrencyMutator 不可用时回到旧 fallback（兼容极早期启动场景）
+// 【P0-2.6 阶段3-1】玩家货币读写 helper —— 全部走 CurrencyMutator
+// 单一权威源：StateManager.get('entities.currency')
+// _syncLegacyMirror 自动同步 gameState.currency 旧字段（仅作只读镜像用）
+// 删 gameState.money/coins 旧字段：旧存档若带这两个字段，启动时通过
+// _migrateLegacyCurrency() 一次性迁移到 entities.currency，然后清掉
 // ========================================
 function getPlayerMoney() {
-    if (typeof CurrencyMutator !== 'undefined') return CurrencyMutator.get();
-    return gameState.currency || gameState.money || gameState.coins || 0;
+    return CurrencyMutator.get();
 }
 function getCurrencyName() {
-    if (typeof CurrencyMutator !== 'undefined') return CurrencyMutator.getName();
-    return gameState.currencyName || '金币';
+    return CurrencyMutator.getName();
 }
-// 扣款：统一走 CurrencyMutator.spend（无负数 + 余额不足返回 false）
-// 旧 fallback 顺序（currency → money → coins）已弃用：单一权威源 entities.currency
 function subtractPlayerMoney(amount) {
-    if (typeof CurrencyMutator !== 'undefined') {
-        return CurrencyMutator.spend(amount);  // 返回 true/false
-    }
-    // 兜底：Mutator 不可用时退回直写（极早期启动场景）
-    if (gameState.currency !== undefined) gameState.currency -= amount;
-    else if (gameState.money !== undefined) gameState.money -= amount;
-    else if (gameState.coins !== undefined) gameState.coins -= amount;
-    return true;
+    return CurrencyMutator.spend(amount);
 }
 
 // ========================================
@@ -4754,7 +4743,10 @@ function _restoreGameRender() {
                     }
                     // 【修复】保存关键数据到gameState，确保读档后能恢复
                     if (data.title || data.scene) {
-                        gameState._lastSceneTitle = data.title || data.scene;
+                        // 【P0-2.7 阶段3-3】统一走 StateManager，删除 _lastSceneTitle 直写
+                        if (typeof StateManager !== 'undefined' && StateManager.set) {
+                            StateManager.set('progress.sceneTitle', data.title || data.scene, { silent: true });
+                        }
                     }
                     if (data.hud) {
                         gameState._lastHUD = data.hud;
@@ -5008,17 +5000,16 @@ function deleteLastTurn() {
         gameState.relationships = lastUndo.relationships || [];
         gameState.currentBag = lastUndo.currentBag || [];
         // 【v3审查修复】恢复回合数与场景标题
-        if (lastUndo.totalTurns !== undefined && gameState._stats) {
-            gameState._stats.totalTurns = lastUndo.totalTurns;
-        }
+        // 【P0-2.8 阶段3-3】统一从 StateManager 读，删除 _stats.totalTurns 旧字段双写
         if (lastUndo.progressTurn !== undefined && typeof StateManager !== 'undefined' && StateManager.set) {
             StateManager.set('progress.turn', lastUndo.progressTurn, { silent: true });
         }
-        if (lastUndo.sceneTitle !== undefined) {
-            gameState._lastSceneTitle = lastUndo.sceneTitle;
-            if (typeof StateManager !== 'undefined' && StateManager.set) {
-                StateManager.set('progress.sceneTitle', lastUndo.sceneTitle, { silent: true });
-                StateManager.set('progress.lastSceneTitle', lastUndo.sceneTitle, { silent: true });
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            if (lastUndo.sceneTitle !== undefined) {
+                StateManager.set('progress.sceneTitle', lastUndo.sceneTitle || '', { silent: true });
+            }
+            if (lastUndo.lastSceneTitle !== undefined) {
+                StateManager.set('progress.lastSceneTitle', lastUndo.lastSceneTitle || '', { silent: true });
             }
         }
 
@@ -5098,13 +5089,11 @@ function saveUndoState() {
         currentQuests: _safeClone(gameState.currentQuests || []),
         relationships: _safeClone(gameState.relationships || []),
         currentBag: _safeClone(gameState.currentBag || []),
-        // 【v3审查修复】保存回合数与场景标题，否则 deleteLastTurn 恢复对话后
-        //   _stats.totalTurns / progress.turn 仍为递增后的值，UI 显示"第 N+1 回合"
-        //   但对话内容是回合 N-1 的，回合数与对话严重不同步
-        totalTurns: (gameState._stats && gameState._stats.totalTurns) || 0,
+        // 【P0-2.8 阶段3-3】回合数与场景标题统一存 StateManager（新路径），
+        // 不再双写 _stats.totalTurns / _lastSceneTitle 旧字段（StateManager._syncLegacyMirror 会自动同步）
         progressTurn: (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.turn') : 0,
-        sceneTitle: gameState._lastSceneTitle || (typeof StateManager !== 'undefined' && StateManager.get ? StateManager.get('progress.sceneTitle') : '') || '',
-        lastSceneTitle: gameState._lastSceneTitle || '',
+        sceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.sceneTitle') || '') : (gameState._lastSceneTitle || ''),
+        lastSceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.lastSceneTitle') || '') : (gameState._lastSceneTitle || ''),
         timestamp: Date.now()
     });
 }

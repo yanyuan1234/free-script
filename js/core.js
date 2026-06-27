@@ -5263,8 +5263,9 @@ async function extractSetupToMemory() {
                 // 写入 permanentFacts.npcProfiles
                 var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
                 gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
-                // 【阶段1统一】同步到 StateManager 委托 CharacterMutator.mergeCharacters
-                // 替代原直接写 gameState.allCharacters[name]（绕过 StateManager 导致不同步）
+                // 【P0-2.4 阶段3-2】删除 gameState.allCharacters 旧字段 fallback：
+                // 统一走 CharacterMutator.mergeCharacters → entities.characters，
+                // 由 StateManager._syncLegacyMirror 自动同步 allCharacters 旧字段
                 if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
                     CharacterMutator.mergeCharacters([{
                         name: c.name,
@@ -5273,15 +5274,9 @@ async function extractSetupToMemory() {
                         favorability: typeof c.favorability === 'number' ? c.favorability : 50,
                         desc: c.desc || ''
                     }]);
-                } else if (typeof gameState !== 'undefined') {
-                    if (!gameState.allCharacters) gameState.allCharacters = {};
-                    gameState.allCharacters[c.name] = {
-                        name: c.name,
-                        title: c.title || '',
-                        relation: c.relation || '',
-                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
-                        desc: c.desc || ''
-                    };
+                } else {
+                    // 【P0-2.4】CharacterMutator 不可用时直接抛错，不再静默双写
+                    throw new Error('[extractSetupToMemory] CharacterMutator 未加载，无法同步角色');
                 }
             });
         }
@@ -5322,14 +5317,21 @@ async function extractSetupToMemory() {
                     history: [{ turn: 0, from: 0, to: item.count || 1 }]
                 };
             });
-            // 同步到 gameState.currentBag
-            if (typeof gameState !== 'undefined') {
-                if (!gameState.currentBag) gameState.currentBag = [];
-                parsed.items.forEach(function(item) {
-                    if (!item || !item.name) return;
-                    var exists = gameState.currentBag.some(function(b) { return b.name === item.name; });
-                    if (!exists) gameState.currentBag.push({ name: item.name, count: item.count || 1, desc: item.desc || '', rarity: item.rarity || '普通' });
-                });
+            // 【P0-2.4 阶段3-2】删除 gameState.currentBag 旧字段直写：
+            // 统一走 BagMutator.mergeItems → entities.bag，
+            // 由 StateManager._syncLegacyMirror 自动同步 currentBag 旧字段
+            if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
+                BagMutator.mergeItems(parsed.items.map(function(it) {
+                    return {
+                        name: it.name,
+                        count: it.count || 1,
+                        desc: it.desc || '',
+                        rarity: it.rarity || '普通'
+                    };
+                }).filter(Boolean));
+            } else {
+                // 【P0-2.4】BagMutator 不可用时直接抛错
+                throw new Error('[extractSetupToMemory] BagMutator 未加载，无法同步物品');
             }
         }
 

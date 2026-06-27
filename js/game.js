@@ -1831,9 +1831,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                     console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
                 }
                 updateSceneTitle(incomingTitle);
-                // 【阶段2清理】AIResponseMutator._applyScene 已写 progress.lastSceneTitle，
-                // 此处仅保留 gameState 旧字段镜像（_syncLegacyMirror 已处理，无需手动写）
-                if (gameState) gameState._lastSceneTitle = incomingTitle;
+                // 【P0-2.7 阶段3-3】统一走 StateManager，删除 gameState._lastSceneTitle 直写
+                // StateManager._syncLegacyMirror 自动同步 _lastSceneTitle 旧字段
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('progress.sceneTitle', incomingTitle, { silent: true });
+                }
             } else if (gameState && storyText && storyText.trim()) {
                 // 【修复BUG-06】AI 未返回 title 时，按回合数生成递增标题，避免卡在旧标题
                 // 【P1修复BUG-007】使用即将进入的回合数（当前 turn + 1）
@@ -1841,7 +1843,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 turnNum = (turnNum || 0) + 1;
                 var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
                 updateSceneTitle(fallbackTurnTitle);
-                gameState._lastSceneTitle = fallbackTurnTitle;
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('progress.sceneTitle', fallbackTurnTitle, { silent: true });
+                }
             }
             // 保存HUD数据到gameState，确保读档后能恢复
             // 【P0修复BUG-011】移除冗余手动写 gameState._lastHUD：
@@ -1913,10 +1917,12 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // AI 没有返回章节标题时，用用户设定作为兜底标题
-        if (gameState && !gameState._lastSceneTitle && gameState.userPrompt) {
+        if (gameState && !(StateManager ? StateManager.get('progress.sceneTitle') : gameState._lastSceneTitle) && gameState.userPrompt) {
             var fallbackTitle = gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : '');
             updateSceneTitle(fallbackTitle);
-            gameState._lastSceneTitle = fallbackTitle;
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.sceneTitle', fallbackTitle, { silent: true });
+            }
         }
 
         // 【方案C】AI没输出choices时，基于story末段自动生成3个选项
@@ -1972,10 +1978,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
                 // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
                 if (storyText && typeof storyText === 'string') {
-                    // 【P1-PU1 阶段2-1】统一走 CurrencyMutator.get()，消除 fallback 链
+                    // 【P0-2.6 阶段3-1】统一走 CurrencyMutator.get()，删除 gameState.money/coins fallback
                     var currentBalance = (typeof CurrencyMutator !== 'undefined')
                         ? CurrencyMutator.get()
-                        : (parseFloat(StateManager.get('entities.currency') || gameState.money || gameState.coins || 0) || 0);
+                        : (parseFloat(StateManager.get('entities.currency')) || 0);
                     var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
                     if (recon.changed) {
                         StateManager.set('entities.currency', recon.balance, { silent: true });
@@ -2113,11 +2119,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         
         // 更新统计数据
         if (!gameState) return;
-        if (!gameState._stats) gameState._stats = {};
-        var newTurn = (gameState._stats.totalTurns || 0) + 1;
-        gameState._stats.totalTurns = newTurn;
+        // 【P0-2.8 阶段3-3】回合数统一走 StateManager，删除 gameState._stats.totalTurns 直写
+        // StateManager._syncLegacyMirror 会自动同步 _stats.totalTurns 旧字段
         if (StateManager) {
-            StateManager.set('progress.turn', newTurn, { silent: true });
+            var currentTurn = StateManager.get('progress.turn') || 0;
+            StateManager.set('progress.turn', currentTurn + 1, { silent: true });
+        } else {
+            // 兜底：StateManager 不可用时直接写 gameState._stats
+            if (!gameState._stats) gameState._stats = {};
+            gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
         }
         // 【P1修复BUG-007】回合数递增后立即刷新标签显示
         // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"

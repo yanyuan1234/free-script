@@ -144,6 +144,18 @@ const StateSchema = {
         if (!state || typeof state !== 'object') {
             return this.getDefaultState();
         }
+        // 【P0-2.6 阶段3-1】旧货币字段迁移：money/coins → entities.currency
+        // 旧存档可能用 gameState.money 或 gameState.coins 存货币，
+        // 启动时一次性迁移到 entities.currency，然后从旧字段删掉避免下次再走 fallback
+        if (state.entities && typeof state.entities.currency !== 'number') {
+            if (typeof state.money === 'number' && isFinite(state.money)) {
+                state.entities.currency = state.money;
+                delete state.money;
+            } else if (typeof state.coins === 'number' && isFinite(state.coins)) {
+                state.entities.currency = state.coins;
+                delete state.coins;
+            }
+        }
         const result = this.getDefaultState();
         // 递归合并，优先保留已有值
         this._deepMerge(result, state);

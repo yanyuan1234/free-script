@@ -145,9 +145,19 @@ const AIResponseMutator = {
     _applyStoryAndTitle(data) {
         const story = OutputSanitizer ? OutputSanitizer.sanitizeStory(data.story || '') : (data.story || '');
         const title = String(data.title || data.sceneTitle || data.chapterTitle || '').trim();
-        if (story) {
-            StateManager.set('progress.sceneTitle', title || StateManager.get('progress.sceneTitle') || '', { silent: true });
-            StateManager.set('progress.lastSceneTitle', title || StateManager.get('progress.sceneTitle') || '', { silent: true });
+        if (story && title) {
+            // 【P0-2.7 阶段3-3】场景标题 3 套归 1：拆分语义
+            //   - progress.sceneTitle  = 当前场景（GameMemory context / UI 显示）
+            //   - progress.lastSceneTitle = 上一场景（AI 防回退时读的"上次标题"）
+            // 新标题来时：把旧的 sceneTitle 移到 lastSceneTitle，再写新的 sceneTitle
+            // 这样 lastSceneTitle 才是真正的"上一场景"，避免双写同值
+            const oldTitle = StateManager.get('progress.sceneTitle') || '';
+            if (oldTitle && oldTitle !== title) {
+                StateManager.set('progress.lastSceneTitle', oldTitle, { silent: true });
+            } else if (!StateManager.get('progress.lastSceneTitle')) {
+                StateManager.set('progress.lastSceneTitle', title, { silent: true });
+            }
+            StateManager.set('progress.sceneTitle', title, { silent: true });
         }
     },
 
