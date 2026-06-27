@@ -1970,9 +1970,9 @@ function ensureGameStateFields(gs) {
     gs._afterChatPrompts = [];
     gs._wiCachedResult = null;
     // 重置世界书轮次追踪器
+    // 【P0-阶段1-2.10】删除 WorldInfo._currentTurn = 0（字段已废弃，统一从 gameState._stats.totalTurns 读取）
     if (typeof WorldInfo !== 'undefined') {
         WorldInfo._turnTracker = {};
-        WorldInfo._currentTurn = 0;
     }
     return gs;
 }
@@ -2345,12 +2345,6 @@ function _hideSkipButton() {
 // ========================================
 // 第1层: 工具函数
 // ========================================
-// 自动提取所有分类
-function isScrollNearBottom(el) {
-    if (!el) return true;
-    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-}
-
 // ========================================
 // 游戏内时间系统（AI动态生成）
 // ========================================
@@ -3725,22 +3719,40 @@ function parseDiaryContent(html) {
 return entries;
 }
 
-// 【P2-阶段3-8】HTTP 状态码翻译表（单一权威源）
-// 原 translateError 内有三套重复映射：主 map 的完整格式（'400 Bad Request' 等）
-// + 短格式（'401' 等）+ 局部 httpMap + 局部 apiCodeMap，翻译文案不一致。
-// 现合并为单一表，三处匹配路径（HTTP 前缀 / Error: 前缀 / 裸码兜底）共用。
-var HTTP_STATUS_MAP = {
-    '400': '请求格式错误(400) → 请检查模型名称和参数是否正确',
-    '401': '认证失败(401) → API Key错误或已过期，请到「设置→API配置」检查',
-    '403': '没有权限(403) → 该API Key无权访问此模型，请检查Key的权限范围',
-    '404': '地址不存在(404) → 请检查API地址是否正确（注意路径是否需要加/v1）',
-    '408': '请求超时(408) → API服务器处理太慢，请重试',
-    '429': '请求太频繁(429) → 已触发速率限制，请等待几秒后重试',
-    '500': '服务器内部错误(500) → API服务商的问题，请稍后重试',
-    '502': '网关错误(502) → API中转服务异常，可能正在维护',
-    '503': '服务不可用(503) → API服务暂时过载或维护中，请稍后重试',
-    '504': '网关超时(504) → API中转服务等待上游响应超时',
-    '529': '站点过载(529) → API服务器负载过高，请稍后重试',
+// 【P0-阶段1-2.1】错误翻译映射统一表（单一权威源）
+// 原 translateError 内有三套重复映射：
+//   - HTTP_STATUS_MAP（行 3732，定义后从未被引用——死常量）
+//   - httpMap（行 3895，inline 短版）
+//   - apiCodeMap（行 3928，inline 独立表）
+// 现合并为 _ERROR_MAPS.HTTP_STATUS（详情版）与 _ERROR_MAPS.API_CODE（精简版）
+// 两表共用，translateError 三个匹配路径（HTTP前缀/Error:前缀/裸码兜底）只查本表。
+var _ERROR_MAPS = {
+    // HTTP 状态码：用于 "HTTP 4xx/5xx" 抓取（httpMap/translateError），文案较详细
+    HTTP_STATUS: {
+        '400': '请求格式错误(400) → 请检查模型名称和参数是否正确',
+        '401': '认证失败(401) → API Key错误或已过期，请到「设置→API配置」检查',
+        '403': '没有权限(403) → 该API Key无权访问此模型，请检查Key的权限范围',
+        '404': '地址不存在(404) → 请检查API地址是否正确（注意路径是否需要加/v1）',
+        '408': '请求超时(408) → API服务器处理太慢，请重试',
+        '429': '请求太频繁(429) → 已触发速率限制，请等待几秒后重试',
+        '500': '服务器内部错误(500) → API服务商的问题，请稍后重试',
+        '502': '网关错误(502) → API中转服务异常，可能正在维护',
+        '503': '服务不可用(503) → API服务暂时过载或维护中，请稍后重试',
+        '504': '网关超时(504) → API中转服务等待上游响应超时',
+        '529': '站点过载(529) → API服务器负载过高，请稍后重试'
+    },
+    // API 错误码：用于 "Error: 4xx/5xx" 抓取（apiCodeMap），文案精简（无括号码）
+    API_CODE: {
+        '400': '请求格式错误 → 请检查模型名称和参数是否正确',
+        '401': '认证失败 → API Key错误或已过期，请到「设置→API配置」检查',
+        '403': '权限不足 → 该API Key无权访问此模型',
+        '404': '地址不存在 → 请检查API地址是否正确',
+        '429': '请求太频繁 → 已触发速率限制，请等待几秒后重试',
+        '500': '服务器内部错误 → API服务商的问题，请稍后重试',
+        '502': '网关错误 → API中转服务异常，可能正在维护',
+        '503': '服务不可用 → API服务暂时过载或维护中',
+        '504': '网关超时 → API中转服务等待上游响应超时'
+    }
 };
 
 // API错误信息中文翻译
@@ -3892,20 +3904,8 @@ function _getTranslateErrorSortedKeys(map) {
 var httpMatch = m.match(/HTTP\s*(\d{3})/);
 if (httpMatch) {
     var code = httpMatch[1];
-    var httpMap = {
-        '400': '请求格式错误(400) → 请检查模型名称和参数',
-        '401': '认证失败(401) → API Key错误或已过期',
-        '403': '没有权限(403) → 该Key无权访问此资源',
-        '404': '地址不存在(404) → 请检查API地址',
-        '408': '请求超时(408) → 服务器处理太慢',
-        '429': '请求太频繁(429) → 请稍后再试',
-        '500': '服务器内部错误(500) → 服务商问题，请稍后重试',
-        '502': '网关错误(502) → 中转服务异常',
-        '503': '服务不可用(503) → 服务过载或维护中',
-        '504': '网关超时(504) → 中转服务等待上游超时',
-        '529': '站点过载(529) → 服务器负载过高',
-    };
-    if (httpMap[code]) return httpMap[code];
+    // 【P0-阶段1-2.1】从统一表 _ERROR_MAPS.HTTP_STATUS 取值（替代原内联 httpMap）
+    if (_ERROR_MAPS.HTTP_STATUS[code]) return _ERROR_MAPS.HTTP_STATUS[code];
 }
 var translated = null;
 for (let key in map) {
@@ -3925,32 +3925,14 @@ if (translated && translated !== m) {
 var apiCodeMatch = m.match(/(?:Error|错误)[:\s]*(\d{3})/);
 if (apiCodeMatch) {
     var apiCode = apiCodeMatch[1];
-    var apiCodeMap = {
-        '400': '请求格式错误 → 请检查模型名称和参数是否正确',
-        '401': '认证失败 → API Key错误或已过期，请到「设置→API配置」检查',
-        '403': '权限不足 → 该API Key无权访问此模型',
-        '404': '地址不存在 → 请检查API地址是否正确',
-        '429': '请求太频繁 → 已触发速率限制，请等待几秒后重试',
-        '500': '服务器内部错误 → API服务商的问题，请稍后重试',
-        '502': '网关错误 → API中转服务异常，可能正在维护',
-        '503': '服务不可用 → API服务暂时过载或维护中',
-        '504': '网关超时 → API中转服务等待上游响应超时',
-    };
-    if (apiCodeMap[apiCode]) return apiCodeMap[apiCode];
+    // 【P0-阶段1-2.1】从统一表 _ERROR_MAPS.API_CODE 取值（替代原内联 apiCodeMap）
+    if (_ERROR_MAPS.API_CODE[apiCode]) return _ERROR_MAPS.API_CODE[apiCode];
 }
 // 都没匹配到，返回友好提示（截断过长消息）
 if (m.length > 100) {
     return '发生错误：' + m.substring(0, 80) + '...（详情见控制台）';
 }
 return '发生错误：' + m;
-}
-
-// rebindBtn 辅助函数：统一处理按钮事件重新绑定
-function rebindBtn(btn, eventType, handler) {
-    var clone = btn.cloneNode(true);
-    btn.parentNode.replaceChild(clone, btn);
-    clone.addEventListener(eventType, handler);
-    return clone;
 }
 
 // safeSetItem 已在 utils.js 中统一定义，此处不再重复声明
@@ -4092,18 +4074,6 @@ function parseMarkdown(text) {
     .replace(/\n/g, '<br>');
 }
 // --- applyFontSize 适配 ---
-/**
-* 折叠/展开设置组
-*/
-function toggleSettingGroup(header) {
-    var body = header.nextElementSibling;
-    var icon = header.querySelector('.toggle-icon');
-    if (body) {
-        var isHidden = body.style.display === 'none';
-        body.style.display = isHidden ? 'block' : 'none';
-        if (icon) icon.textContent = isHidden ? '▲' : '▼';
-    }
-}
 function applyFontSize() {
     var storyText = document.getElementById('storyText');
     if (storyText) storyText.style.fontSize = (gameState.fontSize || 16) + 'px';
@@ -4451,7 +4421,10 @@ var _setWaitingCache = {
 function setWaiting(w) {
     // 状态未变化时直接返回
     if (typeof isWaiting !== 'undefined' && isWaiting === w) return;
-    isWaiting = w;
+    // 【P0-阶段1-2.3】显式走 RuntimeState 通道（而非依赖 window.isWaiting setter 隐式转发）
+    // 便于将来挂通知/订阅机制时只需要在 RuntimeState 上加 _notify('isWaiting')
+    // 同时与同文件 resetRuntimeState() 内 `RuntimeState.isWaiting = false` 风格一致
+    RuntimeState.isWaiting = w;
 
     // 【性能】延迟初始化元素引用：第一次调用时查询并缓存
     if (!_setWaitingCache.initialized) {

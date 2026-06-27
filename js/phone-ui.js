@@ -5601,14 +5601,17 @@ function showApiDetail(slot) {
                 recentEl.innerHTML = stats.recentLogs.map(function(log) {
                     var timeStr = new Date(log.time).toLocaleTimeString();
                     var icon = log.success ? '✓' : '✕';
+                    // 【附录B-6】XSS 修复：log.error/log.model 来自网络/AI 异常消息
+                    // 之前 refresh handler 未走 escapeHtml（与 showApiDetail 主函数不一致）
+                    // 存在 XSS 注入风险，统一通过 escapeHtml 包裹
                     var errText = log.error ?
                         '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
-                        log.error + '</div>' : '';
+                        escapeHtml(log.error) + '</div>' : '';
                     return '<div style="padding:6px 0;border-bottom:1px solid var(--border);">' +
                         '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-                        '<span>' + icon + ' ' + log.model + '</span>' +
+                        '<span>' + icon + ' ' + escapeHtml(log.model) + '</span>' +
                         '<span style="font-size:11px;color:var(--text-tertiary);">' +
-                        timeStr + '</span></div>' + errText + '</div>';
+                        escapeHtml(timeStr) + '</span></div>' + errText + '</div>';
                 }).join('');
             } else {
                 recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
@@ -5622,11 +5625,12 @@ function showApiDetail(slot) {
             if (errorLogs.length > 0) {
                 errorListEl.innerHTML = errorLogs.map(function(log) {
                     var timeStr = new Date(log.time).toLocaleString();
+                    // 【附录B-6】XSS 修复：log.model/log.error 统一通过 escapeHtml 包裹
                     return '<div class="pearl-card" style="padding:12px;border-left:3px solid #e74c3c;">' +
                         '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">' +
-                        '<span>' + log.model + '</span><span>' + timeStr + '</span></div>' +
+                        '<span>' + escapeHtml(log.model) + '</span><span>' + escapeHtml(timeStr) + '</span></div>' +
                         '<div style="font-size:13px;color:#e74c3c;word-break:break-all;">' +
-                        (log.error || '未知错误') + '</div></div>';
+                        escapeHtml(log.error || '未知错误') + '</div></div>';
                 }).join('');
             } else {
                 errorListEl.innerHTML =

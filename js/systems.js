@@ -645,7 +645,7 @@ var AchievementSystem = {
         .rarity === 'rare' ? '#1565c0' : ach.rarity === 'epic' ? '#7b1fa2' : '#e65100') +
         ';">' + rar.label + '</span></div>' +
         '<div style="font-size:14px;color:var(--text-secondary);line-height:1.8;margin-bottom:20px;">' +
-        ach.desc + '</div>' +
+        escapeHtml(ach.desc || '') + '</div>' +
         '<div style="background:var(--bg);border-radius:var(--radius-md);padding:16px;margin-bottom:16px;"><div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px;">成就点数</div><div style="font-size:24px;font-weight:700;color:' +
         rar.color + ';">+' + rar.points + '</div></div>' +
         (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✓ 已获得</div>' :

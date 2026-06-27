@@ -1318,12 +1318,14 @@ var WorldInfo = {
 
     // 轮次追踪器（用于delay/cooldown/sticky）
     _turnTracker: {},
-    _currentTurn: 0,
-
-    // 获取当前轮次（每次调用scan时递增）
+    // 【P0-阶段1-2.10】统一从 gameState._stats.totalTurns 读取轮次
+    // 原 _currentTurn 字段与 gameState._stats.totalTurns 永远不等（前者是 scan 调用次数，
+    // 后者是实际回合数），导致 game.js 的 _wiCachedTurn 命中率 0%。
+    // 全部走 gameState._stats.totalTurns 后，缓存键与 cooldown 计时都基于真实回合。
+    // 兜底：若 gameState 未加载（极早期），使用 0
     _getCurrentTurn: function() {
-        return this._currentTurn;
-        },
+        return (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
+    },
 
     // 【修复12】获取角色卡字段内容用于 WI 匹配
     _getCharacterCardFields: function() {
@@ -1387,20 +1389,20 @@ var WorldInfo = {
         }
         var scanDepth = this.settings.scanDepth;
 
-        // 【修复 P1-8】缓存时序修复：先递增轮次，再判断缓存是否对应当前轮次
-        // 旧代码：先判断缓存（基于旧 _currentTurn），再 _currentTurn++，导致缓存永远 miss
-        // 新代码：先递增，再判断；同一轮次内多次 scan 可命中缓存，避免重复 DOM 查询
-        this._currentTurn++;
+        // 【P0-阶段1-2.10】缓存键改用 gameState._stats.totalTurns
+        // 旧逻辑：scan 自增 _currentTurn，与 gameState._stats.totalTurns 永远不等
+        // 同一回合内多次 scan 现在可以命中缓存（之前永远 miss）
+        var _turn = self._getCurrentTurn();
 
         // 读取UI设置（缓存DOM查询，避免每次scan都getElementById）
-        if (!this._settingsCache || this._settingsCache.turn !== this._currentTurn) {
+        if (!this._settingsCache || this._settingsCache.turn !== _turn) {
             var depthEl = document.getElementById('wiScanDepth');
             var budgetEl = document.getElementById('wiTokenBudget');
             var recursiveEl = document.getElementById('wiRecursive');
             if (depthEl) this.settings.scanDepth = safeInt(depthEl.value, 2);
             if (budgetEl) this.settings.tokenBudget = safeInt(budgetEl.value, 25);
             if (recursiveEl) this.settings.recursive = recursiveEl.checked;
-            this._settingsCache = { turn: this._currentTurn };
+            this._settingsCache = { turn: _turn };
         }
 
         // 【修复4】构建扫描文本（最近N条消息）
@@ -1457,7 +1459,8 @@ var WorldInfo = {
     // cooldown检查：如果上次激活距今 <= cooldown值，跳过（至少间隔cooldown轮）
     if (entry.cooldown != null && entry.cooldown > 0) {
         var tracker = self._turnTracker[uid];
-        if (tracker && (self._currentTurn - tracker) <= entry.cooldown) return;
+        var _curTurn = self._getCurrentTurn();
+        if (tracker && (_curTurn - tracker) <= entry.cooldown) return;
     }
 
     // 概率检查
@@ -1570,7 +1573,7 @@ var WorldInfo = {
     }
 
     // 激活成功，更新轮次追踪
-    self._turnTracker[uid] = self._currentTurn;
+    self._turnTracker[uid] = self._getCurrentTurn();
     activated.push(entry);
     });
 

@@ -32,6 +32,16 @@
             return;
         }
 
+        // 【附录B-4】gameAdapter 未注入时早退，不再静默挂着 4 个无效 hook
+        // 原代码：Hook 1/3/6/7 全部走 `if (window.gameAdapter)` 内部判断，gameAdapter
+        // 缺失时所有 hook 静默无效，但猴补丁仍挂在 PresetManager/RegexManager 上，
+        // 每次调用都多走一层函数调用 + 闭包变量检查。
+        // 修复：未注入则直接早退，不再执行后续 hook 挂载。
+        if (typeof window.gameAdapter === 'undefined') {
+            console.warn('[STscript] gameAdapter 未注入，跳过集成（Hook 1/3/6/7 不挂载）');
+            return;
+        }
+
         console.log('[STscript] 开始集成到游戏系统...');
 
         // ── Hook 1: PresetManager.loadPreset ──
@@ -235,16 +245,11 @@
     // 6. 移动端触摸优化
     // ============================================================================
     (function() {
-        // 防止双击缩放
-        let lastTouchEnd = 0;
-        GlobalCleanup.registerListener(document, 'touchend', (e) => {
-            const now = Date.now();
-            if (now - lastTouchEnd <= 300) {
-                e.preventDefault();
-            }
-            lastTouchEnd = now;
-        }, { passive: false });
-        
+        // 【附录B-5】iOS 17+ Safari 已移除 300ms 触摸延迟，此处的 preventDefault 会误伤
+        // 合法双击操作。改用 HTML viewport meta 控制缩放（index.html 已设置）：
+        //   <meta name="viewport" content="..., maximum-scale=1, user-scalable=no">
+        // 移除 touchend 监听器。
+
         // 优化滚动性能
         TimerManager.setTimeout('scrollOptimize', function() {
             const scrollables = document.querySelectorAll('.scrollable, .page, .modal-body, #gameContent');
