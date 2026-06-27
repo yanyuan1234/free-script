@@ -103,19 +103,6 @@ const AIOutputSchema = {
         return clone;
     },
 
-    validate(data) {
-        const errors = [];
-        if (!data || typeof data !== 'object') {
-            errors.push('data is not an object');
-            return { valid: false, errors: errors };
-        }
-        const storyField = this._pickField(data, this.STORY_ALIASES);
-        if (!storyField || !String(storyField).trim()) {
-            errors.push('missing required field: story');
-        }
-        return { valid: errors.length === 0, errors: errors };
-    },
-
     _pickField(obj, aliases) {
         for (let i = 0; i < aliases.length; i++) {
             const key = aliases[i];
@@ -123,6 +110,10 @@ const AIOutputSchema = {
         }
         return null;
     }
+
+    // 【阶段1-5min#3 根治】删除 validate 死方法（0 caller）
+    // 功能已被 core.js:2932 validateAIResponse 替代（不同签名不同实现）。
+    // 若未来需要 schema 级别验证，新建 AIOutputSchema.validateAI(data) 接口委托 core.js:validateAIResponse。
 };
 
 if (typeof module !== 'undefined' && module.exports) module.exports = AIOutputSchema;

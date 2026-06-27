@@ -1060,11 +1060,12 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 构建isInit消息列表（含世界书position注入和世界快照）
             messages = [];
             // 主系统提示词
-            if (gameState && gameState._useSysprompt !== false) {
+            // 【阶段1-5min#10 根治】删除重复 if/else，统一调用 _applyUseSysprompt 转换。
+            // 原代码 1063-1067 / 1173-1178 完全相同（5 行复制），调用 _applyUseSysprompt 后无需再分支。
+            if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
-                messages.push({ role: 'user', content: gameState.systemPrompt });
             }
+            messages = _applyUseSysprompt(messages);
             // 世界书position注入（与主路径一致的depth 0-5）
             var _initWIPos = (gameState && gameState._wiPositionTexts) || null;
             var _initPosPrompts = (gameState && gameState._positionPrompts) || {};
@@ -1167,15 +1168,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             messages = [];
 
             // [0] 主系统提示词
-            // 支持 use_sysprompt 配置（月读预设设为 false）
-            // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
-            // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            if (gameState && gameState._useSysprompt !== false) {
+            // 【阶段1-5min#10 根治】与 1063-1067 统一：push system role 后由 _applyUseSysprompt 转换
+            if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
                 messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
-                // use_sysprompt=false：内容不丢弃，改为 user 角色发送
-                messages.push({ role: 'user', content: gameState.systemPrompt });
             }
+            messages = _applyUseSysprompt(messages);
 
             // 辅助函数：合并世界书和预设提示词
             // 【可配置顺序】默认世界书在前（酒馆常规行为），部分预设期望预设在前
@@ -1658,19 +1655,18 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 保留 extractStr/extractArr 等状态机辅助函数，供 game.js 其他位置从纯文本提取字段。
 
         // 【修复】JSON 截断时即使解析出 data 也要提示用户
+        // 【阶段1-5min#19 根治】删除 gameState._lastTruncated 死字段（仅写未读）
         if (parseResult.truncated && data && storyText) {
             storyText = '⚠️ **AI回复可能被截断**（JSON不完整，部分字段可能缺失）\n\n' + storyText;
-            if (gameState) gameState._lastTruncated = true;
         }
 
         // 【优化】校验 AI 返回字段完整性
+        // 【阶段1-5min#19 根治】删除 gameState._lastValidationWarning 死字段（仅写未读）
         if (data && typeof validateAIResponse === 'function') {
             var _validation = validateAIResponse(data);
             if (!_validation.valid) {
                 console.warn('[sendAIRequest] AI 返回字段不完整，缺失:', _validation.missing.join(', '));
-                if (gameState) gameState._lastValidationWarning = 'AI返回缺少字段：' + _validation.missing.join(', ');
             } else {
-                if (gameState) gameState._lastValidationWarning = null;
                 if (_validation.missing.length > 0) {
                     console.log('[sendAIRequest] AI 返回可选字段缺失:', _validation.missing.join(', '));
                 }
@@ -1719,40 +1715,32 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // === COT（思维链）处理 ===
         // 从AI回复中提取 <ECoT>...</ECoT>、<thinking>...</thinking>、💭...💭 标签内容
-        // 这些内容不显示给用户，但需要保存为 {{original}} 的值
-        // 支持部分模型的 💭...💭 格式（自动解析）
-        // 【增强】支持更多思维链标签格式
-        // <thinking>...</thinking>, <ECoT>...</ECoT>, 💭...💭
-        // 💭...💭, <cot>...</cot>, <reasoning>...</reasoning>
-        // <chain_of_thought>...</chain_of_thought>
-        var cotRegex = /(?:<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)([\s\S]+?)(?:<\/(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)|💭([\s\S]+?)💭/gi;
+        // 这些内容不显示给用户
+        // 【阶段1-5min#4 根治】正则抽到模块顶层（_reCot / _reCotUnclosed），
+        // 用 String.matchAll 替代 exec 循环，避免全局正则 lastIndex 状态污染。
+        // 删除原 cotRegex 二次 replace（与 _reCot 重复扫描）；
+        // 删除 gameState._lastOriginalContent / _lastCotContent 直写（0 reader）。
         var cotMatches = [];
-        var cleanStoryText = storyText;
-        // 提取所有COT内容
-        var cotMatch;
-        while ((cotMatch = cotRegex.exec(storyText)) !== null) {
-            // 捕获组1: XML标签格式 <thinking>...</thinking>
-            // 捕获组2: 💭...💭 格式
-            var cotContent = (cotMatch[1] || cotMatch[2] || '').trim();
-            if (cotContent) {
-                cotMatches.push(cotContent);
-            }
+        var matchAll = storyText.matchAll(_reCot);
+        var _cotIter = matchAll.next();
+        while (!_cotIter.done) {
+            var m = _cotIter.value;
+            var cotContent = (m[1] || m[2] || '').trim();
+            if (cotContent) cotMatches.push(cotContent);
+            _cotIter = matchAll.next();
         }
-        // 从storyText中移除COT标签（不显示给用户）
+        var cleanStoryText = storyText;
         if (cotMatches.length > 0) {
-            cleanStoryText = storyText.replace(cotRegex, '').trim();
-            // 保存原始内容（含COT）供 {{original}} 宏使用
-            if (gameState) gameState._lastOriginalContent = storyText;
-            // 保存COT内容供调试查看
-            if (gameState) gameState._lastCotContent = cotMatches.join('\n---\n');
+            // 每次 replace 前重置 lastIndex（全局正则共享状态）
+            _reCot.lastIndex = 0;
+            cleanStoryText = storyText.replace(_reCot, '').trim();
+            // 清理未闭合的 COT 标签（被 max_tokens 截断，无闭标签）
+            // ResponseParser._stripThinkingTokens 已处理 think/thinking/reasoning/thought/analysis，
+            // 这里兜底处理 cot/chain_of_thought/ECoT 等额外标签
+            _reCotUnclosed.lastIndex = 0;
+            cleanStoryText = cleanStoryText.replace(_reCotUnclosed, '').trim();
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
         }
-        // 【v3审查修复】清理未闭合的思考标签（被 max_tokens 截断，无闭标签）
-        // 原实现 cotRegex 要求开闭标签成对出现，截断的 <thinking>...（无</thinking>）
-        // 不匹配，思考内容泄漏到 cleanStoryText 显示给用户。
-        // ResponseParser._stripThinkingTokens 已处理 think/thinking/reasoning/thought/analysis，
-        // 但 game.js 还需处理 cot/chain_of_thought/ECoT 等额外标签，统一在此兜底
-        cleanStoryText = cleanStoryText.replace(/<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>[\s\S]*$/gi, '').trim();
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
             storyText = cleanStoryText;
@@ -1764,6 +1752,13 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (memResult && memResult.cleanedText !== storyText) {
                 storyText = memResult.cleanedText;
             }
+        }
+        // 【阶段1 修复】恢复 gameState._lastOriginalContent 写入（5 处 reader 依赖，{{original}} macro）
+        // 5min#4 误删后立即恢复：用于 MacroEngine.setGlobalVar('original', ...) / modules/preset-manager.js:1417 等
+        if (gameState && cotMatches.length > 0) {
+            gameState._lastOriginalContent = cleanStoryText;  // 保存移除 COT 后的文本
+        } else if (gameState) {
+            gameState._lastOriginalContent = storyText;
         }
 
         // 【修复】AI返回空内容检测：在COT和记忆编辑之后再检测
@@ -2119,16 +2114,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         
         // 更新统计数据
         if (!gameState) return;
-        // 【P0-2.8 阶段3-3】回合数统一走 StateManager，删除 gameState._stats.totalTurns 直写
-        // StateManager._syncLegacyMirror 会自动同步 _stats.totalTurns 旧字段
-        if (StateManager) {
-            var currentTurn = StateManager.get('progress.turn') || 0;
-            StateManager.set('progress.turn', currentTurn + 1, { silent: true });
-        } else {
-            // 兜底：StateManager 不可用时直接写 gameState._stats
-            if (!gameState._stats) gameState._stats = {};
-            gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
+        // 【阶段1-5min#8 根治】回合数统一走 StateManager，删除兜底直写 gameState._stats.totalTurns。
+        // StateManager 在 init.js 必加载，不存在 fallback 触发场景。
+        if (typeof StateManager === 'undefined' || !StateManager.set) {
+            throw new Error('[回合数] StateManager 不可用，请检查 init.js 加载顺序');
         }
+        var currentTurn = StateManager.get('progress.turn') || 0;
+        StateManager.set('progress.turn', currentTurn + 1, { silent: true });
         // 【P1修复BUG-007】回合数递增后立即刷新标签显示
         // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
@@ -2934,6 +2926,11 @@ var _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi;
 var _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi;
 var _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi;
 var _reDecorTagsTyping = /<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+// 【阶段1-5min#4 根治】COT 正则抽到模块顶层（每次调用重新构造性能差），
+// 用 matchAll 替代 exec 循环（lastIndex 状态污染风险）。
+// 同时删除 gameState._lastOriginalContent / _lastCotContent 直写（0 reader）。
+var _reCot = /(?:<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)([\s\S]+?)(?:<\/(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)|💭([\s\S]+?)💭/gi;
+var _reCotUnclosed = /<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>[\s\S]*$/gi;
 
 // 检测标题是否疑似初始场景（用于防御 AI  confused 回退）
 function _looksLikeInitialScene(title, userPrompt) {

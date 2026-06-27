@@ -15,8 +15,9 @@ const PromptBuilder = {
         options = options || {};
         this._sections[name] = {
             fn: templateFn,
-            order: options.order !== undefined ? options.order : 100,
-            required: !!options.required
+            order: options.order !== undefined ? options.order : 100
+            // 【阶段1-5min#2 根治】删除 required 字段：从 buildSystemPrompt 未读取，
+            // registerSection(..., {required: true}) 调用方以为可阻止空 section 注入但无效。
         };
     },
 

@@ -2553,8 +2553,21 @@ return null;
 function escapeRegExp(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+// 【阶段1-5min#5 根治】extract* 函数内 new RegExp 改为缓存正则对象。
+// 原代码每次调用都重新构造（field 参数动态化）。
+// 根因是 field 名常重复（characters/items/quests 等），LRU 缓存收益大。
+const _FIELD_RE_CACHE = new Map();
+function _getFieldRe(field, nextChar) {
+    const key = field + '|' + nextChar;
+    let re = _FIELD_RE_CACHE.get(key);
+    if (!re) {
+        re = new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\${nextChar}`);
+        _FIELD_RE_CACHE.set(key, re);
+    }
+    return re;
+}
 function extractStr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
+    const m = text.match(_getFieldRe(field, '"'));
     if (!m) return null;
     let r = '',
     esc = false;
@@ -2583,7 +2596,7 @@ return r.length > 0 ? r : null;
 }
 // 状态机提取数组
 function extractArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    const m = text.match(_getFieldRe(field, '['));
         if (!m) return null;
         let i = m.index + m[0].length,
         items = [],
@@ -2635,7 +2648,7 @@ return items.length > 0 ? items : null;
 // 【P3-M4 阶段4】fp 正则提到模块顶层（避免每次调用重新构造），调用前重置 lastIndex
 var _OBJ_STR_RE = /"(\w+)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
 function extractObj(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\{`));
+    const m = text.match(_getFieldRe(field, '{'));
         if (!m) return null;
         const start = m.index + m[0].length - 1;
         const end = _findMatching(text, '{', '}', start);
@@ -2654,7 +2667,7 @@ return Object.keys(obj).length > 0 ? obj : null;
 }
 // 状态机提取对象数组
 function extractObjArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    const m = text.match(_getFieldRe(field, '['));
         if (!m) return null;
         const result = [];
         let i = m.index + m[0].length;
@@ -3477,27 +3490,29 @@ function _syncPresetWordCountToUI(config) {
     if (!gameState.wordCountConfig) {
         gameState.wordCountConfig = { enabled: true, min: 1500, max: 3000, paragraphMin: 15, paragraphMax: 17, paragraphStyle: 'medium', lengthPreset: 'medium' };
     }
-// 更新gameState
-if (config.enabled !== undefined) gameState.wordCountConfig.enabled = config.enabled;
-if (config.min != null) gameState.wordCountConfig.min = config.min;
-if (config.max != null) gameState.wordCountConfig.max = config.max;
-if (config.paragraphMin != null) gameState.wordCountConfig.paragraphMin = config.paragraphMin;
-if (config.paragraphMax != null) gameState.wordCountConfig.paragraphMax = config.paragraphMax;
-if (config.paragraphStyle) gameState.wordCountConfig.paragraphStyle = config.paragraphStyle;
-if (config.lengthPreset) gameState.wordCountConfig.lengthPreset = config.lengthPreset;
-
-// 同步到UI元素（如果设置页面有对应的DOM）
-var wcMinEl = document.getElementById('wcMin');
-var wcMaxEl = document.getElementById('wcMax');
-var wcStyleEl = document.getElementById('wcParagraphStyle');
-var wcEnabledEl = document.getElementById('wcEnabled');
-
-if (wcMinEl) wcMinEl.value = config.min || 1500;
-if (wcMaxEl) wcMaxEl.value = config.max || 3000;
-if (wcStyleEl) wcStyleEl.value = config.paragraphStyle || 'medium';
-if (wcEnabledEl) wcEnabledEl.checked = config.enabled !== false;
-
-console.log('[深度融合] 已将预设字数配置同步到设置UI:', config.min + '-' + config.max + '字');
+    // 更新 gameState 字段（数据源）
+    if (config.enabled !== undefined) gameState.wordCountConfig.enabled = config.enabled;
+    if (config.min != null) gameState.wordCountConfig.min = config.min;
+    if (config.max != null) gameState.wordCountConfig.max = config.max;
+    if (config.paragraphMin != null) gameState.wordCountConfig.paragraphMin = config.paragraphMin;
+    if (config.paragraphMax != null) gameState.wordCountConfig.paragraphMax = config.paragraphMax;
+    if (config.paragraphStyle) gameState.wordCountConfig.paragraphStyle = config.paragraphStyle;
+    if (config.lengthPreset) gameState.wordCountConfig.lengthPreset = config.lengthPreset;
+    // 【阶段1-5min#13 根治】UI 同步委托 phone-ui.js 的 _syncWordCountConfigToUI（统一 DOM 查找点），
+    // 删除 core.js 内的 4 行裸 DOM 查找 + 4 行 value 赋值（与 phone-ui.js:6216-6227 重复）。
+    // 单一写入源：phone-ui.js 维护所有 UI 控件 ID 映射。
+    if (typeof _syncWordCountConfigToUI === 'function') {
+        _syncWordCountConfigToUI(config);
+    } else {
+        // 兜底：phone-ui.js 未加载时，延迟到 DOMContentLoaded 后再试
+        document.addEventListener('DOMContentLoaded', function _retryWcUI() {
+            if (typeof _syncWordCountConfigToUI === 'function') {
+                _syncWordCountConfigToUI(config);
+                document.removeEventListener('DOMContentLoaded', _retryWcUI);
+            }
+        }, { once: true });
+    }
+    console.log('[深度融合] 已将预设字数配置同步到设置UI:', config.min + '-' + config.max + '字');
 }
 
 // 【深度融合】将预设<profile>角色关系数据桥接到游戏关系系统
@@ -5285,22 +5300,19 @@ async function extractSetupToMemory() {
             });
         }
 
-        // 4. 关系 → tables.relationships
+        // 4. 关系 → 走 RelationshipMutator
+        // 【阶段1-P0-2.6 根治】原代码直写 gm.tables.relationships + 调 _syncRelationshipsToGameState，
+        // 形成 3 套数据孤岛（SM / gameState.relationships / gm.tables.relationships）。
+        // 根治：所有写入走 RelationshipMutator.mergeRelationships，SM._syncLegacyMirror
+        // 自动同步到 gameState.relationships，gm.tables.relationships 标记为只读视图。
         if (Array.isArray(parsed.relationships)) {
-            parsed.relationships.forEach(function(r) {
-                if (!r || !r.from || !r.to) return;
-                gm.tables.relationships[r.from + '->' + r.to] = {
-                    from: r.from,
-                    to: r.to,
-                    type: r.type || '',
-                    desc: r.desc || '',
-                    lastChangedTurn: 0
-                };
-            });
-            // 【阶段5统一】删除原直接 push 到 gameState.relationships 的重复逻辑
-            // 由 _syncRelationshipsToGameState 作为唯一同步点统一更新 gameState + StateManager
-            if (typeof _syncRelationshipsToGameState === 'function') {
-                _syncRelationshipsToGameState();
+            const validRels = parsed.relationships.filter(function(r) { return r && r.from && r.to; });
+            if (validRels.length > 0) {
+                if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
+                    RelationshipMutator.mergeRelationships(validRels, { silent: true });
+                } else {
+                    throw new Error('[extractSetupToMemory] RelationshipMutator 未加载，无法同步关系');
+                }
             }
         }
 
@@ -5374,6 +5386,14 @@ async function extractSetupToMemory() {
             try {
                 // 【提示词重设计】从「8条编号规则」改为「好精简的样子 + 信任模型」
                 // 思路：让 AI 理解「骨架 vs 血肉」的概念，自己判断哪些该留哪些该删
+                // 【阶段1-5min#9 根治】setupText 来自用户输入，必须转义防 prompt injection。
+                // 原代码直接字符串拼接，攻击者可通过换行/特殊字符注入系统级指令。
+                // 根治：用 <USER_SETUP>...</USER_SETUP> 标签边界 + 转义 XML 终止符 + 标准化换行。
+                var _safeSetup = String(setupText)
+                    .replace(/\r\n/g, '\n')
+                    .replace(/\r/g, '\n')
+                    .replace(/<\/(USER_SETUP|SETUP)>/gi, '&lt;/$1&gt;')
+                    .replace(/\[章节结束\|/g, '&#91;章节结束&#124;');
                 var compressPrompt = '你正在帮一位游戏编剧精简一份较长的设定稿——目标是「保留骨架、删减血肉」，让后续剧情生成能快速 get 到核心。\n\n' +
                     '你理解什么是骨架：规则、限制、铁律、机制、关键人物设定、关键物品、剧情线索——这些是设定之所以能跑起来的「承重墙」，绝对不能删。\n' +
                     '你理解什么是血肉：环境描写、冗余形容、重复的细节铺陈、文学化的引入段落——这些读起来漂亮，但删掉也不影响后续发挥。\n\n' +
@@ -5384,7 +5404,8 @@ async function extractSetupToMemory() {
                     '- 【关键线索】标注关键物品和剧情钩子\n\n' +
                     '目标长度：约' + targetChars + '字（当前原文约' + setupText.length + '字）。\n' +
                     '直接输出精简后的文本即可——别加「好的，这是精简版」之类的开场白，也别加结尾说明。\n\n' +
-                    '【原始设定】\n' + setupText;
+                    '【原始设定】（已用 <USER_SETUP>...</USER_SETUP> 标签边界保护，请只精简该标签内的内容）\n' +
+                    '<USER_SETUP>\n' + _safeSetup + '\n</USER_SETUP>';
 
                 var compressedResult = await callAI([
                     { role: 'system', content: '你正在帮一位游戏编剧精简设定稿。' },

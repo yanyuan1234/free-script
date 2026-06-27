@@ -70,7 +70,10 @@ const StateSchema = {
                 lastHUD: null,
                 // 【阶段5】worldModules 纳入 schema 管理（原为 gameState._worldModules 旧字段）
                 // 40处UI读取点依赖，原 _syncLegacyMirror 完全未覆盖
-                worldModules: []
+                worldModules: [],
+                // 【阶段1-P0-2.3 根治】worldSnapshot 纳入 schema 管理
+                // 原 gameState.worldSnapshot 60+ 处读取，写入绕过 StateManager
+                worldSnapshot: {}
             },
             // 【P1-PU9 阶段4】UI/UX 设置字段
             // 替代原 gameState.fontSize / autoCompress / summaryThreshold / useStream / writingStyle
@@ -112,6 +115,7 @@ const StateSchema = {
         // 【阶段5】relationships 和 _worldModules 纳入映射
         'relationships': 'entities.relationships',
         '_worldModules': 'ui.worldModules',
+        'worldSnapshot': 'ui.worldSnapshot',
         'gameTime': 'time',
         '_lastChoices': 'ui.lastChoices',
         '_lastHUD': 'ui.lastHUD',

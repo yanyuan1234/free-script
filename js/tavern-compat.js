@@ -2818,6 +2818,13 @@ var GameMemory = {
         var turn = self.currentTurn;
         if (!gameData) return;
         if (!extractedInfo) extractedInfo = { characters: [], items: [], events: [], relationships: [] };
+        // 【阶段1-P0-2.1 根治】_updateTables 内任何 tables 写入都要失效 longTermMemory 缓存。
+        // 原代码仅在新增 NPC profile 到 permanentFacts 时置 _ltmDirty=true(行 2839)，
+        // 导致直接改 tables.characters / items / locations / relationships 时，
+        // longTermMemory 缓存返回陈旧数据（多月份隐性 bug）。
+        // 根治方案：函数结尾统一置 _ltmDirty=true，
+        // 后续阶段二/三把 _updateTables 整体迁 Mutator 后这里可删。
+        var _tablesChanged = false;
         if (extractedInfo.characters && extractedInfo.characters.length > 0) {
             extractedInfo.characters.forEach(function(char) {
                 if (!char || !char.name) return;
@@ -2825,6 +2832,7 @@ var GameMemory = {
                 var existing = self.tables.characters[key];
                 var isNew = !existing;
                 self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
+                _tablesChanged = true;
                 // 【修复】新角色首次出现时加入永久事实-关键角色，确保记忆面板及时更新
                 if (isNew || (typeof char.favorability === 'number' && char.favorability > 0)) {
                     self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
@@ -2835,7 +2843,6 @@ var GameMemory = {
                     if (!alreadyExists) {
                         self.permanentFacts.npcProfiles.push({ content: profileContent, locked: false, source: 'runtime', createdTurn: turn });
                         console.log('[记忆系统] 新角色加入永久事实:', char.name);
-                        // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
                         self._ltmDirty = true;
                     }
                 }
@@ -2849,10 +2856,15 @@ var GameMemory = {
                 var oldQty = existing ? existing.qty : 0;
                 var newQty = item.count || 1;
                 self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
+                _tablesChanged = true;
             });
         }
-        if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; }); }
-        if (gameData.relationships && Array.isArray(gameData.relationships)) gameData.relationships.forEach(function(rel) { if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; });
+        if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; _tablesChanged = true; }); }
+        if (gameData.relationships && Array.isArray(gameData.relationships)) gameData.relationships.forEach(function(rel) { if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; _tablesChanged = true; });
+        // 【阶段1-P0-2.1 根治】任一 tables 写入后，统一失效 longTermMemory 缓存
+        if (_tablesChanged) {
+            self._ltmDirty = true;
+        }
     },
 
     _extractLocations: function(story) {
