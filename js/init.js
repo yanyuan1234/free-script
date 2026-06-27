@@ -195,6 +195,21 @@ if (document.readyState === 'loading') {
     initApp();
 }
 
+// 【P2-D13 阶段4】暴露 FreeScript 命名空间与 unmount 入口
+// 便于热重载 / 嵌入场景下主动释放监听器与定时器
+window.FreeScript = window.FreeScript || {};
+window.FreeScript.unmount = function() {
+    try {
+        if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.cleanup) {
+            GlobalCleanup.cleanup();
+        }
+    } catch (e) {
+        console.warn('[FreeScript.unmount] cleanup 失败:', e);
+    }
+    // 重置初始化标志以便重新挂载
+    if (typeof initApp === 'function') initApp._initialized = false;
+};
+
 // 【P0修复】全局事件委托：替代内联 onclick
 // 通过 data-action 属性路由点击事件，避免内联事件处理器被 XSS 利用
 function _setupGlobalEventDelegation() {

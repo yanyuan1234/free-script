@@ -450,8 +450,13 @@ function switchItemsTab(type, el) {
     // 兼容 data-action 委托调用：优先用 el，回退到 this
     var target = el || this;
     var tabs = target.parentElement.querySelectorAll('.items-tab-btn');
-    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].classList.remove('active');
+        // 【P2-A5 阶段4】tab 切换时同步 aria-selected 状态
+        tabs[i].setAttribute('aria-selected', 'false');
+    }
     target.classList.add('active');
+    target.setAttribute('aria-selected', 'true');
     var itemsSection = document.getElementById('itemsSection');
     var billSection = document.getElementById('billSection');
     if (itemsSection) itemsSection.style.display = type === 'items' ? 'block' : 'none';
@@ -461,8 +466,13 @@ function switchItemsTab(type, el) {
 function filterBagItems(category, el) {
     if (el) {
         var tabs = el.parentElement.querySelectorAll('.items-sub-tab');
-        for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+        for (var i = 0; i < tabs.length; i++) {
+            tabs[i].classList.remove('active');
+            // 【P2-A5 阶段4】子 tab 同步 aria-selected
+            tabs[i].setAttribute('aria-selected', 'false');
+        }
         el.classList.add('active');
+        el.setAttribute('aria-selected', 'true');
     }
     var grid = document.getElementById('itemsGrid');
     if (!grid) return;
@@ -1171,8 +1181,27 @@ function getLogPageRenderers() {
     if (_logPageRenderers) return _logPageRenderers;
     _logPageRenderers = {
         chat: renderChatPage,
-        quests: renderQuestsPage,
-        achieve: renderAchievePage,
+        // 【P2-D6 阶段4】quests/achieve 不再走 null 占位函数，
+        // 直接绑定到 QuestSystem / AchievementSystem 已有渲染方法
+        quests: function() {
+            if (typeof QuestSystem !== 'undefined' && typeof QuestSystem.renderQuests === 'function') {
+                var c = document.getElementById('logSubContent');
+                if (c && !c.querySelector('#questModule')) {
+                    var qm = document.createElement('div');
+                    qm.id = 'questModule';
+                    c.appendChild(qm);
+                }
+                QuestSystem.renderQuests();
+            }
+            return '';
+        },
+        achieve: function() {
+            if (typeof AchievementSystem !== 'undefined' && typeof AchievementSystem.renderAchievePage === 'function') {
+                var c2 = document.getElementById('logSubContent');
+                if (c2) AchievementSystem.renderAchievePage(c2);
+            }
+            return '';
+        },
         world: renderWorldPage,
         moments: renderMomentsPage,
         forum: renderForumPage,
@@ -1416,8 +1445,14 @@ function _applyLogPageStyle(content, type, html) {
             content.innerHTML = html;
         }
     } else if (type === 'quests') {
-        if (typeof QuestSystem !== 'undefined' && QuestSystem.renderQuestPage) {
-            QuestSystem.renderQuestPage(content);
+        if (typeof QuestSystem !== 'undefined' && QuestSystem.renderQuests) {
+            // 确保 #questModule 存在（renderQuests 内部会查该 ID）
+            if (!content.querySelector('#questModule')) {
+                var qm = document.createElement('div');
+                qm.id = 'questModule';
+                content.appendChild(qm);
+            }
+            QuestSystem.renderQuests();
         }
     }
 
@@ -1566,13 +1601,6 @@ function renderChatPage() {
         '</div></div>';
     return html;
 }
-function renderQuestsPage() {
-    return null;
-}
-function renderAchievePage() {
-    return null;
-}
-// 渲染世界信息页面
 function renderWorldPage() {
     var modules = gameState._worldModules || [];
     // 【性能】渲染缓存
@@ -2606,19 +2634,12 @@ function buyShopItem(index) {
     subtractPlayerMoney(price);
     // 加入背包
     var bagItem = { name: item.name || '未知物品', icon: item.icon || '物', count: item.count || 1, desc: item.desc || item.description || '', rarity: item.rarity || '普通', rarityClass: item.rarityClass || 'common' };
-    if (StateManager && BagMutator) {
-        BagMutator.addItem(bagItem, { silent: true });
-    } else {
-        if (!gameState.currentBag) gameState.currentBag = [];
-        var found = false;
-        for (var i = 0; i < gameState.currentBag.length; i++) {
-            if (gameState.currentBag[i].name === bagItem.name) {
-                gameState.currentBag[i].count = (gameState.currentBag[i].count || 1) + (bagItem.count || 1);
-                found = true; break;
-            }
-        }
-        if (!found) gameState.currentBag.push(bagItem);
+    // 【P2-B3 阶段4】BagMutator.addItem 已含合并逻辑（bag-mutator.js:81-93），
+    // 删 fallback 直写，强制走 Mutator
+    if (typeof BagMutator === 'undefined' || !BagMutator.addItem) {
+        throw new Error('BagMutator.addItem 不可用，无法购买物品');
     }
+    BagMutator.addItem(bagItem, { silent: true });
     // 【数据联通】同步写入权威源 gm.tables.items
     if (typeof _pushCurrentBagToGM === 'function') {
         try { _pushCurrentBagToGM(); } catch (e) { console.warn('[buyShopItem] push 失败:', e); }
@@ -3757,9 +3778,16 @@ function bindEvents() {
                     ctx.drawImage(img, 0, 0, w, h);
                     var compressedData = canvas.toDataURL('image/jpeg', 0.8);
                     
-                    // 保存到gameState
-                    if (!gameState.playerData) gameState.playerData = {};
-                    gameState.playerData.avatar = compressedData;
+                    // 保存玩家头像
+                    // 【P1-PU8 阶段4】走 StateManager，触发订阅者（菜单头像等）
+                    if (typeof StateManager !== 'undefined' && StateManager.set) {
+                        // playerData 字段映射到 entities.player（schema.js 迁移表）
+                        StateManager.set('playerData.avatar', compressedData);
+                    } else {
+                        // 兜底：StateManager 不可用时直接写
+                        if (!gameState.playerData) gameState.playerData = {};
+                        gameState.playerData.avatar = compressedData;
+                    }
                     
                     // 更新UI
                     var imgEl = document.getElementById('menuAvatarImg');
@@ -5097,8 +5125,6 @@ function saveUndoState() {
         timestamp: Date.now()
     });
 }
-// --- 恢复上次填写 ---
-
 // --- 恢复上次填写 ---
 
 // ========================================
@@ -7106,16 +7132,12 @@ function saveNpcEdit() {
         desc: desc,
         details: details
     };
-    if (typeof CharacterMutator !== 'undefined' && CharacterMutator.replaceCharacter) {
-        // 若改名（npcEditingName !== name），replaceCharacter 会自动删除旧名并迁移累积数据
-        CharacterMutator.replaceCharacter(npcEditingName || name, _newCharObj);
-    } else if (gameState && gameState.allCharacters) {
-        // 兜底：CharacterMutator 不可用时回退旧逻辑
-        if (npcEditingName && npcEditingName !== name) {
-            delete gameState.allCharacters[npcEditingName];
-        }
-        gameState.allCharacters[name] = _newCharObj;
+    // 【P1-PU7 阶段4】删 fallback，强制走 Mutator；不可用则抛错让上层感知
+    if (typeof CharacterMutator === 'undefined' || !CharacterMutator.replaceCharacter) {
+        throw new Error('CharacterMutator.replaceCharacter 不可用，无法保存 NPC 编辑');
     }
+    // 若改名（npcEditingName !== name），replaceCharacter 会自动删除旧名并迁移累积数据
+    CharacterMutator.replaceCharacter(npcEditingName || name, _newCharObj);
     // 注入到对话历史让AI记住
     var injectText = '【系统提示：玩家更新了角色「' + name + '」的设定】\n' + '姓名: ' + name + '\n' + (title ? '身份: ' + title +
         '\n' : '') + (relation ? '关系: ' + relation + '\n' : '') + '好感度: ' + favor + '\n' + (desc ?
@@ -7343,11 +7365,11 @@ function openNpcDetail(name) {
             if (newDeleteBtn.disabled) return;
             newDeleteBtn.disabled = true;
                 // 【阶段1统一】删除角色委托 CharacterMutator.removeCharacter
-                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
-                    CharacterMutator.removeCharacter(name);
-                } else if (gameState && gameState.allCharacters) {
-                    delete gameState.allCharacters[name];
+                // 【P1-PU7 阶段4】删 fallback，强制走 Mutator
+                if (typeof CharacterMutator === 'undefined' || !CharacterMutator.removeCharacter) {
+                    throw new Error('CharacterMutator.removeCharacter 不可用，无法删除角色');
                 }
+                CharacterMutator.removeCharacter(name);
                 renderNpcList();
                 UI.hideModal('npcDetailModal');
                 UI.toast('已删除角色');

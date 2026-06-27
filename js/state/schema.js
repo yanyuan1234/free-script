@@ -44,7 +44,9 @@ const StateSchema = {
                     identity: '',
                     stats: [],
                     level: 1,
-                    exp: 0
+                    exp: 0,
+                    // 【P1-PU8 阶段4】玩家头像（base64 dataURL），由设置页面上传
+                    avatar: ''
                 },
                 characters: [],
                 bag: [],

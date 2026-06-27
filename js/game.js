@@ -3434,14 +3434,14 @@ function mergeCharacters(chars) {
 }
 // 【阶段1统一】删除角色：统一委托 CharacterMutator.removeCharacter
 // 替代原直接 delete gameState.allCharacters[name]（绕过 StateManager 导致不同步）
+// 【P1-PU7 阶段4】删 fallback，强制走 Mutator
 function deleteCharacter(name) {
     UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？此操作不可撤回').then(function(ok) {
         if (!ok) return;
-        if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
-            CharacterMutator.removeCharacter(name);
-        } else if (gameState.allCharacters) {
-            delete gameState.allCharacters[name];
+        if (typeof CharacterMutator === 'undefined' || !CharacterMutator.removeCharacter) {
+            throw new Error('CharacterMutator.removeCharacter 不可用，无法删除角色');
         }
+        CharacterMutator.removeCharacter(name);
         renderNpcList();
         UI.hideModal('npcDetailModal');
         autoSave();
