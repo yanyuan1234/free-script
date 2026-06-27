@@ -833,14 +833,6 @@ function renderQuests() {
 // ========================================
 // 关系系统 - 数据合并与渲染（从 game.js 收拢）
 // ========================================
-// 【P1-1修复】mergeRelationships 与 _inferRelationshipsFromCharacters 现为 legacy fallback：
-// - 正常路径：AIResponseMutator._applyRelationships 在 transaction 内统一处理
-//   （图谱格式 + 好感度格式 + 兜底推断，事务安全可回滚）
-// - Fallback 路径：仅当 AIResponseMutator.apply 返回 { success: false } 时
-//   （game.js: _aiMutatorApplied=false → _doLegacyStateWrites=true），由 game.js:1869/1875 调用
-//   作为兜底，保证 mutator 失败时玩家仍能看到关系数据
-// - 不可在 AIResponseMutator 成功路径中调用（会导致双写：图谱被处理两次、好感度 delta 被叠加两次）
-// 双实现保留是"故障转移"设计，非冗余代码
 
 function mergeRelationships(newRels) {
     if (!newRels || !Array.isArray(newRels)) return;
@@ -848,7 +840,7 @@ function mergeRelationships(newRels) {
     var playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
     newRels.forEach(function(nr) {
         if (!nr) return;
-        // 兼容两种结构：
+        // 【修复】兼容两种结构：
         // 1. 关系图谱格式 {from, to, type, desc}（A→B 的关系）
         // 2. 好感度增量格式 {name, delta}（玩家→NPC 的好感变化）
         // 【P1修复BUG-4.7】好感度增量由 AIResponseMutator._applyRelationships 在 transaction 内
@@ -897,9 +889,7 @@ function mergeRelationships(newRels) {
     // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
 }
 
-// AI 没返回 relationships 时，根据已有角色自动补一条基础关系网
-// 【P1-1修复】同为 legacy fallback：仅 _aiMutatorApplied=false 时由 game.js:1875 调用。
-// 正常路径由 AIResponseMutator._inferRelationshipsFromCharacters 在 transaction 内处理。
+// 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网
 function _inferRelationshipsFromCharacters() {
     if (!gameState) return;
     var playerName = (gameState.playerData && gameState.playerData.name) || '主角';

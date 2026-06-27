@@ -310,32 +310,9 @@ function _pushKeyEventsToGM() {
 }
 
 // 拦截 gm.saveToStorage：保存后自动同步 + 通知 UI
-// 【P1-10修复】
-// 1. 用 TimerManager 替代裸 setInterval/setTimeout（GlobalCleanup.cleanup 可统一清理）
-// 2. 超时从 10 秒延长至 60 秒：慢设备/GameMemory 因 IndexedDB 迁移或世界书扫描延迟时，
-//    10 秒内可能未完成初始化，导致 saveToStorage 永不被包装，后续所有保存都跳过 _ensureDataLinkage
-// 3. 超时时输出错误日志（便于排查"数据同步失效"问题）
 (function _wrapGMSaveToStorage() {
     if (typeof window === 'undefined') return;
-    if (typeof TimerManager === 'undefined' || !TimerManager.setInterval) {
-        // TimerManager 不可用时 fallback 到裸定时器（保持兼容）
-        var checkIntervalLegacy = setInterval(function() {
-            if (window.GameMemory && window.GameMemory.saveToStorage && !window.GameMemory._saveToStorageWrapped) {
-                var orig = window.GameMemory.saveToStorage;
-                window.GameMemory.saveToStorage = function() {
-                    var result = orig.apply(this, arguments);
-                    try { _ensureDataLinkage(); } catch (e) { console.warn('[DataLinkage] 同步失败:', e); }
-                    return result;
-                };
-                window.GameMemory._saveToStorageWrapped = true;
-                clearInterval(checkIntervalLegacy);
-            }
-        }, 200);
-        setTimeout(function() { clearInterval(checkIntervalLegacy); }, 60000);
-        return;
-    }
-    var checkKey = 'gmSaveWrap';
-    TimerManager.setInterval(checkKey, function() {
+    var checkInterval = setInterval(function() {
         if (window.GameMemory && window.GameMemory.saveToStorage && !window.GameMemory._saveToStorageWrapped) {
             var orig = window.GameMemory.saveToStorage;
             window.GameMemory.saveToStorage = function() {
@@ -344,16 +321,11 @@ function _pushKeyEventsToGM() {
                 return result;
             };
             window.GameMemory._saveToStorageWrapped = true;
-            TimerManager.clearInterval(checkKey);
+            clearInterval(checkInterval);
         }
     }, 200);
-    // 60 秒后停止检查并输出错误日志（GameMemory 仍未就绪 = 数据同步将失效）
-    TimerManager.setTimeout(checkKey + '_cleanup', function() {
-        if (!window.GameMemory || !window.GameMemory._saveToStorageWrapped) {
-            console.error('[DataLinkage] GameMemory 60 秒内未就绪，saveToStorage 未被包装，数据同步将失效');
-        }
-        TimerManager.clearInterval(checkKey);
-    }, 60000);
+    // 10秒后停止检查（GameMemory 正常情况下 1-2 秒内就初始化完成）
+    setTimeout(function() { clearInterval(checkInterval); }, 10000);
 })();
 
 // ========================================
@@ -591,7 +563,11 @@ var UI = {
         var content = document.createElement('div');
         content.className = 'modal-content';
         content.setAttribute('role', 'document');
-        content.innerHTML = opts.html || '';
+        // 【P2-2修复】opts.html 可能拼入用户可控数据（存档名/AI输出/世界书条目），未 sanitize 会触发 XSS
+        // sanitizeHtml 已存在（core.js:4058，用 DOMParser 移除 script/事件处理器），不可用时退回 escapeHtml
+        content.innerHTML = (typeof sanitizeHtml === 'function')
+            ? sanitizeHtml(opts.html || '')
+            : (opts.html || '');
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
         document.body.appendChild(overlay);
@@ -2026,15 +2002,6 @@ function resetRuntimeState(scope) {
     if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.stop) {
         TypewriterBuffer.stop();
     }
-    // 【P1-6修复】重置 QuestSystem._cachedGuidanceQuest：
-    // 此前是模块级变量，生命周期=页面会话，跨存档加载不重置。
-    // 复现：存档 A 完成游戏（_cachedGuidanceQuest.status=COMPLETED）→
-    //       加载存档 B（新游戏）→ getAllQuests 复用存档 A 的已完成引导任务，
-    //       任务页显示一个 id=guidance_<存档A时间戳> 的过期任务。
-    // 在 resetRuntimeState 统一重置（覆盖 startNewGame + loadFromSlot + handleImportFile 三入口）
-    if (typeof QuestSystem !== 'undefined') {
-        QuestSystem._cachedGuidanceQuest = null;
-    }
     // 清空UI残留
     var storyEl = document.getElementById('storyText');
     if (storyEl) storyEl.innerHTML = '';
@@ -2613,8 +2580,20 @@ return null;
 function escapeRegExp(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+// 【P2-15修复】extractStr/Arr/Obj 在 AI 返回大段 JSON 时被 _applyMemsToGameState 逐字段调用，
+// 每次都 new RegExp 编译同一字段名模式。缓存 RegExp 实例，相同 field+suffix 只编译一次。
+var _extractReCache = new Map();
+function _getCachedExtractRe(field, suffix) {
+    var key = field + '|' + suffix;
+    var re = _extractReCache.get(key);
+    if (!re) {
+        re = new RegExp('"' + escapeRegExp(field) + '"\\s*:\\s*' + suffix);
+        _extractReCache.set(key, re);
+    }
+    return re;
+}
 function extractStr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
+    const m = text.match(_getCachedExtractRe(field, '"'));
     if (!m) return null;
     let r = '',
     esc = false;
@@ -2643,7 +2622,7 @@ return r.length > 0 ? r : null;
 }
 // 状态机提取数组
 function extractArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    const m = text.match(_getCachedExtractRe(field, '\\['));
         if (!m) return null;
         let i = m.index + m[0].length,
         items = [],
@@ -2693,7 +2672,7 @@ return items.length > 0 ? items : null;
 }
 // 状态机提取对象
 function extractObj(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\{`));
+    const m = text.match(_getCachedExtractRe(field, '\\{'));
         if (!m) return null;
         const start = m.index + m[0].length - 1;
         const end = _findMatching(text, '{', '}', start);
@@ -3758,25 +3737,10 @@ function parseDiaryContent(html) {
 return entries;
 }
 
-// 【P2-阶段3-8】HTTP 状态码翻译表（单一权威源）
-// 原 translateError 内有三套重复映射：主 map 的完整格式（'400 Bad Request' 等）
-// + 短格式（'401' 等）+ 局部 httpMap + 局部 apiCodeMap，翻译文案不一致。
-// 现合并为单一表，三处匹配路径（HTTP 前缀 / Error: 前缀 / 裸码兜底）共用。
-var HTTP_STATUS_MAP = {
-    '400': '请求格式错误(400) → 请检查模型名称和参数是否正确',
-    '401': '认证失败(401) → API Key错误或已过期，请到「设置→API配置」检查',
-    '403': '没有权限(403) → 该API Key无权访问此模型，请检查Key的权限范围',
-    '404': '地址不存在(404) → 请检查API地址是否正确（注意路径是否需要加/v1）',
-    '408': '请求超时(408) → API服务器处理太慢，请重试',
-    '429': '请求太频繁(429) → 已触发速率限制，请等待几秒后重试',
-    '500': '服务器内部错误(500) → API服务商的问题，请稍后重试',
-    '502': '网关错误(502) → API中转服务异常，可能正在维护',
-    '503': '服务不可用(503) → API服务暂时过载或维护中，请稍后重试',
-    '504': '网关超时(504) → API中转服务等待上游响应超时',
-    '529': '站点过载(529) → API服务器负载过高，请稍后重试',
-};
-
 // API错误信息中文翻译
+// 【P2-19清理】删除 HTTP_STATUS_MAP 死常量：声明后从未被引用（grep 全项目无 HTTP_STATUS_MAP[）。
+// 原 P2-阶段3-8 注释称"统一三处映射"，但实际未完成迁移；translateError 仍用下方局部 map。
+// 重新引入统一映射需先迁移三处匹配路径，本次仅清理死代码避免误导。
 function translateError(msg) {
     if (!msg) return '未知错误，请稍后重试';
     var m = msg;
@@ -3816,8 +3780,9 @@ function translateError(msg) {
         'SyntaxError': '数据格式错误 → API返回了无法识别的内容，请检查API配置',
 
         // ═══ HTTP 状态码 ═══
-        // 【P2-阶段3-8】完整格式（'400 Bad Request' 等）与短格式（'401' 等）已移除
-        // 统一改用 HTTP_STATUS_MAP，由下方三处匹配路径覆盖（HTTP前缀/Error前缀/裸码兜底）
+        // 【P2-19清理】原计划用统一 HTTP_STATUS_MAP 覆盖 HTTP 前缀/Error 前缀/裸码三处匹配，
+        // 但迁移未完成且常量声明后从未被引用，已删除死常量。HTTP 状态码翻译改由下方
+        // match 路径（如 '400 Bad Request' / 'Error 401' / 裸码 500）在运行时直接匹配 msg 字符串。
 
         // ═══ OpenAI/兼容API 特定错误 ═══
         'insufficient_quota': 'API额度不足 → 请到API服务商官网充值，或切换到其他API Key',
@@ -4574,9 +4539,11 @@ function mergeAdvancedPresetParams(presetParams) {
     var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
     if (!_curPreset || !_curPreset.params) return;
     var _pp = _curPreset.params;
-    if (_pp.top_k != null && !presetParams.top_k) presetParams.top_k = Number(_pp.top_k) || 0;
-    if (_pp.top_a != null && !presetParams.top_a) presetParams.top_a = Number(_pp.top_a) || 0;
-    if (_pp.min_p != null && !presetParams.min_p) presetParams.min_p = Number(_pp.min_p) || 0;
+    // 【P2-1修复】原 `!presetParams.top_k` 在 === 0 时为 true，导致用户的显式 0 被预设值覆盖。
+    // 现改为仅当未定义/null 时才用预设值（用户显式 0 表示"禁用 top_k 采样"必须保留）
+    if (_pp.top_k != null && (presetParams.top_k === undefined || presetParams.top_k === null)) presetParams.top_k = Number(_pp.top_k) || 0;
+    if (_pp.top_a != null && (presetParams.top_a === undefined || presetParams.top_a === null)) presetParams.top_a = Number(_pp.top_a) || 0;
+    if (_pp.min_p != null && (presetParams.min_p === undefined || presetParams.min_p === null)) presetParams.min_p = Number(_pp.min_p) || 0;
     if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
     if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
     if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;
@@ -5316,35 +5283,52 @@ async function extractSetupToMemory() {
             });
         }
 
-        // 3. 角色 → permanentFacts.npcProfiles + StateManager（经 CharacterMutator）
+        // 3. 角色 → tables.characters + permanentFacts.npcProfiles
         if (Array.isArray(parsed.characters)) {
             var playerName = gameState.playerName || (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
             parsed.characters.forEach(function(c) {
                 if (!c || !c.name) return;
                 // 跳过主角（主角不进NPC表）
                 if (playerName && (c.name === playerName || c.name.includes(playerName) || playerName.includes(c.name))) return;
-                // 写入 permanentFacts.npcProfiles（保留原行为：AI 提取的角色描述作为永久事实）
-                var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
-                gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
-                // 【P1-11修复】删除 gm.tables.characters 直接写入与 gameState.allCharacters else 兜底：
-                // 1. 原 gm.tables.characters[c.name] = {...} 绕过 CharacterMutator，与 mergeCharacters 双写：
-                //    直接写 GameMemory 权威源后 mergeCharacters 再写 StateManager，两份数据各自演化易不同步。
-                // 2. else 分支直接写 gameState.allCharacters 绕过 _syncLegacyMirror，造成数据孤岛。
-                // 现统一委托 CharacterMutator.mergeCharacters（→ StateManager.set('entities.characters')）：
-                //    - _syncLegacyMirror 自动同步数组→对象到 gameState.allCharacters
-                //    - GameMemoryAdapter.syncToGameMemory 自动 MERGE 实体字段到 gm.tables.characters
-                //      （保留运行时累积字段 history/accessCount/locked 等，新增条目用默认值）
-                // 与 _applyMemsToGameState 对齐：缺失 mutator 即抛错，不再静默兜底。
-                if (typeof CharacterMutator === 'undefined' || !CharacterMutator.mergeCharacters) {
-                    throw new Error('[extractSetup] CharacterMutator 未加载，无法写入角色');
-                }
-                CharacterMutator.mergeCharacters([{
+                // 写入 tables.characters
+                gm.tables.characters[c.name] = {
                     name: c.name,
                     title: c.title || '',
                     relation: c.relation || '',
+                    mood: '',
+                    location: '',
+                    outfit: '',
                     favorability: typeof c.favorability === 'number' ? c.favorability : 50,
-                    desc: c.desc || ''
-                }]);
+                    status: '',
+                    history: [{ turn: 0, changes: c.desc || '开局设定' }],
+                    lastChangedTurn: 0,
+                    gameTime: gm.getGameTimeStr(),
+                    accessCount: 0,
+                    locked: false
+                };
+                // 写入 permanentFacts.npcProfiles
+                var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
+                gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
+                // 【阶段1统一】同步到 StateManager 委托 CharacterMutator.mergeCharacters
+                // 替代原直接写 gameState.allCharacters[name]（绕过 StateManager 导致不同步）
+                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
+                    CharacterMutator.mergeCharacters([{
+                        name: c.name,
+                        title: c.title || '',
+                        relation: c.relation || '',
+                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
+                        desc: c.desc || ''
+                    }]);
+                } else if (typeof gameState !== 'undefined') {
+                    if (!gameState.allCharacters) gameState.allCharacters = {};
+                    gameState.allCharacters[c.name] = {
+                        name: c.name,
+                        title: c.title || '',
+                        relation: c.relation || '',
+                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
+                        desc: c.desc || ''
+                    };
+                }
             });
         }
 

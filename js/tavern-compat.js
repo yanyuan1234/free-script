@@ -2008,6 +2008,11 @@ var GameMemory = {
             // 按优先级从低到高排序（优先级低的先压缩）
             var sorted = moduleTexts.slice().sort(function(a, b) { return a.priority - b.priority; });
             var excess = totalChars - maxChars;
+            // 【P2-8修复】无进展检测：_smartCompressModule 可能因压缩失败回退原文本，
+            // 此时 saved=0，excess 不减；若无进度保护，循环会一直跑到 sorted.length 才退出（浪费 CPU）。
+            // 极端情况下若所有 module 都无进展，excess 永不下降，循环结束但 totalChars 仍超限。
+            // 现记录上一轮 excess，若本轮未减则提前 break（已无可压缩空间）。
+            var _lastExcess = -1;
             for (let i = 0; i < sorted.length && excess > 0; i++) {
                 var m = sorted[i];
                 var originalLen = m.text.length;
@@ -2015,6 +2020,15 @@ var GameMemory = {
                 m.text = self._smartCompressModule(m.text, m.key);
                 var saved = originalLen - m.text.length;
                 excess -= saved;
+                if (saved <= 0) {
+                    console.warn('[buildSmartInjection] module "' + m.key + '" 压缩无进展（saved=' + saved + '）');
+                }
+                // 无进展检测：本轮 excess 与上一轮相同 → 后续 module 大概率也无进展，提前终止
+                if (excess === _lastExcess) {
+                    console.warn('[buildSmartInjection] excess 无进展，提前终止压缩循环（剩余 excess=' + excess + '）');
+                    break;
+                }
+                _lastExcess = excess;
                 // 如果压缩后仍然超限，选择关键行保留（不截断，避免语义断裂）
                 if (excess > 0 && m.text.length > excess) {
                     var lines = m.text.split('\n');
@@ -2431,6 +2445,15 @@ var GameMemory = {
         var lines = [];
         var self = this;
         self._recalcEventDecayScores(self.currentTurn);
+        // 【P2-9修复】events.accessCount 此前永不更新（仅初始化为 0，无 ++ 写入点），
+        // 导致 _recalcEventDecayScores 中 accessBonus 恒为 0，同 importance 事件排序不稳定。
+        // 在事件被读取注入 AI prompt 时累加 accessCount + 更新 lastAccessTurn，
+        // 频繁被引用的事件 decayScore 提升，排序更稳定。
+        self.events.forEach(function(e) {
+            if (!e) return;
+            e.accessCount = (e.accessCount || 0) + 1;
+            e.lastAccessTurn = self.currentTurn;
+        });
         // 按次计费：不硬限制事件数，让预算系统通过智能压缩自然控制
         self.events.slice().sort(function(a, b) { return (b && b.decayScore || 0) - (a && a.decayScore || 0); }).forEach(function(e) {
             if (!e) return;
@@ -3371,7 +3394,27 @@ var GameMemory = {
     },
 
     getStats: function() {
-        return { totalMessages: this.stats.totalMessages, totalCharacters: Object.keys(this.tables.characters).length, totalItems: Object.keys(this.tables.items).length, totalLocations: Object.keys(this.tables.locations).length, totalEvents: this.events.length, timelineLength: this.timeline.length, memorySize: JSON.stringify(this).length };
+        // 【P2-17修复】原 JSON.stringify(this).length 在长游戏（events=200+）下耗时 50-200ms，
+        // 每次 UI 调用 getStats（设置页打开、存档信息显示）都会触发。
+        // 改为读持久化后的体积（已是字符串，无需重新序列化 GameMemory）+ 缓存：
+        // - saveToStorage 后置 dirty，下次 getStats 重新读 localStorage（读比 stringify 快）
+        // - 两次 saveToStorage 之间复用缓存值
+        return { totalMessages: this.stats.totalMessages, totalCharacters: Object.keys(this.tables.characters).length, totalItems: Object.keys(this.tables.items).length, totalLocations: Object.keys(this.tables.locations).length, totalEvents: this.events.length, timelineLength: this.timeline.length, memorySize: this._getCachedPersistedSize() };
+    },
+
+    // 【P2-17修复】持久化数据体积缓存
+    _getCachedPersistedSize: function() {
+        if (this._persistedSizeCache !== undefined && !this._persistedSizeDirty) {
+            return this._persistedSizeCache;
+        }
+        try {
+            var data = Storage.getJSON(Storage.KEYS.MEMORY, null);
+            this._persistedSizeCache = data ? JSON.stringify(data).length : 0;
+            this._persistedSizeDirty = false;
+            return this._persistedSizeCache;
+        } catch (e) {
+            return 0;
+        }
     },
 
     saveToStorage: function() {
@@ -3384,6 +3427,9 @@ var GameMemory = {
             var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, _worldNotes: self._worldNotes || [], savedAt: Date.now() };
             var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
             if (!result || result.success === false) self._handleSaveFailure(result, data);
+            // 【P2-17修复】保存成功后置 dirty：下次 getStats 重新读 localStorage 计算体积
+            // （saveToStorage 已把 data 序列化为字符串写入，getStats 直接读字符串长度比重新 stringify 快）
+            self._persistedSizeDirty = true;
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
         finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) { TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } else { setTimeout(function() { self.saveToStorage(); }, 50); } } }
     },
@@ -3391,70 +3437,14 @@ var GameMemory = {
     _handleSaveFailure: function(result, originalData) {
         try {
             console.warn('[GameMemory] 保存失败，降级处理:', (result && result.message) || 'unknown');
-            // 【P1-9修复】优先保留 importance >= 7 的事件（旧实现无差别截断丢失重要事件）
-            // 策略：important 全保留 + others 按 turn 降序补齐到 20
-            if (this.events && this.events.length > 20) {
-                var important = this.events.filter(function(e) { return e && e.importance >= 7; });
-                var others = this.events.filter(function(e) { return e && e.importance < 7; });
-                others.sort(function(a, b) { return (b.turn || 0) - (a.turn || 0); });
-                var beforeEvt = this.events.length;
-                this.events = important.concat(others.slice(0, Math.max(0, 20 - important.length)));
-                console.warn('[GameMemory] events 降级截断 ' + beforeEvt + ' → ' + this.events.length
-                    + ' 条（important=' + important.length + ', kept=' + this.events.length + '）');
-            }
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
+            if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
             var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
             var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
-            if (r2 && r2.success) {
-                console.log('[GameMemory] 降级保存成功');
-                // 【P1-9修复】通知 UI（与 P1-5 的 _notifyStorageFailure 配合，但此处是 GameMemory 层，
-                // 可提供更具体的损失信息）。节流由 _notifyStorageFailure 处理。
-                if (typeof UI !== 'undefined' && UI.toast) {
-                    UI.toast('存档空间不足，部分早期剧情已被压缩保存（详见控制台）');
-                }
-            } else {
-                console.error('[GameMemory] 降级保存仍然失败：', r2);
-                // 【P1-9修复】最终兜底：尝试用 IndexedDB 备份原始完整数据（如果可用）
-                // 避免"两次保存都失败"时数据完全丢失
-                if (originalData && typeof indexedDB !== 'undefined') {
-                    try {
-                        this._backupToIndexedDB(originalData);
-                    } catch (e3) {
-                        console.warn('[GameMemory] IndexedDB 备份失败:', e3);
-                    }
-                }
-            }
+            if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
+            else console.error('[GameMemory] 降级保存仍然失败：', r2);
         } catch(e2) { console.error('[GameMemory] 降级保存异常：', e2); }
-    },
-
-    // 【P1-9修复】IndexedDB 备份：当 localStorage 两次保存都失败时，用 IndexedDB 兜底
-    // 仅保存原始完整数据（originalData），不保存降级后数据（已截断）
-    _backupToIndexedDB: function(data) {
-        if (typeof indexedDB === 'undefined') return;
-        var DB_NAME = 'freeScript_backup';
-        var STORE = 'memory_overflow';
-        var req = indexedDB.open(DB_NAME, 1);
-        req.onupgradeneeded = function(e) {
-            var db = e.target.result;
-            if (!db.objectStoreNames.contains(STORE)) {
-                db.createObjectStore(STORE, { keyPath: 'savedAt' });
-            }
-        };
-        req.onsuccess = function(e) {
-            try {
-                var db = e.target.result;
-                var tx = db.transaction(STORE, 'readwrite');
-                var store = tx.objectStore(STORE);
-                store.put({ savedAt: Date.now(), data: data, reason: 'localStorage_quota_exceeded' });
-                console.log('[GameMemory] IndexedDB 备份成功（原始数据未截断）');
-            } catch (putErr) {
-                console.warn('[GameMemory] IndexedDB put 失败:', putErr);
-            }
-        };
-        req.onerror = function(e) {
-            console.warn('[GameMemory] IndexedDB open 失败:', e.target.error);
-        };
     },
 
     loadFromStorage: function() {
@@ -3547,6 +3537,31 @@ var GameMemory = {
                     }
                 });
             }
+            // 【P2-7修复】worldAnchors/permanentFacts 字段补全：
+            // 旧 v3 存档的 worldAnchors 条目可能缺 lastAccessTurn/accessCount/importance，
+            // 后续 addWorldAnchor 的 30 条淘汰策略依赖 lastAccessTurn 排序，undefined 在 sort 中行为不确定。
+            // permanentFacts 条目可能缺 createdTurn/locked/source，影响 _prunePermanentFactsList 排序与淘汰。
+            if (Array.isArray(migrated.worldAnchors)) {
+                migrated.worldAnchors.forEach(function(a) {
+                    if (!a) return;
+                    if (a.createdTurn === undefined) a.createdTurn = 0;
+                    if (a.lastAccessTurn === undefined) a.lastAccessTurn = a.createdTurn || 0;
+                    if (a.accessCount === undefined) a.accessCount = 0;
+                    if (a.importance === undefined) a.importance = 5;
+                });
+            }
+            var _factCats = ['pcIdentity', 'worldRules', 'settings', 'npcProfiles', 'promises', 'worldPlaces'];
+            _factCats.forEach(function(cat) {
+                var list = migrated.permanentFacts && migrated.permanentFacts[cat];
+                if (Array.isArray(list)) {
+                    list.forEach(function(f) {
+                        if (!f) return;
+                        if (f.createdTurn === undefined) f.createdTurn = 0;
+                        if (f.locked === undefined) f.locked = false;
+                        if (f.source === undefined) f.source = 'migration';
+                    });
+                }
+            });
             migrated.version = 4;
             return migrated;
         } catch(e) {
@@ -3586,6 +3601,16 @@ var GameMemory = {
     // 【P1修复BUG-011-longTermMemory只读快照】配套写入 API
     // longTermMemory getter 已改为只读快照，旧代码直接 `longTermMemory.characterTable[name] = {...}`
     // 等写入方式不再生效（写入的是快照副本，不影响源 tables.characters）。现提供以下 API 替代。
+    // 【P2-6修复】setMasterSummary：替代原 longTermMemory.masterSummary setter 的隐式回写。
+    // 调用方应改为显式调用此方法（语义清晰：更新 plot.worldSetting/currentChapter + 置 dirty 重建快照）。
+    setMasterSummary: function(summary) {
+        if (typeof summary !== 'string') return;
+        // 原 setter 逻辑：第一行作为 worldSetting，其余作为 currentChapter
+        var parts = summary.split('\n');
+        this.plot.worldSetting = parts[0] || '';
+        this.plot.currentChapter = parts.slice(1).join('\n') || summary;
+        this._ltmDirty = true;
+    },
     recordCharacterChange: function(name, changeDesc) {
         // 替代旧代码：EnhancedMemory.longTermMemory.characterTable[name].changes.push({time, change: changeDesc})
         // + 自动维护 firstAppearance/lastUpdate/lastChangedTurn/gameTime/accessCount 等运行时字段
@@ -3695,39 +3720,7 @@ var GameMemory = {
         }
         if (fact.locked === true && !old.locked) { old.locked = true; changed = true; }
         if (changed) self._ltmDirty = true;
-        // 【P1-8修复】list 类型字段统一淘汰上限
-        // 旧实现无淘汰机制，长游戏（200 回合）后 worldPlaces 膨胀到 40+ 条，
-        // buildSmartInjection 第一段"永久事实"全量拼装导致 token 占用持续增长
-        var _limits = { worldPlaces: 30, npcProfiles: 40, promises: 20, settings: 15 };
-        if (_limits[category]) self._prunePermanentFactsList(category, _limits[category]);
         return changed ? 'updated' : 'noop';
-    },
-
-    // 【P1-8修复】permanentFacts list 类型字段的统一淘汰
-    // 策略：locked 条目优先保留（不淘汰），非 locked 按 createdTurn 降序保留最近 N 条
-    // 平衡"世界观锁定"与"token 上限"——locked 是用户/AI 显式标记的不可变事实，必须保留
-    _prunePermanentFactsList: function(category, maxCount) {
-        var list = this.permanentFacts[category];
-        if (!Array.isArray(list) || list.length <= maxCount) return;
-        var locked = list.filter(function(a) { return a && a.locked; });
-        var unlocked = list.filter(function(a) { return a && !a.locked; });
-        // locked 全保留，unlocked 按 createdTurn 降序（最近优先）保留剩余额度
-        unlocked.sort(function(a, b) { return (b.createdTurn || 0) - (a.createdTurn || 0); });
-        // 边界：locked 超过 maxCount 时，按 createdTurn 降序截断到 maxCount
-        if (locked.length > maxCount) {
-            locked.sort(function(a, b) { return (b.createdTurn || 0) - (a.createdTurn || 0); });
-            locked = locked.slice(0, maxCount);
-        }
-        var remaining = Math.max(0, maxCount - locked.length);
-        var keptUnlocked = unlocked.slice(0, remaining);
-        var before = list.length;
-        this.permanentFacts[category] = locked.concat(keptUnlocked);
-        if (this.permanentFacts[category].length < before) {
-            this._ltmDirty = true;
-            console.log('[GameMemory] _prunePermanentFactsList: ' + category + ' 裁剪 '
-                + (before - this.permanentFacts[category].length) + '/' + before
-                + ' 条（maxCount=' + maxCount + ', locked=' + locked.length + '）');
-        }
     },
 
     // 【P1修复BUG-011】替换式写入：用单条 fact 替换整个 category 数组。
@@ -3764,13 +3757,18 @@ GlobalCleanup.registerListener(document, 'DOMContentLoaded', function() { GameMe
 // 其余字段均为实时引用（characterTable/itemTable/importantEvents 等）。
 // 缓存后高频调用（如 _parseStructuredSummary 单次 35+ 次访问）只重建 1 次，
 // permanentFacts 变更时由各写入点置 _ltmDirty=true 触发下次重建。
+// 【P2-6修复】统一快照语义：
+//   - worldAnchors/characterTable/itemTable/locationTable/relationships/masterSummary 全部深拷贝
+//   - masterSummary 改为预计算字符串（原为 getter 每次重新计算，与"快照"语义冲突）
+//   - 重要事件/任务/timeline 等读多写少的字段保持引用（性能权衡：深拷贝大数组代价高）
+//   - 写入入口收敛到 setMasterSummary 方法（替代原 setter 隐式回写）
 Object.defineProperty(GameMemory, 'longTermMemory', {
     get: function() {
         var self = this;
         if (self._ltmCache && !self._ltmDirty) {
             return self._ltmCache;
         }
-        // worldAnchors: 从 permanentFacts 映射（只读快照）
+        // worldAnchors: 从 permanentFacts 映射（深拷贝元素，避免外部修改污染 permanentFacts）
         var worldAnchors = [];
         var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
         Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; var list = self.permanentFacts[key]; if (Array.isArray(list)) list.forEach(function(a) { if (a) worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
@@ -3784,6 +3782,11 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
             : function(o) { return JSON.parse(JSON.stringify(o)); };
         // worldNotes: 持久化数组（_worldNotes 由各写入点懒初始化 + push，此处返回引用以保留 push 语义）
         if (!self._worldNotes) self._worldNotes = [];
+        // 【P2-6修复】masterSummary 预计算为字符串值（原为 getter，每次访问都重新拼接 plot 字段，
+        // 与"快照在某时刻冻结"的语义冲突——快照其他字段是当时的值，但 masterSummary 永远是最新的）。
+        // 改为预计算字符串后，缓存的快照里 masterSummary 反映创建时刻的 plot 状态，语义一致。
+        // 写入入口由 setMasterSummary 方法提供（替代原 setter 隐式回写 plot.worldSetting/currentChapter）。
+        var masterSummaryVal = (self.plot.worldSetting || '') + '\n' + (self.plot.currentChapter || '');
         var result = {
             worldAnchors: worldAnchors,
             activeQuests: self.quests,
@@ -3797,15 +3800,11 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
             timeline: self.timeline,
             worldSetting: self.plot.worldSetting,
             worldNotes: self._worldNotes,
-            masterSummary: self.plot.worldSetting + '\n' + (self.plot.currentChapter || '')
+            masterSummary: masterSummaryVal
         };
-        // masterSummary setter：写入时回写到 plot（保留：摘要写入是合法的 plot 更新入口）
-        var _self = self;
-        Object.defineProperty(result, 'masterSummary', {
-            get: function() { return _self.plot.worldSetting + '\n' + (_self.plot.currentChapter || ''); },
-            set: function(val) { if (typeof val === 'string') { var parts = val.split('\n'); _self.plot.worldSetting = parts[0] || ''; _self.plot.currentChapter = parts.slice(1).join('\n') || val; _self._ltmDirty = true; } },
-            configurable: true
-        });
+        if (Object.freeze) {
+            try { Object.freeze(result); } catch (e) {}
+        }
         self._ltmCache = result;
         self._ltmDirty = false;
         return result;

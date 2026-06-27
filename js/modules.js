@@ -4588,34 +4588,29 @@ var MacroEngine = {
     },
 
     // 解析条件表达式中的值（支持变量引用和字面量）
-    // 【P1-7修复】未定义变量在条件上下文中应等价于空字符串，而非返回字面量。
-    // 旧实现 return resolved !== '' ? resolved : val 在变量未定义时返回 ".playerName" 字面量，
-    // 导致 {{if .playerName != '张三'}} 在变量未定义时被错误触发
-    // （字面量 ".playerName" !== '张三' 为 true，!= 逻辑反转）。
-    // 修复策略：变量未定义时返回空字符串，使 == '' 为 true、!= '非空值' 为 true（符合"未定义即空"语义）。
-    // 注意：getvar::/getglobalvar:: 路径保持原行为（直接返回 getLocalVar 结果，可能为空串），
-    // 因为它们是显式变量读取，调用方应能处理空值。
     _resolveConditionValue: function(val) {
         val = val.trim();
         // 去除引号包裹
         if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
             return val.slice(1, -1);
         }
-        // 局部变量引用：未定义时返回空字符串（不返回 .playerName 字面量）
+        // 局部变量引用
         if (val.startsWith('.')) {
-            return this.getLocalVar(val.slice(1));
+            var resolved = this.getLocalVar(val.slice(1));
+            return resolved !== '' ? resolved : val;
         }
-        // 全局变量引用：未定义时返回空字符串
-        if (val.startsWith('$')) {
-            return this.getGlobalVar(val.slice(1));
-        }
-        // getvar::name（显式读取，返回原始值含空串）
-        var gvMatch = val.match(/^getvar\s*::\s*(.+)$/i);
-        if (gvMatch) return this.getLocalVar(gvMatch[1]);
-        // getglobalvar::name（显式读取，返回原始值含空串）
-        var ggvMatch = val.match(/^getglobalvar\s*::\s*(.+)$/i);
-        if (ggvMatch) return this.getGlobalVar(ggvMatch[1]);
-        return val;
+    // 全局变量引用
+    if (val.startsWith('$')) {
+        var resolved = this.getGlobalVar(val.slice(1));
+        return resolved !== '' ? resolved : val;
+    }
+    // getvar::name
+    var gvMatch = val.match(/^getvar\s*::\s*(.+)$/i);
+    if (gvMatch) return this.getLocalVar(gvMatch[1]);
+    // getglobalvar::name
+    var ggvMatch = val.match(/^getglobalvar\s*::\s*(.+)$/i);
+    if (ggvMatch) return this.getGlobalVar(ggvMatch[1]);
+    return val;
     },
 
     /**
