@@ -3239,20 +3239,11 @@ var GameMemory = {
         //   saveToStorage 体积同步膨胀，最终触发配额错误
         // - 现策略：epic 占 60% 预算（至少 5 条），normal 占 40%
         //   保留重要事件优先权的同时强制 epic 也受裁剪
-        // - 预算双向回流：
-        //     a) epic 实际数 < 预算 → 剩余让渡给 normal（normalBudget = maxCount - keptEpic.length）
-        //     b) normal 实际数 < 剩余预算 → 回流给 epic（避免槽位浪费，确保总量 = maxCount）
-        //   b 是关键：旧实现仅做了 a，当 normal 不足时（如全是 epic 的场景）总条数 < maxCount，
-        //   既浪费了存储预算又丢失了本可保留的高分 epic，与"裁剪到 maxCount"语义不符
+        // - 若 epic 实际数量 < 预算，剩余预算让渡给 normal
         var epicBudget = Math.max(5, Math.floor(maxCount * 0.6));
         var keptEpic = epic.slice(0, Math.min(epic.length, epicBudget));
         var normalBudget = Math.max(0, maxCount - keptEpic.length);
         var keptNormal = normal.slice(0, normalBudget);
-        // 预算回流：normal 未填满时，剩余槽位用 epic 补齐（epic 已按 decayScore 降序排列，取后续高分项）
-        if (keptEpic.length + keptNormal.length < maxCount && keptEpic.length < epic.length) {
-            var refill = maxCount - keptEpic.length - keptNormal.length;
-            keptEpic = keptEpic.concat(epic.slice(keptEpic.length, keptEpic.length + refill));
-        }
         this.events = keptEpic.concat(keptNormal).sort(function(a, b) { return (a.turn || 0) - (b.turn || 0); });
 
         // 修复后裁剪监控：被丢弃事件数大于 0 时记录，便于排查
@@ -3400,14 +3391,70 @@ var GameMemory = {
     _handleSaveFailure: function(result, originalData) {
         try {
             console.warn('[GameMemory] 保存失败，降级处理:', (result && result.message) || 'unknown');
+            // 【P1-9修复】优先保留 importance >= 7 的事件（旧实现无差别截断丢失重要事件）
+            // 策略：important 全保留 + others 按 turn 降序补齐到 20
+            if (this.events && this.events.length > 20) {
+                var important = this.events.filter(function(e) { return e && e.importance >= 7; });
+                var others = this.events.filter(function(e) { return e && e.importance < 7; });
+                others.sort(function(a, b) { return (b.turn || 0) - (a.turn || 0); });
+                var beforeEvt = this.events.length;
+                this.events = important.concat(others.slice(0, Math.max(0, 20 - important.length)));
+                console.warn('[GameMemory] events 降级截断 ' + beforeEvt + ' → ' + this.events.length
+                    + ' 条（important=' + important.length + ', kept=' + this.events.length + '）');
+            }
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
-            if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
             var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
             var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
-            if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
-            else console.error('[GameMemory] 降级保存仍然失败：', r2);
+            if (r2 && r2.success) {
+                console.log('[GameMemory] 降级保存成功');
+                // 【P1-9修复】通知 UI（与 P1-5 的 _notifyStorageFailure 配合，但此处是 GameMemory 层，
+                // 可提供更具体的损失信息）。节流由 _notifyStorageFailure 处理。
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('存档空间不足，部分早期剧情已被压缩保存（详见控制台）');
+                }
+            } else {
+                console.error('[GameMemory] 降级保存仍然失败：', r2);
+                // 【P1-9修复】最终兜底：尝试用 IndexedDB 备份原始完整数据（如果可用）
+                // 避免"两次保存都失败"时数据完全丢失
+                if (originalData && typeof indexedDB !== 'undefined') {
+                    try {
+                        this._backupToIndexedDB(originalData);
+                    } catch (e3) {
+                        console.warn('[GameMemory] IndexedDB 备份失败:', e3);
+                    }
+                }
+            }
         } catch(e2) { console.error('[GameMemory] 降级保存异常：', e2); }
+    },
+
+    // 【P1-9修复】IndexedDB 备份：当 localStorage 两次保存都失败时，用 IndexedDB 兜底
+    // 仅保存原始完整数据（originalData），不保存降级后数据（已截断）
+    _backupToIndexedDB: function(data) {
+        if (typeof indexedDB === 'undefined') return;
+        var DB_NAME = 'freeScript_backup';
+        var STORE = 'memory_overflow';
+        var req = indexedDB.open(DB_NAME, 1);
+        req.onupgradeneeded = function(e) {
+            var db = e.target.result;
+            if (!db.objectStoreNames.contains(STORE)) {
+                db.createObjectStore(STORE, { keyPath: 'savedAt' });
+            }
+        };
+        req.onsuccess = function(e) {
+            try {
+                var db = e.target.result;
+                var tx = db.transaction(STORE, 'readwrite');
+                var store = tx.objectStore(STORE);
+                store.put({ savedAt: Date.now(), data: data, reason: 'localStorage_quota_exceeded' });
+                console.log('[GameMemory] IndexedDB 备份成功（原始数据未截断）');
+            } catch (putErr) {
+                console.warn('[GameMemory] IndexedDB put 失败:', putErr);
+            }
+        };
+        req.onerror = function(e) {
+            console.warn('[GameMemory] IndexedDB open 失败:', e.target.error);
+        };
     },
 
     loadFromStorage: function() {
@@ -3648,7 +3695,34 @@ var GameMemory = {
         }
         if (fact.locked === true && !old.locked) { old.locked = true; changed = true; }
         if (changed) self._ltmDirty = true;
+        // 【P1-8修复】list 类型字段统一淘汰上限
+        // 旧实现无淘汰机制，长游戏（200 回合）后 worldPlaces 膨胀到 40+ 条，
+        // buildSmartInjection 第一段"永久事实"全量拼装导致 token 占用持续增长
+        var _limits = { worldPlaces: 30, npcProfiles: 40, promises: 20, settings: 15 };
+        if (_limits[category]) self._prunePermanentFactsList(category, _limits[category]);
         return changed ? 'updated' : 'noop';
+    },
+
+    // 【P1-8修复】permanentFacts list 类型字段的统一淘汰
+    // 策略：locked 条目优先保留（不淘汰），非 locked 按 createdTurn 降序保留最近 N 条
+    // 平衡"世界观锁定"与"token 上限"——locked 是用户/AI 显式标记的不可变事实，必须保留
+    _prunePermanentFactsList: function(category, maxCount) {
+        var list = this.permanentFacts[category];
+        if (!Array.isArray(list) || list.length <= maxCount) return;
+        var locked = list.filter(function(a) { return a && a.locked; });
+        var unlocked = list.filter(function(a) { return a && !a.locked; });
+        // locked 全保留，unlocked 按 createdTurn 降序（最近优先）保留剩余额度
+        unlocked.sort(function(a, b) { return (b.createdTurn || 0) - (a.createdTurn || 0); });
+        var remaining = Math.max(0, maxCount - locked.length);
+        var keptUnlocked = unlocked.slice(0, remaining);
+        var before = list.length;
+        this.permanentFacts[category] = locked.concat(keptUnlocked);
+        if (this.permanentFacts[category].length < before) {
+            this._ltmDirty = true;
+            console.log('[GameMemory] _prunePermanentFactsList: ' + category + ' 裁剪 '
+                + (before - this.permanentFacts[category].length) + '/' + before
+                + ' 条（maxCount=' + maxCount + ', locked=' + locked.length + '）');
+        }
     },
 
     // 【P1修复BUG-011】替换式写入：用单条 fact 替换整个 category 数组。

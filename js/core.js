@@ -310,9 +310,32 @@ function _pushKeyEventsToGM() {
 }
 
 // 拦截 gm.saveToStorage：保存后自动同步 + 通知 UI
+// 【P1-10修复】
+// 1. 用 TimerManager 替代裸 setInterval/setTimeout（GlobalCleanup.cleanup 可统一清理）
+// 2. 超时从 10 秒延长至 60 秒：慢设备/GameMemory 因 IndexedDB 迁移或世界书扫描延迟时，
+//    10 秒内可能未完成初始化，导致 saveToStorage 永不被包装，后续所有保存都跳过 _ensureDataLinkage
+// 3. 超时时输出错误日志（便于排查"数据同步失效"问题）
 (function _wrapGMSaveToStorage() {
     if (typeof window === 'undefined') return;
-    var checkInterval = setInterval(function() {
+    if (typeof TimerManager === 'undefined' || !TimerManager.setInterval) {
+        // TimerManager 不可用时 fallback 到裸定时器（保持兼容）
+        var checkIntervalLegacy = setInterval(function() {
+            if (window.GameMemory && window.GameMemory.saveToStorage && !window.GameMemory._saveToStorageWrapped) {
+                var orig = window.GameMemory.saveToStorage;
+                window.GameMemory.saveToStorage = function() {
+                    var result = orig.apply(this, arguments);
+                    try { _ensureDataLinkage(); } catch (e) { console.warn('[DataLinkage] 同步失败:', e); }
+                    return result;
+                };
+                window.GameMemory._saveToStorageWrapped = true;
+                clearInterval(checkIntervalLegacy);
+            }
+        }, 200);
+        setTimeout(function() { clearInterval(checkIntervalLegacy); }, 60000);
+        return;
+    }
+    var checkKey = 'gmSaveWrap';
+    TimerManager.setInterval(checkKey, function() {
         if (window.GameMemory && window.GameMemory.saveToStorage && !window.GameMemory._saveToStorageWrapped) {
             var orig = window.GameMemory.saveToStorage;
             window.GameMemory.saveToStorage = function() {
@@ -321,11 +344,16 @@ function _pushKeyEventsToGM() {
                 return result;
             };
             window.GameMemory._saveToStorageWrapped = true;
-            clearInterval(checkInterval);
+            TimerManager.clearInterval(checkKey);
         }
     }, 200);
-    // 10秒后停止检查（GameMemory 正常情况下 1-2 秒内就初始化完成）
-    setTimeout(function() { clearInterval(checkInterval); }, 10000);
+    // 60 秒后停止检查并输出错误日志（GameMemory 仍未就绪 = 数据同步将失效）
+    TimerManager.setTimeout(checkKey + '_cleanup', function() {
+        if (!window.GameMemory || !window.GameMemory._saveToStorageWrapped) {
+            console.error('[DataLinkage] GameMemory 60 秒内未就绪，saveToStorage 未被包装，数据同步将失效');
+        }
+        TimerManager.clearInterval(checkKey);
+    }, 60000);
 })();
 
 // ========================================
@@ -1997,6 +2025,15 @@ function resetRuntimeState(scope) {
     // 清空打字机缓冲
     if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.stop) {
         TypewriterBuffer.stop();
+    }
+    // 【P1-6修复】重置 QuestSystem._cachedGuidanceQuest：
+    // 此前是模块级变量，生命周期=页面会话，跨存档加载不重置。
+    // 复现：存档 A 完成游戏（_cachedGuidanceQuest.status=COMPLETED）→
+    //       加载存档 B（新游戏）→ getAllQuests 复用存档 A 的已完成引导任务，
+    //       任务页显示一个 id=guidance_<存档A时间戳> 的过期任务。
+    // 在 resetRuntimeState 统一重置（覆盖 startNewGame + loadFromSlot + handleImportFile 三入口）
+    if (typeof QuestSystem !== 'undefined') {
+        QuestSystem._cachedGuidanceQuest = null;
     }
     // 清空UI残留
     var storyEl = document.getElementById('storyText');
@@ -5279,52 +5316,35 @@ async function extractSetupToMemory() {
             });
         }
 
-        // 3. 角色 → tables.characters + permanentFacts.npcProfiles
+        // 3. 角色 → permanentFacts.npcProfiles + StateManager（经 CharacterMutator）
         if (Array.isArray(parsed.characters)) {
             var playerName = gameState.playerName || (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
             parsed.characters.forEach(function(c) {
                 if (!c || !c.name) return;
                 // 跳过主角（主角不进NPC表）
                 if (playerName && (c.name === playerName || c.name.includes(playerName) || playerName.includes(c.name))) return;
-                // 写入 tables.characters
-                gm.tables.characters[c.name] = {
+                // 写入 permanentFacts.npcProfiles（保留原行为：AI 提取的角色描述作为永久事实）
+                var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
+                gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
+                // 【P1-11修复】删除 gm.tables.characters 直接写入与 gameState.allCharacters else 兜底：
+                // 1. 原 gm.tables.characters[c.name] = {...} 绕过 CharacterMutator，与 mergeCharacters 双写：
+                //    直接写 GameMemory 权威源后 mergeCharacters 再写 StateManager，两份数据各自演化易不同步。
+                // 2. else 分支直接写 gameState.allCharacters 绕过 _syncLegacyMirror，造成数据孤岛。
+                // 现统一委托 CharacterMutator.mergeCharacters（→ StateManager.set('entities.characters')）：
+                //    - _syncLegacyMirror 自动同步数组→对象到 gameState.allCharacters
+                //    - GameMemoryAdapter.syncToGameMemory 自动 MERGE 实体字段到 gm.tables.characters
+                //      （保留运行时累积字段 history/accessCount/locked 等，新增条目用默认值）
+                // 与 _applyMemsToGameState 对齐：缺失 mutator 即抛错，不再静默兜底。
+                if (typeof CharacterMutator === 'undefined' || !CharacterMutator.mergeCharacters) {
+                    throw new Error('[extractSetup] CharacterMutator 未加载，无法写入角色');
+                }
+                CharacterMutator.mergeCharacters([{
                     name: c.name,
                     title: c.title || '',
                     relation: c.relation || '',
-                    mood: '',
-                    location: '',
-                    outfit: '',
                     favorability: typeof c.favorability === 'number' ? c.favorability : 50,
-                    status: '',
-                    history: [{ turn: 0, changes: c.desc || '开局设定' }],
-                    lastChangedTurn: 0,
-                    gameTime: gm.getGameTimeStr(),
-                    accessCount: 0,
-                    locked: false
-                };
-                // 写入 permanentFacts.npcProfiles
-                var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
-                gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
-                // 【阶段1统一】同步到 StateManager 委托 CharacterMutator.mergeCharacters
-                // 替代原直接写 gameState.allCharacters[name]（绕过 StateManager 导致不同步）
-                if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
-                    CharacterMutator.mergeCharacters([{
-                        name: c.name,
-                        title: c.title || '',
-                        relation: c.relation || '',
-                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
-                        desc: c.desc || ''
-                    }]);
-                } else if (typeof gameState !== 'undefined') {
-                    if (!gameState.allCharacters) gameState.allCharacters = {};
-                    gameState.allCharacters[c.name] = {
-                        name: c.name,
-                        title: c.title || '',
-                        relation: c.relation || '',
-                        favorability: typeof c.favorability === 'number' ? c.favorability : 50,
-                        desc: c.desc || ''
-                    };
-                }
+                    desc: c.desc || ''
+                }]);
             });
         }
 

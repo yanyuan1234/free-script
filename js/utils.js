@@ -239,6 +239,10 @@ function safeSetItem(key, value) {
             Logger.warn('localStorage接近满载:', capacity.percentage.toFixed(1) + '%');
         }
     if (capacity.used + dataSize > capacity.total) {
+        // 【P1-5修复】静默失败改为通知 UI：原返回 { success: false } 但 18+ 调用方均不检查返回值，
+        // 导致存档静默丢失。现统一在 safeSetItem 内部通知 UI（调用方无需逐一修改）。
+        // 节流：避免短时间内重复 toast（如 autoSave 多次重试）
+        _notifyStorageFailure('quota_exceeded', '存储空间不足，存档可能未保存。建议导出存档后清理旧数据', key);
         return { success: false, error: 'quota_exceeded', message: '存储空间不足', required: dataSize, available: capacity.total - capacity.used };
     }
 localStorage.setItem(key, value);
@@ -248,11 +252,32 @@ return { success: true, used: dataSize };
 } catch(e) {
 if (e.name === 'QuotaExceededError' || e.code === 22) {
     Logger.error('localStorage存储已满:', key);
+    _notifyStorageFailure('quota_exceeded', '存储配额已超，存档可能未保存。建议导出存档后清理旧数据', key);
     return { success: false, error: 'quota_exceeded', message: '存储配额已超', key: key };
 }
 Logger.error('localStorage写入失败:', e.message);
+_notifyStorageFailure('write_error', '存储写入失败：' + (e && e.message ? e.message : '未知错误'), key);
 return { success: false, error: 'write_error', message: e.message, key: key };
 }
+}
+
+// 【P1-5修复】存储失败 UI 通知（带节流，避免短时间内重复 toast 刷屏）
+var _lastStorageFailToast = 0;
+var _STORAGE_FAIL_TOAST_INTERVAL = 5000;  // 5 秒内同类型失败只 toast 一次
+function _notifyStorageFailure(errorType, message, key) {
+    var now = Date.now();
+    if (now - _lastStorageFailToast < _STORAGE_FAIL_TOAST_INTERVAL) return;  // 节流
+    _lastStorageFailToast = now;
+    // UI 可能尚未加载（utils.js 加载早于 core.js），做存在性检查
+    try {
+        if (typeof UI !== 'undefined' && UI.toast) {
+            UI.toast(message);
+        } else {
+            console.error('[Storage] ' + errorType + ' (key=' + key + '): ' + message);
+        }
+    } catch (e) {
+        console.error('[Storage] 通知 UI 失败:', e);
+    }
 }
 // 【P2清理】删除 safeGetItem（与 Storage.get 实现逐字相同，全项目零调用）
 
