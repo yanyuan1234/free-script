@@ -4168,7 +4168,7 @@ function bindEvents() {
                 medium: 16,
                 large: 20
             };
-            gameState.fontSize = sizes[this.dataset.fontsize] || 16;
+            StateManager.set('settings.fontSize', sizes[this.dataset.fontsize] || 16, { silent: true });
             applyFontSize();
             saveGameSettings();
         });
@@ -4210,7 +4210,7 @@ function bindEvents() {
 
     // AI生成选项开关
     // AI生成选项已移除，始终开启
-    gameState.generateChoices = true;
+    StateManager.set('settings.generateChoices', true, { silent: true });
 
     // 压缩历史
     bindEvent('btnCompressHistory', 'click', function() {
@@ -4562,23 +4562,17 @@ function bindEvents() {
 
     // 文风选择
     bindEvent('settingWritingStyle', 'change', function() {
-        if (typeof gameState !== 'undefined') {
-            gameState.writingStyle = this.value;
-        }
+        StateManager.set('settings.writingStyle', this.value, { silent: true });
     });
 
     // 思维链模式
     bindEvent('settingCotMode', 'change', function() {
-        if (typeof gameState !== 'undefined') {
-            gameState.cotMode = this.value;
-        }
+        StateManager.set('settings.cotMode', this.value, { silent: true });
     });
 
     // 写作节奏
     bindEvent('settingChapterMode', 'change', function() {
-        if (typeof gameState !== 'undefined') {
-            gameState.chapterMode = this.value;
-        }
+        StateManager.set('settings.chapterMode', this.value, { silent: true });
     });
 }
 function startNewGame() {
@@ -5776,7 +5770,7 @@ function saveGameSettings() {
         large: 20
     };
     var activeFont = document.querySelector('[data-fontsize].active');
-    gameState.fontSize = activeFont ? (fontSizeMap[activeFont.dataset.fontsize] || 16) : 16;
+    StateManager.set('settings.fontSize', activeFont ? (fontSizeMap[activeFont.dataset.fontsize] || 16) : 16, { silent: true });
     // 【修复S1】读取剧情长度设置并同步到gameState.maxTokens
     // 【修复P1-2】统一调用 _syncMaxTokens，替代分散的内联同步
     var storyLengthEl = document.getElementById('settingStoryLength');
@@ -5801,7 +5795,7 @@ function saveGameSettings() {
     var _pcMin = safeInt(wcParaMinEl ? wcParaMinEl.value : '', 15);
     var _pcMax = safeInt(wcParaMaxEl ? wcParaMaxEl.value : '', 17);
     if (_pcMin > _pcMax) { var _tmp2 = _pcMin; _pcMin = _pcMax; _pcMax = _tmp2; }
-    gameState.wordCountConfig = {
+    StateManager.set('settings.wordCountConfig', {
         enabled: document.getElementById('wcEnabled') ? document.getElementById('wcEnabled').checked : true,
         min: _wcMin,
         max: _wcMax,
@@ -5813,7 +5807,7 @@ function saveGameSettings() {
         takeover: document.getElementById('wcTakeover') ? document.getElementById('wcTakeover').value : 'closed',
         narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed',
         pacing: document.getElementById('wcPacing') ? document.getElementById('wcPacing').value : 'steady'
-    };
+    }, { silent: true });
     // 保存默认参数设置（从预设管理器读取，设置页已移除手动输入框）
     var pm = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams : null;
     var defaultParams = {
@@ -5829,43 +5823,45 @@ function saveGameSettings() {
     // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
     // 【修复P2-1】从 switch checkbox 读取 autoCompress，替代双按钮组的 active class 判断
     var _autoCompressToggleEl = document.getElementById('autoCompressToggle');
-    gameState.autoCompress = _autoCompressToggleEl ? _autoCompressToggleEl.checked : true;
-    gameState.summaryThreshold = parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0;
+    StateManager.set('settings.autoCompress', _autoCompressToggleEl ? _autoCompressToggleEl.checked : true, { silent: true });
+    StateManager.set('settings.summaryThreshold', parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0, { silent: true });
     // 【酒馆预设融合】保存叙事增强设置
     var writingStyleEl = document.getElementById('settingWritingStyle');
-    if (writingStyleEl) gameState.writingStyle = writingStyleEl.value;
+    if (writingStyleEl) StateManager.set('settings.writingStyle', writingStyleEl.value, { silent: true });
     var cotModeEl = document.getElementById('settingCotMode');
-    if (cotModeEl) gameState.cotMode = cotModeEl.value;
+    if (cotModeEl) StateManager.set('settings.cotMode', cotModeEl.value, { silent: true });
     // 【修复P2-1】移除 anti429Mode UI 读取——该字段是死代码，没有任何代码读取它来影响请求
     // squashSystemMessages 已固定开启，不需要从UI读取
     // === 酒馆预设融合：叙事融合层 v2 ===
     // 章节模式
     var chapterModeEl = document.getElementById('settingChapterMode');
-    if (chapterModeEl) gameState.chapterMode = chapterModeEl.value;
+    if (chapterModeEl) StateManager.set('settings.chapterMode', chapterModeEl.value, { silent: true });
     // 【修复P3】squelchRules/npcDescriptionRules 字段已从 createDefaultGameState 移除——死代码
     // NSFW 内容控制应通过自定义风格/设定实现，而非无效的安慰剂开关
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
-    gameState.generateChoices = true;
+    StateManager.set('settings.generateChoices', true, { silent: true });
+    // 【阶段1批7】从 StateManager 读 settings 写入持久层（不再读 gameState 镜像）
+    // _syncLegacyMirror 维护 gameState 旧字段镜像，但权威源是 StateManager
+    var _sm = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get.bind(StateManager) : function() { return null; };
     var _saveResult = Storage.setJSON(Storage.KEYS.SETTINGS, {
-        useStream: gameState.useStream,
-        // 【修复P0-1】不再导出 gameState.temperature——统一由 PresetManager.currentParams 持久化
-        fontSize: gameState.fontSize,
-        wordCountConfig: gameState.wordCountConfig,
-        autoCompress: gameState.autoCompress,
-        summaryThreshold: gameState.summaryThreshold,
-        generateChoices: gameState.generateChoices,
-        maxTokens: gameState.maxTokens,
+        useStream: _sm('settings.useStream') !== null ? _sm('settings.useStream') : true,
+        fontSize: _sm('settings.fontSize') !== null ? _sm('settings.fontSize') : 16,
+        wordCountConfig: _sm('settings.wordCountConfig') || {},
+        autoCompress: _sm('settings.autoCompress') !== null ? _sm('settings.autoCompress') : true,
+        summaryThreshold: _sm('settings.summaryThreshold') !== null ? _sm('settings.summaryThreshold') : 6,
+        generateChoices: _sm('settings.generateChoices') !== null ? _sm('settings.generateChoices') : true,
+        maxTokens: _sm('settings.maxTokens') || 0,
         // 【修复P0-3】持久化 compressThreshold，此前不保存导致刷新后 UI 显示 80% 但实际用 92%
         compressThreshold: (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) ? EnhancedMemory.compressionConfig.triggerThreshold : 0.92,
         defaultParams: defaultParams,
         // 【酒馆预设融合】叙事增强设置
-        writingStyle: gameState.writingStyle,
-        cotMode: gameState.cotMode,
+        writingStyle: _sm('settings.writingStyle') || '',
+        cotMode: _sm('settings.cotMode') || '',
         // === 酒馆预设融合 v2 ===
-        chapterMode: gameState.chapterMode,
-        narrativeEyes: gameState.narrativeEyes,
+        chapterMode: _sm('settings.chapterMode') || '',
+        narrativeEyes: _sm('settings.narrativeEyes') || 'first',
         // 【修复P2-3】不再导出 squelchRules——死代码，UI 已移除
-        presetArchetype: gameState.presetArchetype
+        presetArchetype: _sm('settings.presetArchetype') || 'standard'
     });
     applyFontSize();
     // 【修复 P2】检查 Storage.setJSON 返回值，配额超限时提示用户而非虚假"保存成功"

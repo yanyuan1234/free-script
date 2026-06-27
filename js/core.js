@@ -138,20 +138,27 @@ const _TABLE_MAPPERS = {
         pickFrom: function (b) { return ['count', 'unit', 'rarity', 'desc', 'usable', 'effect', 'equippable', 'equipped', 'slot']; }
     },
     quests: {
-        fromArray: function (cq) { return {
-            title: cq.title,
-            type: cq.type || 'quest',
-            status: cq.status || 'pending',
-            progress: cq.progress || '',
-            hint: cq.hint || ''
-        }; },
+        fromArray: function (cq) {
+            // 状态映射：中文 → gm 内部状态
+            var gStatus = 'pending';
+            if (cq.status === '已完成' || cq.status === 'resolved') gStatus = 'resolved';
+            else if (cq.status === '已失败' || cq.status === '失败' || cq.status === 'broken') gStatus = 'broken';
+            return {
+                title: cq.title,
+                type: cq.type || 'quest',
+                status: gStatus,
+                progress: cq.progress || '',
+                hint: cq.hint || ''
+            };
+        },
         toArr: function (q) { return {
             title: q.title,
             type: q.type || 'quest',
             status: q.status || 'pending',
             progress: q.progress || '',
             hint: q.hint || ''
-        }; }
+        }; },
+        keyField: 'title'
     }
 };
 
