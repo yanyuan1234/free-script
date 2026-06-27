@@ -63,6 +63,42 @@ function getModulesByType(type) {
     return mods.filter(function(m) { return m && m.type === type; });
 }
 
+// ========================================
+// 【P2-R2/A1 阶段4】好感度 → 颜色映射 helper
+// 抽取前：phone-ui.js 内 2 处 7 档 favColor 重复硬编码
+//   - renderNpcList 卡片 favColor (7210-7217)
+//   - openNpcDetail 详情页 favColor (7335-7342)
+// 抽取后：所有调用走 favColorOf(fav) 一处定义。
+// 同时按 P2-A1 加深浅色（#b8c5d0 / #9a8c98）底色以满足
+// 白底对比度 4.5:1 阈值（hex 加深约 30%）。
+// ========================================
+function favColorOf(fav) {
+    if (fav >= 80) return '#ff4d88';   // 粉色（极度亲密，原 #ff6b9d 加深）
+    if (fav >= 60) return '#ff5f8a';   // 浅粉（原 #ff8fab 加深）
+    if (fav >= 40) return '#d6829a';   // 中粉（原 #ffb3c6 加深，亮色背景可读）
+    if (fav >= 15) return '#5fa8a8';   // 青色（友好，原 #a8dadc 加深）
+    if (fav >= -15) return '#6a7a8a';  // 灰蓝（中立，原 #b8c5d0 加深）
+    if (fav >= -40) return '#6e5d6a';  // 灰紫（疏远，原 #9a8c98 加深）
+    return '#495057';                  // 深灰（敌意，原 #6c757d 加深）
+}
+
+
+// ========================================
+// 【P2-R5 阶段4】主角设定 inputId → mc 字段名 映射常量
+// 抽取前：phone-ui.js 内 2 处 7 字段 mcMap 完全重复定义
+//   - startNewGame (3931-3939)
+//   - 收集主角设定 (4589-4597)
+// 抽取后：所有调用走 MC_FIELD_MAP 一处定义。
+// ========================================
+var MC_FIELD_MAP = {
+    setupPlayerName: 'mcName',
+    setupPlayerGender: 'mcGender',
+    setupPlayerIdentity: 'mcIdentity',
+    setupPlayerAge: 'mcAge',
+    setupPlayerAppearance: 'mcAppearance',
+    setupPlayerAbility: 'mcAbility',
+    setupPlayerDesc: 'mcPersonality'
+};
 
 // ========================================
 // 【P1-PU5 阶段2-3】API 日志/错误项渲染器
@@ -3909,15 +3945,8 @@ function bindEvents() {
         var mcFields = ['setupPlayerName', 'setupPlayerGender', 'setupPlayerIdentity',
             'setupPlayerAge', 'setupPlayerAppearance', 'setupPlayerAbility', 'setupPlayerDesc'
         ];
-        var mcMap = {
-            setupPlayerName: 'mcName',
-            setupPlayerGender: 'mcGender',
-            setupPlayerIdentity: 'mcIdentity',
-            setupPlayerAge: 'mcAge',
-            setupPlayerAppearance: 'mcAppearance',
-            setupPlayerAbility: 'mcAbility',
-            setupPlayerDesc: 'mcPersonality'
-        };
+        // 【P2-R5 阶段4】抽公共 MC_FIELD_MAP，删局部重复
+        var mcMap = MC_FIELD_MAP;
         mcFields.forEach(function(id) {
             var el = document.getElementById(id);
             if (el && el.value.trim()) mc[mcMap[id]] = el.value.trim();
@@ -4567,18 +4596,10 @@ function startNewGame() {
 
     // 收集主角设定
     gameState.protagonistSetup = {};
-    var mcMap = {
-        setupPlayerName: 'mcName',
-        setupPlayerGender: 'mcGender',
-        setupPlayerIdentity: 'mcIdentity',
-        setupPlayerAge: 'mcAge',
-        setupPlayerAppearance: 'mcAppearance',
-        setupPlayerAbility: 'mcAbility',
-        setupPlayerDesc: 'mcPersonality'
-    };
-    Object.keys(mcMap).forEach(function(id) {
+    // 【P2-R5 阶段4】抽公共 MC_FIELD_MAP，删局部重复
+    Object.keys(MC_FIELD_MAP).forEach(function(id) {
         var el = document.getElementById(id);
-        if (el && el.value.trim()) gameState.protagonistSetup[mcMap[id]] = el.value.trim();
+        if (el && el.value.trim()) gameState.protagonistSetup[MC_FIELD_MAP[id]] = el.value.trim();
     });
 
     // 收集作者备注（酒馆Author's Note特性）
@@ -6676,7 +6697,8 @@ function editChatRemark() {
         'position:absolute;top:44px;left:8px;right:8px;background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:12px 16px;z-index:200';
     var safeRemark = (currentRemark || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
     panel.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">备注名</div>' +
-        '<input type="text" id="remarkInput" value="' + safeRemark +
+        // 【P2-A3 阶段4】加 aria-label（备注名输入）
+        '<input type="text" id="remarkInput" aria-label="角色备注名" value="' + safeRemark +
         '" placeholder="输入备注名" style="width:100%;height:36px;border:1px solid #e5e5e5;border-radius:8px;padding:0 12px;font-size:14px;outline:none;box-sizing:border-box">' +
         '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">' +
         '<span id="remarkCancel" style="padding:6px 16px;font-size:14px;color:#999;cursor:pointer">取消</span>' +
@@ -7205,15 +7227,9 @@ function renderNpcPage() {
             var sn = escapeAttr(c.name);
             // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
             var favLevel = c.relation || '中立';
-            // 根据好感度数值选择颜色（-100到100，0为中立）
-            var favColor = '#b8c5d0'; // 默认灰蓝（中立）
-            if (fav >= 80) favColor = '#ff6b9d'; // 粉色（极度亲密）
-            else if (fav >= 60) favColor = '#ff8fab'; // 浅粉
-            else if (fav >= 40) favColor = '#ffb3c6'; // 更浅粉
-            else if (fav >= 15) favColor = '#a8dadc'; // 青色（友好）
-            else if (fav >= -15) favColor = '#b8c5d0'; // 灰蓝（中立）
-            else if (fav >= -40) favColor = '#9a8c98'; // 灰紫（疏远）
-            else favColor = '#6c757d'; // 深灰（敌意）
+            // 【P2-R2/A1 阶段4】抽公共 favColorOf()：原 7 档硬编码重复 2 处，
+            // 浅色 #b8c5d0/#9a8c98 在白底上对比度 < 4.5:1，一并加深底色（hex 加深约 30%）
+            var favColor = favColorOf(fav);
 
             var tagsHtml = '';
             if (c.relation) tagsHtml += '<span class="char-tag">' + escapeHtml(c.relation) + '</span>';
@@ -7286,10 +7302,10 @@ function openNpcDetail(name) {
     // 构建详情内容
     var html = '';
     // 头像和名称
+    // 【P2-D9 阶段4】<h3> 下方已展示 c.title（身份/称号），下方 key='身份' 字段重复，去掉 <p>
     html += '<div style="text-align:center;margin-bottom:16px;">' +
         '<div class="avatar avatar-lg" style="margin:0 auto;"><span>' + escapeHtml(c.name.charAt(0)) + '</span></div>' +
-        '<h3 style="font-size:20px;font-weight:600;margin-top:10px;">' + escapeHtml(c.name) + '</h3>' +
-        (c.title ? '<p class="text-soft">' + escapeHtml(c.title) + '</p>' : '') +
+        '<h3 style="font-size:20px;font-weight:600;margin-top:10px;">' + escapeHtml(c.name) + (c.title ? ' <span style="font-size:14px;color:var(--text-secondary);font-weight:400;">· ' + escapeHtml(c.title) + '</span>' : '') + '</h3>' +
         '</div>';
 
     // 基本信息字段（key-value 行）
@@ -7331,14 +7347,8 @@ function openNpcDetail(name) {
         fav = Math.max(-100, Math.min(100, fav));
         // 使用AI动态生成的关系描述，不再硬编码等级名称
         var favLevel = c.relation || '中立';
-        var favColor = '';
-        if (fav >= 80) favColor = '#ff6b9d';
-        else if (fav >= 60) favColor = '#ff8fab';
-        else if (fav >= 40) favColor = '#ffb3c6';
-        else if (fav >= 15) favColor = '#a8dadc';
-        else if (fav >= -15) favColor = '#b8c5d0';
-        else if (fav >= -40) favColor = '#9a8c98';
-        else favColor = '#6c757d';
+        // 【P2-R2/A1 阶段4】抽公共 favColorOf()，浅色底色加深以提升对比度
+        var favColor = favColorOf(fav);
 
         html += '<div class="pearl-card" style="padding:12px;margin-bottom:12px;">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">' +

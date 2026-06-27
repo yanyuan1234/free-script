@@ -8,7 +8,7 @@
 //   - Hook 1: PresetManager.loadPreset → gameAdapter.onPresetLoaded
 //   - Hook 3: injectPresetGlobalVars → gameAdapter.parse (setvar/getvar)
 //   - Hook 6: RegexManager.applyToOutput/Input → gameAdapter.processResponse/UserInput
-//   - Hook 7: PresetManager.importPreset → 标准化酒馆预设格式
+//   - （Hook 7 已删除 - 见 P2-D12）
 //
 // `js/ai-contract/` 目录存在新的 response-parser.js / output-sanitizer.js /
 // prompt-builder.js，与 Hook 6（gameAdapter.processResponse）+ Hook 3（gameAdapter.parse）
@@ -166,49 +166,10 @@
         }
 
         // ── Hook 7: 预设导入增强 ──
-        // 当用户导入酒馆预设JSON时，自动标准化格式
-        if (typeof PresetManager !== 'undefined' && PresetManager.importPreset) {
-            const origImport = PresetManager.importPreset;
-            PresetManager.importPreset = function(data) {
-                // 标准化预设格式
-                if (data && !data._stscriptNormalized) {
-                    data._stscriptNormalized = true;
-
-                    // 确保 prompts 是数组
-                    if (!Array.isArray(data.prompts)) data.prompts = [];
-
-                    // 提取 extensions.regex_scripts
-                    if (!data.regexScripts && data.extensions && data.extensions.regex_scripts) {
-                        data.regexScripts = data.extensions.regex_scripts;
-                    }
-
-                    // 提取 extensions.tavern_helper
-                    if (data.extensions && data.extensions.tavern_helper) {
-                        data._tavernHelperScripts = data.extensions.tavern_helper.scripts || [];
-                    }
-
-                    // 提取 extensions.entryGrouping
-                    if (data.extensions && data.extensions.entryGrouping) {
-                        data._entryGrouping = data.extensions.entryGrouping;
-                    }
-
-                    // 自动检测预设类型
-                    if (window.PresetConfigManager) {
-                        data._presetType = PresetConfigManager.detectPresetType(data);
-                        console.log('[STscript] 预设类型:', data._presetType);
-                    }
-
-                    // 验证兼容性
-                    if (window.PresetConfigManager) {
-                        const validation = PresetConfigManager.validatePreset(data);
-                        validation.info.forEach(msg => console.log('[STscript] ' + msg));
-                        validation.warnings.forEach(msg => console.warn('[STscript] ⚠️ ' + msg));
-                    }
-                }
-
-                return origImport.call(this, data);
-            };
-        }
+        // 【P2-D12 阶段4】删除：PresetManager 实际无 importPreset 方法（实际为 importFromFile），
+        // 整段 if 永远 false，44 行死代码。预设标准化已由 PresetManager.parsePreset 内部完成。
+        // 同时移除顶部注释里的 "Hook 7" 引用。
+        // （占位已删，下方原 Hook 7 代码已移除）
 
         console.log('[STscript] ✅ 集成完成！兼容引擎已激活');
         console.log('[STscript] 支持预设：果实·叶子版 / 月读·Gemini / 蛾摩拉☼');
