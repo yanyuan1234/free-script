@@ -1972,7 +1972,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
                 // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
                 if (storyText && typeof storyText === 'string') {
-                    var currentBalance = parseFloat(StateManager.get('entities.currency') || gameState.money || gameState.coins || 0) || 0;
+                    // 【P1-PU1 阶段2-1】统一走 CurrencyMutator.get()，消除 fallback 链
+                    var currentBalance = (typeof CurrencyMutator !== 'undefined')
+                        ? CurrencyMutator.get()
+                        : (parseFloat(StateManager.get('entities.currency') || gameState.money || gameState.coins || 0) || 0);
                     var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
                     if (recon.changed) {
                         StateManager.set('entities.currency', recon.balance, { silent: true });
@@ -2544,6 +2547,72 @@ function _extractAndStoreImportantInfo(message) {
         }
     });
 }
+// ========================================
+// 【P1-PU14 阶段2-2】压缩公共逻辑抽取
+// autoCompressContext / manualCompress 之前有 ~40 行重复代码：
+// dialogOnly 循环、keep/removed slice、pinned 消息分流、rebuild、recordCompression。
+// 抽取为 _prepareCompressionData() + _applyCompressionResult() 两个内部函数。
+// ========================================
+// 30 条原文保留的硬编码（之前两处都写死 30）
+const COMPRESS_KEEP_LIMIT = 30;
+// system 消息内嵌的元数据前缀（用于过滤掉不被压缩的"系统侧"消息）
+const _SYS_BLOCK_PREFIXES = ['当前世界状态快照', '重要事件记录', '前情摘要'];
+
+/**
+ * 从 conversationHistory 提取可压缩数据
+ * @param {Array} conv - 完整对话历史
+ * @returns {{sys: object|null, keep: Array, removed: Array, dialogOnly: Array, pinnedCount: number}}
+ */
+function _prepareCompressionData(conv) {
+    conv = conv || [];
+    var sys = conv.length > 0 ? conv[0] : null;
+    // 【阶段四】单次遍历：跳过 system 内的元数据块（快照/事件/摘要）
+    var dialogOnly = [];
+    for (let i = 1; i < conv.length; i++) {
+        var m = conv[i];
+        if (m.role === 'system') {
+            var c = (m.content || '');
+            var isMeta = false;
+            for (let k = 0; k < _SYS_BLOCK_PREFIXES.length; k++) {
+                if (c.indexOf(_SYS_BLOCK_PREFIXES[k]) !== -1) { isMeta = true; break; }
+            }
+            if (isMeta) continue;
+        }
+        dialogOnly.push(m);
+    }
+    var keep = dialogOnly.slice(-COMPRESS_KEEP_LIMIT);
+    var removed = dialogOnly.slice(0, -COMPRESS_KEEP_LIMIT);
+    // 【酒馆特性】消息 Pinning：固定消息从 removed 移到 keep 头部
+    var pinnedMessages = [];
+    var nonPinnedRemoved = [];
+    for (let j = 0; j < removed.length; j++) {
+        if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
+        else nonPinnedRemoved.push(removed[j]);
+    }
+    var pinnedCount = pinnedMessages.length;
+    if (pinnedCount > 0) {
+        removed = nonPinnedRemoved;
+        keep = pinnedMessages.concat(keep);
+    }
+    return { sys: sys, keep: keep, removed: removed, dialogOnly: dialogOnly, pinnedCount: pinnedCount };
+}
+
+/**
+ * 应用压缩结果：重建 conversationHistory + rollingSummary + 触发保存
+ * @param {object} sys - 原始 system prompt 消息
+ * @param {Array} keep - 保留的近期消息
+ * @param {string} summary - AI 生成的摘要
+ */
+function _applyCompressionResult(sys, keep, summary) {
+    // 重建：system prompt + 近期对话
+    gameState.conversationHistory = sys ? [sys].concat(keep) : keep.slice();
+    gameState.rollingSummary = summary;
+    autoSave();
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
+        EnhancedMemory.recordCompression(true);
+    }
+}
+
 async function autoCompressContext() {
     if (isCompressing) return;
     isCompressing = true;
@@ -2573,38 +2642,10 @@ async function autoCompressContext() {
             return;
         }
 
-        var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
-        // 【阶段四】合并多次 slice/filter 为单次遍历，减少大数组重复扫描
-        var dialogOnly = [];
-        var conv = gameState.conversationHistory || [];
-        for (let i = 1; i < conv.length; i++) {
-            var m = conv[i];
-            if (m.role === 'system') {
-                var c = m.content || '';
-                if (c.indexOf('当前世界状态快照') !== -1) continue;
-                if (c.indexOf('重要事件记录') !== -1) continue;
-                if (c.indexOf('前情摘要') !== -1) continue;
-            }
-            dialogOnly.push(m);
-        }
-        var keep = dialogOnly.slice(-30);
-        var removed = dialogOnly.slice(0, -30);
+        // 【P1-PU14 阶段2-2】抽取后的统一准备步骤
+        var prep = _prepareCompressionData(gameState.conversationHistory);
 
-        // 【酒馆特性】消息Pinning：固定重要消息不被压缩
-        // 消息上有 _pinned=true 标记的，即使在前30条之外也要保留
-        var pinnedMessages = [];
-        var nonPinnedRemoved = [];
-        for (let j = 0; j < removed.length; j++) {
-            if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
-            else nonPinnedRemoved.push(removed[j]);
-        }
-        if (pinnedMessages.length > 0) {
-            removed = nonPinnedRemoved;
-            keep = pinnedMessages.concat(keep);
-            console.log('[压缩] 保留了 ' + pinnedMessages.length + ' 条固定消息');
-        }
-
-        if (removed.length === 0) {
+        if (prep.removed.length === 0) {
             // 【优化】提前返回时也恢复 _currentAbort
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
@@ -2613,7 +2654,7 @@ async function autoCompressContext() {
         }
         // 【P1优化】历史<10轮时不生成摘要：节省200-500 tokens
         // 早期游戏上下文短，原文注入即可，摘要反而割裂连贯性
-        var _historyTurns = Math.floor(dialogOnly.length / 2);
+        var _historyTurns = Math.floor(prep.dialogOnly.length / 2);
         if (_historyTurns < 10) {
             console.log('[摘要跳过] 历史仅' + _historyTurns + '轮 (<10), 不生成摘要');
             isCompressing = false;
@@ -2621,19 +2662,16 @@ async function autoCompressContext() {
             _restoreAbort();
             return;
         }
-        var summary = await _compressConversation(removed, sys);
-        // 重建conversationHistory：只保留system prompt + 近期对话
-        gameState.conversationHistory = [sys].concat(keep);
-        gameState.rollingSummary = summary;
+        var summary = await _compressConversation(prep.removed, prep.sys);
+        // 【P1-PU14 阶段2-2】统一应用
+        _applyCompressionResult(prep.sys, prep.keep, summary);
+        if (prep.pinnedCount > 0) {
+            console.log('[压缩] 保留了 ' + prep.pinnedCount + ' 条固定消息');
+        }
         console.log('自动压缩完成，保留', gameState.conversationHistory.length, '条，keyEvents', (gameState
             .keyEvents || []).length, '条不受影响');
-        autoSave();
         // 【修复P0-3】压缩成功后才设置完整冷却时间
         window.lastCompressTime = Date.now();
-        // 【P0修复】同步更新 lastCompressionTurn，使 shouldTriggerCompression 事件触发冷却生效
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
-            EnhancedMemory.recordCompression(true);
-        }
     } catch (e) {
         console.error('自动压缩失败:', e);
         // 【修复P0-3】失败时只设 1 分钟短冷却，允许尽快重试，
@@ -2669,55 +2707,29 @@ async function manualCompress(btn) {
         var msgCount = (gameState && gameState.conversationHistory) ? gameState.conversationHistory.filter(function(m) {
             return m.role !== 'system';
         }).length : 0;
-        if (msgCount <= 30) {
-            UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于30条才有意义）');
+        if (msgCount <= COMPRESS_KEEP_LIMIT) {
+            UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于' + COMPRESS_KEEP_LIMIT + '条才有意义）');
             _restoreAbort();
             return;
         }
-        var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近30条原文，确定吗？');
+        var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近' + COMPRESS_KEEP_LIMIT + '条原文，确定吗？');
         if (!ok) { _restoreAbort(); return; }
-        var sys = gameState.conversationHistory ? gameState.conversationHistory[0] : undefined;
-        // 【阶段四】合并多次 slice/filter 为单次遍历
-        var dialogOnly = [];
-        var conv = gameState.conversationHistory || [];
-        for (let i = 1; i < conv.length; i++) {
-            var m = conv[i];
-            if (m.role === 'system') {
-                var c = m.content || '';
-                if (c.indexOf('当前世界状态快照') !== -1) continue;
-                if (c.indexOf('重要事件记录') !== -1) continue;
-                if (c.indexOf('前情摘要') !== -1) continue;
-            }
-            dialogOnly.push(m);
-        }
-        var keep = dialogOnly.slice(-30);
-        var removed = dialogOnly.slice(0, -30);
-        // 【酒馆特性】消息Pinning：固定消息不被压缩
-        var pinnedMessages = [];
-        var nonPinnedRemoved = [];
-        for (let j = 0; j < removed.length; j++) {
-            if (removed[j]._pinned === true) pinnedMessages.push(removed[j]);
-            else nonPinnedRemoved.push(removed[j]);
-        }
-        if (pinnedMessages.length > 0) {
-            removed = nonPinnedRemoved;
-            keep = pinnedMessages.concat(keep);
-        }
-        if (removed.length === 0) {
+
+        // 【P1-PU14 阶段2-2】抽取后的统一准备步骤
+        var prep = _prepareCompressionData(gameState.conversationHistory);
+        if (prep.removed.length === 0) {
             UI.toast('没有需要压缩的内容');
             _restoreAbort();
             return;
         }
-        var summary = await _compressConversation(removed, sys);
-        gameState.conversationHistory = [sys].concat(keep);
-        gameState.rollingSummary = summary;
-        console.log('手动压缩完成，保留', gameState.conversationHistory.length, '条');
-        autoSave();
-        // 【P0修复】手动压缩也更新冷却计数，防止手动压缩后立即触发自动压缩
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
-            EnhancedMemory.recordCompression(true);
+        var summary = await _compressConversation(prep.removed, prep.sys);
+        // 【P1-PU14 阶段2-2】统一应用
+        _applyCompressionResult(prep.sys, prep.keep, summary);
+        if (prep.pinnedCount > 0) {
+            console.log('[手动压缩] 保留了 ' + prep.pinnedCount + ' 条固定消息');
         }
-        UI.toast('压缩完成！已总结 ' + removed.length + ' 条对话');
+        console.log('手动压缩完成，保留', gameState.conversationHistory.length, '条');
+        UI.toast('压缩完成！已总结 ' + prep.removed.length + ' 条对话');
     } catch (e) {
         console.error('手动压缩失败:', e);
         UI.toast('压缩失败: ' + translateError(e.message || '未知错误'));

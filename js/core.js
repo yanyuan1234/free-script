@@ -57,18 +57,51 @@
 // 视图别名：gameState.allCharacters === gm.tables.characters（同一引用，最快）
 // ========================================
 
+// ========================================
+// 【P1-CO1 阶段2-5】数据同步公共 helper
+// 原代码 8 个函数（4 sync + 4 push）各自手写：
+//   - null check gameState + window.GameMemory
+//   - 取数据源（keyed object 或 array）
+//   - 写 gameState[field]
+//   - silent:true 写 StateManager
+// 抽取 3 个小工具消除重复，统一行为（silent:true 永远不会漏）：
+//   _safeGameState() - 取 gameState（含 null check）
+//   _safeGM()        - 取 window.GameMemory（含 null check）
+//   _mirrorToState(stateKey, smPath, value) - 同步写 gameState + StateManager
+// 业务变换（per-type mapper）仍内联在每个 sync/push 函数内，因为：
+//   1. 每种数据 schema 不同，强行抽象反而难读
+//   2. 调试时 per-type 逻辑就地可见
+// ========================================
+function _safeGameState() {
+    return (typeof gameState !== 'undefined' && gameState) ? gameState : null;
+}
+function _safeGM() {
+    return (typeof window !== 'undefined' && window.GameMemory) ? window.GameMemory : null;
+}
+/**
+ * 同步写 gameState[field] + StateManager.set(smPath)
+ * silent:true 避免循环通知（同步函数本身就是各种写入路径的下游）
+ * @param {string} stateKey - gameState 字段名
+ * @param {string} smPath - StateManager 路径（如 'entities.bag'）
+ * @param {*} value - 要写入的值
+ */
+function _mirrorToState(stateKey, smPath, value) {
+    var gs = _safeGameState();
+    if (gs) gs[stateKey] = value;
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set(smPath, value, { silent: true });
+    }
+}
+
 // 物品同步：gm.tables.items (keyed) → gameState.currentBag (array) + StateManager
 // 【全量修复】此函数是 bag 写入的同步点之一：
 // 由它统一更新 gameState.currentBag 旧字段 + StateManager.set('entities.bag') 新状态层
 function _syncItemsToBag() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
-    if (!gm.tables || !gm.tables.items) return;
-    var items = gm.tables.items;
+    var gm = _safeGM();
+    if (!gm || !gm.tables || !gm.tables.items) return;
     var bag = [];
-    Object.keys(items).forEach(function(name) {
-        var it = items[name];
+    Object.keys(gm.tables.items).forEach(function(name) {
+        var it = gm.tables.items[name];
         if (!it) return;
         bag.push({
             name: it.name || name,
@@ -83,12 +116,7 @@ function _syncItemsToBag() {
             slot: it.slot || ''
         });
     });
-    gameState.currentBag = bag;
-    // 【全量修复】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
-    // silent:true 避免循环通知（此函数本身是被各种写入路径调用的下游同步）
-    if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('entities.bag', bag, { silent: true });
-    }
+    _mirrorToState('currentBag', 'entities.bag', bag);
 }
 
 // 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式) + StateManager
@@ -97,10 +125,8 @@ function _syncItemsToBag() {
 // 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
 // 无需 title↔content 别名映射，直接透传 title/type/status/progress/hint
 function _syncQuestsToGameState() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
-    if (!Array.isArray(gm.quests)) return;
+    var gm = _safeGM();
+    if (!gm || !Array.isArray(gm.quests)) return;
     var arr = gm.quests.map(function(q) {
         return {
             title: q.title || '',
@@ -110,11 +136,7 @@ function _syncQuestsToGameState() {
             hint: q.hint || ''
         };
     });
-    gameState.currentQuests = arr;
-    // 【全量修复】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
-    if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('entities.quests', arr, { silent: true });
-    }
+    _mirrorToState('currentQuests', 'entities.quests', arr);
 }
 
 // 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array) + StateManager
@@ -122,15 +144,10 @@ function _syncQuestsToGameState() {
 // 任何修改 gameState.relationships 的路径最终都必须经过此函数（直接调用或经由 _pushRelationshipsToGM 回流）
 // 由它统一更新 gameState.relationships 旧字段 + StateManager.set('entities.relationships') 新状态层
 function _syncRelationshipsToGameState() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
-    var arr;
-    if (!gm.tables || !gm.tables.relationships) {
-        arr = [];
-    } else {
+    var gm = _safeGM();
+    var arr = [];
+    if (gm && gm.tables && gm.tables.relationships) {
         var rels = gm.tables.relationships;
-        arr = [];
         Object.keys(rels).forEach(function(key) {
             var r = rels[key];
             if (!r) return;
@@ -141,28 +158,23 @@ function _syncRelationshipsToGameState() {
             }
         });
     }
-    gameState.relationships = arr;
-    // 【阶段5】同步到 StateManager，让 _syncLegacyMirror 维护镜像一致性
-    // silent:true 避免循环通知（此函数本身是被各种写入路径调用的下游同步）
-    if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('entities.relationships', arr, { silent: true });
-    }
+    _mirrorToState('relationships', 'entities.relationships', arr);
 }
 
 // 事件同步：gm.events (对象数组) → gameState.keyEvents (字符串数组) + StateManager.entities.events (对象数组)
 // 【阶段1-A2】统一 schema：gm.events 和 StateManager.entities.events 都保持对象数组
 // gameState.keyEvents 保持字符串数组（旧格式兼容），由 _syncLegacyMirror 自动转换
 function _syncEventsToKeyEvents() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
-    if (!Array.isArray(gm.events)) return;
+    var gm = _safeGM();
+    if (!gm || !Array.isArray(gm.events)) return;
     // gameState.keyEvents 保持字符串数组（旧格式，_syncLegacyMirror 也会自动转换）
-    gameState.keyEvents = gm.events.map(function(e) {
+    var keyEvents = gm.events.map(function(e) {
         return typeof e === 'string' ? e : (e && e.content || '');
     }).filter(function(s) { return s && s.length > 0; });
     // StateManager.entities.events 保持对象数组（新格式，权威源）
     // _syncLegacyMirror 会自动将对象数组转为字符串数组镜像到 gameState.keyEvents
+    var gs = _safeGameState();
+    if (gs) gs.keyEvents = keyEvents;
     if (typeof StateManager !== 'undefined' && StateManager.set) {
         StateManager.set('entities.events', gm.events, { silent: true });
     }
@@ -170,9 +182,8 @@ function _syncEventsToKeyEvents() {
 
 // 总入口：把所有权威源同步到视图
 function _ensureDataLinkage() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
+    var gm = _safeGM();
+    if (!gm || !_safeGameState()) return;
     // 1. 角色：建立引用别名（最快方式）
     if (gm.tables && gm.tables.characters) {
         if (gameState.allCharacters !== gm.tables.characters) {
@@ -189,13 +200,12 @@ function _ensureDataLinkage() {
 
 // 把 gameState.currentBag 反向推送到 gm.tables.items（让权威源更新）
 function _pushCurrentBagToGM() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
+    var gm = _safeGM();
+    var gs = _safeGameState();
+    if (!gm || !gs || !Array.isArray(gs.currentBag)) return;
     if (!gm.tables) gm.tables = {};
     if (!gm.tables.items) gm.tables.items = {};
-    if (!Array.isArray(gameState.currentBag)) return;
-    gameState.currentBag.forEach(function(b) {
+    gs.currentBag.forEach(function(b) {
         if (!b || !b.name) return;
         var existing = gm.tables.items[b.name];
         if (existing) {
@@ -232,14 +242,13 @@ function _pushCurrentBagToGM() {
 // 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
 // 无需 title↔content 别名映射，直接用 title 作为去重键
 function _pushCurrentQuestsToGM() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
+    var gm = _safeGM();
+    var gs = _safeGameState();
+    if (!gm || !gs || !Array.isArray(gs.currentQuests)) return;
     if (!Array.isArray(gm.quests)) gm.quests = [];
-    if (!Array.isArray(gameState.currentQuests)) return;
     var titleMap = {};
     gm.quests.forEach(function(q) { if (q && q.title) titleMap[q.title] = q; });
-    gameState.currentQuests.forEach(function(cq) {
+    gs.currentQuests.forEach(function(cq) {
         if (!cq || !cq.title) return;
         var gq = titleMap[cq.title];
         if (!gq) {
@@ -264,14 +273,13 @@ function _pushCurrentQuestsToGM() {
 
 // 把 gameState.relationships 反向推送到 gm.tables.relationships
 function _pushRelationshipsToGM() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
+    var gm = _safeGM();
+    var gs = _safeGameState();
+    if (!gm || !gs || !Array.isArray(gs.relationships)) return;
     if (!gm.tables) gm.tables = {};
     if (!gm.tables.relationships) gm.tables.relationships = {};
-    if (!Array.isArray(gameState.relationships)) return;
     // 用 from→to 作为 key
-    gameState.relationships.forEach(function(r) {
+    gs.relationships.forEach(function(r) {
         if (!r || !r.from || !r.to) return;
         var key = r.from + '→' + r.to;
         if (gm.tables.relationships[key]) {
@@ -286,12 +294,11 @@ function _pushRelationshipsToGM() {
 // 【阶段1-A2】此函数处理 <mem> 标签等直接写 gameState.keyEvents 的旧路径
 // 推送后调用 _syncEventsToKeyEvents 统一同步（对象数组写 StateManager）
 function _pushKeyEventsToGM() {
-    if (typeof gameState === 'undefined' || !gameState) return;
-    if (typeof window === 'undefined' || !window.GameMemory) return;
-    var gm = window.GameMemory;
+    var gm = _safeGM();
+    var gs = _safeGameState();
+    if (!gm || !gs || !Array.isArray(gs.keyEvents)) return;
     if (!Array.isArray(gm.events)) gm.events = [];
-    if (!Array.isArray(gameState.keyEvents)) return;
-    gameState.keyEvents.forEach(function(evt) {
+    gs.keyEvents.forEach(function(evt) {
         if (typeof evt !== 'string' || !evt) return;
         var exists = gm.events.some(function(e) {
             var content = typeof e === 'string' ? e : (e.content || '');
@@ -310,22 +317,34 @@ function _pushKeyEventsToGM() {
 }
 
 // 拦截 gm.saveToStorage：保存后自动同步 + 通知 UI
+// 【P1-CO3 阶段2-6】原版每 200ms 轮询 setInterval + 裸 setTimeout
+// + 绕开 TimerManager。现在改为：直接在 GameMemory 加载后一次性 wrap
+// （模块加载顺序已固定：core.js 必在 tavern-compat.js 之后；GameMemory 在
+// tavern-compat.js 末尾 `var GameMemory = {...}` 定义）。
+// 兜底用 TimerManager 延迟 0ms 给浏览器一帧时间，确保 GameMemory 已实例化。
+// TimerManager 必须存在才挂载（避免极早期启动时报错）。
 (function _wrapGMSaveToStorage() {
     if (typeof window === 'undefined') return;
-    var checkInterval = setInterval(function() {
-        if (window.GameMemory && window.GameMemory.saveToStorage && !window.GameMemory._saveToStorageWrapped) {
-            var orig = window.GameMemory.saveToStorage;
-            window.GameMemory.saveToStorage = function() {
-                var result = orig.apply(this, arguments);
-                try { _ensureDataLinkage(); } catch (e) { console.warn('[DataLinkage] 同步失败:', e); }
-                return result;
-            };
-            window.GameMemory._saveToStorageWrapped = true;
-            clearInterval(checkInterval);
-        }
-    }, 200);
-    // 10秒后停止检查（GameMemory 正常情况下 1-2 秒内就初始化完成）
-    setTimeout(function() { clearInterval(checkInterval); }, 10000);
+    function _doWrap() {
+        var gm = window.GameMemory;
+        if (!gm || !gm.saveToStorage || gm._saveToStorageWrapped) return;
+        var orig = gm.saveToStorage;
+        gm.saveToStorage = function() {
+            var result = orig.apply(this, arguments);
+            try { _ensureDataLinkage(); } catch (e) { console.warn('[DataLinkage] 同步失败:', e); }
+            return result;
+        };
+        gm._saveToStorageWrapped = true;
+    }
+    // 立即尝试一次（GameMemory 已在 core.js 之前定义完毕）
+    _doWrap();
+    // 兜底：1 秒后再试（应对 GameMemory 异常延迟初始化的极端情况）
+    if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
+        TimerManager.setTimeout('wrapGMSaveRetry', function() { _doWrap(); }, 1000);
+    } else {
+        // TimerManager 也不可用时退回裸 setTimeout（最终兜底）
+        setTimeout(function() { _doWrap(); }, 1000);
+    }
 })();
 
 // ========================================
@@ -1189,17 +1208,6 @@ var LocalGameAPI = {
             return b.failedAt - a.failedAt;
         });
     },
-    // 【分类标签】UI提醒列表——纯分类，无任何功能限制
-    // 作用：在UI上给模型打个标签（如"已下架""不推荐"），提醒玩家注意
-    // 重要：列表中的模型完全可以正常使用，调用/轮换/重试逻辑均不检查此列表
-    // 添加/删除模型到此列表，只影响UI显示，不影响任何功能
-    // 【修复X20】移除硬编码的模型名——不同中转站下架情况不同，硬编码会误标
-    // 改为空列表，如需标记特定模型，用户可自行添加
-    _deprecatedModels: [],
-    // 【纯查询】判断模型是否在分类标签中，仅用于UI显示，不影响功能
-    isModelDeprecated(modelName) {
-        return modelName && this._deprecatedModels.indexOf(modelName) !== -1;
-    },
     getRequestStats(slot) {
         var logs = this._requestLog.filter(function(l) {
             return l.slot === slot;
@@ -1227,33 +1235,6 @@ var LocalGameAPI = {
     },
     normalizeUrl(baseUrl) {
         return baseUrl.replace(/\/$/, '');
-    },
-    _networkStatus: 'unknown',
-    async checkConnectivity(baseUrl) {
-        var testUrl = this.normalizeUrl(baseUrl) + '/models';
-        // 优先使用传入 baseUrl 对应配置的 apiKey，其次用当前配置
-        var matchedCfg = this._configs.find(function(c) { return c.baseUrl && LocalGameAPI.normalizeUrl(c.baseUrl) === LocalGameAPI.normalizeUrl(baseUrl); });
-        var apiKey = matchedCfg ? matchedCfg.apiKey : (this.getCurrentConfig() || {}).apiKey;
-        var headers = { 'Content-Type': 'application/json' };
-        if (apiKey) headers['Authorization'] = 'Bearer ' + apiKey;
-        try {
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function() { controller.abort(); }, 8000);
-            var res = await fetch(testUrl, { method: 'GET', headers: headers, signal: controller.signal });
-            clearTimeout(timeoutId);
-            this._networkStatus = res.ok ? 'connected' : 'error';
-            return { ok: res.ok, status: res.status, message: res.ok ? '连接正常' : 'HTTP ' + res.status };
-        } catch (e) {
-            this._networkStatus = 'disconnected';
-            var msg = '';
-            if (e.name === 'AbortError') msg = '连接超时（8秒无响应）';
-            else if (e.message && e.message.includes('Failed to fetch')) msg = '网络不可达（DNS解析失败或被阻断）';
-            else msg = (e && e.message) || '未知错误';
-            return { ok: false, status: 0, message: msg };
-        }
-    },
-    getNetworkStatus() {
-        return this._networkStatus;
     },
     async fetchModels(baseUrl, apiKey) {
         if (!baseUrl) return [];

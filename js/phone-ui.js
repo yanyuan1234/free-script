@@ -34,21 +34,31 @@
 
 
 // ========================================
-// 【P2-阶段3-15】玩家货币读写 helper
-// 统一 phone-ui.js 中 5 处 currency fallback 读取 + 3 处 currencyName + 1 处扣款
-// 原 fallback 链 gameState.currency || gameState.money || gameState.coins || 0 散落多处
+// 【P1-PU1 阶段2-1】玩家货币读写 helper —— 全部走 CurrencyMutator
+// 历史包袱：getPlayerMoney/subtractPlayerMoney/getCurrencyName 4 套 fallback 链 +
+// 直写 gameState.currency 绕开 StateManager。改用 CurrencyMutator 后，
+// 所有读写统一走 StateManager → _syncLegacyMirror 自动同步 gameState 旧字段。
+// 兜底：CurrencyMutator 不可用时回到旧 fallback（兼容极早期启动场景）
 // ========================================
 function getPlayerMoney() {
+    if (typeof CurrencyMutator !== 'undefined') return CurrencyMutator.get();
     return gameState.currency || gameState.money || gameState.coins || 0;
 }
 function getCurrencyName() {
+    if (typeof CurrencyMutator !== 'undefined') return CurrencyMutator.getName();
     return gameState.currencyName || '金币';
 }
-// 扣款：保留原 fallback 顺序（currency → money → coins）
+// 扣款：统一走 CurrencyMutator.spend（无负数 + 余额不足返回 false）
+// 旧 fallback 顺序（currency → money → coins）已弃用：单一权威源 entities.currency
 function subtractPlayerMoney(amount) {
+    if (typeof CurrencyMutator !== 'undefined') {
+        return CurrencyMutator.spend(amount);  // 返回 true/false
+    }
+    // 兜底：Mutator 不可用时退回直写（极早期启动场景）
     if (gameState.currency !== undefined) gameState.currency -= amount;
     else if (gameState.money !== undefined) gameState.money -= amount;
     else if (gameState.coins !== undefined) gameState.coins -= amount;
+    return true;
 }
 
 // ========================================
@@ -62,6 +72,48 @@ function getModulesByType(type) {
         return mods.filter(function(m) { return m && type.indexOf(m.type) >= 0; });
     }
     return mods.filter(function(m) { return m && m.type === type; });
+}
+
+
+// ========================================
+// 【P1-PU5 阶段2-3】API 日志/错误项渲染器
+// 抽取前：showApiDetail + refresh handler 共有 4 份完全相同的
+// 12 行内联模板（recentLogs visible/hidden/all + refresh），且 refresh handler
+// 还存在 XSS 隐患（log.error/log.model 未走 escapeHtml）。
+// 抽取后：所有 4 处共用 renderLogItemHtml + renderErrorItemHtml，
+// XSS 防护统一在工具函数内。
+// ========================================
+/**
+ * 渲染 API 请求日志项
+ * @param {object} log - { time, model, success, error? }
+ * @returns {string} HTML 字符串
+ */
+function renderLogItemHtml(log) {
+    var timeStr = new Date(log.time).toLocaleTimeString();
+    var icon = log.success ? '✓' : '✕';
+    var errText = log.error
+        ? '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
+          escapeHtml(log.error) + '</div>'
+        : '';
+    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<span>' + icon + ' ' + escapeHtml(log.model || '') + '</span>' +
+        '<span style="font-size:11px;color:var(--text-tertiary);">' +
+        escapeHtml(timeStr) + '</span></div>' + errText + '</div>';
+}
+
+/**
+ * 渲染 API 错误项（用于 errorList）
+ * @param {object} log - { time, model, error }
+ * @returns {string} HTML 字符串
+ */
+function renderErrorItemHtml(log) {
+    var timeStr = new Date(log.time).toLocaleString();
+    return '<div class="pearl-card" style="padding:12px;border-left:3px solid #e74c3c;">' +
+        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">' +
+        '<span>' + escapeHtml(log.model || '') + '</span><span>' + escapeHtml(timeStr) + '</span></div>' +
+        '<div style="font-size:13px;color:#e74c3c;word-break:break-all;">' +
+        escapeHtml(log.error || '未知错误') + '</div></div>';
 }
 
 
@@ -406,9 +458,11 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
 // 第8层: 日志子页面渲染函数
 // ========================================
 function switchItemsTab(type, el) {
-    var tabs = el.parentElement.querySelectorAll('.items-tab-btn');
+    // 兼容 data-action 委托调用：优先用 el，回退到 this
+    var target = el || this;
+    var tabs = target.parentElement.querySelectorAll('.items-tab-btn');
     for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
-    el.classList.add('active');
+    target.classList.add('active');
     var itemsSection = document.getElementById('itemsSection');
     var billSection = document.getElementById('billSection');
     if (itemsSection) itemsSection.style.display = type === 'items' ? 'block' : 'none';
@@ -1760,8 +1814,8 @@ function renderMomentsPage() {
             // 互动栏：点赞 + 评论
             html += '<div class="moment-actions" style="display:flex;border-top:1px solid #f0f0f0;margin-top:8px;padding-top:8px;gap:20px;">';
             var isLiked = post.likes && Array.isArray(post.likes) && post.likes.indexOf(playerName) !== -1;
-            html += '<span style="font-size:13px;color:' + (isLiked ? '#ff3b30' : '#999') + ';cursor:pointer;" onclick="toggleMomentLike(' + idx + ')">' + (isLiked ? '已赞' : '赞') + '</span>';
-            html += '<span style="font-size:13px;color:#576b95;cursor:pointer;" onclick="showMomentCommentInput(' + idx + ',this)">评论</span>';
+            html += '<span role="button" tabindex="0" style="font-size:13px;color:' + (isLiked ? '#ff3b30' : '#999') + ';cursor:pointer;" data-action="toggleMomentLike" data-args=\'[' + idx + ']\'>' + (isLiked ? '已赞' : '赞') + '</span>';
+            html += '<span role="button" tabindex="0" style="font-size:13px;color:#576b95;cursor:pointer;" data-action="showMomentCommentInput" data-args=\'[' + idx + ',null]\'>评论</span>';
             html += '</div>';
             html += '<div id="momentCommentBox_' + idx + '" style="display:none;margin-top:8px;">';
             html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" placeholder="写评论..." style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;" onkeydown="if(event.key===\'Enter\')sendMomentComment(' + idx + ')"><span style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" onclick="sendMomentComment(' + idx + ')">发送</span></div>';
@@ -1879,8 +1933,7 @@ function renderForumPage() {
         for (var si = 0; si < titleStr.length; si++) seed = ((seed << 5) - seed + titleStr
             .charCodeAt(si)) | 0;
         var count = (Math.abs(seed) % 450 + 50) + '.' + (Math.abs(seed >> 8) % 9) + '万';
-        return '<div class="forum-hot-item" role="button" tabindex="0" onclick="openForumPost(' +
-            idx + ')">' +
+        return '<div class="forum-hot-item" role="button" tabindex="0" data-action="openForumPost" data-args=\'[' + idx + ']\'>' +
             '<div class="forum-hot-rank ' + rankClass + '">' + (idx + 1) + '</div>' +
             '<div class="forum-hot-info"><div class="forum-hot-title">' + escapeHtml(mod.title ||
                 '帖子') + '</div><div class="forum-hot-count">' + count + '</div></div>' +
@@ -1902,8 +1955,7 @@ function renderForumPage() {
         var shares = Math.abs(seed >> 8) % 950 + 50;
         var bodyText = mod.main || mod.content || '';
         var tagText = mod.title || '';
-        return '<div class="forum-feed-item" role="button" tabindex="0" onclick="openForumPost(' +
-            idx + ')">' +
+        return '<div class="forum-feed-item" role="button" tabindex="0" data-action="openForumPost" data-args=\'[' + idx + ']\'>' +
             '<div class="forum-feed-header">' +
             '<div class="forum-feed-avatar" style="background:' + avatarColor + ';">' + avatarChar +
             '</div>' +
@@ -2012,9 +2064,9 @@ function renderForumPage() {
         '</div>' +
         postDetails +
         '<div class="forum-tab-bar" id="forumTabBar">' +
-        '<div class="forum-tab-item active" onclick="showForumHot()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
-        '<div class="forum-tab-item" onclick="showForumTopic()"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
-        '<div class="forum-tab-item" onclick="showForumMine()"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
+        '<div class="forum-tab-item active" role="button" tabindex="0" data-action="showForumHot"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
+        '<div class="forum-tab-item" role="button" tabindex="0" data-action="showForumTopic"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
+        '<div class="forum-tab-item" role="button" tabindex="0" data-action="showForumMine"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
         '</div>' +
         '</div>';
 }
@@ -2188,11 +2240,11 @@ function renderItemsPage() {
         '<div class="items-card-circles"><div class="items-card-circle red"></div><div class="items-card-circle orange"></div></div>' +
         '</div>' +
         '<div class="items-tab-switch">' +
-        '<div class="items-tab-btn active" onclick="switchItemsTab(\'items\',this)">物品</div>' +
-        '<div class="items-tab-btn" onclick="switchItemsTab(\'bill\',this)">账单</div>' +
+        '<div class="items-tab-btn active" role="button" tabindex="0" data-action="switchItemsTab" data-args=\'["items",null]\'>物品</div>' +
+        '<div class="items-tab-btn" role="button" tabindex="0" data-action="switchItemsTab" data-args=\'["bill",null]\'>账单</div>' +
         '</div>' +
         '<div id="itemsSection">' +
-        '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" onclick="filterBagItems(\'all\',this)">全部</div><div class="items-sub-tab" onclick="filterBagItems(\'装备\',this)">装备</div><div class="items-sub-tab" onclick="filterBagItems(\'消耗品\',this)">消耗品</div><div class="items-sub-tab" onclick="filterBagItems(\'材料\',this)">材料</div></div>' +
+        '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["all",null]\'>全部</div><div class="items-sub-tab" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["装备",null]\'>装备</div><div class="items-sub-tab" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["消耗品",null]\'>消耗品</div><div class="items-sub-tab" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["材料",null]\'>材料</div></div>' +
         '<div class="items-grid" id="itemsGrid" style="justify-items:center;">' + itemsHtml + '</div>' +
         '</div>' +
         '<div id="billSection" style="display:none;">' +
@@ -2418,8 +2470,7 @@ function renderMailPage() {
             preview = preview.replace(/<[^>]*>/g, '');
             var subjectStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
             var senderStyle = mail.read ? '' : 'font-weight:600;color:var(--text);';
-            return '<div class="mail-list-item' + unread + '" onclick="openMailDetail(' + i +
-                ')" style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
+            return '<div class="mail-list-item' + unread + '" role="button" tabindex="0" data-action="openMailDetail" data-args=\'[' + i + ']\' style="' + (mail.read ? '' : 'background:#f5f8ff;') + '">' +
                 '<div class="mail-list-header">' + unreadDot + '<div class="mail-list-sender" style="' + senderStyle + '">' + escapeHtml(sender) +
                 '</div><div class="mail-list-date">' + escapeHtml(date) + '</div></div>' +
                 '<div class="mail-list-subject" style="' + subjectStyle + '">' + escapeHtml(subject) + '</div>' +
@@ -5088,11 +5139,10 @@ function renderAPISettings() {
         var apiName = cfg.name || 'API ' + (i + 1);
         var isConnected = connectionStatus[i] === true;
         var isFailed = connectionStatus[i] === false;
-        // 下架/失败模型只是 UI 提醒，玩家依然能正常用
-        var modelIsDeprecated = cfg.model && LocalGameAPI.isModelDeprecated(cfg.model);
+        // 失败模型只是 UI 提醒，玩家依然能正常用（下架检测已删除，恒为 false）
         var modelIsFailed = cfg.model && LocalGameAPI.isModelFailed(cfg.model);
-        var modelWarnTag = (modelIsDeprecated || modelIsFailed) ?
-            ' <span style="color:#e6a23c;font-size:11px;margin-left:4px;" title="下架/失败提醒（依然可用）">△提醒</span>' : '';
+        var modelWarnTag = modelIsFailed ?
+            ' <span style="color:#e6a23c;font-size:11px;margin-left:4px;" title="失败提醒（依然可用）">△提醒</span>' : '';
 
         // 红色感叹号图标（连接测试失败）
         var errorIcon = isFailed ?
@@ -5221,48 +5271,12 @@ function showApiDetail(slot) {
     var recentEl = document.getElementById('apiDetailRecent');
     if (recentEl) {
         if (stats.recentLogs.length > 0) {
-            var allLogsHtml = stats.recentLogs.map(function(log) {
-                var timeStr = new Date(log.time).toLocaleTimeString();
-                var icon = log.success ? '✓' : '✕';
-                var errText = log.error ?
-                    '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
-                    escapeHtml(log.error) + '</div>' : '';
-                return '<div style="padding:6px 0;border-bottom:1px solid var(--border);">' +
-                    '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-                    '<span>' + icon + ' ' + escapeHtml(log.model) + '</span>' +
-                    '<span style="font-size:11px;color:var(--text-tertiary);">' + timeStr +
-                    '</span></div>' + errText + '</div>';
-            }).join('');
-
             if (stats.recentLogs.length > 5) {
                 var visibleLogs = stats.recentLogs.slice(0, 5);
                 var hiddenLogs = stats.recentLogs.slice(5);
-                var visibleHtml = visibleLogs.map(function(log) {
-                    var timeStr = new Date(log.time).toLocaleTimeString();
-                    var icon = log.success ? '✓' : '✕';
-                    var errText = log.error ?
-                        '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
-                        escapeHtml(log.error) + '</div>' : '';
-                    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);">' +
-                        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-                        '<span>' + icon + ' ' + escapeHtml(log.model) + '</span>' +
-                        '<span style="font-size:11px;color:var(--text-tertiary);">' + timeStr +
-                        '</span></div>' + errText + '</div>';
-                }).join('');
-                var hiddenHtml = hiddenLogs.map(function(log) {
-                    var timeStr = new Date(log.time).toLocaleTimeString();
-                    var icon = log.success ? '✓' : '✕';
-                    var errText = log.error ?
-                        '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
-                        escapeHtml(log.error) + '</div>' : '';
-                    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);">' +
-                        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-                        '<span>' + icon + ' ' + escapeHtml(log.model) + '</span>' +
-                        '<span style="font-size:11px;color:var(--text-tertiary);">' + timeStr +
-                        '</span></div>' + errText + '</div>';
-                }).join('');
-                recentEl.innerHTML = visibleHtml +
-                    '<div id="apiRecentHidden" style="display:none;">' + hiddenHtml + '</div>' +
+                recentEl.innerHTML = visibleLogs.map(renderLogItemHtml).join('') +
+                    '<div id="apiRecentHidden" style="display:none;">' +
+                    hiddenLogs.map(renderLogItemHtml).join('') + '</div>' +
                     '<div style="text-align:center;padding:6px 0;">' +
                     '<a href="javascript:void(0)" id="apiRecentToggle" ' +
                     'style="font-size:12px;color:var(--primary);cursor:pointer;">展开全部 (' + stats.recentLogs.length + '条)</a>' +
@@ -5281,7 +5295,7 @@ function showApiDetail(slot) {
                     }
                 }, 50);
             } else {
-                recentEl.innerHTML = allLogsHtml;
+                recentEl.innerHTML = stats.recentLogs.map(renderLogItemHtml).join('');
             }
         } else {
             recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
@@ -5513,16 +5527,14 @@ function showApiDetail(slot) {
                 var normalGroup = document.createElement('optgroup');
                 normalGroup.label = '正常模型';
                 var warnGroup = document.createElement('optgroup');
-                warnGroup.label = '△ 提醒（已下架/近期失败，仍可使用）';
+                warnGroup.label = '△ 提醒（近期失败，仍可使用）';
                 var warnCount = 0;
                 models.forEach(function(m) {
                     var isFailed = LocalGameAPI.isModelFailed(m);
-                    var isDeprecated = LocalGameAPI.isModelDeprecated(m);
                     var opt = document.createElement('option');
                     opt.value = m;
-                    if (isFailed || isDeprecated) {
-                        opt.textContent = m + (isFailed && isDeprecated ? '（下架+失败）' :
-                            isDeprecated ? '（已下架）' : '（近期失败）');
+                    if (isFailed) {
+                        opt.textContent = m + '（近期失败）';
                         warnGroup.appendChild(opt);
                         warnCount++;
                     } else {
@@ -5598,21 +5610,8 @@ function showApiDetail(slot) {
         var recentEl = document.getElementById('apiDetailRecent');
         if (recentEl) {
             if (stats.recentLogs.length > 0) {
-                recentEl.innerHTML = stats.recentLogs.map(function(log) {
-                    var timeStr = new Date(log.time).toLocaleTimeString();
-                    var icon = log.success ? '✓' : '✕';
-                    // 【附录B-6】XSS 修复：log.error/log.model 来自网络/AI 异常消息
-                    // 之前 refresh handler 未走 escapeHtml（与 showApiDetail 主函数不一致）
-                    // 存在 XSS 注入风险，统一通过 escapeHtml 包裹
-                    var errText = log.error ?
-                        '<div style="font-size:11px;color:#e74c3c;margin-top:2px;word-break:break-all;">' +
-                        escapeHtml(log.error) + '</div>' : '';
-                    return '<div style="padding:6px 0;border-bottom:1px solid var(--border);">' +
-                        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-                        '<span>' + icon + ' ' + escapeHtml(log.model) + '</span>' +
-                        '<span style="font-size:11px;color:var(--text-tertiary);">' +
-                        escapeHtml(timeStr) + '</span></div>' + errText + '</div>';
-                }).join('');
+                // 【P1-PU5 阶段2-3】改用 renderLogItemHtml，统一 XSS 防护
+                recentEl.innerHTML = stats.recentLogs.map(renderLogItemHtml).join('');
             } else {
                 recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
             }
@@ -5623,15 +5622,8 @@ function showApiDetail(slot) {
                 return l.slot === slot && !l.success;
             }).slice(-10).reverse();
             if (errorLogs.length > 0) {
-                errorListEl.innerHTML = errorLogs.map(function(log) {
-                    var timeStr = new Date(log.time).toLocaleString();
-                    // 【附录B-6】XSS 修复：log.model/log.error 统一通过 escapeHtml 包裹
-                    return '<div class="pearl-card" style="padding:12px;border-left:3px solid #e74c3c;">' +
-                        '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">' +
-                        '<span>' + escapeHtml(log.model) + '</span><span>' + escapeHtml(timeStr) + '</span></div>' +
-                        '<div style="font-size:13px;color:#e74c3c;word-break:break-all;">' +
-                        escapeHtml(log.error || '未知错误') + '</div></div>';
-                }).join('');
+                // 【P1-PU5 阶段2-3】改用 renderErrorItemHtml
+                errorListEl.innerHTML = errorLogs.map(renderErrorItemHtml).join('');
             } else {
                 errorListEl.innerHTML =
                     '<div class="empty-state">暂无错误记录</div>';
@@ -5716,22 +5708,20 @@ function showCreateApiModal() {
         try {
             var models = await LocalGameAPI.fetchModels(url, key);
             var select = document.getElementById('createApiModelSelect');
-            // 分类：正常  vs  △ 提醒（已下架/失败）—— 分两组显示
-            // 下架/失败模型依然可选、依然能用，仅作提醒
+            // 分类：正常  vs  △ 提醒（失败）—— 分两组显示
+            // 失败模型依然可选、依然能用，仅作提醒（下架检测已删除）
             select.innerHTML = '<option value="">选择模型</option>';
             var normalGroup = document.createElement('optgroup');
             normalGroup.label = '正常模型';
             var warnGroup = document.createElement('optgroup');
-            warnGroup.label = '△ 提醒（已下架/近期失败，仍可使用）';
+            warnGroup.label = '△ 提醒（近期失败，仍可使用）';
             var warnCount = 0;
             models.forEach(function(m) {
                 var isFailed = LocalGameAPI.isModelFailed(m);
-                var isDeprecated = LocalGameAPI.isModelDeprecated(m);
                 var opt = document.createElement('option');
                 opt.value = m;
-                if (isFailed || isDeprecated) {
-                    opt.textContent = m + (isFailed && isDeprecated ? '（下架+失败）' :
-                        isDeprecated ? '（已下架）' : '（近期失败）');
+                if (isFailed) {
+                    opt.textContent = m + '（近期失败）';
                     warnGroup.appendChild(opt);
                     warnCount++;
                 } else {

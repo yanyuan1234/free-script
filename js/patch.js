@@ -26,9 +26,23 @@
     'use strict';
 
     // 等待游戏核心模块加载完毕
+    // 【附录B-6】原代码 100ms 自重试轮询，现改为单次重试 + 上限 5 次
+    // （defer 脚本按顺序执行，patch.js 最后加载，正常情况 PresetManager 必然已就绪；
+    //   此重试仅为异步竞态的兜底，不应无限循环）
+    var _initRetryCount = 0;
+    var _INIT_RETRY_MAX = 5;
     function initSTscriptIntegration() {
         if (typeof PresetManager === 'undefined') {
-            TimerManager.setTimeout('initSTscript', initSTscriptIntegration, 100);
+            if (_initRetryCount >= _INIT_RETRY_MAX) {
+                console.error('[STscript] PresetManager 始终未就绪，已放弃集成');
+                return;
+            }
+            _initRetryCount++;
+            if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
+                TimerManager.setTimeout('initSTscript', initSTscriptIntegration, 100);
+            } else {
+                setTimeout(initSTscriptIntegration, 100);
+            }
             return;
         }
 

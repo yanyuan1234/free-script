@@ -52,6 +52,57 @@ const GlobalCleanup = {
 
 window.addEventListener('beforeunload', function() { GlobalCleanup.cleanup(); });
 
+// ========================================
+// 全局 a11y 事件委托（P1-PU15）
+// ========================================
+// 1. 所有 role="button" 元素在键盘 Enter/Space 时触发 click
+// 2. 所有 data-action="funcName" + data-args="..." 元素被 click 时调用 window[funcName](...args)
+// 这样不用挨个替换内联 onclick，只需要在生成 HTML 时加 role/data-action
+// 即可同时获得鼠标点击、键盘 Enter/Space、屏幕阅读器可达。
+function _globalA11yDelegate(e) {
+    var t = e.target;
+    if (!t || t.nodeType !== 1) return;
+    // 键盘 Enter/Space → 触发 click（仅对 role=button 的元素）
+    if (e.type === 'keydown' && (e.key === 'Enter' || e.key === ' ')) {
+        var roleEl = t.closest && t.closest('[role="button"]:not([role-bound])');
+        if (roleEl && !roleEl.disabled) {
+            e.preventDefault();
+            roleEl.click();
+        }
+        return;
+    }
+    // click → data-action 委托
+    if (e.type === 'click') {
+        var actEl = t.closest && t.closest('[data-action]');
+        if (actEl) {
+            var action = actEl.getAttribute('data-action');
+            var argsAttr = actEl.getAttribute('data-args');
+            var fn = window[action];
+            if (typeof fn === 'function') {
+                e.preventDefault();
+                try {
+                    if (argsAttr == null || argsAttr === '') {
+                        fn.call(actEl);
+                    } else {
+                        // 解析 JSON 数组作为参数（支持 string/number/null/object）
+                        var parsed = JSON.parse(argsAttr);
+                        if (!Array.isArray(parsed)) parsed = [parsed];
+                        fn.apply(actEl, parsed);
+                    }
+                } catch (err) {
+                    console.error('[a11y-delegate] ' + action + ' 执行失败:', err);
+                }
+            } else {
+                console.warn('[a11y-delegate] 全局函数不存在: ' + action);
+            }
+        }
+    }
+}
+if (typeof document !== 'undefined') {
+    GlobalCleanup.registerListener(document, 'keydown', _globalA11yDelegate);
+    GlobalCleanup.registerListener(document, 'click', _globalA11yDelegate);
+}
+
 // escapeHTML / sanitizeHTML 已统一到 core.js 的 escapeHtml，此处不再重复定义
 
 // 【P2清理】删除 debounce / throttle / safeExecute / dynamicTruncateLen（全项目零调用）
