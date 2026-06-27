@@ -93,18 +93,37 @@ function _mirrorToState(stateKey, smPath, value) {
     }
 }
 
-// 物品同步：gm.tables.items (keyed) → gameState.currentBag (array) + StateManager
-// 【全量修复】此函数是 bag 写入的同步点之一：
-// 由它统一更新 gameState.currentBag 旧字段 + StateManager.set('entities.bag') 新状态层
-function _syncItemsToBag() {
-    var gm = _safeGM();
-    if (!gm || !gm.tables || !gm.tables.items) return;
-    var bag = [];
-    Object.keys(gm.tables.items).forEach(function(name) {
-        var it = gm.tables.items[name];
-        if (!it) return;
-        bag.push({
-            name: it.name || name,
+// ========================================
+// 【阶段1批6】通用同步工具：抽离 8 个 _sync* / _push* 函数的重复模式
+// ========================================
+//
+// 旧实现：8 个函数各自处理 (keyed object ↔ array) 转换，字段映射表重复 4-5 处
+// 新实现：声明式 mapper + 通用 _syncTable / _pushTable 函数
+//
+// mapper 字段:
+//   fromArray: 把 array 元素转为 keyed object 元素（_push* 用）
+//   toArr:     把 keyed object 元素转为 array 元素（_sync* 用）
+//   keyField:  从 array 元素提取去重键（_push* 用）
+//   pickFrom:  从 gs.array[i] 提取字段子集（_push* 用）
+//   onAdd:     新增元素时的钩子（_push* 用）
+//   onUpdate:  更新元素时的钩子（_push* 用）
+//
+const _TABLE_MAPPERS = {
+    items: {
+        fromArray: function (b) { return {
+            name: b.name,
+            qty: b.count || 1,
+            unit: b.unit || '个',
+            rarity: b.rarity || '普通',
+            desc: b.desc || '',
+            usable: b.usable || false,
+            effect: b.effect || '',
+            equippable: b.equippable || false,
+            equipped: b.equipped || false,
+            slot: b.slot || ''
+        }; },
+        toArr: function (it) { return {
+            name: it.name,
             count: it.qty || 1,
             unit: it.unit || '个',
             rarity: it.rarity || '普通',
@@ -114,65 +133,156 @@ function _syncItemsToBag() {
             equippable: it.equippable || false,
             equipped: it.equipped || false,
             slot: it.slot || ''
-        });
-    });
-    _mirrorToState('currentBag', 'entities.bag', bag);
-}
-
-// 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式) + StateManager
-// 【全量修复】此函数是 quests 写入的同步点之一：
-// 由它统一更新 gameState.currentQuests 旧字段 + StateManager.set('entities.quests') 新状态层
-// 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
-// 无需 title↔content 别名映射，直接透传 title/type/status/progress/hint
-function _syncQuestsToGameState() {
-    var gm = _safeGM();
-    if (!gm || !Array.isArray(gm.quests)) return;
-    var arr = gm.quests.map(function(q) {
-        return {
-            title: q.title || '',
+        }; },
+        keyField: 'name',
+        pickFrom: function (b) { return ['count', 'unit', 'rarity', 'desc', 'usable', 'effect', 'equippable', 'equipped', 'slot']; }
+    },
+    quests: {
+        fromArray: function (cq) { return {
+            title: cq.title,
+            type: cq.type || 'quest',
+            status: cq.status || 'pending',
+            progress: cq.progress || '',
+            hint: cq.hint || ''
+        }; },
+        toArr: function (q) { return {
+            title: q.title,
             type: q.type || 'quest',
             status: q.status || 'pending',
             progress: q.progress || '',
             hint: q.hint || ''
-        };
-    });
-    _mirrorToState('currentQuests', 'entities.quests', arr);
+        }; }
+    }
+};
+
+/**
+ * 通用同步：gm.tables.X (keyed) → gameState.Y (array) + StateManager
+ * 替代 4 个 _sync* 函数（items/quests/relationships/keyEvents）
+ */
+function _syncTable(tableName, stateKey, smPath, mapper) {
+    var gm = _safeGM();
+    var gs = _safeGameState();
+    if (!gm || !gs) return;
+    if (tableName === 'quests' || tableName === 'events') {
+        // array 结构（gm.quests, gm.events）
+        var src = gm[tableName] || (gm.tables && gm.tables[tableName]) || [];
+        if (!Array.isArray(src)) return;
+        var arr = src.map(mapper.toArr).filter(Boolean);
+        _mirrorToState(stateKey, smPath, arr);
+    } else if (tableName === 'relationships') {
+        // keyed 结构,value 可能是 array 也可能是 object
+        var rels = (gm.tables && gm.tables.relationships) || {};
+        var out = [];
+        Object.keys(rels).forEach(function (k) {
+            var v = rels[k];
+            if (!v) return;
+            if (Array.isArray(v)) v.forEach(function (item) { out.push(item); });
+            else out.push(v);
+        });
+        _mirrorToState(stateKey, smPath, out);
+    } else {
+        // keyed 结构（gm.tables.items/characters/locations）
+        var src2 = (gm.tables && gm.tables[tableName]) || {};
+        var out2 = Object.keys(src2).map(function (k) { return mapper.toArr(src2[k]); }).filter(Boolean);
+        _mirrorToState(stateKey, smPath, out2);
+    }
 }
 
-// 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array) + StateManager
-// 【阶段5统一】此函数是 relationships 写入的唯一同步点：
-// 任何修改 gameState.relationships 的路径最终都必须经过此函数（直接调用或经由 _pushRelationshipsToGM 回流）
-// 由它统一更新 gameState.relationships 旧字段 + StateManager.set('entities.relationships') 新状态层
-function _syncRelationshipsToGameState() {
+/**
+ * 通用反向推送：gameState.X (array) → gm.tables.Y (keyed)
+ * 替代 4 个 _push* 函数
+ */
+function _pushTableToGM(tableName, stateKey, gmField, mapper) {
     var gm = _safeGM();
-    var arr = [];
-    if (gm && gm.tables && gm.tables.relationships) {
-        var rels = gm.tables.relationships;
-        Object.keys(rels).forEach(function(key) {
-            var r = rels[key];
-            if (!r) return;
-            if (Array.isArray(r)) {
-                r.forEach(function(item) { arr.push(item); });
+    var gs = _safeGameState();
+    if (!gm || !gs || !Array.isArray(gs[stateKey])) return;
+    if (tableName === 'quests' || tableName === 'events') {
+        // 推送 array
+        if (tableName === 'quests') {
+            if (!Array.isArray(gm.quests)) gm.quests = [];
+            var titleMap = {};
+            gm.quests.forEach(function (q) { if (q && q.title) titleMap[q.title] = q; });
+            gs[stateKey].forEach(function (cq) {
+                if (!cq || !cq.title) return;
+                var gq = titleMap[cq.title];
+                if (!gq) {
+                    gq = Object.assign(mapper.fromArray(cq), { createdTurn: gm.currentTurn || 0, resolvedTurn: 0 });
+                    gm.quests.push(gq);
+                    titleMap[cq.title] = gq;
+                } else {
+                    Object.assign(gq, mapper.fromArray(cq));
+                }
+            });
+        } else {
+            // events - 推送到 gm.events (array, source: 'undo_restore')
+            if (!Array.isArray(gm.events)) gm.events = [];
+            gs[stateKey].forEach(function (evt) {
+                if (typeof evt !== 'string' || !evt) return;
+                var exists = gm.events.some(function (e) {
+                    var content = typeof e === 'string' ? e : (e.content || '');
+                    return content === evt;
+                });
+                if (!exists) gm.events.push({ content: evt, importance: 7, source: 'undo_restore', turn: gm.currentTurn || 0 });
+            });
+        }
+    } else if (tableName === 'relationships') {
+        // relationships keyed by from→to
+        if (!gm.tables) gm.tables = {};
+        if (!gm.tables.relationships) gm.tables.relationships = {};
+        gs[stateKey].forEach(function (r) {
+            if (!r || !r.from || !r.to) return;
+            var key = r.from + '→' + r.to;
+            if (gm.tables.relationships[key]) Object.assign(gm.tables.relationships[key], r);
+            else gm.tables.relationships[key] = Object.assign({}, r);
+        });
+    } else {
+        // keyed 结构（items）
+        if (!gm.tables) gm.tables = {};
+        if (!gm.tables[tableName]) gm.tables[tableName] = {};
+        gs[stateKey].forEach(function (b) {
+            if (!b || !b[mapper.keyField]) return;
+            var k = b[mapper.keyField];
+            var existing = gm.tables[tableName][k];
+            if (existing) {
+                var picked = mapper.fromArray(b);
+                Object.assign(existing, picked);
+                existing.lastChangedTurn = gm.currentTurn;
             } else {
-                arr.push(r);
+                var newItem = mapper.fromArray(b);
+                newItem.obtainedTurn = gm.currentTurn;
+                newItem.lastChangedTurn = gm.currentTurn;
+                gm.tables[tableName][k] = newItem;
             }
         });
     }
-    _mirrorToState('relationships', 'entities.relationships', arr);
+}
+
+// 物品同步：gm.tables.items (keyed) → gameState.currentBag (array) + StateManager
+// 【阶段1批6】委托 _syncTable 通用函数，消除 4 个 _sync* 函数重复
+function _syncItemsToBag() {
+    _syncTable('items', 'currentBag', 'entities.bag', _TABLE_MAPPERS.items);
+}
+
+// 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式) + StateManager
+// 【阶段1批6】委托 _syncTable 通用函数
+function _syncQuestsToGameState() {
+    _syncTable('quests', 'currentQuests', 'entities.quests', _TABLE_MAPPERS.quests);
+}
+
+// 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array) + StateManager
+// 【阶段1批6】委托 _syncTable 通用函数（relationships 是 keyed by from→to）
+function _syncRelationshipsToGameState() {
+    _syncTable('relationships', 'relationships', 'entities.relationships', null);
 }
 
 // 事件同步：gm.events (对象数组) → gameState.keyEvents (字符串数组) + StateManager.entities.events (对象数组)
-// 【阶段1-A2】统一 schema：gm.events 和 StateManager.entities.events 都保持对象数组
-// gameState.keyEvents 保持字符串数组（旧格式兼容），由 _syncLegacyMirror 自动转换
+// 【阶段1批6】events 单独处理:gm.events 是 array,需转为字符串数组到 gameState
 function _syncEventsToKeyEvents() {
     var gm = _safeGM();
     if (!gm || !Array.isArray(gm.events)) return;
-    // gameState.keyEvents 保持字符串数组（旧格式，_syncLegacyMirror 也会自动转换）
-    var keyEvents = gm.events.map(function(e) {
+    var keyEvents = gm.events.map(function (e) {
         return typeof e === 'string' ? e : (e && e.content || '');
-    }).filter(function(s) { return s && s.length > 0; });
-    // StateManager.entities.events 保持对象数组（新格式，权威源）
-    // _syncLegacyMirror 会自动将对象数组转为字符串数组镜像到 gameState.keyEvents
+    }).filter(function (s) { return s && s.length > 0; });
     var gs = _safeGameState();
     if (gs) gs.keyEvents = keyEvents;
     if (typeof StateManager !== 'undefined' && StateManager.set) {
@@ -199,118 +309,28 @@ function _ensureDataLinkage() {
 }
 
 // 把 gameState.currentBag 反向推送到 gm.tables.items（让权威源更新）
+// 【阶段1批6】委托 _pushTableToGM 通用函数
 function _pushCurrentBagToGM() {
-    var gm = _safeGM();
-    var gs = _safeGameState();
-    if (!gm || !gs || !Array.isArray(gs.currentBag)) return;
-    if (!gm.tables) gm.tables = {};
-    if (!gm.tables.items) gm.tables.items = {};
-    gs.currentBag.forEach(function(b) {
-        if (!b || !b.name) return;
-        var existing = gm.tables.items[b.name];
-        if (existing) {
-            if (b.count !== undefined) existing.qty = b.count;
-            if (b.unit) existing.unit = b.unit;
-            if (b.rarity) existing.rarity = b.rarity;
-            if (b.desc !== undefined) existing.desc = b.desc;
-            if (b.usable !== undefined) existing.usable = b.usable;
-            if (b.effect !== undefined) existing.effect = b.effect;
-            if (b.equippable !== undefined) existing.equippable = b.equippable;
-            if (b.equipped !== undefined) existing.equipped = b.equipped;
-            if (b.slot !== undefined) existing.slot = b.slot;
-            existing.lastChangedTurn = gm.currentTurn;
-        } else {
-            gm.tables.items[b.name] = {
-                name: b.name,
-                qty: b.count || 1,
-                unit: b.unit || '个',
-                rarity: b.rarity || '普通',
-                desc: b.desc || '',
-                usable: b.usable || false,
-                effect: b.effect || '',
-                equippable: b.equippable || false,
-                equipped: b.equipped || false,
-                slot: b.slot || '',
-                obtainedTurn: gm.currentTurn,
-                lastChangedTurn: gm.currentTurn
-            };
-        }
-    });
+    _pushTableToGM('items', 'currentBag', 'items', _TABLE_MAPPERS.items);
 }
 
 // 把 gameState.currentQuests 反向推送到 gm.quests
-// 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
-// 无需 title↔content 别名映射，直接用 title 作为去重键
+// 【阶段1批6】委托 _pushTableToGM 通用函数
 function _pushCurrentQuestsToGM() {
-    var gm = _safeGM();
-    var gs = _safeGameState();
-    if (!gm || !gs || !Array.isArray(gs.currentQuests)) return;
-    if (!Array.isArray(gm.quests)) gm.quests = [];
-    var titleMap = {};
-    gm.quests.forEach(function(q) { if (q && q.title) titleMap[q.title] = q; });
-    gs.currentQuests.forEach(function(cq) {
-        if (!cq || !cq.title) return;
-        var gq = titleMap[cq.title];
-        if (!gq) {
-            gq = { title: cq.title, type: cq.type || 'quest', status: 'pending', createdTurn: gm.currentTurn || 0, resolvedTurn: 0 };
-            gm.quests.push(gq);
-            titleMap[cq.title] = gq;
-        }
-        gq.type = cq.type || gq.type;
-        // 状态映射：中文 → gm 内部状态
-        if (cq.status === '已完成' || cq.status === 'resolved') {
-            gq.status = 'resolved';
-            if (!gq.resolvedTurn) gq.resolvedTurn = gm.currentTurn || 0;
-        } else if (cq.status === '已失败' || cq.status === '失败' || cq.status === 'broken') {
-            // 【修复 P1】兼容 '已失败'（QuestMutator.STATUS.FAILED）和 '失败'（旧数据）
-            gq.status = 'broken';
-            if (!gq.resolvedTurn) gq.resolvedTurn = gm.currentTurn || 0;
-        } else {
-            gq.status = 'pending';
-        }
-    });
+    _pushTableToGM('quests', 'currentQuests', 'quests', _TABLE_MAPPERS.quests);
 }
 
 // 把 gameState.relationships 反向推送到 gm.tables.relationships
+// 【阶段1批6】委托 _pushTableToGM 通用函数（relationships 是 keyed by from→to）
 function _pushRelationshipsToGM() {
-    var gm = _safeGM();
-    var gs = _safeGameState();
-    if (!gm || !gs || !Array.isArray(gs.relationships)) return;
-    if (!gm.tables) gm.tables = {};
-    if (!gm.tables.relationships) gm.tables.relationships = {};
-    // 用 from→to 作为 key
-    gs.relationships.forEach(function(r) {
-        if (!r || !r.from || !r.to) return;
-        var key = r.from + '→' + r.to;
-        if (gm.tables.relationships[key]) {
-            Object.assign(gm.tables.relationships[key], r);
-        } else {
-            gm.tables.relationships[key] = Object.assign({}, r);
-        }
-    });
+    _pushTableToGM('relationships', 'relationships', 'relationships', null);
 }
 
 // 把 gameState.keyEvents 反向推送到 gm.events
-// 【阶段1-A2】此函数处理 <mem> 标签等直接写 gameState.keyEvents 的旧路径
-// 推送后调用 _syncEventsToKeyEvents 统一同步（对象数组写 StateManager）
+// 【阶段1批6】委托 _pushTableToGM 通用函数（events 是 array,不是 keyed object）
 function _pushKeyEventsToGM() {
-    var gm = _safeGM();
-    var gs = _safeGameState();
-    if (!gm || !gs || !Array.isArray(gs.keyEvents)) return;
-    if (!Array.isArray(gm.events)) gm.events = [];
-    gs.keyEvents.forEach(function(evt) {
-        if (typeof evt !== 'string' || !evt) return;
-        var exists = gm.events.some(function(e) {
-            var content = typeof e === 'string' ? e : (e.content || '');
-            return content === evt;
-        });
-        if (!exists) {
-            gm.events.push({ content: evt, importance: 7, source: 'story_parsed', turn: gm.currentTurn || 0 });
-        }
-    });
-    // 【阶段1-A2】统一通过 _syncEventsToKeyEvents 同步到 StateManager（对象数组）
-    // 旧代码直接 StateManager.set('entities.events', gameState.keyEvents) 会写入字符串数组，
-    // 与 _applyKeyEvents 的对象数组 schema 冲突
+    _pushTableToGM('events', 'keyEvents', 'events', null);
+    // 推送后立即 sync 回去，让 StateManager 与 gameState 同步
     if (typeof _syncEventsToKeyEvents === 'function') {
         _syncEventsToKeyEvents();
     }
