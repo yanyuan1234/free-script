@@ -3906,6 +3906,15 @@ function bindEvents() {
         var input = document.getElementById('customAction');
         var text = input.value.trim();
         if (!text) return;
+        // 【P2-5修复】自定义行动文本无长度上限：玩家粘贴 1MB+ 文本会撑爆 AI 上下文窗口
+        // 或被 API 拒绝。2000 字约为常规短行动的 4-5 倍，足够覆盖绝大多数合理输入。
+        var MAX_ACTION_LEN = 2000;
+        if (text.length > MAX_ACTION_LEN) {
+            if (typeof UI !== 'undefined' && UI.toast) {
+                UI.toast('行动文本过长（超过 ' + MAX_ACTION_LEN + ' 字），已截断');
+            }
+            text = text.slice(0, MAX_ACTION_LEN);
+        }
         input.value = '';
         input.focus();
         sendAIRequest(text);

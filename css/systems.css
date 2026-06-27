@@ -989,12 +989,14 @@
 }
 .pixel-btn:hover { opacity: 0.85; }
 .pixel-btn:active { transform: scale(0.97); }
+/* 【P2-21修复】fallback 色由 #6366f1（indigo 紫）改为 #666666（中性灰），
+   与项目主色调一致；CSS 变量 --primary 已注入正确主题色，fallback 仅在变量缺失时生效。 */
 .pixel-btn.blue {
-    background: var(--primary, #6366f1);
+    background: var(--primary, #666666);
     color: white;
 }
 .pixel-btn.blue:hover {
-    background: var(--primary-hover, #4f46e5);
+    background: var(--primary-hover, #555555);
 }
 .pixel-btn.big {
     padding: 10px 20px;

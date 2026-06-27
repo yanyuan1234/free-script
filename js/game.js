@@ -979,6 +979,7 @@ async function sendAIRequest(userMessage, isInit = false) {
     setWaiting(true);
     showStoryLoading();
     streamBuffer = '';
+    _streamChunks = [];  // 【P2-18修复】同步重置 chunk 数组，避免上一轮的 chunks 残留
     _streamModeLocked = false;
     _streamMode = null;
     TypewriterBuffer.stop();
@@ -2446,7 +2447,9 @@ async function _compressConversation(removed, sys) {
     var summary = await callAI(summaryMessages, { temperature: 0.3 });
     // Step 4: 保存摘要到历史记录
     if (typeof EnhancedMemory !== 'undefined') {
-        EnhancedMemory.longTermMemory.masterSummary = summary;
+        // 【P2-6修复】原 longTermMemory.masterSummary setter 已删除（与快照语义冲突），
+        // 改为显式调用 setMasterSummary 方法（更新 plot 字段 + 置 _ltmDirty 触发快照重建）。
+        EnhancedMemory.setMasterSummary(summary);
         if (summary.includes('【剧情主线】')) _parseStructuredSummary(summary);
         // 同步逐层摘要
         if (EnhancedMemory._updateSummaryLayers) EnhancedMemory._updateSummaryLayers();
@@ -2784,18 +2787,31 @@ function extractStoryStreaming(text) {
 
 // 流式模式锁定：一旦确定模式，不再切换
 var _streamModeLocked = false;
-var _streamMode = null; // 'json' 或 'plaintext'
+var _streamMode = null; // 'json'或 'plaintext'
+// 【P2-18修复】streamBuffer += delta 在长输出（10k+ 字符 × 100 chunks）下是 O(N²)：
+// 每次累加创建新字符串。改用 _streamChunks 数组 push + join（V8 优化路径，单次 join 是 O(N)）。
+// 仅在 delta 路径用数组（fullText 路径直接赋值字符串，无累加问题）。
+var _streamChunks = [];
 
 function onStreamChunk(delta, fullText) {
     // 【修复】空内容保护：delta和fullText都为空时跳过，避免反复推送空字符串
     if ((!delta && fullText === '') || (fullText !== undefined && !fullText && !delta)) return;
     if (fullText !== undefined && fullText !== '') {
+        // fullText 模式：直接替换，重置 chunk 数组
         streamBuffer = fullText;
+        _streamChunks = [fullText];
     } else if (fullText === '') {
         // fullText为空字符串但delta有内容时，用delta累加
-        if (delta) streamBuffer += delta;
+        if (delta) {
+            _streamChunks.push(delta);
+            streamBuffer = _streamChunks.join('');
+        }
     } else {
-        streamBuffer += (delta || '');
+        // delta-only 模式：push 到数组，单次 join
+        if (delta) {
+            _streamChunks.push(delta);
+            streamBuffer = _streamChunks.join('');
+        }
     }
     // streamBuffer为空时跳过后续处理
     if (!streamBuffer) return;
@@ -3760,11 +3776,14 @@ async function deleteFromSlot(slot) {
 }
 
 async function requestNpcReply(playerText) {
+    // 【P2-4修复】isSending 必须在 await 之前同步设置（第一行），
+    // 避免 selectNpcChatChoice(B) 在 A 的 await 之间检查到 isSending=false 而误发起第二次请求。
+    // 原：先 abort 旧 controller 再设 isSending，若 abort 抛错则 isSending 永不置 true。
+    npcChatState.isSending = true;
     // 先清理旧的 AbortController，避免竞态条件
     if (npcChatState.abortController) {
         try { npcChatState.abortController.abort(); } catch(e) {}
     }
-    npcChatState.isSending = true;
     // 【修复R1】创建NPC聊天专用的AbortController
     npcChatState.abortController = new AbortController();
     var sendEl = document.getElementById('npcChatSend');

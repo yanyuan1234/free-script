@@ -2,7 +2,10 @@
 <html lang="zh-CN">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+        <!-- 【P2-12修复】删除 maximum-scale=1.0, user-scalable=no：违反 WCAG 1.4.4（允许文本缩放）。
+             弱视用户依赖浏览器缩放查看页面内容；移动端双指缩放也是用户预期行为。
+             移除后字体大小仍由 --font-size-base CSS 变量控制（设置页可调），不影响 UI 排版。 -->
         <meta name="theme-color" content="#f5f5f0">
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -25,7 +28,7 @@
             .eye-item span{flex:1;font-weight:500}
             .archetype-card{cursor:pointer;padding:12px 14px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:2px solid var(--border,rgba(255,255,255,0.1));border-radius:10px;transition:all .2s}
             .archetype-card:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
-            .archetype-card.active{border-color:var(--accent,var(--primary,#6366f1));background:var(--accent-soft,rgba(99,102,241,0.1))}
+            .archetype-card.active{border-color:var(--accent,var(--primary,#666666));background:var(--accent-soft,rgba(102,102,102,0.1))}
             .archetype-card-title{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)}
             .archetype-card-desc{font-size:11px;color:var(--text-secondary);line-height:1.4}
             .archetype-card-params{font-size:10px;color:var(--text-tertiary);margin-top:6px;font-family:monospace}
