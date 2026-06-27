@@ -631,3 +631,72 @@ function bindFresh(elOrId, event, handler, refKey) {
 
 if (typeof window !== 'undefined') window.bindFresh = bindFresh;
 if (typeof module !== 'undefined' && module.exports) module.exports.bindFresh = bindFresh;
+
+// ========================================
+// parseTheaterItems：通用小剧场 HTML 解析器
+// 阶段1：8 个 parse*Content 函数（core.js:3562-3707）合并为单一函数
+// ========================================
+/**
+ * 解析小剧场 HTML：提取 <div class="itemClass"> 项，按 fieldSchema 提取子字段
+ *
+ * 旧实现：8 个函数 (parseForumContent/parseChatContent/parseMailContent/parseShopContent/
+ * parseMomentsContent/parseItemsContent/parseDiaryContent/parseCalendarContent)
+ * 各自重复"正则抓类名 + map + filter"模式 60+ 行
+ *
+ * 新实现：声明式 schema 描述：
+ *   itemClass: 'post'           // 顶层 div class
+ *   fields: { author: 'author', content: 'content', ... }  // 子字段 class → 字段名
+ *   defaults: { author: '匿名', content: '' }  // 缺失字段默认值
+ *   transformers: { time: 'dateOrNow', likes: 'int', count: 'int' }  // 字段转换器
+ *   mapResult: function(parts, rawHtml) { return { ... }; }  // 自定义结果映射
+ *
+ * @param {string} html 待解析 HTML
+ * @param {object} schema 见上
+ * @returns {Array} 解析结果数组
+ */
+function parseTheaterItems(html, schema) {
+    if (!html || !schema || !schema.itemClass) return [];
+    var itemClass = schema.itemClass;
+    var fields = schema.fields || {};
+    var defaults = schema.defaults || {};
+    var transformers = schema.transformers || {};
+    var mapResult = schema.mapResult;
+    var fallback = schema.fallback;
+
+    var items = [];
+    // 抓所有 class=itemClass 的 div
+    var re = new RegExp('<div[^>]*class=["\']' + itemClass + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'gi');
+    var matches = html.match(re) || [];
+
+    matches.forEach(function (match) {
+        var parts = {};
+        Object.keys(fields).forEach(function (fieldName) {
+            var className = fields[fieldName];
+            var value;
+            // 如果是 body 字段(包含子 div),用 [\s\S]*?</div> 抓取
+            if (schema.multilineFields && schema.multilineFields.indexOf(fieldName) >= 0) {
+                value = (match.match(new RegExp('class=["\']' + className + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'i')) || [])[1];
+            } else {
+                value = (match.match(new RegExp('class=["\']' + className + '["\'][^>]*>([^<]+)', 'i')) || [])[1];
+            }
+            // 字段转换器
+            var tf = transformers[fieldName];
+            if (tf === 'int') value = parseInt(value, 10) || defaults[fieldName] || 0;
+            else if (tf === 'intOrDef') value = parseInt(value, 10) || defaults[fieldName] || 0;
+            else if (tf === 'dateOrNow') value = value ? (Date.parse(value) || Date.now()) : Date.now();
+            else if (tf === 'stripTags') value = value ? value.replace(/<[^>]+>/g, '') : (defaults[fieldName] || '');
+            else if (value === undefined) value = defaults[fieldName] || '';
+            parts[fieldName] = value;
+        });
+        if (mapResult) items.push(mapResult(parts, match));
+        else items.push(parts);
+    });
+
+    if (items.length === 0 && fallback) {
+        items.push(fallback(html));
+    }
+    return items;
+}
+
+if (typeof window !== 'undefined') window.parseTheaterItems = parseTheaterItems;
+if (typeof module !== 'undefined' && module.exports) module.exports.parseTheaterItems = parseTheaterItems;

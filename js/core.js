@@ -3560,35 +3560,35 @@ if (relations.length > 0 && gameState.allCharacters) {
 }
 
 // 【小剧场融合】解析论坛内容
+// 【阶段1】委托 utils.parseTheaterItems，消除 60+ 行手写正则
 function parseForumContent(html) {
-    var items = [];
-    // 尝试解析帖子列表
-    var postMatches = html.match(/<div[^>]*class=["']post["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    postMatches.forEach(function(match) {
-        var author = (match.match(/class=["']author["'][^>]*>([^<]+)/i) || [])[1] || '匿名';
-        var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        var time = (match.match(/class=["']time["'][^>]*>([^<]+)/i) || [])[1];
-        // 【P2-3修复】解析出的时间字符串转时间戳，解析失败用当前时间
-        var timeTs = time ? (Date.parse(time) || Date.now()) : Date.now();
-        items.push({ author: author, content: content, time: timeTs, likes: 0, replies: 0 });
+    return parseTheaterItems(html, {
+        itemClass: 'post',
+        fields: { author: 'author', content: 'content', time: 'time' },
+        defaults: { author: '匿名', content: '', time: '' },
+        multilineFields: ['content'],
+        transformers: { time: 'dateOrNow' },
+        mapResult: function (p) {
+            return { author: p.author, content: p.content, time: p.time, likes: 0, replies: 0 };
+        },
+        fallback: function (rawHtml) {
+            return { author: '小剧场', content: rawHtml.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now(), likes: 0, replies: 0 };
+        }
     });
-if (items.length === 0) {
-    // 如果没有解析到结构化内容，将整个HTML作为一个帖子
-    items.push({ author: '小剧场', content: html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });  // 【P2-3修复】持久化存时间戳
-}
-return items;
 }
 
 // 【小剧场融合】解析聊天内容
+// 【阶段1】委托 utils.parseTheaterItems
 function parseChatContent(html) {
-    var messages = [];
-    var msgMatches = html.match(/<div[^>]*class=["']message["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    msgMatches.forEach(function(match) {
-        var sender = (match.match(/class=["']sender["'][^>]*>([^<]+)/i) || [])[1] || '未知';
-        var text = (match.match(/class=["']text["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        messages.push({ sender: sender, text: text, time: Date.now() });  // 【P2-3修复】持久化存时间戳，显示时用 formatTime
+    return parseTheaterItems(html, {
+        itemClass: 'message',
+        fields: { sender: 'sender', text: 'text' },
+        defaults: { sender: '未知', text: '' },
+        multilineFields: ['text'],
+        mapResult: function (p) {
+            return { sender: p.sender, text: p.text, time: Date.now() };
+        }
     });
-return messages;
 }
 
 function injectToChatLog(npcName, theater) {
@@ -3608,6 +3608,8 @@ if (gameState._chatLogs[npcName].length > 50) {
 }
 
 // 【小剧场融合】解析日程内容
+// 【阶段1】保留：calendar 是 Event:| 分隔格式,与 parseTheaterItems 的 div class 抓取模式不同
+// 旧逻辑保留但加一致性:8 个 parse*Content 中 7 个委托通用函数,1 个保留独立实现
 function parseCalendarContent(html) {
     var events = [];
     // 尝试解析Event格式: Event: type|title|description|time|location
@@ -3621,87 +3623,107 @@ function parseCalendarContent(html) {
             time: parts[3] || '',
             location: parts[4] || ''
         });
-});
-if (events.length === 0) {
-    // 尝试解析简单列表
-    var lines = html.replace(/<[^>]+>/g, '').split('\n').filter(function(l) { return l.trim(); });
-    lines.forEach(function(line) {
-        events.push({ type: '日程', title: line.trim(), description: '', time: '', location: '' });
     });
-}
-return events;
+    if (events.length === 0) {
+        // 尝试解析简单列表
+        var lines = html.replace(/<[^>]+>/g, '').split('\n').filter(function(l) { return l.trim(); });
+        lines.forEach(function(line) {
+            events.push({ type: '日程', title: line.trim(), description: '', time: '', location: '' });
+        });
+    }
+    return events;
 }
 
 // 【小剧场融合】解析邮件内容
+// 【阶段1】委托 utils.parseTheaterItems
 function parseMailContent(html) {
-    var mails = [];
-    var mailMatches = html.match(/<div[^>]*class=["']mail["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    mailMatches.forEach(function(match) {
-        var from = (match.match(/class=["']from["'][^>]*>([^<]+)/i) || [])[1] || '系统';
-        var subject = (match.match(/class=["']subject["'][^>]*>([^<]+)/i) || [])[1] || '无主题';
-        var content = (match.match(/class=["']body["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        mails.push({ from: from, subject: subject, preview: content.substring(0, 50), content: content, read: false, time: Date.now() });  // 【P2-3修复】持久化存时间戳
+    return parseTheaterItems(html, {
+        itemClass: 'mail',
+        fields: { from: 'from', subject: 'subject', body: 'body' },
+        defaults: { from: '系统', subject: '无主题', body: '' },
+        multilineFields: ['body'],
+        mapResult: function (p) {
+            return {
+                from: p.from,
+                subject: p.subject,
+                preview: (p.body || '').substring(0, 50),
+                content: p.body,
+                read: false,
+                time: Date.now()
+            };
+        },
+        fallback: function (rawHtml) {
+            return {
+                from: '系统通知',
+                subject: '小剧场',
+                preview: rawHtml.replace(/<[^>]+>/g, '').substring(0, 50),
+                content: rawHtml,
+                read: false
+            };
+        }
     });
-if (mails.length === 0) {
-    mails.push({ from: '系统通知', subject: '小剧场', preview: html.replace(/<[^>]+>/g, '').substring(0, 50), content: html, read: false });
-}
-return mails;
 }
 
 // 【小剧场融合】解析商店内容
+// 【阶段1】委托 utils.parseTheaterItems
 function parseShopContent(html) {
-    var goods = [];
-    var itemMatches = html.match(/<div[^>]*class=["']item["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    itemMatches.forEach(function(match) {
-        var name = (match.match(/class=["']name["'][^>]*>([^<]+)/i) || [])[1] || '商品';
-        var price = parseInt((match.match(/class=["']price["'][^>]*>([\d]+)/i) || [])[1]) || 100;
-        var desc = (match.match(/class=["']description["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || '';
-        goods.push({ name: name, price: price, description: desc.replace(/<[^>]+>/g, ''), icon: '📦' });
+    return parseTheaterItems(html, {
+        itemClass: 'item',
+        fields: { name: 'name', price: 'price', description: 'description' },
+        defaults: { name: '商品', price: '100', description: '' },
+        multilineFields: ['description'],
+        transformers: { price: 'intOrDef' },
+        mapResult: function (p) {
+            return { name: p.name, price: p.price, description: (p.description || '').replace(/<[^>]+>/g, ''), icon: '📦' };
+        }
     });
-return goods;
 }
 
 // 【小剧场融合】解析朋友圈内容
+// 【阶段1】委托 utils.parseTheaterItems
 function parseMomentsContent(html) {
-    var moments = [];
-    var momentMatches = html.match(/<div[^>]*class=["']moment["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    momentMatches.forEach(function(match) {
-        var author = (match.match(/class=["']author["'][^>]*>([^<]+)/i) || [])[1] || '匿名';
-        var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        var likes = parseInt((match.match(/class=["']likes["'][^>]*>([\d]+)/i) || [])[1]) || 0;
-        moments.push({ author: author, content: content, time: '刚刚', likes: likes, comments: [] });
+    return parseTheaterItems(html, {
+        itemClass: 'moment',
+        fields: { author: 'author', content: 'content', likes: 'likes' },
+        defaults: { author: '匿名', content: '', likes: '0' },
+        multilineFields: ['content'],
+        transformers: { likes: 'int' },
+        mapResult: function (p) {
+            return { author: p.author, content: p.content, time: '刚刚', likes: p.likes, comments: [] };
+        },
+        fallback: function (rawHtml) {
+            return { author: '小剧场', content: rawHtml.replace(/<[^>]+>/g, ''), time: '刚刚', likes: 0, comments: [] };
+        }
     });
-if (moments.length === 0 && html.trim()) {
-    moments.push({ author: '小剧场', content: html.replace(/<[^>]+>/g, ''), time: '刚刚', likes: 0, comments: [] });
-}
-return moments;
 }
 
 // 【小剧场融合】解析物品内容
+// 【阶段1】委托 utils.parseTheaterItems
 function parseItemsContent(html) {
-    var items = [];
-    var itemMatches = html.match(/<div[^>]*class=["']item["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    itemMatches.forEach(function(match) {
-        var name = (match.match(/class=["']name["'][^>]*>([^<]+)/i) || [])[1] || '物品';
-        var count = parseInt((match.match(/class=["']count["'][^>]*>([\d]+)/i) || [])[1]) || 1;
-        var rarity = (match.match(/class=["']rarity["'][^>]*>([^<]+)/i) || [])[1] || '普通';
-        items.push({ name: name, count: count, rarity: rarity, icon: '🎁' });
+    return parseTheaterItems(html, {
+        itemClass: 'item',
+        fields: { name: 'name', count: 'count', rarity: 'rarity' },
+        defaults: { name: '物品', count: '1', rarity: '普通' },
+        transformers: { count: 'intOrDef' },
+        mapResult: function (p) {
+            return { name: p.name, count: p.count, rarity: p.rarity, icon: '🎁' };
+        }
     });
-return items;
 }
 
 // 【小剧场融合】解析日记内容
+// 【阶段1】委托 utils.parseTheaterItems
 function parseDiaryContent(html) {
-    var entries = [];
-    var entryMatches = html.match(/<div[^>]*class=["']entry["'][^>]*>([\s\S]*?)<\/div>/gi) || [];
-    entryMatches.forEach(function(match) {
-        var date = (match.match(/class=["']date["'][^>]*>([^<]+)/i) || [])[1];
-        var content = (match.match(/class=["']content["'][^>]*>([\s\S]*?)<\/div>/i) || [])[1] || match.replace(/<[^>]+>/g, '');
-        // 【P2-3修复】解析出的日期字符串转时间戳，解析失败用当前时间
-        var dateTs = date ? (Date.parse(date) || Date.now()) : Date.now();
-        entries.push({ date: dateTs, content: content });
+    return parseTheaterItems(html, {
+        itemClass: 'entry',
+        fields: { date: 'date', content: 'content' },
+        defaults: { date: '', content: '' },
+        multilineFields: ['content'],
+        transformers: { date: 'dateOrNow' },
+        mapResult: function (p) {
+            return { date: p.date, content: p.content };
+        }
     });
-return entries;
 }
 
 // 【P0-阶段1-2.1】错误翻译映射统一表（单一权威源）
