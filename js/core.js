@@ -2793,13 +2793,13 @@ function _applyMemsToGameState(mems) {
                 case 'location':
                     // 【C1修复】直接写 StateManager.entities.locations，不再操作 gameState.world（数据孤岛）
                     // 旧代码写 gameState.world（schema 与 entities.locations 不同，且无任何读取点，是完全孤立的死字段）
-                    if (mem.action === 'add' && mem.name && typeof StateManager !== 'undefined') {
-                        var _rawLocs = StateManager.get('entities.locations') || [];
-                        var _locExists = _rawLocs.some(function(l) { return l && l.name === mem.name; });
-                        if (!_locExists) {
-                            _rawLocs.push({ name: mem.name, desc: mem._content || '' });
-                            StateManager.set('entities.locations', _rawLocs, { silent: true });
+                    // 【阶段1】进一步抽到 LocationMutator.addLocation，与其他 mutator 架构对齐
+                    // 任何地点变更都应经 LocationMutator，禁止再直写 StateManager.set('entities.locations', ...)
+                    if (mem.action === 'add' && mem.name) {
+                        if (typeof LocationMutator === 'undefined') {
+                            throw new Error('[<mem> location] LocationMutator 未加载，无法写入地点');
                         }
+                        LocationMutator.addLocation(mem.name, mem._content || '');
                     }
                     break;
             }

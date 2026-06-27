@@ -3841,14 +3841,14 @@ function bindEvents() {
                     var compressedData = canvas.toDataURL('image/jpeg', 0.8);
                     
                     // 保存玩家头像
-                    // 【P1-PU8 阶段4】走 StateManager，触发订阅者（菜单头像等）
+                    // 【P0-2.2 阶段1】键名修正：playerData.avatar → entities.player.avatar
+                    // 旧键名 playerData.avatar 不在 _legacyToPath 映射中，订阅者收不到变更通知
+                    // 正确键名 entities.player.avatar 触发订阅 + _syncLegacyMirror 自动同步到 gameState.playerData.avatar
                     if (typeof StateManager !== 'undefined' && StateManager.set) {
-                        // playerData 字段映射到 entities.player（schema.js 迁移表）
-                        StateManager.set('playerData.avatar', compressedData);
+                        StateManager.set('entities.player.avatar', compressedData, { silent: true });
                     } else {
-                        // 兜底：StateManager 不可用时直接写
-                        if (!gameState.playerData) gameState.playerData = {};
-                        gameState.playerData.avatar = compressedData;
+                        // 抛错暴露问题而非静默写入数据孤岛
+                        throw new Error('[phone-ui.js 头像] StateManager 未加载，无法写入头像');
                     }
                     
                     // 更新UI
@@ -5046,53 +5046,31 @@ async function continueStory() {
 }
 function deleteLastTurn() {
     // 检查撤销历史
-    if (gameState._undoHistory && gameState._undoHistory.length > 0) {
-        var lastUndo = gameState._undoHistory.pop();
-        // 恢复到撤销前的状态
-        gameState.conversationHistory = lastUndo.conversationHistory || [];
-        // storyHistory 已合并到 conversationHistory
-        // 【阶段1统一】撤销时角色恢复：通过 CharacterMutator.setCharacters 写入 StateManager，
-        // _syncLegacyMirror 自动维护 gameState.allCharacters 镜像。
-        // 原逻辑直接操作 gm.tables.characters（绕过 StateManager 导致 entities.characters 不同步）。
-        var _undoChars = lastUndo.allCharacters || {};
-        var _undoCharList = Object.keys(_undoChars).map(function(k) { return _undoChars[k]; }).filter(Boolean);
+    if (typeof UndoMutator === 'undefined') {
+        UI.toast('撤销栈不可用');
+        return;
+    }
+    if (UndoMutator.size() > 0) {
+        var lastUndo = UndoMutator.popSnapshot();
+        // 【P0-2.3 阶段1】撤销恢复：委托 UndoMutator.restoreFromSnapshot
+        // 旧实现 5 字段直写 gameState + 反向同步调用 = 数据孤岛与多套存储风险
+        // 新实现：UndoMutator 内部按字段委托各 Mutator，由 _syncLegacyMirror 自动维护 gameState 镜像
+        UndoMutator.restoreFromSnapshot(lastUndo);
+        // 【P1-PU3 阶段4】撤销时过滤主角：CharacterMutator.setCharacters 会标准化，但需要
+        // 确认主角在 _undoChars 快照中已剔除（避免回退后"主角复活"）
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.setCharacters) {
-            CharacterMutator.setCharacters(_undoCharList, { silent: true });
-        }
-        // 仍同步 gm.tables.characters（GameMemory 内部缓存，部分旧逻辑读取）
-        if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
-            var gm = window.GameMemory;
-            if (gm.tables.characters) {
-                Object.keys(gm.tables.characters).forEach(function(k) { delete gm.tables.characters[k]; });
-                Object.keys(_undoChars).forEach(function(k) {
-                    try {
-                        gm.tables.characters[k] = StateSchema.deepClone(_undoChars[k]);
-                    } catch(e) {
-                        gm.tables.characters[k] = _undoChars[k];
-                    }
-                });
+            const _playerName = (typeof gameState !== 'undefined' && gameState) ? gameState.playerName : '';
+            if (_playerName) {
+                const _curChars = StateManager.get('entities.characters') || [];
+                const _filtered = _curChars.filter(function (c) { return c && c.name !== _playerName; });
+                if (_filtered.length !== _curChars.length) {
+                    CharacterMutator.setCharacters(_filtered, { silent: true });
+                }
             }
         }
-        gameState.worldSnapshot = lastUndo.worldSnapshot || {};
-        gameState.keyEvents = lastUndo.keyEvents || [];
-        gameState.currentQuests = lastUndo.currentQuests || [];
-        gameState.relationships = lastUndo.relationships || [];
-        gameState.currentBag = lastUndo.currentBag || [];
-        // 【v3审查修复】恢复回合数与场景标题
-        // 【P0-2.8 阶段3-3】统一从 StateManager 读，删除 _stats.totalTurns 旧字段双写
-        if (lastUndo.progressTurn !== undefined && typeof StateManager !== 'undefined' && StateManager.set) {
-            StateManager.set('progress.turn', lastUndo.progressTurn, { silent: true });
-        }
-        if (typeof StateManager !== 'undefined' && StateManager.set) {
-            if (lastUndo.sceneTitle !== undefined) {
-                StateManager.set('progress.sceneTitle', lastUndo.sceneTitle || '', { silent: true });
-            }
-            if (lastUndo.lastSceneTitle !== undefined) {
-                StateManager.set('progress.lastSceneTitle', lastUndo.lastSceneTitle || '', { silent: true });
-            }
-        }
-
         // 【数据联通】反向推送到权威源 + 触发 UI 刷新
+        // UndoMutator 已用 Mutator 写入 SM，_syncLegacyMirror 已自动同步到 gameState
+        // 这里仅需要把 gameState 数据推回 gm（GameMemory 内部缓存），保证读取一致
         if (typeof _pushCurrentBagToGM === 'function') _pushCurrentBagToGM();
         if (typeof _pushCurrentQuestsToGM === 'function') _pushCurrentQuestsToGM();
         if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
@@ -5117,7 +5095,7 @@ function deleteLastTurn() {
             if (parsed.data && parsed.data.choices) renderChoices(parsed.data.choices);
             else renderChoices([{id: 'A', text: '继续'}, {id: 'B', text: '观察'}, {id: 'C', text: '等待'}]);
         }
-        UI.toast('已撤销 (' + gameState._undoHistory.length + '/' + (gameState._MAX_UNDO_HISTORY || 50) + ')');
+        UI.toast('已撤销 (' + UndoMutator.size() + '/50)');
         autoSave();
         return;
     }
@@ -5139,40 +5117,25 @@ function deleteLastTurn() {
 }
 
 // 保存当前状态到撤销历史（在AI回复前调用）
+// 【P0-2.3 阶段1】委托 UndoMutator.pushSnapshot，替代直接 gameState._undoHistory.push({...})
+// 旧实现 5 字段深拷贝 + 5 字段直写 + 反向同步调用 = 9 处职责，违反单一职责原则
+// 新实现：UndoMutator 内部统一安全克隆 + StateManager.set，
+// 由 _syncLegacyMirror 自动维护 gameState._undoHistory 镜像
 function saveUndoState() {
-    if (!gameState._undoHistory) gameState._undoHistory = [];
-    // 限制最多10条
-    if (gameState._undoHistory.length >= (gameState._MAX_UNDO_HISTORY || 50)) {
-        gameState._undoHistory.shift(); // 移除最旧的
+    if (typeof UndoMutator === 'undefined') {
+        throw new Error('[saveUndoState] UndoMutator 未加载，无法保存撤销历史');
     }
-    // 【优化】structuredClone 对循环引用对象会抛错，添加 try/catch fallback
-    // 旧代码 fallback 到 JSON.parse(JSON.stringify()) 也会因循环引用抛错
-    // 新代码：先尝试 structuredClone，失败则用安全拷贝（跳过循环引用字段）
-    // 【P1-PU10 阶段4】最终 fallback 抛错而非静默浅拷贝——
-    // 浅拷贝会让 worldSnapshot / relationships / currentBag 嵌套结构被后续 mutate 污染，
-    // 撤销时拿到的是同一个引用，撤销操作"看起来成功但实际没回退"
-    var _safeClone = function(o) {
-        if (typeof structuredClone === 'function') {
-            try { return structuredClone(o); } catch(e) { /* 循环引用，走 fallback */ }
-        }
-        try { return JSON.parse(JSON.stringify(o)); } catch(e) {
-            // 浅拷贝会产生数据污染风险，对玩家不可见，抛错让上层感知
-            throw new Error('[saveUndoState] 深拷贝失败（含循环引用且无 JSON 兼容）：' + (e && e.message));
-        }
-    };
-    gameState._undoHistory.push({
-        conversationHistory: _safeClone(gameState.conversationHistory),
-        allCharacters: _safeClone(gameState.allCharacters || {}),
-        worldSnapshot: _safeClone(gameState.worldSnapshot || {}),
-        keyEvents: _safeClone(gameState.keyEvents || []),
-        currentQuests: _safeClone(gameState.currentQuests || []),
-        relationships: _safeClone(gameState.relationships || []),
-        currentBag: _safeClone(gameState.currentBag || []),
-        // 【P0-2.8 阶段3-3】回合数与场景标题统一存 StateManager（新路径），
-        // 不再双写 _stats.totalTurns / _lastSceneTitle 旧字段（StateManager._syncLegacyMirror 会自动同步）
+    UndoMutator.pushSnapshot({
+        conversationHistory: (typeof gameState !== 'undefined' && gameState) ? gameState.conversationHistory : [],
+        allCharacters: (typeof gameState !== 'undefined' && gameState) ? (gameState.allCharacters || {}) : {},
+        worldSnapshot: (typeof gameState !== 'undefined' && gameState) ? (gameState.worldSnapshot || {}) : {},
+        keyEvents: (typeof gameState !== 'undefined' && gameState) ? (gameState.keyEvents || []) : [],
+        currentQuests: (typeof gameState !== 'undefined' && gameState) ? (gameState.currentQuests || []) : [],
+        relationships: (typeof gameState !== 'undefined' && gameState) ? (gameState.relationships || []) : [],
+        currentBag: (typeof gameState !== 'undefined' && gameState) ? (gameState.currentBag || []) : [],
         progressTurn: (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.turn') : 0,
-        sceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.sceneTitle') || '') : (gameState._lastSceneTitle || ''),
-        lastSceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.lastSceneTitle') || '') : (gameState._lastSceneTitle || ''),
+        sceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.sceneTitle') || '') : '',
+        lastSceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.lastSceneTitle') || '') : '',
         timestamp: Date.now()
     });
 }
@@ -5348,18 +5311,27 @@ function showApiDetail(slot) {
                     'style="font-size:12px;color:var(--primary);cursor:pointer;">展开全部 (' + stats.recentLogs.length + '条)</a>' +
                     '</div>';
                 // 绑定展开/折叠
-                TimerManager.setTimeout('bindApiToggle', function() {
-                    var toggle = document.getElementById('apiRecentToggle');
-                    var hidden = document.getElementById('apiRecentHidden');
-                    if (toggle && hidden) {
-                        toggle.addEventListener('click', function() {
-                            var isExpanded = hidden.style.display !== 'none';
-                            hidden.style.display = isExpanded ? 'none' : '';
-                            toggle.textContent = isExpanded ?
-                                '展开全部 (' + stats.recentLogs.length + '条)' : '收起';
-                        });
+                // 【P0-2.5 阶段1】闭包外先存元素引用，避免 50ms 内关闭再开时 listener 绑到已不在 DOM 的旧节点
+                // 改用直接 addEventListener（不再用 setTimeout 异步），listener 登记到 GlobalCleanup
+                // 弹窗关闭时通过 GlobalCleanup.cleanup 或显式 removeEventListener 释放
+                var _toggleEl = document.getElementById('apiRecentToggle');
+                var _hiddenEl = document.getElementById('apiRecentHidden');
+                if (_toggleEl && _hiddenEl) {
+                    // 用 named function 便于 removeEventListener
+                    var _onToggleClick = function () {
+                        var isExpanded = _hiddenEl.style.display !== 'none';
+                        _hiddenEl.style.display = isExpanded ? 'none' : '';
+                        _toggleEl.textContent = isExpanded ?
+                            '展开全部 (' + stats.recentLogs.length + '条)' : '收起';
+                    };
+                    // 先移除旧 listener（防连续打开同一 slot 时累积）
+                    // 通过自定义属性标记函数引用以便清理
+                    if (_toggleEl._onToggleClick) {
+                        _toggleEl.removeEventListener('click', _toggleEl._onToggleClick);
                     }
-                }, 50);
+                    _toggleEl._onToggleClick = _onToggleClick;
+                    _toggleEl.addEventListener('click', _onToggleClick);
+                }
             } else {
                 recentEl.innerHTML = stats.recentLogs.map(renderLogItemHtml).join('');
             }
@@ -5457,7 +5429,9 @@ function showApiDetail(slot) {
     testBtn.parentNode.replaceChild(newTestBtn, testBtn);
     var newCancelBtn = cancelTestBtn.cloneNode(true);
     cancelTestBtn.parentNode.replaceChild(newCancelBtn, cancelTestBtn);
-    var _testAbortCtrl = null;
+    // 【P0-2.4 阶段1】改用 let 块作用域，避免 50ms 间隔内连开 2 个 slot 时旧 controller 被覆盖
+    // 旧实现：var 在 showApiDetail 函数体内被 hoisting 共享同一变量，导致引用错乱
+    let _testAbortCtrl = null;
     newTestBtn.addEventListener('click', async function() {
         newTestBtn.textContent = '测试中...';
         newTestBtn.disabled = true;

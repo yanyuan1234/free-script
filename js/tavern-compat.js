@@ -2825,6 +2825,10 @@ var GameMemory = {
                 var existing = self.tables.characters[key];
                 var isNew = !existing;
                 self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
+                // 【P0-2.1 阶段1】任何对 self.tables.characters 的修改都必须失效 longTermMemory 缓存
+                // 旧实现只在 NPC profile 进 permanentFacts 时置 dirty（行 2839），导致 characters/item/location/relationship
+                // 修改后的 longTermMemory 缓存返回 stale data，记忆面板看不到新事实。
+                self._ltmDirty = true;
                 // 【修复】新角色首次出现时加入永久事实-关键角色，确保记忆面板及时更新
                 if (isNew || (typeof char.favorability === 'number' && char.favorability > 0)) {
                     self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
@@ -2849,10 +2853,16 @@ var GameMemory = {
                 var oldQty = existing ? existing.qty : 0;
                 var newQty = item.count || 1;
                 self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
+                // 【P0-2.1 阶段1】任何对 self.tables.items 的修改都必须失效 longTermMemory 缓存
+                self._ltmDirty = true;
             });
         }
         if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; }); }
+        // 【P0-2.1 阶段1】locations 修改后失效 longTermMemory 缓存
+        if (gameData.story) self._ltmDirty = true;
         if (gameData.relationships && Array.isArray(gameData.relationships)) gameData.relationships.forEach(function(rel) { if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; });
+        // 【P0-2.1 阶段1】relationships 修改后失效 longTermMemory 缓存
+        if (gameData.relationships && Array.isArray(gameData.relationships) && gameData.relationships.length > 0) self._ltmDirty = true;
     },
 
     _extractLocations: function(story) {

@@ -70,7 +70,20 @@ const StateSchema = {
                 lastHUD: null,
                 // 【阶段5】worldModules 纳入 schema 管理（原为 gameState._worldModules 旧字段）
                 // 40处UI读取点依赖，原 _syncLegacyMirror 完全未覆盖
-                worldModules: []
+                worldModules: [],
+                // 【阶段1】撤销栈（替代 gameState._undoHistory）
+                undoHistory: [],
+                maxUndoHistory: 50,
+                // 【阶段1】UI 临时状态（纳入 schema 统一管理）
+                notifSeenSnapshot: null,
+                lastRankSnapshot: null,
+                lastInputTokens: 0,
+                lastContextUsage: 0,
+                lastTruncated: false,
+                lastValidationWarning: '',
+                lastOriginalContent: '',
+                lastCotContent: '',
+                worldSnapshot: {}
             },
             // 【P1-PU9 阶段4】UI/UX 设置字段
             // 替代原 gameState.fontSize / autoCompress / summaryThreshold / useStream / writingStyle
@@ -81,7 +94,16 @@ const StateSchema = {
                 summaryThreshold: 6,
                 useStream: true,
                 writingStyle: '',
-                pinnedModules: {}
+                pinnedModules: {},
+                // 【阶段1】扩展：补齐未注册字段，消除 30+ 处 gameState.xxx 直写
+                cotMode: false,                  // 是否启用 CoT(思维链)输出
+                chapterMode: false,              // 是否按章节生成
+                presetArchetype: 'standard',     // 预设原型(standard / coc / etc.)
+                wordCountConfig: { min: 200, max: 800 },  // 每次 AI 输出字数范围
+                generateChoices: true,           // 是否在 AI 输出末尾生成选项(覆盖 world.generateChoices)
+                narrativeEyes: 'first',          // 叙事视角(first / second / third)
+                // 【阶段1】API 临时测试状态
+                apiTestingSlot: -1
             }
         };
     },
@@ -122,7 +144,30 @@ const StateSchema = {
         'summaryThreshold': 'settings.summaryThreshold',
         'useStream': 'settings.useStream',
         'writingStyle': 'settings.writingStyle',
-        'pinnedModules': 'settings.pinnedModules'
+        'pinnedModules': 'settings.pinnedModules',
+        // 【阶段1】扩展：补齐未注册字段
+        'cotMode': 'settings.cotMode',
+        'chapterMode': 'settings.chapterMode',
+        'presetArchetype': 'settings.presetArchetype',
+        'wordCountConfig': 'settings.wordCountConfig',
+        'narrativeEyes': 'settings.narrativeEyes',
+        'apiTestingSlot': 'settings.apiTestingSlot',
+        // 【阶段1】撤销栈纳入 schema 管理(替代 gameState._undoHistory 旧字段)
+        'undoHistory': 'ui.undoHistory',
+        '_undoHistory': 'ui.undoHistory',
+        // 【阶段1】通知快照、榜单快照等 UI 临时状态
+        '_notifSeenSnapshot': 'ui.notifSeenSnapshot',
+        '_lastRankSnapshot': 'ui.lastRankSnapshot',
+        '_lastChoices': 'ui.lastChoices',
+        '_lastInputTokens': 'ui.lastInputTokens',
+        '_lastContextUsage': 'ui.lastContextUsage',
+        '_lastTruncated': 'ui.lastTruncated',
+        '_lastValidationWarning': 'ui.lastValidationWarning',
+        '_lastOriginalContent': 'ui.lastOriginalContent',
+        '_lastCotContent': 'ui.lastCotContent',
+        // 【阶段1】存档撤销相关
+        '_MAX_UNDO_HISTORY': 'ui.maxUndoHistory',
+        'worldSnapshot': 'ui.worldSnapshot'
     },
 
     // 新路径 -> 旧字段名映射
