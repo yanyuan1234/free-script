@@ -3288,32 +3288,12 @@ function renderBag(items) {
     // 改为合并语义：以现有 currentBag 为基础，合并/覆盖 AI 返回的物品
     if (items && Array.isArray(items)) {
         if (StateManager && BagMutator) {
+            // 【P0-2.6 阶段1】走 BagMutator.mergeItems，_syncLegacyMirror 自动同步到 gameState.currentBag
+            // 删除 fallback 死分支：StateManager 与 BagMutator 均为核心依赖,必加载
             BagMutator.mergeItems(items, { silent: true });
         } else {
-            var existingBag = Array.isArray(gameState.currentBag) ? gameState.currentBag : [];
-            var existingMap = {};
-            existingBag.forEach(function(it, idx) {
-                var key = (it && (it.name || it.title || it.id)) || ('__idx_' + idx);
-                existingMap[key] = it;
-            });
-            items.forEach(function(it) {
-                if (!it) return;
-                var key = it.name || it.title || it.id;
-                if (!key) return;
-                if (existingMap[key]) {
-                    // 保留原有字段，更新数量等可覆盖字段
-                    existingMap[key].count = it.count !== undefined ? it.count : (existingMap[key].count || 1);
-                    if (it.desc !== undefined) existingMap[key].desc = it.desc;
-                    if (it.rarity !== undefined) existingMap[key].rarity = it.rarity;
-                    if (it.rarityClass !== undefined) existingMap[key].rarityClass = it.rarityClass;
-                    if (it.equipped !== undefined) existingMap[key].equipped = it.equipped;
-                    if (it.usable !== undefined) existingMap[key].usable = it.usable;
-                } else {
-                    existingBag.push(it);
-                    existingMap[key] = it;
-                }
-            });
-            gameState.currentBag = existingBag;
+            // StateManager / BagMutator 不可用 → 抛错暴露问题,禁止 fallback 到多套存储
+            throw new Error('[renderBag] StateManager 或 BagMutator 未加载,无法合并物品');
         }
     }
     // 【修复BUG-02】refreshAllPanels() 调用 renderBag() 不传参时，不要清空背包
@@ -3322,7 +3302,8 @@ function renderBag(items) {
     if (!Array.isArray(currentBag)) {
         currentBag = [];
         if (StateManager) StateManager.set('entities.bag', currentBag, { silent: true });
-        gameState.currentBag = currentBag;
+        // 【P0-2.6 阶段1】删除冗余 gameState.currentBag 直写
+        // _syncLegacyMirror 已自动从 entities.bag 同步到 gameState.currentBag
     }
     // 【数据联通】同步写入权威源 gm.tables.items
     if (typeof _pushCurrentBagToGM === 'function') {
@@ -7364,37 +7345,41 @@ function openNpcDetail(name) {
     UI.showModal('npcDetailModal');
 
     // 绑定编辑按钮
+    // 【P0-2.7 阶段1】使用 named function + removeEventListener 防多次 open 累积
+    // 旧代码 cloneNode + replaceChild + addEventListener 模式：
+    // 第二次 openNpcDetail 时 getElementById('btnNpcEdit') 拿到旧 clone 节点(脱离 DOM),
+    // 新 DOM 中的 newEditBtn 节点虽然有 btnNpcEdit ID 但绑定的 listener 引用已被替换,
+    // 结果第二次点击按钮时 handler 不执行(看起来按钮失效)。
+    // 新方案：直接 addEventListener，函数引用挂在 DOM 节点自定义属性上以便 remove
     var editBtn = document.getElementById('btnNpcEdit');
     if (editBtn) {
-        var newEditBtn = editBtn.cloneNode(true);
-        editBtn.parentNode.replaceChild(newEditBtn, editBtn);
-        newEditBtn.addEventListener('click', function() {
+        if (editBtn._onEditClick) editBtn.removeEventListener('click', editBtn._onEditClick);
+        editBtn._onEditClick = function () {
             UI.hideModal('npcDetailModal');
             openEditNpcModal(name);
-        });
+        };
+        editBtn.addEventListener('click', editBtn._onEditClick);
     }
     // 绑定删除按钮
     var deleteBtn = document.getElementById('btnNpcDelete');
     if (deleteBtn) {
-        var newDeleteBtn = deleteBtn.cloneNode(true);
-        deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-        newDeleteBtn.addEventListener('click', function() {
-            UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？').then(function(ok) { if (ok) {
-            // 添加防抖检查
-            if (newDeleteBtn.disabled) return;
-            newDeleteBtn.disabled = true;
-                // 【阶段1统一】删除角色委托 CharacterMutator.removeCharacter
-                // 【P1-PU7 阶段4】删 fallback，强制走 Mutator
-                if (typeof CharacterMutator === 'undefined' || !CharacterMutator.removeCharacter) {
-                    throw new Error('CharacterMutator.removeCharacter 不可用，无法删除角色');
+        if (deleteBtn._onDeleteClick) deleteBtn.removeEventListener('click', deleteBtn._onDeleteClick);
+        deleteBtn._onDeleteClick = function () {
+            UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？').then(function (ok) {
+                if (ok) {
+                    if (deleteBtn.disabled) return;
+                    deleteBtn.disabled = true;
+                    if (typeof CharacterMutator === 'undefined' || !CharacterMutator.removeCharacter) {
+                        throw new Error('CharacterMutator.removeCharacter 不可用，无法删除角色');
+                    }
+                    CharacterMutator.removeCharacter(name);
+                    renderNpcList();
+                    UI.hideModal('npcDetailModal');
+                    UI.toast('已删除角色');
+                    deleteBtn.disabled = false;
                 }
-                CharacterMutator.removeCharacter(name);
-                renderNpcList();
-                UI.hideModal('npcDetailModal');
-                UI.toast('已删除角色');
-                newDeleteBtn.disabled = false;
-            }
-            }).catch(function(err) { console.error('[NPC系统] 操作失败:', err); });
-        });
+            }).catch(function (err) { console.error('[NPC系统] 操作失败:', err); });
+        };
+        deleteBtn.addEventListener('click', deleteBtn._onDeleteClick);
     }
 }
