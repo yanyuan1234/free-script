@@ -39,16 +39,37 @@
 // 原 fallback 链 gameState.currency || gameState.money || gameState.coins || 0 散落多处
 // ========================================
 function getPlayerMoney() {
+    // 【P1-2修复】优先从 StateManager 权威源读取，_syncLegacyMirror 会自动同步到 gameState.currency
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var cur = StateManager.get('entities.currency');
+        if (cur !== undefined && cur !== null) return cur;
+    }
     return gameState.currency || gameState.money || gameState.coins || 0;
 }
 function getCurrencyName() {
+    // 【P1-2修复】优先从 StateManager 读取
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var name = StateManager.get('entities.currencyName');
+        if (name) return name;
+    }
     return gameState.currencyName || '金币';
 }
-// 扣款：保留原 fallback 顺序（currency → money → coins）
+// 扣款：统一走 StateManager，_syncLegacyMirror 自动回写 gameState.currency
+// 【P1-2修复】原直接改 gameState.currency 不反向同步到 StateManager，
+// 导致 StateManager.get('entities.currency') 返回陈旧值（架构违反：
+// StateManager 是权威源，gameState 是只读镜像）
 function subtractPlayerMoney(amount) {
-    if (gameState.currency !== undefined) gameState.currency -= amount;
-    else if (gameState.money !== undefined) gameState.money -= amount;
-    else if (gameState.coins !== undefined) gameState.coins -= amount;
+    var current = getPlayerMoney();
+    var newAmount = current - amount;
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('entities.currency', newAmount, { silent: true });
+        // _syncLegacyMirror 自动同步到 gameState.currency，无需手动双写
+    } else {
+        // legacy fallback：StateManager 不可用时直接改 gameState
+        if (gameState.currency !== undefined) gameState.currency -= amount;
+        else if (gameState.money !== undefined) gameState.money -= amount;
+        else if (gameState.coins !== undefined) gameState.coins -= amount;
+    }
 }
 
 // ========================================
@@ -686,12 +707,30 @@ function renderWorldModules(modules) {
             _existingMods.push(newMod);
         }
     });
-    // 限制每种模块类型数量，防止无限增长
-    var typeCounts = {};
-    _existingMods = _existingMods.filter(function(m) {
-        typeCounts[m.type] = (typeCounts[m.type] || 0) + 1;
-        return typeCounts[m.type] <= 20;
+    // 【P1-3修复】限制每种模块类型数量，防止无限增长
+    // 旧实现 filter 从头遍历保留前 N 条，丢弃末尾新追加的模块——方向错误！
+    // 累积型模块（chat/comments/forum/moments/mail/diary/achievements）是后追加的最新内容，
+    // 应保留最近的 N 条（即数组末尾），丢弃最旧的（数组头部）。
+    // - 累积型上限 50（审查文档建议值，平衡历史完整性与 token 占用）
+    // - 状态型上限 20（替换语义下通常只有 1-2 个，20 足够冗余）
+    // 实现策略：倒序遍历保留最新 N 条，再正序还原（保持时间顺序）
+    var _ACC_TYPE_LIMIT = 50;  // 累积型每类型上限
+    var _STATE_TYPE_LIMIT = 20; // 状态型每类型上限
+    var _typeLimits = {};
+    _existingMods.forEach(function(m) {
+        if (m && m.type) {
+            _typeLimits[m.type] = accumulateTypes[m.type] ? _ACC_TYPE_LIMIT : _STATE_TYPE_LIMIT;
+        }
     });
+    var _keptByType = {};
+    var _reversed = _existingMods.slice().reverse();  // 倒序：最新的在前
+    var _filteredReversed = _reversed.filter(function(m) {
+        if (!m || !m.type) return true;
+        var limit = _typeLimits[m.type] || _STATE_TYPE_LIMIT;
+        _keptByType[m.type] = (_keptByType[m.type] || 0) + 1;
+        return _keptByType[m.type] <= limit;
+    });
+    _existingMods = _filteredReversed.reverse();  // 再正序还原（最旧的在前，最新的在后）
     // 【全量修复-P2】写入权威源 StateManager，_syncLegacyMirror 自动回写 gameState._worldModules
     if (typeof StateManager !== 'undefined' && StateManager.set) {
         StateManager.set('ui.worldModules', _existingMods, { silent: true });
@@ -3979,8 +4018,29 @@ function bindEvents() {
             }
 
             if (lastAssistantIdx >= 0) {
-                // 将编辑后的文本写回最后一条 assistant 消息
-                gameState.conversationHistory[lastAssistantIdx].content = editedText;
+                // 【P1-2修复】将编辑后的文本写回最后一条 assistant 消息
+                // 原直接改 gameState.conversationHistory 绕过 StateManager，
+                // 导致 StateManager.get('progress.conversationHistory') 返回旧值
+                // 现统一走 StateManager.set，_syncLegacyMirror 自动同步到 gameState
+                if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+                    var history = StateManager.get('progress.conversationHistory') || [];
+                    if (history.length > 0) {
+                        // 找最后一条 assistant 消息（与上面 gameState 查找逻辑一致）
+                        var smLastAssistantIdx = -1;
+                        for (var j = history.length - 1; j >= 0; j--) {
+                            if (history[j].role === 'assistant') {
+                                smLastAssistantIdx = j;
+                                break;
+                            }
+                        }
+                        if (smLastAssistantIdx >= 0) {
+                            history[smLastAssistantIdx].content = editedText;
+                            StateManager.set('progress.conversationHistory', history, { silent: true });
+                        }
+                    }
+                } else {
+                    gameState.conversationHistory[lastAssistantIdx].content = editedText;
+                }
             }
 
             autoSave();
@@ -4540,18 +4600,23 @@ function _restoreGameRender() {
                     if (data.title || data.scene) updateSceneTitle(data.title || data.scene);
                     if (data.choices) renderChoices(data.choices);
                     if (data.player) renderPlayerStats(data.player);
-                    if (data.characters) mergeCharacters(data.characters);
+                    // 【P1-1修复】存档恢复路径不重写状态：存档加载时所有实体数据
+                    // （characters/bag/quests/relationships）已从存档数据完整恢复到
+                    // StateManager.entities 与 gameState 旧字段。此处仅刷新 UI 展示，
+                    // 避免 merge*/renderBag(items) 重复触发状态写入（不在 transaction 内，
+                    // 无法回滚；且 MERGE 语义可能改变存档已保存的数据顺序与内容）。
+                    // renderWorldModules 例外：它是 ui.worldModules 的唯一写入者（无 mutator），
+                    // 存档恢复时需重建 UI 模块，故保留 data.world 调用。
+                    if (data.characters) renderNpcList();
                     if (data.world) renderWorldModules(data.world);
                     if (data.world && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0) {
                         _autoExtractWorldNotes(data.world);
                     }
-                    if (data.bag) renderBag(data.bag);
+                    if (data.bag) renderBag();
                     if (data.quests) {
-                        mergeQuests(data.quests);
                         renderQuests();
                     }
                     if (data.relationships) {
-                        mergeRelationships(data.relationships);
                         renderRelationships();
                     }
                     // 【修复】保存关键数据到gameState，确保读档后能恢复
@@ -4805,10 +4870,20 @@ function deleteLastTurn() {
             }
         }
         gameState.worldSnapshot = lastUndo.worldSnapshot || {};
-        gameState.keyEvents = lastUndo.keyEvents || [];
-        gameState.currentQuests = lastUndo.currentQuests || [];
-        gameState.relationships = lastUndo.relationships || [];
-        gameState.currentBag = lastUndo.currentBag || [];
+        // 【P1-2修复】撤销时统一走 StateManager 写入权威源，_syncLegacyMirror 自动同步旧字段
+        // 原直接改 gameState.keyEvents/currentQuests/relationships/currentBag 绕过 StateManager，
+        // 导致 StateManager.get 返回旧值（架构违反：StateManager 是权威源）
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('entities.events', lastUndo.keyEvents || [], { silent: true });
+            StateManager.set('entities.quests', lastUndo.currentQuests || [], { silent: true });
+            StateManager.set('entities.relationships', lastUndo.relationships || [], { silent: true });
+            StateManager.set('entities.bag', lastUndo.currentBag || [], { silent: true });
+        } else {
+            gameState.keyEvents = lastUndo.keyEvents || [];
+            gameState.currentQuests = lastUndo.currentQuests || [];
+            gameState.relationships = lastUndo.relationships || [];
+            gameState.currentBag = lastUndo.currentBag || [];
+        }
         // 【v3审查修复】恢复回合数与场景标题
         if (lastUndo.totalTurns !== undefined && gameState._stats) {
             gameState._stats.totalTurns = lastUndo.totalTurns;
@@ -4869,7 +4944,10 @@ function deleteLastTurn() {
 // 保存当前状态到撤销历史（在AI回复前调用）
 function saveUndoState() {
     if (!gameState._undoHistory) gameState._undoHistory = [];
-    // 限制最多10条
+    // 【P1-4修复】FIFO 上限：默认 50 条，可通过 _MAX_UNDO_HISTORY 覆盖
+    // 每条快照含 conversationHistory + allCharacters + worldSnapshot 等 7 个字段深拷贝，
+    // 50 条上限平衡撤销深度与内存占用（200 回合长会话：50 × history 大小，约 5-15MB）
+    // 旧注释"限制最多10条"与代码 || 50 不一致，已修正
     if (gameState._undoHistory.length >= (gameState._MAX_UNDO_HISTORY || 50)) {
         gameState._undoHistory.shift(); // 移除最旧的
     }
