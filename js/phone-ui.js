@@ -5052,7 +5052,11 @@ function deleteLastTurn() {
         // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         // 【v3审查修复】撤销后刷新回合数标签与场景标题，否则 UI 仍显示撤销前的值
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
-        if (typeof updateSceneTitle === 'function' && lastUndo.sceneTitle) updateSceneTitle(lastUndo.sceneTitle);
+        // 【P1-PU4 阶段4】统一 sceneTitle 条件：当 lastUndo.sceneTitle === '' 时也要走 updateSceneTitle('')
+        // 旧逻辑：StateManager.set 写入空串但 updateSceneTitle 因 && lastUndo 真值判断被跳过，导致 UI 显示空标题
+        if (typeof updateSceneTitle === 'function' && lastUndo.sceneTitle !== undefined) {
+            updateSceneTitle(lastUndo.sceneTitle || '');
+        }
 
         // 重新渲染
         var lastAI = [...gameState.conversationHistory].reverse().find(m => m.role === 'assistant');
@@ -5093,20 +5097,16 @@ function saveUndoState() {
     // 【优化】structuredClone 对循环引用对象会抛错，添加 try/catch fallback
     // 旧代码 fallback 到 JSON.parse(JSON.stringify()) 也会因循环引用抛错
     // 新代码：先尝试 structuredClone，失败则用安全拷贝（跳过循环引用字段）
+    // 【P1-PU10 阶段4】最终 fallback 抛错而非静默浅拷贝——
+    // 浅拷贝会让 worldSnapshot / relationships / currentBag 嵌套结构被后续 mutate 污染，
+    // 撤销时拿到的是同一个引用，撤销操作"看起来成功但实际没回退"
     var _safeClone = function(o) {
         if (typeof structuredClone === 'function') {
             try { return structuredClone(o); } catch(e) { /* 循环引用，走 fallback */ }
         }
         try { return JSON.parse(JSON.stringify(o)); } catch(e) {
-            // 【优化】最终 fallback：浅拷贝 + 跳过无法序列化的字段
-            console.warn('[saveUndoState] 深拷贝失败，使用浅拷贝:', e && e.message);
-            var result = Array.isArray(o) ? [] : {};
-            for (var k in o) {
-                if (typeof o[k] !== 'object' || o[k] === null) {
-                    try { result[k] = o[k]; } catch(e2) {}
-                }
-            }
-            return result;
+            // 浅拷贝会产生数据污染风险，对玩家不可见，抛错让上层感知
+            throw new Error('[saveUndoState] 深拷贝失败（含循环引用且无 JSON 兼容）：' + (e && e.message));
         }
     };
     gameState._undoHistory.push({

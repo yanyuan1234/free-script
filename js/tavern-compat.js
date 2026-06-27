@@ -3389,16 +3389,33 @@ var GameMemory = {
     },
 
     _handleSaveFailure: function(result, originalData) {
+        // 【P1-TC1 阶段4】失败重试次数上限 + UI 提示
+        // 旧逻辑：catch 静默吞错，finally 块调度 50ms 后无限重试，
+        // 若降级保存持续失败（如 storage 满）会进入死循环。
+        // 新逻辑：累计重试 ≥3 次后停止并 toast 告知用户，避免静默耗电/性能。
+        this._saveFailureCount = (this._saveFailureCount || 0) + 1;
         try {
-            console.warn('[GameMemory] 保存失败，降级处理:', (result && result.message) || 'unknown');
+            console.warn('[GameMemory] 保存失败，降级处理 (' + this._saveFailureCount + '/3):', (result && result.message) || 'unknown');
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
             var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
             var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
-            if (r2 && r2.success) console.log('[GameMemory] 降级保存成功');
-            else console.error('[GameMemory] 降级保存仍然失败：', r2);
-        } catch(e2) { console.error('[GameMemory] 降级保存异常：', e2); }
+            if (r2 && r2.success) {
+                console.log('[GameMemory] 降级保存成功');
+                this._saveFailureCount = 0;
+            } else {
+                console.error('[GameMemory] 降级保存仍然失败：', r2);
+                if (this._saveFailureCount >= 3 && typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('存档连续失败，请检查浏览器存储空间');
+                }
+            }
+        } catch(e2) {
+            console.error('[GameMemory] 降级保存异常：', e2);
+            if (this._saveFailureCount >= 3 && typeof UI !== 'undefined' && UI.toast) {
+                UI.toast('存档异常：' + (e2 && e2.message || '未知'));
+            }
+        }
     },
 
     loadFromStorage: function() {
@@ -4240,10 +4257,19 @@ var MemoryManagerUI = {
 
     deletePermanentFact: function(type, idx) {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
+        // 【P1-TC2 阶段4】先校验 idx 范围，避免 splice 静默失败 / 越界删除
+        if (typeof idx !== 'number' || idx < 0 || idx >= gm.permanentFacts[type].length) {
+            console.warn('[MemoryManager] deletePermanentFact 索引越界:', type, idx);
+            return;
+        }
         // 【缺陷修复】改用 UI.confirm 替代原生 confirm，与游戏 UI 风格一致
         UI.confirm('删除永久事实', '确定要删除这条永久事实吗？').then(function(ok) {
             if (!ok) return;
-            gm.permanentFacts[type].splice(idx, 1);
+            var removed = gm.permanentFacts[type].splice(idx, 1);
+            if (removed.length === 0) {
+                console.warn('[MemoryManager] deletePermanentFact splice 返回空，索引异常:', idx);
+                return;
+            }
             // 【v3审查修复】同 savePermanentFact，失效注入缓存
             gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
             // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
