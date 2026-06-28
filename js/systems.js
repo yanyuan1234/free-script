@@ -13,10 +13,21 @@ var QuestSystem = {
     },
     // 【P2清理】删除动态类型注册系统（registerType / registerStatus / getAllTypes / getAllStatuses）—— 全项目零调用，动态类型从未被注册
     getAllQuests() {
-        var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.currentQuests || []));
+        // 【P2-33修复】条件写反：原 `StateManager ? StateManager.get(...) : fallback`
+        // 当 StateManager 存在但 entities.quests 未初始化时，get 返回 undefined，
+        // 后续 quests.filter 抛 TypeError。fallback || [] 只在 StateManager 为 falsy 时生效。
+        // 修正为 `(StateManager.get(...) || fallback)` 让 fallback 在 get 返回 falsy 时也生效。
+        var quests = (StateManager ? (StateManager.get('entities.quests') || (gameState.currentQuests || [])) : (gameState.currentQuests || []));
+        if (!Array.isArray(quests)) quests = [];
         if (quests.filter(function(q) {
             return q.status === QuestSystem.STATUS.ACTIVE;
             }).length === 0 && (gameState.conversationHistory || []).length > 0) {
+            // 【P2-34修复】缓存的引导任务完成后 status 变 COMPLETED，下次仍判定"无 ACTIVE"→
+            // 再次 push 同一个已完成对象，玩家一直看到"继续探索 - 已完成"。
+            // 修复：push 前检查缓存对象 status，已完成则置 null 让下轮重新创建。
+            if (QuestSystem._cachedGuidanceQuest && QuestSystem._cachedGuidanceQuest.status !== QuestSystem.STATUS.ACTIVE) {
+                QuestSystem._cachedGuidanceQuest = null;
+            }
             if (!QuestSystem._cachedGuidanceQuest) {
                 QuestSystem._cachedGuidanceQuest = QuestSystem.createGuidanceQuest();
             }

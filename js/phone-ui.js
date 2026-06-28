@@ -7256,11 +7256,14 @@ function renderNpcPage() {
     try {
         // 【修复】原 key 只算 length/totalFav/lastName，漏算 title/relation/desc/details，
         // 导致 AI 更新角色状态描述或关系后人际页不重绘
+        // 【P2-47修复】补算 details 字段：AI 更新角色 details 后 RenderCache.same 仍返回 true 跳过重绘，
+        // 人际页看不到 details 变化。details 是数组，用 length + JSON 串作为签名。
         var totalFav = 0, sigParts = [];
         for (var _ci = 0; _ci < chars.length; _ci++) {
             var _c = chars[_ci];
             totalFav += Number(_c.favorability) || 0;
-            sigParts.push(_c.name + ':' + (_c.favorability || 0) + ':' + (_c.title || '') + ':' + (_c.relation || '') + ':' + (_c.desc || '').length);
+            var _detailsSig = _c.details ? (_c.details.length + ':' + JSON.stringify(_c.details)) : '0';
+            sigParts.push(_c.name + ':' + (_c.favorability || 0) + ':' + (_c.title || '') + ':' + (_c.relation || '') + ':' + (_c.desc || '').length + ':' + _detailsSig);
         }
         var _key = chars.length + '|' + totalFav + '|' + sigParts.join('|');
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderNpcPage', _key)) return;
