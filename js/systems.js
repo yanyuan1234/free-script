@@ -278,6 +278,11 @@ function _achTextColor(rarity) {
     var fbMap = { common: '#616161', rare: '#1565c0', epic: '#7b1fa2', legendary: '#e65100' };
     return _cssVar(map[rarity] || '--ach-common-text', fbMap[rarity] || '#616161');
 }
+// 【P2-18修复】预编译成就条件正则 + 解析结果缓存
+// 原实现每回合 checkAchievements 对每个成就都 cond.match(regex)，
+// 成就条件是静态的（getDefaultAchievements 返回固定定义），重复解析浪费 CPU。
+var _ACH_COND_REGEX = /^(\w+)\s*(>=|<=|>|<|==|!=)\s*(\d+)$/;
+var _achCondCache = {};
 var AchievementSystem = {
     RARITY: {
         COMMON: {
@@ -420,8 +425,13 @@ var AchievementSystem = {
             // 动态解析条件表达式，如 "storyCount >= 1"
             var cond = ach.condition || 'true';
             try {
-                // 安全的条件求值：只支持简单的比较表达式
-                var match = cond.match(/^(\w+)\s*(>=|<=|>|<|==|!=)\s*(\d+)$/);
+                // 【P2-18修复】使用模块级预编译正则 _ACH_COND_REGEX + 解析结果缓存
+                // 成就条件是静态的，同一 cond 字符串只需解析一次
+                var match = _achCondCache[cond];
+                if (match === undefined) {
+                    match = _ACH_COND_REGEX.exec(cond);
+                    _achCondCache[cond] = match || null;
+                }
                 if (match) {
                     var field = match[1];
                     var op = match[2];

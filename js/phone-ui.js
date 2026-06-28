@@ -43,6 +43,13 @@
 function getPlayerMoney() {
     return CurrencyMutator.get();
 }
+// 【P2-16修复】集中 allCharacters 数组访问，消除 4 处 Object.values 重复调用
+// 当前为直接访问（无性能问题——4 处均在事件驱动的渲染函数中，非每帧热路径）；
+// 如未来出现性能问题，可在此函数内加缓存 + 在 CharacterMutator 写入时失效。
+function getAllCharactersArray() {
+    if (typeof gameState === 'undefined' || !gameState || !gameState.allCharacters) return [];
+    return Object.values(gameState.allCharacters);
+}
 function getCurrencyName() {
     return CurrencyMutator.getName();
 }
@@ -389,7 +396,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         if (gameState.player.desc) playerIdentity += '，' + gameState.player.desc;
     }
     var npcNames = [];
-    if (gameState.allCharacters) Object.values(gameState.allCharacters).forEach(function(c) {
+    if (gameState.allCharacters) getAllCharactersArray().forEach(function(c) {
         if (c.name) npcNames.push(c.name + '(' + (c.title || c.desc || '') + ')');
     });
     var sysMsg = '你是一个社区系统，负责让角色们自然地回复帖子。每个角色根据自己的性格、立场和与玩家的关系来发言——有人热情、有人冷淡、有人吃瓜、有人抬杠，这才是真实的社区。\n\n' +
@@ -2420,7 +2427,7 @@ function renderDiaryPage() {
     //   扁平形式：{"type":"diary","npc":"角色名","date":"...","content":"...","mood":"...","memos":[...]}
     var diaries = gameState._npcDiaries || {};
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
-    var chars = Object.values(gameState.allCharacters || {});
+    var chars = getAllCharactersArray();
     var now = new Date();
     var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
         '0');
@@ -3174,7 +3181,7 @@ function renderPlayerPage() {
         if (relNet && relNet.parentNode) relNet.parentNode.insertBefore(relationSummaryEl, relNet);
     }
     try {
-        var chars = Object.values(gameState.allCharacters || {});
+        var chars = getAllCharactersArray();
         if (chars.length > 0) {
             var topChars = chars.slice().sort(function(a, b) {
                 return (b.favorability || 0) - (a.favorability || 0);
@@ -4757,7 +4764,8 @@ async function _generateEndingRender(stories) {
         // 【动态化】根据 contextSize 动态计算截断长度，不再硬编码 15000
         // 旧代码截断到 15000 字，长游戏的后半段剧情 AI 看不到，结局生成质量差
         // 新策略：按 contextSize 的 60% 估算（留 40% 给 prompt 和输出），最少 10000 字
-        var _ctxSize = (gameState && gameState.contextSize) || 8000;
+        // 【P2-1修复】统一调用 getContextSize()
+        var _ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000);
         var _maxEndingChars = Math.max(10000, Math.floor(_ctxSize * 0.6 * 1.7));
         if (allText.length > _maxEndingChars) allText = allText.substring(0, _maxEndingChars) + '\n\n...（后续内容省略）';
 
@@ -7269,7 +7277,7 @@ function renderNpcList() {
 function renderNpcPage() {
     // 确保 allCharacters 已初始化
     if (gameState && !gameState.allCharacters) gameState.allCharacters = {};
-    var chars = Object.values((gameState && gameState.allCharacters) || {});
+    var chars = getAllCharactersArray();
     // 【性能优化】数据未变时跳过整页重绘（每次点击导航栏都会触发此函数）
     try {
         // 【修复】原 key 只算 length/totalFav/lastName，漏算 title/relation/desc/details，

@@ -121,7 +121,7 @@ _getSettings: function() {
         model: gs && gs.model ? gs.model : '',
         temperature: gs && typeof gs.temperature === 'number' ? gs.temperature : 0.7,
         maxTokens: gs && gs.maxTokens ? gs.maxTokens : 2000,
-        contextSize: gs && gs.contextSize ? gs.contextSize : 8000,
+        contextSize: (typeof getContextSize === 'function') ? getContextSize() : (gs && gs.contextSize ? gs.contextSize : 8000),
         systemPrompt: gs && gs.systemPrompt ? gs.systemPrompt : '',
         jailbreakPrompt: gs && gs._jailbreakPrompt ? gs._jailbreakPrompt : ''
     };
@@ -897,6 +897,34 @@ var GameMemory = {
     // 替代散落各处的 `XXX._ltmDirty = true`。新增写入点一律调用 _markLtmDirty()，
     // 避免遗漏（如 P0-7 的 MemoryManagerUI 各 save* 函数曾漏置脏导致缓存陈旧）。
     _markLtmDirty: function() { this._ltmDirty = true; },
+    // 【P2-20修复】permanentFacts 各 list 数量上限
+    // 原问题：6 个 list 无上限，AI 持续 push 导致 token 预算被永久事实区独占
+    // 对比：worldAnchors 有 30 条上限，importantEvents 有 60/40 预算，timeline 有 50 条上限
+    _PERMANENT_FACTS_LIMITS: { pcIdentity: 5, worldRules: 20, settings: 20, npcProfiles: 30, promises: 20, worldPlaces: 20 },
+    // 【P2-20修复】统一 push 入口：push 后超限则淘汰最旧的非 locked 项，全 locked 则淘汰最旧项
+    _pushPermanentFact: function(listName, item) {
+        var list = this.permanentFacts[listName];
+        if (!Array.isArray(list)) {
+            list = [];
+            this.permanentFacts[listName] = list;
+        }
+        list.push(item);
+        var limit = this._PERMANENT_FACTS_LIMITS[listName] || 20;
+        if (list.length > limit) {
+            // 优先淘汰最旧的非 locked 项
+            var idx = -1;
+            for (var i = 0; i < list.length - 1; i++) { // 不淘汰刚 push 的最后一项
+                if (!list[i].locked) { idx = i; break; }
+            }
+            if (idx >= 0) {
+                list.splice(idx, 1);
+            } else {
+                // 全部 locked，淘汰最旧的（第一项）
+                list.shift();
+            }
+        }
+        this._markLtmDirty();
+    },
     lastInjectionTurn: -1,
     gameClock: { day: 1, period: '早晨', lastUpdateTurn: 0 },
 
@@ -1780,7 +1808,8 @@ var GameMemory = {
             self.permanentFacts.worldRules = self.permanentFacts.worldRules || [];
             parsed.coreRules.forEach(function(rule) {
                 if (!self.permanentFacts.worldRules.some(function(a) { return a && a.content === rule; })) {
-                    self.permanentFacts.worldRules.push({ content: rule, locked: true });
+                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+                    self._pushPermanentFact('worldRules', { content: rule, locked: true });
                 }
             });
         }
@@ -1790,7 +1819,8 @@ var GameMemory = {
             self.permanentFacts.promises = self.permanentFacts.promises || [];
             parsed.promises.forEach(function(p) {
                 if (!self.permanentFacts.promises.some(function(a) { return a && a.content === p; })) {
-                    self.permanentFacts.promises.push({ content: p, locked: true });
+                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+                    self._pushPermanentFact('promises', { content: p, locked: true });
                 }
             });
         }
@@ -1805,7 +1835,8 @@ var GameMemory = {
                     profile = char.name + '【' + char.keywords.join(',') + '】：' + (char.summary || char.identity || '');
                 }
                 if (!self.permanentFacts.npcProfiles.some(function(a) { return a && a.content && a.content.split('【')[0] === char.name; })) {
-                    self.permanentFacts.npcProfiles.push({ content: profile, locked: true, keywords: char.keywords || [] });
+                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+                    self._pushPermanentFact('npcProfiles', { content: profile, locked: true, keywords: char.keywords || [] });
                 }
                 // 角色表
                 if (!self.tables.characters[char.name]) {
@@ -1841,7 +1872,8 @@ var GameMemory = {
                 var desc = arch.type + '：动机-' + (arch.motivation || '未知') + '，关系模式-' + (arch.relationPattern || '未知');
                 if (arch.example) desc += '（例：' + arch.example + '）';
                 if (!self.permanentFacts.npcProfiles.some(function(a) { return a && a.content && a.content.indexOf(arch.type) === 0; })) {
-                    self.permanentFacts.npcProfiles.push({ content: desc, locked: true, keywords: [arch.type, arch.motivation || ''] });
+                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+                    self._pushPermanentFact('npcProfiles', { content: desc, locked: true, keywords: [arch.type, arch.motivation || ''] });
                 }
             });
         }
@@ -1906,7 +1938,8 @@ var GameMemory = {
                 result += '【核心规则】\n' + layers.coreRules + '\n\n';
             }
 
-            var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+            // 【P2-1修复】统一调用 getContextSize()
+            var ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
             if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
             var setupTokens = estimateTokensUtil(layers.fullSetup);
             var setupRatio = setupTokens / ctxSize;
@@ -3325,7 +3358,8 @@ var GameMemory = {
     },
 
     _adaptBudget: function() {
-        var ctxSize = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+        // 【P2-1修复】统一调用 getContextSize()
+        var ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
         if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
         // 【修复】为AI生成保留至少30%的上下文空间，防止输入挤占导致输出为空
         // 原逻辑只留15%，在max_tokens较小时容易导致AI无输出空间

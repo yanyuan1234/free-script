@@ -4756,7 +4756,10 @@ function buildAIRequestBody(messages, options, config) {
     if (filtered.max_tokens != null) {
         var ctxSize = 0;
         try {
-            if (typeof gameState !== 'undefined' && gameState && gameState.contextSize) {
+            // 【P2-1修复】统一调用 getContextSize()
+            if (typeof getContextSize === 'function') {
+                ctxSize = getContextSize();
+            } else if (typeof gameState !== 'undefined' && gameState && gameState.contextSize) {
                 ctxSize = Number(gameState.contextSize) || 0;
             }
         } catch (e) { /* gameState 可能未定义 */ }

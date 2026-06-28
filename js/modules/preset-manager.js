@@ -4,6 +4,16 @@
  * 依赖：smart-config-engine.js
  * 被依赖：regex-manager.js
  */
+// 【P2-14修复】抽取 prompt_order 查找逻辑，消除两处重复 find
+// 优先取单人聊天（character_id=100000）的 order，找不到则取第一个非空 group
+function _findPromptOrderGroup(data) {
+    if (!data || !data.prompt_order || !Array.isArray(data.prompt_order) || data.prompt_order.length === 0) {
+        return null;
+    }
+    return data.prompt_order.find(function(g) { return g && g.character_id === 100000; })
+        || data.prompt_order.find(function(g) { return g != null; });
+}
+
 var PresetManager = {
     presets: [],
     currentPresetIndex: -1,
@@ -554,9 +564,8 @@ var PresetManager = {
             // 【修复排序】记录 prompt_order 中的位置索引，用于保留用户的拖拽排列顺序
             var promptOrderIndex = {};  // identifier/name -> 在 orderArr 中的位置
             if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
-                // 【改进3】优先查找单人聊天(character_id=100000)的prompt_order
-                var orderGroup = data.prompt_order.find(function(g) { return g && g.character_id === 100000; })
-                || data.prompt_order.find(function(g) { return g != null; });
+                // 【P2-14修复】使用抽取的 _findPromptOrderGroup 替代内联重复 find
+                var orderGroup = _findPromptOrderGroup(data);
                 var orderArr = orderGroup && orderGroup.order;
                 if (orderArr && Array.isArray(orderArr)) {
                     orderArr.forEach(function(item, idx) {
@@ -662,8 +671,8 @@ var PresetManager = {
     // 酒馆中 data.prompts 的数组顺序不等于用户拖拽的排列顺序
     // 真正的排序由 prompt_order 决定，必须以此为准
     if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
-        var orderGroup = data.prompt_order.find(function(g) { return g && g.character_id === 100000; })
-        || data.prompt_order.find(function(g) { return g != null; });
+        // 【P2-14修复】使用抽取的 _findPromptOrderGroup 替代内联重复 find
+        var orderGroup = _findPromptOrderGroup(data);
         var orderArr = orderGroup && orderGroup.order;
         if (orderArr && Array.isArray(orderArr) && orderArr.length > 0) {
             // 建立 identifier/name -> 排序索引 的映射

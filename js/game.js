@@ -1482,7 +1482,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 系统提示词/世界书/记忆 → 永远保留（permanent tokens）
         // 聊天历史 → 从最旧开始淘汰，直到不超预算
         // 参考：https://sillytavern.wiki/usage/common-settings/
-        var contextSize = (gameState && gameState.contextSize) || 8000;
+        // 【P2-1修复】统一调用 getContextSize()
+        var contextSize = (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000);
         var maxTokens = (gameState && gameState.maxTokens) || 8192;
         // 酒馆公式：输入预算 = 上下文大小 - 输出预留
         // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
@@ -2270,7 +2271,9 @@ function updateTokenCount(currentResponse) {
         var inputInfo = '';
         if (gameState._lastInputTokens) {
             var inputDisplay = gameState._lastInputTokens > 1000 ? (gameState._lastInputTokens / 1000).toFixed(1) + 'k' : gameState._lastInputTokens;
-            var ctxDisplay = (gameState.contextSize || 8000) > 1000 ? ((gameState.contextSize || 8000) / 1000).toFixed(0) + 'k' : (gameState.contextSize || 8000);
+            // 【P2-1修复】统一调用 getContextSize()（显示路径也统一）
+            var _ctxForDisplay = (typeof getContextSize === 'function') ? getContextSize() : (gameState.contextSize || 8000);
+            var ctxDisplay = _ctxForDisplay > 1000 ? (_ctxForDisplay / 1000).toFixed(0) + 'k' : _ctxForDisplay;
             inputInfo = ' | 请求: ' + inputDisplay + '/' + ctxDisplay + ' (' + (gameState._lastContextUsage || 0) + '%)';
         }
         chatTokenEl.textContent = '上下文: 约 ' + displayText + ' token' + inputInfo + ' | ' + gameState.conversationHistory.length + ' 条消息';

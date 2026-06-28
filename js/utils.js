@@ -118,9 +118,25 @@ if (typeof document !== 'undefined') {
 // 核心思路：context 越大，截断越宽松；context 越小，截断越激进
 // 基准值以 8K context 为1.0x，按比例缩放，无上限
 // 8K→1x, 32K→4x, 128K→16x, 256K→32x, 512K→64x, 1M→128x
+
+// 【P2-1修复】contextSize 统一读取入口
+// 原问题：同一语义（模型上下文窗口大小）被 gameState.contextSize 与 StateManager.get('world.contextSize')
+// 两个真相源承载，各读取点 fallback 不一致（8000 vs 8192 vs 动态探测）。
+// 统一入口：优先 StateManager（权威源），回落 legacy gameState，最后兜底 8000。
+function getContextSize() {
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var v = StateManager.get('world.contextSize');
+        if (typeof v === 'number' && v > 0) return v;
+    }
+    if (typeof gameState !== 'undefined' && gameState && gameState.contextSize) {
+        var n = Number(gameState.contextSize);
+        if (!isNaN(n) && n > 0) return n;
+    }
+    return 8000;
+}
+
 function getContextScale() {
-    const ctx = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('world.contextSize') || 8000) : 8000;
-    return Math.max(0.5, ctx / 8000);
+    return Math.max(0.5, getContextSize() / 8000);
 }
 
 // 获取各层的动态截断配置（供记忆系统使用）

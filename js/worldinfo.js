@@ -1581,7 +1581,8 @@ var WorldInfo = {
 
     // 递归扫描
     if (this.settings.recursive) {
-        activated = this.recursiveScan(activated, plainText, scanText, 3);
+        // 【P2-12修复】传入已构建的 allEntries，避免 recursiveScan 每步重新全量构建
+        activated = this.recursiveScan(activated, plainText, scanText, 3, allEntries);
     }
 
     // 【修复6】包含组（Inclusion Group）逻辑
@@ -1594,7 +1595,8 @@ var WorldInfo = {
     // Token预算控制（传入实际上下文长度）
     // 【修复 P0-1】用 contextSize（输入上下文窗口）而非 maxTokens（输出上限）
     // maxTokens 通常只有 4096，而 contextSize 可达 128000，用错会导致世界书预算被严重低估
-    var contextLen = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+    // 【P2-1修复】统一调用 getContextSize()，消除 contextSize 多读取路径
+    var contextLen = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
     activated = this.applyBudget(activated, contextLen);
 
     return activated;
@@ -1622,13 +1624,15 @@ var WorldInfo = {
         if (escapedKeys.length === 0) return false;
         // 【P2-13修复】matchKeys 全词匹配路径也使用 _regexCache，与 matchKeysAll 缓存策略一致
         // 旧实现每次 new RegExp，scan/recursiveScan 热路径重复编译
-        var _cacheKey = '(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)' + (caseSensitive ? '' : 'i');
+        // 【P2-13 补丁】_regexCache 是 plain object（line 14 初始化为 {}），不是 Map，
+        // 用 .get/.set 会抛 TypeError。改用 bracket notation，与 matchKeysAll（line 1697）一致。
+        var _cacheKey = '(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)' + (caseSensitive ? '|cs' : '|ci');
         var self = this;
-        if (!self._regexCache) self._regexCache = new Map();
-        var combinedRegex = self._regexCache.get(_cacheKey);
+        if (!self._regexCache) self._regexCache = {};
+        var combinedRegex = self._regexCache[_cacheKey];
         if (!combinedRegex) {
             combinedRegex = new RegExp('(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
-            self._regexCache.set(_cacheKey, combinedRegex);
+            self._regexCache[_cacheKey] = combinedRegex;
         }
         return combinedRegex.test(haystack);
     },
@@ -1706,7 +1710,7 @@ var WorldInfo = {
     },
 
     // 递归扫描
-    recursiveScan: function(activated, plainText, scanText, maxSteps) {
+    recursiveScan: function(activated, plainText, scanText, maxSteps, allEntries) {
         const self = this;
         var activatedIds = {};
         activated.forEach(function(e) { activatedIds[e.uid] = true; });
@@ -1724,8 +1728,9 @@ var WorldInfo = {
             bufferWithPrefix = bufferWithPrefix + '\nSystem\x01' + newContent;
             var newActivated = [];
 
-            // 获取所有已启用书的条目（用于递归扫描）
-            var allEntries = self.getAllEnabledEntries();
+            // 【P2-12修复】使用调用方传入的 allEntries，避免每步重新全量构建
+            // scan() 入口已构建一次，递归 3 步原先会重复构建 3 次
+            allEntries = allEntries || self.getAllEnabledEntries();
 
             Object.keys(allEntries).forEach(function(uid) {
                 var entry = allEntries[uid];

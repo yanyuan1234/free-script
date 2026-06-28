@@ -5,6 +5,25 @@
  * 依赖：regex-manager.js（间接，通过 PresetManager 注入）
  * 被依赖：preset-manager.js（prompt 渲染时调用 process）
  */
+// 【P2-11修复】timestamp 宏预编译正则 Map
+// 原实现 timestamp 函数每次调用都在 keys.forEach 内执行 new RegExp(k, 'g')，
+// 对 12 个格式占位符各编译一次正则。{{timestamp:FORMAT}} 宏每条消息渲染都可能触发。
+// 现预编译到模块级常量，仅编译一次。
+var _TIMESTAMP_REGEX_MAP = {
+    'YYYY': /YYYY/g,
+    'MM': /MM/g,
+    'DD': /DD/g,
+    'HH': /HH/g,
+    'mm': /mm/g,
+    'ss': /ss/g,
+    'M': /M/g,
+    'D': /D/g,
+    'H': /H/g,
+    'm': /m/g,
+    's': /s/g
+};
+var _TIMESTAMP_SORTED_KEYS = Object.keys(_TIMESTAMP_REGEX_MAP).sort(function(a, b) { return b.length - a.length; });
+
 var MacroEngine = {
     // 局部变量存储（当前游戏会话级别）
     _localVars: {},
@@ -584,10 +603,10 @@ var MacroEngine = {
             's': d.getSeconds()
     };
             var result = format;
-            // 先替换长的再替换短的，避免冲突
-            var keys = Object.keys(map).sort(function(a, b) { return b.length - a.length; });
-            keys.forEach(function(k) {
-                result = result.replace(new RegExp(k, 'g'), map[k]);
+            // 【P2-11修复】使用模块级预编译正则 _TIMESTAMP_REGEX_MAP，避免每次 new RegExp
+            // 按长度降序替换（先替换长的再替换短的，避免冲突）
+            _TIMESTAMP_SORTED_KEYS.forEach(function(k) {
+                result = result.replace(_TIMESTAMP_REGEX_MAP[k], map[k]);
                 });
             return result;
         },
