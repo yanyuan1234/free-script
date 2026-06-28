@@ -93,6 +93,16 @@ function favToWidth(fav) {
     return Math.max(0, Math.min(100, 50 + fav / 2));
 }
 
+// 【P2-26修复】魔法数字抽常量，消除散落各处的硬编码数值
+// - 头像相关：AVATAR_MAX_DIM / AVATAR_MAX_SIZE（2 处使用，位于 3862/3875 与 6800/6812）
+// - NPC 聊天历史裁剪阈值与保留条数（7130/7131）
+// - 撤销栈上限（与 core.js:1869 _MAX_UNDO_HISTORY / UndoMutator.pushSnapshot 默认值一致）
+var AVATAR_MAX_DIM = 512;                      // 头像最大宽高（px）
+var AVATAR_MAX_SIZE = 2 * 1024 * 1024;         // 头像最大文件大小（2MB）
+var NPC_CHAT_HISTORY_MAX = 100;                // NPC 聊天历史触发裁剪阈值
+var NPC_CHAT_HISTORY_KEEP = 50;                // NPC 聊天历史保留条数（触发裁剪后只保留最近 N 条）
+var UNDO_HISTORY_LIMIT = 50;                   // 撤销栈上限（toast 显示用，与 core.js _MAX_UNDO_HISTORY 一致）
+
 // ========================================
 // 【P2-阶段3-14】按类型筛选世界模块 helper
 // 统一 phone-ui.js 中 13+ 处 (gameState._worldModules || []).filter(m => m.type === 'xxx')
@@ -883,7 +893,7 @@ function renderWorldModules(modules) {
     }
     if (gameState._worldModules.length === 0) {
         subContentEl.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><p>暂无世界信息</p></div>';
+            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无世界信息" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><p>暂无世界信息</p></div>';
         if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
         return;
     }
@@ -2063,7 +2073,7 @@ function renderForumPage() {
 
     if (commentMods.length === 0) {
         return '<div class="forum-page">' +
-            '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);"><div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无论坛帖子</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div></div>' +
+            '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);"><div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无论坛帖子" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无论坛帖子</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div></div>' +
             '<div class="forum-tab-bar"><div class="forum-tab-item active"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div><div class="forum-tab-item"><div class="forum-tab-icon">#</div><span>话题</span></div><div class="forum-tab-item"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div></div>' +
             '</div>';
     }
@@ -2261,7 +2271,7 @@ function renderRankPage() {
     var rowHtml = '';
     if (rankItems.length === 0) {
         rowHtml =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg></div><p>暂无排行数据</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div>';
+            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无排行数据" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg></div><p>暂无排行数据</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div>';
     } else {
         rowHtml = rankItems.map(function(it, i) {
             var rankClass = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
@@ -2594,7 +2604,7 @@ function renderMailPage() {
     var mailListHtml = '';
     if (allMails.length === 0) {
         mailListHtml =
-            '<div class="empty-state" style="padding:60px 0;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>收件箱为空</p><p style="font-size:12px;margin-top:4px;">暂无邮件</p></div>';
+            '<div class="empty-state" style="padding:60px 0;"><div class="empty-state-icon"><svg role="img" aria-label="收件箱为空" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>收件箱为空</p><p style="font-size:12px;margin-top:4px;">暂无邮件</p></div>';
     } else {
         mailListHtml = allMails.map(function(mail, i) {
             var unread = mail.read ? '' : ' unread';
@@ -2670,7 +2680,7 @@ function renderShopPage() {
     var goodsHtml = '';
     if (allGoods.length === 0) {
         goodsHtml =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></div><p>商店暂无商品</p><p style="font-size:12px;margin-top:4px;">探索世界解锁更多商品</p></div>';
+            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="商店暂无商品" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></div><p>商店暂无商品</p><p style="font-size:12px;margin-top:4px;">探索世界解锁更多商品</p></div>';
     } else {
         goodsHtml = allGoods.map(function(g, gi) {
             var icon = g.icon || '包';
@@ -3395,7 +3405,7 @@ function renderBag(items) {
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     if (currentBag.length === 0) {
         container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
+            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="背包空空如也" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
         return;
     }
     // 【修复X3】物品数据需要转义；并使用与 renderItemsPage 一致的 items-box 结构，保证 filterBagItems 仍可工作
@@ -3483,7 +3493,7 @@ function renderRecapPage() {
                 escapeHtml(memSummary.substring(0, 500)) + '</div></div></div>';
         } else {
             container.innerHTML =
-                '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
+                '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无剧情记录" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
         }
     } else {
         // 【修复X7/BUG-03】剧情回顾摘要需要转义；卡片标题优先用 story title
@@ -3859,7 +3869,7 @@ function bindEvents() {
             var file = e.target.files[0];
             if (!file) return;
             // 图片大小限制：最大2MB
-            var maxSize = 2 * 1024 * 1024;
+            var maxSize = AVATAR_MAX_SIZE;
             if (file.size > maxSize) {
                 UI.toast('图片太大，请选择小于2MB的图片');
                 e.target.value = '';
@@ -3872,7 +3882,7 @@ function bindEvents() {
                 img.onload = function() {
                     var canvas = document.createElement('canvas');
                     var ctx = canvas.getContext('2d');
-                    var maxDim = 512;
+                    var maxDim = AVATAR_MAX_DIM;
                     var w = img.width;
                     var h = img.height;
                     if (w > maxDim || h > maxDim) {
@@ -5157,7 +5167,7 @@ function deleteLastTurn() {
             if (parsed.data && parsed.data.choices) renderChoices(parsed.data.choices);
             else renderChoices([{id: 'A', text: '继续'}, {id: 'B', text: '观察'}, {id: 'C', text: '等待'}]);
         }
-        UI.toast('已撤销 (' + UndoMutator.size() + '/50)');
+        UI.toast('已撤销 (' + UndoMutator.size() + '/' + UNDO_HISTORY_LIMIT + ')');
         autoSave();
         return;
     }
@@ -6797,7 +6807,7 @@ function changeNpcAvatar() {
         var file = e.target.files[0];
         if (!file) return;
         // 图片大小限制：最大2MB
-        var maxSize = 2 * 1024 * 1024; // 2MB
+        var maxSize = AVATAR_MAX_SIZE; // 2MB
         if (file.size > maxSize) {
             UI.toast('图片太大，请选择小于2MB的图片');
             return;
@@ -6809,7 +6819,7 @@ function changeNpcAvatar() {
             img.onload = function() {
                 var canvas = document.createElement('canvas');
                 var ctx = canvas.getContext('2d');
-                var maxDim = 512; // 最大宽高
+                var maxDim = AVATAR_MAX_DIM; // 最大宽高
                 var w = img.width;
                 var h = img.height;
                 if (w > maxDim || h > maxDim) {
@@ -7127,8 +7137,8 @@ function addNpcChatBubble(role, text, skipPush) {
             text: text
         });
         // 限制聊天历史长度，防止内存泄漏
-        if (npcChatState.chatHistory.length > 100) {
-            npcChatState.chatHistory = npcChatState.chatHistory.slice(-50);
+        if (npcChatState.chatHistory.length > NPC_CHAT_HISTORY_MAX) {
+            npcChatState.chatHistory = npcChatState.chatHistory.slice(-NPC_CHAT_HISTORY_KEEP);
         }
         if (gameState) {
             if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
@@ -7279,7 +7289,7 @@ function renderNpcPage() {
     if (!container) return;
     if (chars.length === 0) {
         container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无角色</p><p style="font-size:12px;margin-top:4px;">AI会在剧情中自动创造角色</p></div>';
+            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无角色" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无角色</p><p style="font-size:12px;margin-top:4px;">AI会在剧情中自动创造角色</p></div>';
     } else {
         container.innerHTML = chars.map(function(c) {
             var fav = Number(c.favorability) || 0;
