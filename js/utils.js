@@ -162,6 +162,8 @@ function truncateByChars(text, maxChars, suffix) {
 // ========================================
 
 // 安全整数转换：无效值（null/undefined/空串/NaN）返回默认值
+// 注意：parseInt 会吞掉起始数字后的非数字字符，如 safeInt("123abc") → 123
+// 若需严格校验（拒绝非纯数字输入），请在调用方前置 /^-?\d+$/ 正则检查
 function safeInt(v, defaultVal) {
     if (v === null || v === undefined || v === '') return defaultVal || 0;
     var n = parseInt(v, 10);

@@ -786,7 +786,7 @@
     .preset-card .preset-card-actions { display:flex; gap:6px; margin-top:8px; }
     .preset-card .preset-card-actions button, .regex-card .regex-card-actions button { padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--text-secondary); transition: transform 0.15s, opacity 0.15s, background 0.15s; }
     .preset-card .preset-card-actions button:active, .regex-card .regex-card-actions button:active { background:var(--accent-soft); }
-    .preset-card .preset-card-actions button.delete-btn, .regex-card .regex-card-actions button.delete-btn { color:var(--danger); background:#fff; border-color:var(--danger); }
+    .preset-card .preset-card-actions button.delete-btn, .regex-card .regex-card-actions button.delete-btn { color:var(--danger); background:var(--card); border-color:var(--danger); }
     /* 正则卡片 */
     .regex-card { padding:12px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s; }
     .regex-card .regex-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }

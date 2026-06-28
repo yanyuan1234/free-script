@@ -195,6 +195,57 @@ if (document.readyState === 'loading') {
     initApp();
 }
 
+// 【P2-19 阶段2】原 index.html 内联脚本外置：narrativeEyes 可调开关绑定
+(function() {
+    document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
+        cb.addEventListener('change', function() {
+            if (!gameState.narrativeEyes) gameState.narrativeEyes = {};
+            gameState.narrativeEyes[this.dataset.eye] = this.checked;
+            // 限制最多 5 项开启，避免矛盾基调同时注入
+            var checked = document.querySelectorAll('.narrative-eye-toggle:checked');
+            if (checked.length > 5) {
+                this.checked = false;
+                gameState.narrativeEyes[this.dataset.eye] = false;
+                if (typeof UI !== 'undefined' && UI.toast) UI.toast('最多保留 5 项叙事基调，避免矛盾');
+            }
+            if (typeof autoSave === 'function') autoSave();
+        });
+    });
+})();
+
+// 【P2-19 阶段2】原 index.html 内联脚本外置：版本徽章点击清缓存 + 硬刷
+(function () {
+    function bind() {
+        var badge = document.getElementById('buildVersionBadge');
+        if (!badge || badge.__bound) return;
+        badge.__bound = true;
+        badge.addEventListener('click', async function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                if (window.caches && caches.keys) {
+                    var keys = await caches.keys();
+                    await Promise.all(keys.map(function (k) { return caches.delete(k); }));
+                }
+            } catch (err) { /* ignore */ }
+            try {
+                if (window.localStorage) {
+                    // 不清用户的游戏存档，只清"导航历史/会话"类缓存
+                }
+            } catch (err) { /* ignore */ }
+            // 硬刷（绕过 HTTP 缓存）
+            var u = new URL(window.location.href);
+            u.searchParams.set('_', Date.now().toString(36));
+            window.location.replace(u.toString());
+        });
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', bind);
+    } else {
+        bind();
+    }
+})();
+
 // 【P2-D13 阶段4】暴露 FreeScript 命名空间与 unmount 入口
 // 便于热重载 / 嵌入场景下主动释放监听器与定时器
 window.FreeScript = window.FreeScript || {};

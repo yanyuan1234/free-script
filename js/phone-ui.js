@@ -51,6 +51,11 @@ function subtractPlayerMoney(amount) {
 }
 
 // ========================================
+// 【P2-11/12 阶段2】UI 常量统一抽取，避免局部重复定义
+// ========================================
+var AVATAR_COLORS = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#1890ff', '#52c41a'];
+
+// ========================================
 // 【P2-阶段3-14】按类型筛选世界模块 helper
 // 统一 phone-ui.js 中 13+ 处 (gameState._worldModules || []).filter(m => m.type === 'xxx')
 // 支持单类型字符串或类型数组（兼容 BUG-007 的 comments/forum 双类型）
@@ -1607,7 +1612,6 @@ function renderChatPage() {
             '</div>';
     }
 
-    var colors = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
     var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
@@ -1618,8 +1622,8 @@ function renderChatPage() {
             var h = now.getHours();
             var m = String(now.getMinutes()).padStart(2, '0');
             var timeStr = (h < 12 ? '上午' : '下午') + (h > 12 ? h - 12 : h) + ':' + m;
-            var colorIdx = name.charCodeAt(0) % colors.length;
-            var avatarColor = colors[colorIdx];
+            var colorIdx = name.charCodeAt(0) % AVATAR_COLORS.length;
+            var avatarColor = AVATAR_COLORS[colorIdx];
             var lastMsg = '点击开始对话';
             var unreadNpc = 0;
             // 优先用 AI 生成的最新消息
@@ -1995,9 +1999,6 @@ function renderForumPage() {
     var _key = 'forum:' + commentMods.length + '|' + _lastSig;
     if (shouldSkipPageRender('renderForumPage', _key)) return;
     var playerName = gameState.playerName || '我';
-    var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2',
-        '#1890ff', '#52c41a'
-    ];
     var tagClasses = ['hot', 'bao', 'xin', 'hot', 'bao', 'xin'];
     var timeLabels = ['刚刚', '1分钟前', '3分钟前', '5分钟前', '10分钟前', '半小时前', '1小时前', '2小时前', '昨天', '前天'];
 
@@ -2028,7 +2029,7 @@ function renderForumPage() {
     var feedItems = commentMods.map(function(mod, idx) {
         var author = mod.author || '匿名';
         var avatarChar = author ? author.charAt(0) : '?';
-        var avatarColor = colors[idx % colors.length];
+        var avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
         var timeLabel = timeLabels[idx % timeLabels.length];
         // 使用确定性hash生成固定数值
         var seed = 0;
@@ -2060,11 +2061,11 @@ function renderForumPage() {
     var postDetails = commentMods.map(function(mod, idx) {
         var author = mod.author || '匿名';
         var avatarChar = author ? author.charAt(0) : '?';
-        var avatarColor = colors[idx % colors.length];
+        var avatarColor = AVATAR_COLORS[idx % AVATAR_COLORS.length];
         var comments = mod.comments || [];
         var replyHtml = comments.map(function(cm, ci) {
             var cmChar = (cm.name || '匿').charAt(0);
-            var cmColor = colors[(idx + ci + 3) % colors.length];
+            var cmColor = AVATAR_COLORS[(idx + ci + 3) % AVATAR_COLORS.length];
             var isThread = cm.replyTo ? ' thread' : '';
             var replyPrefix = cm.replyTo ? '<span class="forum-at-user">@' + escapeHtml(cm.replyTo) +
                 '</span> ' : '';
@@ -2351,7 +2352,6 @@ function renderDiaryPage() {
     var diaries = gameState._npcDiaries || {};
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
     var chars = Object.values(gameState.allCharacters || {});
-    var colors = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2'];
     var now = new Date();
     var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
         '0');
@@ -2395,7 +2395,7 @@ function renderDiaryPage() {
         } else {
             listHtml = npcNames.map(function(npcName) {
                 var charIdx = chars.findIndex(function(c) { return c.name === npcName; });
-                var av = charIdx >= 0 ? colors[charIdx % colors.length] : '#8d6e63';
+                var av = charIdx >= 0 ? AVATAR_COLORS[charIdx % AVATAR_COLORS.length] : '#8d6e63';
                 var entriesArr = diaries[npcName].entries || [];
                 var mCount = (diaries[npcName].memos || []).length;
                 // 检测有多少篇提到玩家
@@ -2433,7 +2433,7 @@ function renderDiaryPage() {
     var charIdx = chars.findIndex(function(c) {
         return c.name === currentDiaryNpc;
     });
-    if (charIdx >= 0) avatarColor = colors[charIdx % colors.length];
+    if (charIdx >= 0) avatarColor = AVATAR_COLORS[charIdx % AVATAR_COLORS.length];
 
     var allEntries = npcData.entries || [];
     var _playerName = gameState.playerName || '';

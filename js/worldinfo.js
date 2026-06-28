@@ -10,6 +10,8 @@ var WorldInfo = {
         tokenBudgetCap: 0,  // token预算硬上限（0=无限制）
         recursive: true
     },
+    // 【P2-7 阶段2】正则缓存，避免 scan 时重复 new RegExp
+    _regexCache: {},
     // 公共辅助函数：获取编辑面板中所有自定义checkbox元素
     _getEditCheckboxes: function() {
         return {
@@ -1674,14 +1676,21 @@ var WorldInfo = {
         var caseSensitive = entry.caseSensitive || false;
 
         var text = caseSensitive ? haystack : haystack.toLowerCase();
+        var self = this;
 
         return keys.every(function(key) {
             if (!key) return true;
             var k = caseSensitive ? key : key.toLowerCase();
             if (matchWholeWords) {
-                var regex = new RegExp('(?:^|\\W)(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
+                // 【P2-7 阶段2】使用实例级正则缓存，避免每次 scan 重复 new RegExp
+                var cacheKey = k + '|' + caseSensitive + '|' + matchWholeWords;
+                var regex = self._regexCache[cacheKey];
+                if (!regex) {
+                    regex = new RegExp('(?:^|\\W)(' + k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
+                    self._regexCache[cacheKey] = regex;
+                }
                 return regex.test(haystack);
-                } else {
+            } else {
                 return text.indexOf(k) !== -1;
             }
         });

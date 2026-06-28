@@ -609,7 +609,7 @@ var UI = {
         var content = document.createElement('div');
         content.className = 'modal-content';
         content.setAttribute('role', 'document');
-        content.innerHTML = opts.html || '';
+        content.innerHTML = (typeof sanitizeHtml === 'function') ? sanitizeHtml(opts.html || '') : (opts.html || '');
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
         document.body.appendChild(overlay);
@@ -1126,13 +1126,11 @@ var LocalGameAPI = {
     }
     // 【修复P0-1】最终错误附带各配置失败原因，让用户知道真正失败原因
     // 只保留前 3 条原因避免过长，每条截断到 100 字符
-    // 【P3-M5 阶段4】内联 shortReasons（仅 1 处使用，省一个中间变量）
-    var reasonSummary = failReasons.length > 0
+    throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + (failReasons.length > 0
         ? '\n失败原因：\n' + failReasons.slice(0, 3).map(function(r) {
             return r.length > 100 ? truncateByChars(r, 100, '...') : r;
         }).join('\n')
-        : '';
-    throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + reasonSummary);
+        : ''));
     },
     _logRequest(slot, success, error, durationMs) {
         var cfg = this._configs[slot];
@@ -2580,6 +2578,17 @@ return null;
 function escapeRegExp(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
+// 【P2-6 阶段2】正则缓存，避免热路径重复 new RegExp
+var _regexCache = new Map();
+function _getCachedRegExp(pattern, flags) {
+    var key = pattern + (flags || '');
+    var re = _regexCache.get(key);
+    if (!re) {
+        re = new RegExp(pattern, flags || '');
+        _regexCache.set(key, re);
+    }
+    return re;
+}
 function extractStr(text, field) {
     const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
     if (!m) return null;
@@ -3973,7 +3982,13 @@ return '发生错误：' + m;
 
 function escapeHtml(text) {
     if (!text) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/`/g, '&#96;');
 }
 
 // 内联 HTML 属性值转义：用于 onclick="fn('...')" 等场景

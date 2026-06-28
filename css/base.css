@@ -133,55 +133,6 @@
     --deadline-warn: #ff6b6b;
 }
 
-@media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-        --bg: #1a1a1a;
-        --card: #2d2d2d;
-        --border: rgba(255, 255, 255, 0.08);
-        --text: #e0e0e0;
-        --text-secondary: #a0a0a0;
-        --text-tertiary: #707070;
-        --accent: #a0a0a0;
-        --accent-soft: rgba(255, 255, 255, 0.08);
-        --shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-        --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.4);
-        --danger: #ff453a;
-        --success: #32d74b;
-        --thought-bg: #2a2a2a;
-        --thought-border: #3a3a3a;
-        --bg-secondary: #252525;
-        --warning: #ffb340;
-        --dialogue-color: #909090;
-        --bg-tertiary: #333333;
-        --bg-hover: rgba(255, 255, 255, 0.06);
-        --primary: var(--accent);
-        --primary-hover: #b0b0b0;
-        --rarity-common: #7a7a7a;
-        --rarity-uncommon: #40a9ff;
-        --rarity-uncommon-bg: rgba(24, 144, 255, 0.16);
-        --rarity-rare: #b37feb;
-        --rarity-rare-bg: rgba(114, 46, 209, 0.18);
-        --rarity-legendary: #ffa940;
-        --rarity-legendary-bg: rgba(250, 140, 22, 0.18);
-        --rarity-legendary-bg-strong: rgba(255, 152, 0, 0.3);
-        --rank-top2: #ff9c6e;
-        --rank-top3: #ffd666;
-        --rank-self-bg: rgba(24, 144, 255, 0.16);
-        /* 【P1-SY1 阶段3-4】自动暗色模式：与 [data-theme="dark"] 块保持一致 */
-        --ach-common-bg: #2a2a2a;
-        --ach-common-text: #a0a0a0;
-        --ach-rare-bg: rgba(21, 101, 192, 0.18);
-        --ach-rare-text: #64b5f6;
-        --ach-epic-bg: rgba(123, 31, 162, 0.18);
-        --ach-epic-text: #ce93d8;
-        --ach-legendary-bg: rgba(230, 81, 0, 0.18);
-        --ach-legendary-text: #ffb74d;
-        --task-highlight: #4a90e2;
-        --ach-category-active: #4a90e2;
-        --deadline-warn: #ff6b6b;
-    }
-}
-
 /* ================================================================
    RESET & BASE
 ================================================================ */
@@ -1668,8 +1619,7 @@ input:checked + .slider:before {
 .moment-avatar,
 .diary-npc-avatar,
 .mail-detail-avatar,
-.diary-user-avatar,
-.chat-avatar {
+.diary-user-avatar {
     border-radius: 50%;
     overflow: hidden;
     display: flex;

@@ -2,13 +2,9 @@
 <html lang="zh-CN">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
         <meta name="theme-color" content="#f5f5f0">
         <meta name="apple-mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-status-bar-style" content="default">
-        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-        <meta http-equiv="Pragma" content="no-cache">
-        <meta http-equiv="Expires" content="0">
         <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' data: blob:; frame-src 'none'; object-src 'none';">
         <title>自由剧本 · FREE SCRIPT</title>
         <link rel="icon" type="image/svg+xml" href="favicon.svg">
@@ -2401,25 +2397,7 @@
                                         </div>
                                         <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">提示：喜剧与悬疑、日常与命运等基调天然互斥，建议只保留 3-5 项</div>
                                     </div>
-                                    <script>
-                                    // 【优化·narrativeEyes 可调开关】绑定 onchange 事件，最多保留 5 项
-                                    (function() {
-                                        document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
-                                            cb.addEventListener('change', function() {
-                                                if (!gameState.narrativeEyes) gameState.narrativeEyes = {};
-                                                gameState.narrativeEyes[this.dataset.eye] = this.checked;
-                                                // 限制最多 5 项开启，避免矛盾基调同时注入
-                                                var checked = document.querySelectorAll('.narrative-eye-toggle:checked');
-                                                if (checked.length > 5) {
-                                                    this.checked = false;
-                                                    gameState.narrativeEyes[this.dataset.eye] = false;
-                                                    if (typeof UI !== 'undefined' && UI.toast) UI.toast('最多保留 5 项叙事基调，避免矛盾');
-                                                }
-                                                if (typeof autoSave === 'function') autoSave();
-                                            });
-                                        });
-                                    })();
-                                    </script>
+
                                     <!-- 【修复P2-3】移除 NSFW 描写开关——squelchRules 是死代码，该开关无效 -->
                                 </div>
                             </div>
@@ -2827,42 +2805,6 @@
     <script src="js/tavern-compat.js" defer></script>
     <script src="js/init.js" defer></script>
     <script src="js/patch.js" defer></script>
-
-    <script>
-    // 版本徽章：点击 = 清缓存 + 硬刷，避免浏览器加载旧 JS
-    (function () {
-        function bind() {
-            var badge = document.getElementById('buildVersionBadge');
-            if (!badge || badge.__bound) return;
-            badge.__bound = true;
-            badge.addEventListener('click', async function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                try {
-                    if (window.caches && caches.keys) {
-                        var keys = await caches.keys();
-                        await Promise.all(keys.map(function (k) { return caches.delete(k); }));
-                    }
-                } catch (err) { /* ignore */ }
-                try {
-                    if (window.localStorage) {
-                        // 不清用户的游戏存档，只清"导航历史/会话"类缓存
-                        // 这里不动 localStorage，避免误删游戏数据
-                    }
-                } catch (err) { /* ignore */ }
-                // 硬刷（绕过 HTTP 缓存）
-                var u = new URL(window.location.href);
-                u.searchParams.set('_', Date.now().toString(36));
-                window.location.replace(u.toString());
-            });
-        }
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', bind);
-        } else {
-            bind();
-        }
-    })();
-    </script>
 
 </body>
 </html>
