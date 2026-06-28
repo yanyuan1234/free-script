@@ -8,6 +8,73 @@
 // ========================================
 // 初始化
 // ========================================
+
+// 【P1-7】原 patch.js 全局错误处理迁入 init.js
+GlobalCleanup.registerListener(window, 'error', function(e) {
+    // 过滤图片/CSS等资源加载错误（不显示给用户）
+    if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'LINK' || e.target.tagName === 'SCRIPT')) {
+        return;
+    }
+    console.error('[全局错误]', e.message, 'at', e.filename, ':', e.lineno);
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('发生错误: ' + e.message);
+    }
+}, true);
+
+GlobalCleanup.registerListener(window, 'unhandledrejection', function(e) {
+    console.error('[未处理的Promise]', e.reason);
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('异步操作失败');
+    }
+    e.preventDefault();
+});
+
+// 【P1-7】原 patch.js gameState 路径兜底初始化迁入 init.js
+if (typeof gameState === 'undefined') {
+    window.gameState = {};
+}
+
+(function ensureGameStatePaths() {
+    var ensureExists = function(path, defaultValue) {
+        defaultValue = defaultValue !== undefined ? defaultValue : {};
+        var keys = path.split('.');
+        var current = window;
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            if (i === keys.length - 1) {
+                if (current[key] === undefined) {
+                    current[key] = defaultValue;
+                }
+            } else {
+                if (!current[key] || typeof current[key] !== 'object') {
+                    current[key] = {};
+                }
+                current = current[key];
+            }
+        }
+    };
+
+    ensureExists('gameState.allCharacters', {});
+    ensureExists('gameState.currentBag', []);
+    ensureExists('gameState.currentQuests', []);
+    ensureExists('gameState.relationships', []);
+    ensureExists('gameState.keyEvents', []);
+    ensureExists('gameState.conversationHistory', []);
+
+    if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
+    if (!gameState._theaterContent) gameState._theaterContent = {};
+    if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
+    if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
+    if (!gameState._chatRemarks) gameState._chatRemarks = {};
+    if (!gameState._blockedNpcs) gameState._blockedNpcs = {};
+    if (!gameState._presetApps) gameState._presetApps = {};
+    if (!gameState._depthPrompts) gameState._depthPrompts = {};
+    if (!gameState._positionPrompts) gameState._positionPrompts = {};
+    if (!Array.isArray(gameState._afterChatPrompts)) gameState._afterChatPrompts = [];
+    if (!Array.isArray(gameState._undoHistory)) gameState._undoHistory = [];
+    if (!gameState.pinnedModules) gameState.pinnedModules = {};
+})();
+
 async function initApp() {
     try {
     // 防止重复初始化
@@ -79,6 +146,9 @@ async function initApp() {
 
         // 绑定事件
         bindEvents();
+
+        // 【P1-8 阶段3】game.js 原文件加载时立即执行的 DOM 操作，收拢到 initApp 统一调用
+        if (typeof registerGameStartListener === 'function') registerGameStartListener();
 
         // 【P0修复】全局事件委托：替代内联 onclick，配合白名单 sanitizeHtml
         // 所有 data-action 属性的点击事件通过委托处理，避免内联事件被 XSS 利用

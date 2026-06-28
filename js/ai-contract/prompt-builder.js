@@ -95,13 +95,63 @@ const PromptBuilder = {
         this.registerSection('terms', (ctx) => ctx.termsPrompt || '', { order: 25 });
 
         // protagonist：主角设定
+        // 【P1-2 阶段3】原 game.js buildProtagonistPrompt() 逻辑迁入此处，统一由 PromptBuilder 组装
         this.registerSection('protagonist', function(ctx) {
+            const mc = ctx.protagonistSetup || {};
+            if (mc && Object.keys(mc).length > 0) {
+                const lines = ['【主角设定】'];
+                if (mc.mcName) lines.push('姓名: ' + mc.mcName);
+                if (mc.mcGender) lines.push('性别: ' + mc.mcGender);
+                if (mc.mcAge) lines.push('年龄: ' + mc.mcAge);
+                if (mc.mcIdentity) lines.push('身份: ' + mc.mcIdentity);
+                if (mc.mcPersonality) lines.push('性格: ' + mc.mcPersonality);
+                if (mc.mcAppearance) lines.push('外貌: ' + mc.mcAppearance);
+                if (mc.mcAbility) lines.push('特殊能力: ' + mc.mcAbility);
+                if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
+                lines.push('');
+                lines.push('主角是玩家操控的角色——player字段对应主角信息，characters字段对应NPC。');
+                const hasUserPrompt = ctx.userPrompt && ctx.userPrompt.length > 200;
+                const hasMemoryIdentity = ctx.pcIdentity && ctx.pcIdentity.length > 0;
+                if (hasUserPrompt && hasMemoryIdentity) {
+                    lines.push('提示：主角身份已在【世界描述】和【核心设定】中给出，此处仅作对照。三处冲突时以【核心设定】 > 【世界描述】 > 此处 为准。');
+                } else if (hasUserPrompt) {
+                    lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');
+                } else if (hasMemoryIdentity) {
+                    lines.push('提示：主角身份已在【核心设定】中给出，以【核心设定】为准。');
+                }
+                lines.push('');
+                return lines.join('\n');
+            }
+            // fallback：从 player 对象取简单信息
             const player = ctx.player || {};
             const name = player.name || ctx.playerName || '';
             const identity = player.identity || ctx.playerIdentity || '';
             if (!name && !identity) return '';
             return '【主角设定】\n' + (name ? '姓名：' + name + '\n' : '') + (identity ? '身份：' + identity : '');
         }, { order: 30 });
+
+        // preference：玩家偏好（原 game.js _prefSection 逻辑迁入）
+        this.registerSection('preference', function(ctx) {
+            const macroVars = ctx.macroVars || {};
+            const keys = ['字数总要求','单段落字数','叙述视角','char代词','user代词','演绎授权','转述授权','推进节奏','文风指导','起始标签'];
+            const hasAny = keys.some(function(k) {
+                var v = macroVars[k];
+                return v && String(v).trim();
+            });
+            if (!hasAny) return '';
+            return '【玩家偏好】\n' +
+                '这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：\n' +
+                '- 字数：{{getglobalvar::字数总要求}}\n' +
+                '- 段落：{{getglobalvar::单段落字数}}\n' +
+                '- 视角：{{getglobalvar::叙述视角}}\n' +
+                '- 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}\n' +
+                '- 演绎：{{getglobalvar::演绎授权}}\n' +
+                '- 转述：{{getglobalvar::转述授权}}\n' +
+                '- 节奏：{{getglobalvar::推进节奏}}\n' +
+                '- 文风：{{getglobalvar::文风指导}}\n' +
+                '- 思维链：{{getglobalvar::起始标签}}\n' +
+                '当上述变量为空时，你根据世界观和场景自行选择最合适的方案。';
+        }, { order: 28 });
 
         // state：当前状态/记忆注入
         // 【P1修复】用分隔符包裹不可信内容（memoryText 含 AI 生成事实），防止自我注入放大
@@ -190,9 +240,6 @@ const PromptBuilder = {
 
         // 【阶段4】formatAnchor：格式硬锚点（format 的收尾，原 game.js 后置补丁）
         this.registerSection('formatAnchor', (ctx) => ctx.formatAnchor || '', { order: 71 });
-
-        // preference：玩家偏好
-        this.registerSection('preference', (ctx) => ctx.preferenceSection || '', { order: 80 });
 
         // gametime：当前游戏时间
         this.registerSection('gametime', function(ctx) {

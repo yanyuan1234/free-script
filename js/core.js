@@ -22,25 +22,16 @@
 //   11. 错误翻译/HTML 净化（translateError/_cleanUnrecognizedTags）
 //   12. AI 请求构建（callAI/sendAIRequest）
 //
-// 与 game.js 形成双向循环依赖：
-//   - core.js → game.js：formatStory / mergeCharacters / renderChoices / renderNpcList /
-//                  buildSystemPrompt / buildSaveData / sendAIRequest / _isThinkingContent /
-//                  _cleanUnrecognizedTags / _reDecorTagsTyping
-//   - game.js → core.js：TypewriterBuffer / callAI / parseAIResponse / translateError /
-//                  showError / LocalGameAPI / SaveDB / UI / autoSave / RuntimeState
+// 【P1-4/8 阶段3】循环依赖已通过 RuntimeBridge 打破：
+//   - core.js 不再直接调用 game.js 函数，统一走 RuntimeBridge.xxx()
+//   - game.js 在文件末尾将自身函数注册到 RuntimeBridge，供 core.js 使用
+//   - core.js → game.js 的原依赖：formatStory / mergeCharacters / renderChoices /
+//     renderNpcList / buildSystemPrompt / buildSaveData / sendAIRequest / _isThinkingContent /
+//     _cleanUnrecognizedTags / _reDecorTagsTyping
+//   - game.js → core.js 的依赖保持不变（core.js 先加载，game.js 后加载直接调用）
 //
-// 由于所有调用点都是「延迟调用」（运行时已加载完成，未在顶层立即使用），
-// 循环依赖在运行时不报错；但使 core.js 无法被独立加载或单元测试。
-//
-// 修复路线（与 P1-7.1 共同推进，分阶段执行）：
-//   - 短期（本注释）：明确边界 + 标注职责域，便于后续拆分定位
-//   - 中期：将 game.js 内的 core.js 调用入口（formatStory/renderChoices 等）抽到
-//            `js/core/runtime-bridge.js` 中转模块，core.js 改调中转模块，
-//            打破对 game.js 的直接依赖
-//   - 长期：core.js 按职责拆为 core/{data-sync,ui,api,save,theme,state-factory,
-//            typewriter,time,parser,error,ai-request}.js，每个模块可独立测试
-//
-// 注：当前会话内仅完成短期文档化，物理拆分延后到独立重构任务（涉及 80+ 调用点迁移）。
+// 长期：core.js 按职责拆为 core/{data-sync,ui,api,save,theme,state-factory,
+//       typewriter,time,parser,error,ai-request}.js，每个模块可独立测试
 
 // 【P1修复BUG-2.2】删除 GameLinker 整套联动系统：
 // 原实现 _refreshers 永远为空对象（register 全代码库零调用），
@@ -2247,7 +2238,7 @@ var TypewriterBuffer = {
         if (completedKey !== this._cachedCompletedKey) {
             // 段落列表变了：全量重渲染（罕见）
             this._cachedCompletedKey = completedKey;
-            this._cachedCompletedHtml = completedKey ? formatStory(completedKey) : '';
+            this._cachedCompletedHtml = (completedKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(completedKey) : '';
             this._currentParaEl = null;  // 强制重建当前段落元素
             storyEl.innerHTML = this._cachedCompletedHtml;
         }
@@ -2256,11 +2247,11 @@ var TypewriterBuffer = {
         if (this._currentParaChars) {
             // 打字机 tick 期间只做基本装饰标签移除（与原 formatStory 行为一致）
             var currentText = this._currentParaChars;
-            if (typeof _cleanUnrecognizedTags === 'function') {
-                currentText = _cleanUnrecognizedTags(currentText);
-            } else if (typeof _reDecorTagsTyping !== 'undefined') {
-                _reDecorTagsTyping.lastIndex = 0;
-                currentText = currentText.replace(_reDecorTagsTyping, '');
+            if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._cleanUnrecognizedTags) {
+                currentText = RuntimeBridge._cleanUnrecognizedTags(currentText);
+            } else if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._reDecorTagsTyping) {
+                RuntimeBridge._reDecorTagsTyping.lastIndex = 0;
+                currentText = currentText.replace(RuntimeBridge._reDecorTagsTyping, '');
             }
             if (!this._currentParaEl || this._currentParaEl.parentNode !== storyEl) {
                 // 创建新段落元素，复用同一节点直到本段结束
@@ -2892,7 +2883,7 @@ function parseAIResponse(reply) {
 
     // 【修复X8/BUG-01/NEW-BUG-5】裸文本思维链泄漏检测
     // 复用 game.js 全局 _isThinkingContent 函数（阶段2-B1 统一），避免正则数组重复定义
-    if (storyText && typeof _isThinkingContent === 'function' && _isThinkingContent(storyText)) {
+    if (storyText && typeof RuntimeBridge !== 'undefined' && RuntimeBridge._isThinkingContent && RuntimeBridge._isThinkingContent(storyText)) {
         console.warn('[parseAIResponse] 检测到 AI 思维链泄漏到剧情，已拦截');
         storyText = '⚠️ **AI 回复格式异常**（输出了推理过程而非剧情）\n\n💡 建议点击 🔄 重新生成，或检查预设是否要求 JSON 输出格式。';
         if (typeof gameState !== 'undefined' && gameState) gameState._lastLeakBlocked = true;
@@ -3015,7 +3006,7 @@ function _createModuleFromType(type, theater, key) {
         chat: function() { injectToChatLog('群聊', theater); return { type: 'chat', npc: '群聊', messages: parseChatContent(content) }; },
         status: function() { _bridgeStatusToCharacters(theater); return { type: 'status', title: title, content: content, stats: data.stats || [] }; },
         summary: function() { _bridgeSummaryToMemory(theater); return { type: 'summary', title: title, content: content, summary: data.summary || '' }; },
-        branches: function() { if (typeof renderChoices === 'function' && data.options) renderChoices(data.options); return { type: 'branches', title: title, content: content, options: data.options || [] }; },
+        branches: function() { if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.renderChoices && data.options) RuntimeBridge.renderChoices(data.options); return { type: 'branches', title: title, content: content, options: data.options || [] }; },
         phone: function() { return { type: 'phone', title: title, content: content, apps: data.apps || [] }; },
         theater: function() { return { type: 'theater', title: title, content: content, scenes: data.scenes, text: data.text }; },
         author_note: function() { return { type: 'author_note', title: title, content: theater.content || content }; },
@@ -3144,8 +3135,8 @@ targetModule = { type: 'branches', title: '选项', content: theater.html || the
 if (theater.data && theater.data.options) {
 targetModule.options = theater.data.options;
 // 同时更新游戏选项
-if (typeof renderChoices === 'function') {
-    renderChoices(theater.data.options);
+if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.renderChoices) {
+    RuntimeBridge.renderChoices(theater.data.options);
 }
 }
 break;
@@ -3404,8 +3395,8 @@ options = lines.map(function(line, idx) {
 
 if (options.length > 0) {
     // 桥接到游戏原生选项系统
-    if (typeof renderChoices === 'function') {
-        renderChoices(options);
+    if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.renderChoices) {
+        RuntimeBridge.renderChoices(options);
         console.log('[深度融合] 已将 ' + options.length + ' 个<branches>选项桥接到游戏选项系统');
     }
 }
@@ -3488,7 +3479,7 @@ function _bridgeStatusToCharacters(theaterData) {
     });
 
     // 更新NPC的状态
-    if (Object.keys(charUpdate).length > 0 && typeof mergeCharacters === 'function') {
+    if (Object.keys(charUpdate).length > 0 && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.mergeCharacters) {
         // 尝试从标题获取角色名
         if (!targetCharName && theaterData.data && theaterData.data.title) {
             targetCharName = theaterData.data.title.replace(/[：:]/g, '').trim();
@@ -3500,7 +3491,7 @@ function _bridgeStatusToCharacters(theaterData) {
         }
         if (targetCharName) {
             var update = Object.assign({ name: targetCharName }, charUpdate);
-            mergeCharacters([update]);
+            RuntimeBridge.mergeCharacters([update]);
             console.log('[深度融合] 已将状态面板数据桥接到NPC系统:', targetCharName);
         }
     }
@@ -3590,7 +3581,7 @@ if (relations.length > 0 && gameState.allCharacters) {
                 }
             }
         });
-        if (typeof renderNpcList === 'function') renderNpcList();
+        if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.renderNpcList) RuntimeBridge.renderNpcList();
         console.log('[深度融合] 已将 ' + relations.length + ' 条角色关系桥接到NPC系统');
     }
 }
@@ -4108,7 +4099,7 @@ function sanitizeHtml(html) {
 // 【统一管理】走 GlobalCleanup，页面卸载时统一移除
 GlobalCleanup.registerListener(window, 'beforeunload', function() {
     try {
-        var data = buildSaveData('');
+        var data = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('') : null;
         Storage.setJSON(Storage.KEYS.AUTO_SAVE_BACKUP, data);
     } catch(e) { console.warn('beforeunload save failed:', e); }
 try {
@@ -4436,7 +4427,7 @@ async function autoSave() {
             }
             if (typeof SaveDB !== 'undefined') {
                 // 【阶段四】autoSave 明确开启序列化缓存，手动保存保持默认不重缓存
-                await SaveDB.set(0, buildSaveData('', true));
+                await SaveDB.set(0, (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('', true) : null);
             }
             // 【顶栏指示】自动存档完成：显示一秒钟后淡出
             if (dot) {
@@ -5514,7 +5505,7 @@ async function initializeGame() {
         if (!gameState.playerData.name && gameState.playerName) {
             gameState.playerData.name = gameState.playerName;
         }
-gameState.systemPrompt = buildSystemPrompt();
+gameState.systemPrompt = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSystemPrompt) ? RuntimeBridge.buildSystemPrompt() : '';
 gameState.conversationHistory = [{
         role: 'system',
         content: gameState.systemPrompt
@@ -5527,10 +5518,14 @@ if (typeof GameTimeSystem !== 'undefined') {
 }
 // 开局前：用AI提取设定，预填充记忆系统（按次计费，多一次API调用无妨）
 extractSetupToMemory().then(function() {
-    sendAIRequest('请开始游戏，描述开局场景。', true);
+    if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
+        RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
+    }
 }).catch(function(e) {
     console.warn('[开局设定提取] 失败，直接开局:', e && e.message);
-    sendAIRequest('请开始游戏，描述开局场景。', true);
+    if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
+        RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
+    }
 });
 } catch (e) {
 console.error('初始化游戏失败:', e);

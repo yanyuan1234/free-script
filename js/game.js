@@ -459,30 +459,6 @@ function buildSystemPrompt(includeFormatRules) {
     // 酒馆预设融合层
     var _narrativeEnhancement = buildNarrativeEnhancement();
 
-    // 玩家偏好章节
-    var _PREF_KEYS = ['字数总要求','单段落字数','叙述视角','char代词','user代词','演绎授权','转述授权','推进节奏','文风指导','起始标签'];
-    var _hasAnyPref = false;
-    if (typeof MacroEngine !== 'undefined' && MacroEngine.getGlobalVar) {
-        for (let _pki = 0; _pki < _PREF_KEYS.length; _pki++) {
-            var _pv = MacroEngine.getGlobalVar(_PREF_KEYS[_pki]);
-            if (_pv && String(_pv).trim()) { _hasAnyPref = true; break; }
-        }
-    }
-    var _prefSection = _hasAnyPref
-        ? '【玩家偏好】\n' +
-          '这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：\n' +
-          '- 字数：{{getglobalvar::字数总要求}}\n' +
-          '- 段落：{{getglobalvar::单段落字数}}\n' +
-          '- 视角：{{getglobalvar::叙述视角}}\n' +
-          '- 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}\n' +
-          '- 演绎：{{getglobalvar::演绎授权}}\n' +
-          '- 转述：{{getglobalvar::转述授权}}\n' +
-          '- 节奏：{{getglobalvar::推进节奏}}\n' +
-          '- 文风：{{getglobalvar::文风指导}}\n' +
-          '- 思维链：{{getglobalvar::起始标签}}\n' +
-          '当上述变量为空时，你根据世界观和场景自行选择最合适的方案。'
-        : '';
-
     // 检测当前是否有内置预设
     var _hasNativePreset = false;
     if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
@@ -503,22 +479,32 @@ function buildSystemPrompt(includeFormatRules) {
     }
     var _formatRules = includeFormatRules ? _buildFormatRules(gameState, _t, turn) : '';
 
-    // 主角设定
-    var _protagonist = buildProtagonistPrompt();
-
     // 使用 AI 契约层 PromptBuilder 组装最终 system prompt
     if (typeof PromptBuilder !== 'undefined' && PromptBuilder.buildSystemPrompt) {
         PromptBuilder.setMode((gameState && gameState.pureTextMode) ? 'pureText' : 'json');
+        var _macroVars = {};
+        if (typeof MacroEngine !== 'undefined' && MacroEngine.getGlobalVar) {
+            var _PREF_KEYS = ['字数总要求','单段落字数','叙述视角','char代词','user代词','演绎授权','转述授权','推进节奏','文风指导','起始标签'];
+            for (var _pki = 0; _pki < _PREF_KEYS.length; _pki++) {
+                _macroVars[_PREF_KEYS[_pki]] = MacroEngine.getGlobalVar(_PREF_KEYS[_pki]);
+            }
+        }
+        var _pcIdentity = '';
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.permanentFacts) {
+            _pcIdentity = EnhancedMemory.permanentFacts.pcIdentity || '';
+        }
         var ctx = {
             setupText: _setupText,
             userPrompt: _safeUserPrompt,
             player: (gameState && gameState.playerData) || {},
             playerName: (gameState && gameState.playerName) || '',
             playerIdentity: (gameState && gameState.playerIdentity) || '',
+            protagonistSetup: (gameState && gameState.protagonistSetup) || null,
+            pcIdentity: _pcIdentity,
+            macroVars: _macroVars,
             memoryText: _memoryText,
             chatContextText: _chatContextText,
             narrativeEnhancement: _narrativeEnhancement,
-            preferenceSection: _prefSection,
             termsPrompt: _termsPrompt,
             formatAnchor: _formatAnchor,
             formatRules: _formatRules,
@@ -532,7 +518,7 @@ function buildSystemPrompt(includeFormatRules) {
         var prompt = PromptBuilder.buildSystemPrompt(ctx);
         // 保持原有 includeFormatRules=false 时的简化行为：只要设定/记忆/格式锚点
         if (!includeFormatRules) {
-            return [_setupText, _narrativeEnhancement, _protagonist,
+            return [_setupText, _narrativeEnhancement,
                 _memoryText ? '【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText : '',
                 _chatContextText, _formatAnchor].filter(Boolean).join('\n\n');
         }
@@ -645,46 +631,6 @@ function buildRecentChatContext() {
         return '';
     }
 }
-// 开始游戏时自动记住当前填写内容
-var _origStartBtn = document.getElementById('btnCreateWorld');
-if (_origStartBtn) {
-    _origStartBtn.addEventListener('click', function() {
-        var gpEl = document.getElementById('worldDescription');
-        if (gpEl) Storage.set(Storage.KEYS.LAST_PROMPT, gpEl.value || '');
-    }, true);
-}
-function buildProtagonistPrompt() {
-    var mc = gameState ? gameState.protagonistSetup : null;
-    if (!mc || Object.keys(mc).length === 0) return '';
-    var lines = ['【主角设定】'];
-    if (mc.mcName) lines.push('姓名: ' + mc.mcName);
-    if (mc.mcGender) lines.push('性别: ' + mc.mcGender);
-    if (mc.mcAge) lines.push('年龄: ' + mc.mcAge);
-    if (mc.mcIdentity) lines.push('身份: ' + mc.mcIdentity);
-    if (mc.mcPersonality) lines.push('性格: ' + mc.mcPersonality);
-    if (mc.mcAppearance) lines.push('外貌: ' + mc.mcAppearance);
-    if (mc.mcAbility) lines.push('特殊能力: ' + mc.mcAbility);
-    if (mc.mcExtra) lines.push('其他设定: ' + mc.mcExtra);
-    lines.push('');
-    lines.push('主角是玩家操控的角色——player字段对应主角信息，characters字段对应NPC。');
-    // 主角身份可能从三处出现：① 表单字段（这里）② 世界描述（player/identity 字段）③ 记忆系统（pcIdentity）
-    // 告诉 AI 这三处应该是同一份信息，冲突时按权威度判断
-    var hasUserPrompt = gameState && gameState.userPrompt && gameState.userPrompt.length > 200;
-    var hasMemoryIdentity = typeof EnhancedMemory !== 'undefined'
-        && EnhancedMemory.permanentFacts
-        && EnhancedMemory.permanentFacts.pcIdentity
-        && EnhancedMemory.permanentFacts.pcIdentity.length > 0;
-    if (hasUserPrompt && hasMemoryIdentity) {
-        lines.push('提示：主角身份已在【世界描述】和【核心设定】中给出，此处仅作对照。三处冲突时以【核心设定】 > 【世界描述】 > 此处 为准。');
-    } else if (hasUserPrompt) {
-        lines.push('注意：主角的详细设定已在世界描述中给出，此处仅为核心标签，请以世界描述中的详细版本为准。');
-    } else if (hasMemoryIdentity) {
-        lines.push('提示：主角身份已在【核心设定】中给出，以【核心设定】为准。');
-    }
-    lines.push('');
-    return lines.join('\n');
-}
-
 // ========================================
 // AI 请求核心
 // ========================================
@@ -4366,3 +4312,27 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         gameState._worldModules = _trimmed;
     }
 }
+
+// 【P1-8 阶段3】顶层全局封装：原文件加载时立即执行的 DOM 操作收拢到命名函数，由 init.js 调用
+function registerGameStartListener() {
+    var _origStartBtn = document.getElementById('btnCreateWorld');
+    if (_origStartBtn) {
+        _origStartBtn.addEventListener('click', function() {
+            var gpEl = document.getElementById('worldDescription');
+            if (gpEl) Storage.set(Storage.KEYS.LAST_PROMPT, gpEl.value || '');
+        }, true);
+    }
+}
+
+// 【P1-4 阶段3】RuntimeBridge 注册：将 core.js 所需的 game.js 函数注入桥接对象，打破循环依赖
+if (typeof window.RuntimeBridge === 'undefined') window.RuntimeBridge = {};
+window.RuntimeBridge.formatStory = formatStory;
+window.RuntimeBridge.mergeCharacters = mergeCharacters;
+window.RuntimeBridge.renderChoices = renderChoices;
+window.RuntimeBridge.renderNpcList = renderNpcList;
+window.RuntimeBridge.buildSystemPrompt = buildSystemPrompt;
+window.RuntimeBridge.buildSaveData = buildSaveData;
+window.RuntimeBridge.sendAIRequest = sendAIRequest;
+window.RuntimeBridge._isThinkingContent = _isThinkingContent;
+window.RuntimeBridge._cleanUnrecognizedTags = _cleanUnrecognizedTags;
+window.RuntimeBridge._reDecorTagsTyping = _reDecorTagsTyping;
