@@ -166,6 +166,19 @@ function _applyUseSysprompt(messages) {
     return messages;
 }
 
+// 【P1-35修复】统一主系统提示词 push 逻辑，消除 isInit/主路径两处内联重复
+// 旧实现 line 1010-1014（isInit）和 line 1120-1125（主路径）各内联一遍
+// if (_useSysprompt !== false) push system else push user，与 _applyUseSysprompt 三份并存。
+// 现统一调 _pushSystemPrompt，语义一致：use_sysprompt=true→system role，false→user role（不丢弃内容）。
+function _pushSystemPrompt(messages) {
+    if (!messages || !gameState || !gameState.systemPrompt) return;
+    if (gameState._useSysprompt !== false) {
+        messages.push({ role: 'system', content: gameState.systemPrompt });
+    } else if (gameState.systemPrompt.trim()) {
+        messages.push({ role: 'user', content: gameState.systemPrompt });
+    }
+}
+
 // 【P1性能优化】统一的世界书扫描入口，支持轮次级缓存
 // NPC 私聊/论坛/结局/剧情主路径都通过此函数获取世界书注入，避免同一轮内重复扫描
 // 缓存失效时机：跨轮（totalTurns 变化）
@@ -1007,11 +1020,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 构建isInit消息列表（含世界书position注入和世界快照）
             messages = [];
             // 主系统提示词
-            if (gameState && gameState._useSysprompt !== false) {
-                messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
-                messages.push({ role: 'user', content: gameState.systemPrompt });
-            }
+            // 【P1-35修复】统一调 _pushSystemPrompt，消除内联重复
+            _pushSystemPrompt(messages);
             // 世界书position注入（与主路径一致的depth 0-5）
             var _initWIPos = (gameState && gameState._wiPositionTexts) || null;
             var _initPosPrompts = (gameState && gameState._positionPrompts) || {};
@@ -1114,15 +1124,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             messages = [];
 
             // [0] 主系统提示词
-            // 支持 use_sysprompt 配置（月读预设设为 false）
-            // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
-            // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            if (gameState && gameState._useSysprompt !== false) {
-                messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
-                // use_sysprompt=false：内容不丢弃，改为 user 角色发送
-                messages.push({ role: 'user', content: gameState.systemPrompt });
-            }
+            // 【P1-35修复】统一调 _pushSystemPrompt，消除内联重复
+            // use_sysprompt=false 时 _pushSystemPrompt 内部自动转为 user role（酒馆标准行为）
+            _pushSystemPrompt(messages);
 
             // 辅助函数：合并世界书和预设提示词
             // 【可配置顺序】默认世界书在前（酒馆常规行为），部分预设期望预设在前
