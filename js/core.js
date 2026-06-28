@@ -4566,7 +4566,8 @@ function _mergePresetField(target, source, key, type, defaultVal, check) {
     } else if (check === 'ne') {
         if (sv === defaultVal) return;
     } else if (check === 'positive') {
-        if (Number(sv) <= 0) return;
+        var _nv = Number(sv);
+        if (!_nv || _nv <= 0) return;
     }
     if (type === 'string') target[key] = String(sv);
     else if (type === 'number') target[key] = Number(sv) || defaultVal;
