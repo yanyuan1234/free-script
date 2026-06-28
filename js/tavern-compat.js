@@ -893,6 +893,10 @@ var GameMemory = {
     // 可触发 35+ 次 getter 调用。现按 dirty 标志缓存，permanentFacts 变更时置 dirty。
     _ltmCache: null,
     _ltmDirty: true,
+    // 【P2-29修复】LTM 脏标志统一入口：所有写入点调用此方法置脏，
+    // 替代散落各处的 `XXX._ltmDirty = true`。新增写入点一律调用 _markLtmDirty()，
+    // 避免遗漏（如 P0-7 的 MemoryManagerUI 各 save* 函数曾漏置脏导致缓存陈旧）。
+    _markLtmDirty: function() { this._ltmDirty = true; },
     lastInjectionTurn: -1,
     gameClock: { day: 1, period: '早晨', lastUpdateTurn: 0 },
 
@@ -1095,7 +1099,7 @@ var GameMemory = {
         self.saveToStorage();
         console.log('[GameMemory] 旧版数据迁移完成');
         // 【P0修复】permanentFacts 已从旧版数据迁移恢复，失效 longTermMemory 缓存
-        self._ltmDirty = true;
+        self._markLtmDirty();
         return true;
     },
 
@@ -1860,7 +1864,7 @@ var GameMemory = {
 
         // 【P0修复】permanentFacts 已变更（pcIdentity/worldRules/promises/npcProfiles/settings），
         // 失效 longTermMemory 缓存（覆盖本方法所有 permanentFacts 写入点）
-        self._ltmDirty = true;
+        self._markLtmDirty();
         // 【P1修复BUG-2.2】移除 GameLinker 通知：死代码空操作，UI 刷新由调用方主动触发
     },
 
@@ -2848,7 +2852,7 @@ var GameMemory = {
                 // 【P0-2.1 阶段1】任何对 self.tables.characters 的修改都必须失效 longTermMemory 缓存
                 // 旧实现只在 NPC profile 进 permanentFacts 时置 dirty（行 2839），导致 characters/item/location/relationship
                 // 修改后的 longTermMemory 缓存返回 stale data，记忆面板看不到新事实。
-                self._ltmDirty = true;
+                self._markLtmDirty();
                 // 【修复】新角色首次出现时加入永久事实-关键角色，确保记忆面板及时更新
                 if (isNew || (typeof char.favorability === 'number' && char.favorability > 0)) {
                     self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
@@ -2860,7 +2864,7 @@ var GameMemory = {
                         self.permanentFacts.npcProfiles.push({ content: profileContent, locked: false, source: 'runtime', createdTurn: turn });
                         console.log('[记忆系统] 新角色加入永久事实:', char.name);
                         // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
-                        self._ltmDirty = true;
+                        self._markLtmDirty();
                     }
                 }
             });
@@ -2874,15 +2878,15 @@ var GameMemory = {
                 var newQty = item.count || 1;
                 self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
                 // 【P0-2.1 阶段1】任何对 self.tables.items 的修改都必须失效 longTermMemory 缓存
-                self._ltmDirty = true;
+                self._markLtmDirty();
             });
         }
         if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; }); }
         // 【P0-2.1 阶段1】locations 修改后失效 longTermMemory 缓存
-        if (gameData.story) self._ltmDirty = true;
+        if (gameData.story) self._markLtmDirty();
         if (gameData.relationships && Array.isArray(gameData.relationships)) gameData.relationships.forEach(function(rel) { if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; });
         // 【P0-2.1 阶段1】relationships 修改后失效 longTermMemory 缓存
-        if (gameData.relationships && Array.isArray(gameData.relationships) && gameData.relationships.length > 0) self._ltmDirty = true;
+        if (gameData.relationships && Array.isArray(gameData.relationships) && gameData.relationships.length > 0) self._markLtmDirty();
     },
 
     _extractLocations: function(story) {
@@ -3080,7 +3084,7 @@ var GameMemory = {
             });
         }
         // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
-        self._ltmDirty = true;
+        self._markLtmDirty();
         return anchor;
     },
 
@@ -3089,7 +3093,7 @@ var GameMemory = {
         Object.keys(self.permanentFacts).forEach(function(key) { var before = self.permanentFacts[key].length; self.permanentFacts[key] = self.permanentFacts[key].filter(function(a) { return !(a && a.source && a.source.indexOf(sourcePrefix) === 0); }); removed += before - self.permanentFacts[key].length; });
         if (removed > 0) try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] removeWorldAnchorsBySource 保存失败:', e); }
         // 【P0修复】permanentFacts 可能已变更，失效 longTermMemory 缓存
-        if (removed > 0) self._ltmDirty = true;
+        if (removed > 0) self._markLtmDirty();
         return removed;
     },
 
@@ -3493,7 +3497,7 @@ var GameMemory = {
         // 加载后初始化休眠追踪（兼容旧存档）
         self._initDormantTracking();
         // 【P0修复】permanentFacts 已从存档恢复，失效 longTermMemory 缓存
-        self._ltmDirty = true;
+        self._markLtmDirty();
         // 迁移成功后异步保存
         if (this._migratedData) {
             this._migratedData = null;
@@ -3605,7 +3609,7 @@ var GameMemory = {
             if (!Array.isArray(c.changes)) c.changes = [];
             c.changes.push({ time: Date.now(), change: changeDesc });
         }
-        self._ltmDirty = true;
+        self._markLtmDirty();
     },
     recordItemObtained: function(itemName, desc) {
         // 替代旧代码：EnhancedMemory.longTermMemory.itemTable[item] = {name, obtainedTime, desc, ...}
@@ -3621,7 +3625,7 @@ var GameMemory = {
             accessCount: 0,
             lastChangedTurn: (typeof self.currentTurn === 'number') ? self.currentTurn : 0
         };
-        self._ltmDirty = true;
+        self._markLtmDirty();
     },
 
     // 【P0-8修复】worldNotes 写入 API
@@ -3643,7 +3647,7 @@ var GameMemory = {
             timestamp: note.timestamp || Date.now(),
             source: note.source || 'manual'
         });
-        self._ltmDirty = true;
+        self._markLtmDirty();
     },
 
     // 【P1修复BUG-011-permanentFacts责任越界】公共 API：upsert 单条 permanentFact
@@ -3682,7 +3686,7 @@ var GameMemory = {
                 createdTurn: fact.createdTurn || self.currentTurn || 0,
                 keywords: fact.keywords
             });
-            self._ltmDirty = true;
+            self._markLtmDirty();
             return 'added';
         }
         // 已存在：合并新信息（追加旧条目没有的字段，不覆盖）
@@ -3709,7 +3713,7 @@ var GameMemory = {
             if (changed) old.content = merged.join(sep);
         }
         if (fact.locked === true && !old.locked) { old.locked = true; changed = true; }
-        if (changed) self._ltmDirty = true;
+        if (changed) self._markLtmDirty();
         return changed ? 'updated' : 'noop';
     },
 
@@ -3731,7 +3735,7 @@ var GameMemory = {
             createdTurn: fact.createdTurn || self.currentTurn || 0,
             keywords: fact.keywords
         }];
-        self._ltmDirty = true;
+        self._markLtmDirty();
         return 'updated';
     }
 };
@@ -3786,7 +3790,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         var _self = self;
         Object.defineProperty(result, 'masterSummary', {
             get: function() { return _self.plot.worldSetting + '\n' + (_self.plot.currentChapter || ''); },
-            set: function(val) { if (typeof val === 'string') { var parts = val.split('\n'); _self.plot.worldSetting = parts[0] || ''; _self.plot.currentChapter = parts.slice(1).join('\n') || val; _self._ltmDirty = true; } },
+            set: function(val) { if (typeof val === 'string') { var parts = val.split('\n'); _self.plot.worldSetting = parts[0] || ''; _self.plot.currentChapter = parts.slice(1).join('\n') || val; _self._markLtmDirty(); } },
             configurable: true
         });
         self._ltmCache = result;
@@ -3855,7 +3859,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
             self.quests = val.activeQuests;
         }
         // 【P0修复】permanentFacts 已通过 setter 恢复，失效 longTermMemory 缓存
-        self._ltmDirty = true;
+        self._markLtmDirty();
     }, configurable: true
 });
 
@@ -4323,7 +4327,7 @@ var MemoryManagerUI = {
         //   AI 本轮仍看到旧设定，用户以为编辑没保存
         gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
         // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
-        gm._ltmDirty = true;
+        gm._markLtmDirty();
         UI.afterMemoryChange('permanentFacts', '_memory', '已保存');
     },
 
@@ -4345,7 +4349,7 @@ var MemoryManagerUI = {
             // 【v3审查修复】同 savePermanentFact，失效注入缓存
             gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
             // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
-            gm._ltmDirty = true;
+            gm._markLtmDirty();
             UI.afterMemoryChange('permanentFacts', '_memory', '已删除');
         });
     },

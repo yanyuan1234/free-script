@@ -704,81 +704,19 @@ var AchievementSystem = {
 
 function mergeQuests(newQuests) {
     if (!newQuests || !Array.isArray(newQuests)) return;
-    if (StateManager && QuestMutator) {
-        // 使用 QuestMutator 标准化并合并任务
-        newQuests.forEach(function(nq) {
-            if (!nq || !nq.title) return;
-            QuestMutator.addQuest(nq, { silent: true });
-        });
-        return;
+    // 【P2-31修复】删除 legacy 分支：QuestMutator 不可用时直接抛错，
+    // 避免 legacy 路径直接操纵 gameState.currentQuests 绕过 StateManager 导致双写。
+    // 与 P1-PU7 阶段4 saveNpcEdit "强制走 Mutator" 架构一致。
+    // 原 legacy 分支含 statusMap/typeMap 标准化与 QuestMutator 内部 normalize 重复实现，
+    // 且直接 push/splice gameState.currentQuests 绕过 StateManager → _syncLegacyMirror 不触发。
+    if (!StateManager || !QuestMutator) {
+        throw new Error('[mergeQuests] QuestMutator 不可用，无法合并任务');
     }
-    if (!gameState.currentQuests) gameState.currentQuests = [];
-    // 【修复BUG-M4】状态/类型标准化映射：AI 可能返回英文状态，统一转中文
-    var statusMap = {
-        'pending': QuestSystem.STATUS.ACTIVE,
-        'active': QuestSystem.STATUS.ACTIVE,
-        'in_progress': QuestSystem.STATUS.ACTIVE,
-        'ongoing': QuestSystem.STATUS.ACTIVE,
-        'completed': QuestSystem.STATUS.COMPLETED,
-        'done': QuestSystem.STATUS.COMPLETED,
-        'finished': QuestSystem.STATUS.COMPLETED,
-        'success': QuestSystem.STATUS.COMPLETED,
-        'resolved': QuestSystem.STATUS.COMPLETED,
-        'failed': QuestSystem.STATUS.FAILED,
-        'failure': QuestSystem.STATUS.FAILED,
-        'fail': QuestSystem.STATUS.FAILED,
-        'abandoned': QuestSystem.STATUS.ABANDONED,
-        'cancelled': QuestSystem.STATUS.ABANDONED,
-        'canceled': QuestSystem.STATUS.ABANDONED
-    };
-    var typeMap = {
-        'main': QuestSystem.TYPE.MAIN,
-        '主线': QuestSystem.TYPE.MAIN,
-        'side': QuestSystem.TYPE.SIDE,
-        '支线': QuestSystem.TYPE.SIDE,
-        'hidden': QuestSystem.TYPE.HIDDEN,
-        '隐藏': QuestSystem.TYPE.HIDDEN
-    };
+    // 使用 QuestMutator 标准化并合并任务
     newQuests.forEach(function(nq) {
         if (!nq || !nq.title) return;
-        // 标准化状态
-        var rawStatus = String(nq.status || '').toLowerCase().trim();
-        if (statusMap[rawStatus]) nq.status = statusMap[rawStatus];
-        else if (!rawStatus) nq.status = QuestSystem.STATUS.ACTIVE;
-        // 标准化类型
-        var rawType = String(nq.type || '').toLowerCase().trim();
-        if (typeMap[rawType]) nq.type = typeMap[rawType];
-        else if (!rawType) nq.type = QuestSystem.TYPE.SIDE;
-
-        var existIdx = -1;
-        for (var i = 0; i < gameState.currentQuests.length; i++) {
-            if (gameState.currentQuests[i].title === nq.title) {
-                existIdx = i;
-                break;
-            }
-        }
-        if (existIdx !== -1) {
-            gameState.currentQuests[existIdx] = nq;
-        } else {
-            gameState.currentQuests.push(nq);
-        }
+        QuestMutator.addQuest(nq, { silent: true });
     });
-    // 修复：先分离，再合并，避免闭包变量污染
-    var active = gameState.currentQuests.filter(function(q) {
-        return q.status !== QuestSystem.STATUS.COMPLETED && q.status !== QuestSystem.STATUS.FAILED && q.status !== QuestSystem.STATUS.ABANDONED;
-    });
-    var done = gameState.currentQuests.filter(function(q) {
-        return q.status === QuestSystem.STATUS.COMPLETED || q.status === QuestSystem.STATUS.FAILED || q.status === QuestSystem.STATUS.ABANDONED;
-    });
-    // 最多保留3个已完成的
-    if (done.length > 3) done = done.slice(-3);
-    gameState.currentQuests = active.concat(done);
-    // 【数据联通】推送到权威源 gm.quests，再触发同步 + UI 刷新
-    _pushCurrentQuestsToGM();
-    // 【优化·循环同步修复】移除 _syncQuestsToGameState 调用——_pushCurrentQuestsToGM 已将数据推送到 gm.quests
-    // 旧代码紧接着调用 _syncQuestsToGameState（gm.quests → gameState.currentQuests），可能覆盖刚推送的数据
-    // 正确流程：推送后只刷新 UI，不再反向同步
-    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
 }
 
 function toggleQuestList() {

@@ -6757,7 +6757,9 @@ function editChatRemark() {
     panel.id = 'chatRemarkPanel';
     panel.style.cssText =
         'position:absolute;top:44px;left:8px;right:8px;background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:12px 16px;z-index:200';
-    var safeRemark = (currentRemark || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    // 【P2-48修复】改用项目统一 escapeHtml 工具函数（core.js:4017），
+    // 补齐单引号（&#39;）与反引号（&#96;）转义，消除内联转义的不一致
+    var safeRemark = escapeHtml(currentRemark);
     panel.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">备注名</div>' +
         // 【P2-A3 阶段4】加 aria-label（备注名输入）
         '<input type="text" id="remarkInput" aria-label="角色备注名" value="' + safeRemark +
