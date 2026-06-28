@@ -994,7 +994,7 @@ async function sendAIRequest(userMessage, isInit = false) {
     saveUndoState();
     // 【修复BUG-C1/C2】记录AI请求前的关键状态，用于检测并恢复剧情回退
     if (gameState) {
-        var preTitle = StateManager ? StateManager.get('progress.lastSceneTitle') : (gameState._lastSceneTitle || '');
+        var preTitle = StateManager ? (StateManager.get('progress.lastSceneTitle') || '') : '';
         var preGameTime = StateManager ? StateManager.get('time') : (gameState.gameTime || null);
         var preTurn = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
         var preAIState = {
@@ -1917,7 +1917,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // AI 没有返回章节标题时，用用户设定作为兜底标题
-        if (gameState && !(StateManager ? StateManager.get('progress.sceneTitle') : gameState._lastSceneTitle) && gameState.userPrompt) {
+        if (gameState && !StateManager.get('progress.sceneTitle') && gameState.userPrompt) {
             var fallbackTitle = gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : '');
             updateSceneTitle(fallbackTitle);
             if (typeof StateManager !== 'undefined' && StateManager.set) {

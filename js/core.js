@@ -609,7 +609,7 @@ var UI = {
         var content = document.createElement('div');
         content.className = 'modal-content';
         content.setAttribute('role', 'document');
-        content.innerHTML = opts.html || '';
+        content.innerHTML = (typeof sanitizeHtml === 'function') ? sanitizeHtml(opts.html || '') : (opts.html || '');
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
         document.body.appendChild(overlay);
@@ -3973,7 +3973,7 @@ return '发生错误：' + m;
 
 function escapeHtml(text) {
     if (!text) return '';
-    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;').replace(/`/g, '&#96;');
 }
 
 // 内联 HTML 属性值转义：用于 onclick="fn('...')" 等场景

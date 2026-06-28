@@ -187,10 +187,39 @@ function enhanceAccessibility() {
     }
 }
 
+// 全局错误处理（从 patch.js 迁移）
+GlobalCleanup.registerListener(window, 'error', function(e) {
+    if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'LINK' || e.target.tagName === 'SCRIPT')) {
+        return;
+    }
+    console.error('[全局错误]', e.message, 'at', e.filename, ':', e.lineno);
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('发生错误: ' + e.message);
+    }
+}, true);
+
+GlobalCleanup.registerListener(window, 'unhandledrejection', function(e) {
+    console.error('[未处理的Promise]', e.reason);
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('异步操作失败');
+    }
+    e.preventDefault();
+});
+
+// 移动端滚动性能优化（从 patch.js 迁移）
+if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
+    TimerManager.setTimeout('scrollOptimize', function() {
+        var scrollables = document.querySelectorAll('.scrollable, .page, .modal-body, #gameContent');
+        scrollables.forEach(function(el) {
+            if (el) el.style.webkitOverflowScrolling = 'touch';
+        });
+    }, 100);
+}
+
 // 根据 DOM 就绪状态选择初始化时机
 // 某些浏览器环境中 DOMContentLoaded 可能不触发或已触发
 if (document.readyState === 'loading') {
-    GlobalCleanup.registerListener(window, 'DOMContentLoaded', () => initApp());
+    GlobalCleanup.registerListener(window, 'DOMContentLoaded', function() { initApp(); });
 } else {
     initApp();
 }
