@@ -87,6 +87,12 @@ function _updateConversationHistory(newHist) {
 // ========================================
 var AVATAR_COLORS = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#1890ff', '#52c41a'];
 
+// 【P2-9修复】好感度转进度条宽度百分比，消除 2 处重复的 Math.max(0, Math.min(100, 50 + fav / 2))
+// fav 范围 -100~100，映射到 0~100% 宽度（50% 为中性）
+function favToWidth(fav) {
+    return Math.max(0, Math.min(100, 50 + fav / 2));
+}
+
 // ========================================
 // 【P2-阶段3-14】按类型筛选世界模块 helper
 // 统一 phone-ui.js 中 13+ 处 (gameState._worldModules || []).filter(m => m.type === 'xxx')
@@ -7304,7 +7310,7 @@ function renderNpcPage() {
                 '<div class="char-stat-row"><span>好感</span><div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' +
                 // 【修复】好感度范围 -100~100，映射到 0~100% 宽度（0 为中点 50%）
                 // 原 width:fav% 对负值非法（如 -40%），浏览器忽略显示空条
-                Math.max(0, Math.min(100, 50 + fav / 2)) + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
+                favToWidth(fav) + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
                 (c.desc ?
                     '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
@@ -7410,7 +7416,7 @@ function openNpcDetail(name) {
             '<span style="font-size:12px;color:#fff;background:' + favColor + ';padding:2px 8px;border-radius:10px;font-weight:500;">' + favLevel + '</span>' +
             '<span style="font-size:14px;color:var(--text);font-weight:600;">' + fav + '</span></span></div>' +
             // 【修复】好感度 -100~100 映射到 0~100% 宽度（0 为中点 50%），原 width:fav% 对负值非法
-            '<div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' + Math.max(0, Math.min(100, 50 + fav / 2)) + '%;background:' + favColor + ';"></div></div></div>';
+            '<div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' + favToWidth(fav) + '%;background:' + favColor + ';"></div></div></div>';
     }
 
     document.getElementById('npcDetailBody').innerHTML = html;

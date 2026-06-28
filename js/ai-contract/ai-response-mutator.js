@@ -226,22 +226,11 @@ const AIResponseMutator = {
     _applyCharacters(data) {
         const characters = data.characters || data.npcs;
         if (!characters || !Array.isArray(characters) || characters.length === 0) return;
-        // 主角名（与 legacy mergeCharacters 一致的取值优先级）
-        var playerName = '';
-        if (typeof StateManager !== 'undefined' && StateManager.get) {
-            var player = StateManager.get('entities.player');
-            if (player && player.name) playerName = player.name;
-        } else if (typeof gameState !== 'undefined') {
-            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '';
-        }
-        // 过滤主角 + 无效名（与 legacy mergeCharacters 完全一致）
-        var filtered = characters.filter(function(c) {
-            if (!c || !c.name || typeof c.name !== 'string') return false;
-            var name = c.name.trim();
-            if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return false;
-            if (playerName && (name === playerName || name.includes(playerName) || playerName.includes(name))) return false;
-            return true;
-        });
+        // 【P2-5修复】主角过滤统一委托 CharacterMutator.filterOutPlayer，消除与
+        // game.js mergeCharacters 的重复实现（原 filter 逻辑完全一致）
+        var filtered = (typeof CharacterMutator !== 'undefined' && CharacterMutator.filterOutPlayer)
+            ? CharacterMutator.filterOutPlayer(characters)
+            : characters;
         if (filtered.length === 0) return;
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
             CharacterMutator.mergeCharacters(filtered, { silent: true });

@@ -2,6 +2,28 @@
 // 角色变更器 - CharacterMutator
 // ========================================
 const CharacterMutator = {
+    // 【P2-5修复】公共主角过滤方法，消除 game.js mergeCharacters 与
+    // AIResponseMutator._applyCharacters 的重复实现（两处 filter 逻辑完全一致）
+    // 过滤规则：name 非空字符串 → 排除 undefined/null → 排除主角（含子串互含匹配）
+    filterOutPlayer(chars) {
+        if (!chars || !Array.isArray(chars)) return [];
+        // 主角名取值优先级（与 legacy mergeCharacters 一致）
+        var playerName = '';
+        if (typeof StateManager !== 'undefined' && StateManager.get) {
+            var player = StateManager.get('entities.player');
+            if (player && player.name) playerName = player.name;
+        } else if (typeof gameState !== 'undefined') {
+            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '';
+        }
+        return chars.filter(function(c) {
+            if (!c || !c.name || typeof c.name !== 'string') return false;
+            var name = c.name.trim();
+            if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return false;
+            if (playerName && (name === playerName || name.includes(playerName) || playerName.includes(name))) return false;
+            return true;
+        });
+    },
+
     // 设置角色列表
     setCharacters(characters, options) {
         // 【P0修复BUG-005】类型安全：characters 可能是单个对象或非数组，强制转为数组

@@ -3402,20 +3402,11 @@ function fillChoiceToInput(text) {
 // StateManager._syncLegacyMirror 自动维护 gameState.allCharacters 镜像供 UI 读取。
 function mergeCharacters(chars) {
     if (!chars || chars.length === 0) return;
-    // 跳过主角：CharacterMutator 不感知主角名，需调用方预过滤
-    var playerName = '';
-    if (gameState && gameState.playerData && gameState.playerData.name) {
-        playerName = gameState.playerData.name;
-    } else if (gameState && gameState.playerName) {
-        playerName = gameState.playerName;
-    }
-    var filtered = chars.filter(function(c) {
-        if (!c || !c.name || typeof c.name !== 'string') return false;
-        var name = c.name.trim();
-        if (!name || name.toLowerCase() === 'undefined' || name.toLowerCase() === 'null') return false;
-        if (playerName && (name === playerName || name.includes(playerName) || playerName.includes(name))) return false;
-        return true;
-    });
+    // 【P2-5修复】主角过滤统一委托 CharacterMutator.filterOutPlayer，消除与
+    // AIResponseMutator._applyCharacters 的重复实现（原 filter 逻辑完全一致）
+    var filtered = (typeof CharacterMutator !== 'undefined' && CharacterMutator.filterOutPlayer)
+        ? CharacterMutator.filterOutPlayer(chars)
+        : chars;
     if (filtered.length === 0) return;
     if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
         CharacterMutator.mergeCharacters(filtered);

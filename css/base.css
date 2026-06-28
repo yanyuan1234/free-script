@@ -141,11 +141,7 @@
 .modal-overlay {
     will-change: transform, opacity;
 }
-/* 【性能修复】移除 contain: layout style 和 will-change: contents
-   原版没有这些属性，测试表明它们在打字机每tick更新innerHTML时
-   反而增加浏览器重排开销（需要反复验证containment边界） */
-#storyText {
-}
+/* 【P2-42修复】删除空 #storyText {} 规则块（P2-42） */
 /* 【性能】打字机当前段落——与普通 <p> 视觉一致 */
 .story-typing-para {
     margin: 0 0 12px 0;
@@ -2598,10 +2594,8 @@ a,
     border: 3px solid var(--border);
     border-top-color: var(--text-secondary);
     border-radius: 50%;
-    animation: app-loading-spin 0.8s linear infinite;
-}
-@keyframes app-loading-spin {
-    to { transform: rotate(360deg); }
+    /* 【P2-10修复】统一使用 @keyframes spin（pages.css:354 已定义），删除重复的 app-loading-spin */
+    animation: spin 0.8s linear infinite;
 }
 .app-loading-text {
     font-family: 'Noto Serif SC', serif;

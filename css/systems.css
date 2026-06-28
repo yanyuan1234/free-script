@@ -1058,20 +1058,5 @@
 }
 .choices-toggle:hover { background: var(--bg-tertiary, #ebebeb); }
 
-/* ================================================================
-   【P1修复BUG-9.1 / 原 P0-10】RESPONSIVE BREAKPOINTS 已删除
-   ================================================================
-   原内容（行 1066-2831，共约 1766 行）包含 4 个 @media 块：
-     - @media (max-width: 374px)
-     - @media (min-width: 414px)
-     - @media (min-width: 480px)
-     - @media (min-width: 768px)
-   每个 @media 块都重复定义了 .quest-* / .ach-* / .memory-* 等 65 个 class
-   的响应式样式。Grep 全项目验证：这 65 个 class 在 index.html 与 js/ 目录中
-   均无引用（仅 systems.css 自身 @media 块内出现）。
-   即：这些响应式断点对应的 HTML 元素根本不存在，整个响应式块都是死代码。
-   直接删除以减少 62% 的 systems.css 体积（2831 → 1065 行）。
-   如未来恢复这些模块，请重新设计响应式策略，避免逐字复制 4 份。
-================================================================ */
 
 
