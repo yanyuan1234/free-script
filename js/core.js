@@ -4548,9 +4548,9 @@ function mergeAdvancedPresetParams(presetParams) {
     var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
     if (!_curPreset || !_curPreset.params) return;
     var _pp = _curPreset.params;
-    if (_pp.top_k != null && !presetParams.top_k) presetParams.top_k = Number(_pp.top_k) || 0;
-    if (_pp.top_a != null && !presetParams.top_a) presetParams.top_a = Number(_pp.top_a) || 0;
-    if (_pp.min_p != null && !presetParams.min_p) presetParams.min_p = Number(_pp.min_p) || 0;
+    if (_pp.top_k != null && presetParams.top_k === undefined) presetParams.top_k = Number(_pp.top_k) || 0;
+    if (_pp.top_a != null && presetParams.top_a === undefined) presetParams.top_a = Number(_pp.top_a) || 0;
+    if (_pp.min_p != null && presetParams.min_p === undefined) presetParams.min_p = Number(_pp.min_p) || 0;
     if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
     if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
     if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;

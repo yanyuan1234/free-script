@@ -27,8 +27,10 @@ var QuestSystem = {
     // 动态计算引导任务奖励：基于玩家等级、回合进度和 AI 最近返回的任务奖励
     _computeGuidanceReward: function() {
         var base = 10;
-        var level = (gameState && gameState.playerData && gameState.playerData.level) || 1;
-        var turns = (gameState && gameState._stats && gameState._stats.totalTurns) || 1;
+        // 【阶段1修复】统一走 StateManager 读取玩家等级与回合数
+        var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
+        var level = (player && player.level) || 1;
+        var turns = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.turn') || 1) : 1;
         // 参考 AI 最近返回的任务奖励（避免硬编码）
         var reference = 0;
         var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.currentQuests || []));
@@ -862,7 +864,9 @@ function renderQuests() {
 
 function mergeRelationships(newRels) {
     if (!newRels || !Array.isArray(newRels)) return;
-    var playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
+    // 【阶段1修复】playerName 统一走 StateManager，避免直接读 gameState.playerData
+    var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
+    var playerName = (player && player.name) || (gameState && gameState.playerName) || '主角';
     // 标准化输入：把 {name, delta} 格式转为关系图谱条目
     var normalized = newRels.map(function(nr) {
         if (!nr) return null;
@@ -896,9 +900,16 @@ function mergeRelationships(newRels) {
 
 // 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网
 function _inferRelationshipsFromCharacters() {
-    if (!gameState) return;
-    var playerName = (gameState.playerData && gameState.playerData.name) || '主角';
-    var chars = gameState.allCharacters || {};
+    // 【阶段1修复】统一走 StateManager 读取玩家与角色，避免直接读 gameState
+    var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
+    var playerName = (player && player.name) || '主角';
+    var chars = {};
+    var charsRaw = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.characters') : null;
+    if (Array.isArray(charsRaw)) {
+        charsRaw.forEach(function(c) { if (c && c.name) chars[c.name] = c; });
+    } else if (gameState && gameState.allCharacters) {
+        chars = gameState.allCharacters;
+    }
     var inferred = [];
     Object.keys(chars).forEach(function(name) {
         var c = chars[name];

@@ -4874,8 +4874,11 @@ function _restoreGameRender() {
         renderRelationships();
         if (gameState.currentBag && gameState.currentBag.length > 0) renderBag(gameState.currentBag);
         // 恢复场景标题和HUD数据
-        if (gameState._lastSceneTitle) {
-            updateSceneTitle(gameState._lastSceneTitle);
+        var loadedSceneTitle = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? (StateManager.get('progress.sceneTitle') || '')
+            : (gameState._lastSceneTitle || '');
+        if (loadedSceneTitle) {
+            updateSceneTitle(loadedSceneTitle);
         } else if (gameState.userPrompt) {
             // 兜底：用用户的世界描述作为标题（截取前20字）
             var fallbackTitle = gameState.userPrompt.replace(/\n/g, ' ').substring(0, 20);
