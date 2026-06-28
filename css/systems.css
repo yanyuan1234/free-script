@@ -700,13 +700,8 @@
 
 /* --- 内联样式（从HTML中合并） --- */
     /* 世界书/预设/正则 - 通用增强样式 */
-    /* 注意：.modal-enhanced 和 .wi-btn-danger 样式已在 base.css 中定义，此处仅保留补充样式 */
-    .modal-enhanced .modal-header h3 { font-size:17px; font-weight:600; color:var(--text); display:flex; align-items:center; gap:8px; }
-    .wi-badge { display:inline-flex; align-items:center; padding:2px 8px; background:var(--accent-soft); border-radius:10px; font-size:11px; font-weight:600; color:var(--text-secondary); }
-    .wi-toolbar { display:flex; align-items:center; gap:6px; padding:10px 14px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; }
-    .wi-toolbar-btn { display:inline-flex; align-items:center; gap:4px; padding:6px 12px; background:var(--card); border:1px solid var(--border); border-radius:8px; font-size:12px; color:var(--text-secondary); cursor:pointer; transition: transform 0.15s, opacity 0.15s, background 0.15s; white-space:nowrap; }
-    .wi-toolbar-btn:active { background:var(--accent-soft); }
-    .wi-toolbar-btn svg { width:14px; height:14px; }
+    /* 【P1-31修复】删除 6 行与 base.css:1758-1764 逐字符重复的定义 */
+    /* .modal-enhanced/.wi-badge/.wi-toolbar/.wi-toolbar-btn 等已在 base.css 中定义，此处不再重复 */
     .wi-search {
         width: 100%;
         padding: 8px 10px;

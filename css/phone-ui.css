@@ -197,9 +197,9 @@
     background: var(--card);
 }
 
-.chat-item {
-    padding: 14px 16px;
-}
+/* 【P1-32修复】删除 .chat-item { padding: 14px 16px } 覆盖 */
+/* base.css:1574-1585 已将 .chat-item 与 .forum-hot-item 等合并为共享选择器（padding:12px 15px） */
+/* phone-ui.css 的 14px 16px 破坏了统一间距约定，删除后回归 base.css 定义 */
 
 .chat-avatar {
     width: 50px;
