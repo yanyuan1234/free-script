@@ -368,8 +368,19 @@ _executeSingleCommand: function(cmdStr) {
             }
             result=''; break;
         case 'persona':
-            if(gameState && argsStr) {
-                gameState.playerPersonality = argsStr;
+            // 【P0-9修复】persona 走 StateManager 权威源：entities.player.personality
+            // 旧实现仅写 gameState.playerPersonality（SillyTavern 兼容字段，本项目从不读取），
+            // 而 _applyPlayer (ai-response-mutator.js:211) 读的是 entities.player.personality，
+            // 导致 persona 命令设置的性格对 AI 注入无效。
+            // 现写 StateManager 权威源；同时保留 gameState.playerPersonality 兼容外部 ST 脚本。
+            if (argsStr) {
+                if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+                    var _playerForPersona = StateManager.get('entities.player') || {};
+                    StateManager.set('entities.player', Object.assign({}, _playerForPersona, { personality: argsStr }), { silent: true });
+                }
+                if (gameState) {
+                    gameState.playerPersonality = argsStr;
+                }
             }
             result=''; break;
         case 'char':
@@ -393,7 +404,14 @@ _executeSingleCommand: function(cmdStr) {
             }
             result=''; break;
         case 'clear':
-            if(gameState) {
+            // 【P0-9修复】清空对话历史走 StateManager 权威源：
+            // _syncLegacyMirror 自动同步 gameState.conversationHistory。
+            // 旧实现直写 gameState.conversationHistory = []，导致
+            // StateManager.get('progress.conversationHistory') 仍返回旧值（陈旧），
+            // 后续 AI 请求注入的对话历史仍包含已"清空"的消息。
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.conversationHistory', [], { silent: true });
+            } else if (gameState) {
                 gameState.conversationHistory = [];
             }
             result=''; break;
@@ -3606,6 +3624,28 @@ var GameMemory = {
         self._ltmDirty = true;
     },
 
+    // 【P0-8修复】worldNotes 写入 API
+    // 替代 phone-ui.js:903 直接 EnhancedMemory.longTermMemory.worldNotes.push({...}) 的旧实现。
+    // 旧实现绕过 GameMemory API，依赖 longTermMemory getter 返回 _worldNotes 引用才能生效
+    // （见 tavern-compat.js:3742 `worldNotes: self._worldNotes`）。
+    // 风险：一旦未来 getter 将 worldNotes 改为 deepClone（与其他 tables 字段一致，line 3733-3736），
+    // 旧 push 会写入快照副本，_worldNotes 不会更新，重启后丢失。
+    // 统一 API 后：写入路径明确指向 _worldNotes 源字段，_ltmDirty 正确置位（防御性），
+    // _worldNotes 懒初始化由 API 负责，调用方无需关心。
+    addWorldNote: function(note) {
+        if (!note || !note.content || typeof note.content !== 'string') return;
+        var self = this;
+        if (!Array.isArray(self._worldNotes)) self._worldNotes = [];
+        self._worldNotes.push({
+            title: note.title || '',
+            category: note.category || '设定',
+            content: note.content,
+            timestamp: note.timestamp || Date.now(),
+            source: note.source || 'manual'
+        });
+        self._ltmDirty = true;
+    },
+
     // 【P1修复BUG-011-permanentFacts责任越界】公共 API：upsert 单条 permanentFact
     // 替代 AIResponseMutator._applyPermanentFacts 内部直接操纵 self.permanentFacts[category] 的旧实现。
     // category ∈ ['worldPlaces','npcProfiles','pcIdentity','settings','worldRules','promises']
@@ -3982,11 +4022,29 @@ var MemoryManagerUI = {
 
     saveMemoryEdits: function() {
         var summaryEl = document.getElementById('memorySummaryEdit');
-        if (summaryEl && typeof gameState !== 'undefined') gameState.rollingSummary = summaryEl.value.trim();
+        // 【P0-9修复】rollingSummary 走 StateManager 权威源：progress.rollingSummary
+        // 旧实现直写 gameState.rollingSummary，StateManager.get 返回陈旧值，
+        // AI 注入的剧情摘要仍是编辑前的内容。
+        if (summaryEl) {
+            var _summaryVal = summaryEl.value.trim();
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.rollingSummary', _summaryVal, { silent: true });
+            } else if (typeof gameState !== 'undefined') {
+                gameState.rollingSummary = _summaryVal;
+            }
+        }
         var worldEdit = document.getElementById('memoryWorldEdit');
         // 【I修复】用户手编 JSON 非法时不再静默吞掉，提示用户
-        if (worldEdit && typeof gameState !== 'undefined') {
-            try { gameState.worldSnapshot = JSON.parse(worldEdit.value); }
+        // 【P0-9修复】worldSnapshot 走 StateManager 权威源：ui.worldSnapshot
+        if (worldEdit) {
+            try {
+                var _parsedWorld = JSON.parse(worldEdit.value);
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('ui.worldSnapshot', _parsedWorld, { silent: true });
+                } else if (typeof gameState !== 'undefined') {
+                    gameState.worldSnapshot = _parsedWorld;
+                }
+            }
             catch(e) { console.warn('[saveMemoryEdits] worldSnapshot JSON 解析失败:', e.message); UI.toast('世界快照JSON格式错误，已忽略'); }
         }
         if (typeof autoSave === 'function') autoSave();
@@ -4566,19 +4624,30 @@ var MemoryManagerUI = {
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
             // 兜底：_syncItemsToBag 不可用时直接改视图
+            // 【P0-9修复】构建新 bag 数组后写 StateManager 权威源（entities.bag），
+            // _syncLegacyMirror 自动同步 gameState.currentBag。
+            // 用 slice/filter/Object.assign 创建新数组与新对象，避免原地 mutate 污染引用。
             if (oldName !== newName) delete gm.tables.items[oldName];
             gm.tables.items[newName] = _newItemData;
-            if (oldName !== newName) gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== oldName; });
+            var _bagForSave = gameState.currentBag.slice();
+            if (oldName !== newName) {
+                _bagForSave = _bagForSave.filter(function(b) { return b.name !== oldName; });
+            }
             var found = false;
-            for (let i = 0; i < gameState.currentBag.length; i++) {
-                if (gameState.currentBag[i].name === newName) {
-                    gameState.currentBag[i].count = _newItemData.qty;
-                    gameState.currentBag[i].rarity = _newItemData.rarity;
-                    gameState.currentBag[i].desc = _newItemData.desc;
+            for (let i = 0; i < _bagForSave.length; i++) {
+                if (_bagForSave[i].name === newName) {
+                    _bagForSave[i] = Object.assign({}, _bagForSave[i], { count: _newItemData.qty, rarity: _newItemData.rarity, desc: _newItemData.desc });
                     found = true; break;
                 }
             }
-            if (!found) gameState.currentBag.push({ name: newName, count: _newItemData.qty, desc: _newItemData.desc, rarity: _newItemData.rarity });
+            if (!found) {
+                _bagForSave.push({ name: newName, count: _newItemData.qty, desc: _newItemData.desc, rarity: _newItemData.rarity });
+            }
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('entities.bag', _bagForSave, { silent: true });
+            } else {
+                gameState.currentBag = _bagForSave;
+            }
         }
         UI.afterMemoryChange('items', 'currentBag', undefined);
     },
@@ -4591,7 +4660,13 @@ var MemoryManagerUI = {
         if (typeof _syncItemsToBag === 'function') {
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
-            gameState.currentBag = gameState.currentBag.filter(function(b) { return b.name !== name; });
+            // 【P0-9修复】兜底路径也走 StateManager 权威源：entities.bag
+            var _bagAfterDelete = gameState.currentBag.filter(function(b) { return b.name !== name; });
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('entities.bag', _bagAfterDelete, { silent: true });
+            } else {
+                gameState.currentBag = _bagAfterDelete;
+            }
         }
         UI.afterMemoryChange('items', 'currentBag', '物品已删除');
     },
@@ -4656,10 +4731,18 @@ var MemoryManagerUI = {
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined') {
             // 兜底：_syncItemsToBag 不可用时直接改视图
+            // 【P0-9修复】构建新 bag 数组后写 StateManager 权威源：entities.bag
             gm.tables.items[name] = _newItemData;
-            if (!gameState.currentBag) gameState.currentBag = [];
-            var exists = gameState.currentBag.some(function(b) { return b.name === name; });
-            if (!exists) gameState.currentBag.push({ name: name, count: _newItemData.qty, desc: _newItemData.desc, rarity: _newItemData.rarity });
+            var _currentBag = (gameState.currentBag || []).slice();
+            var exists = _currentBag.some(function(b) { return b.name === name; });
+            if (!exists) {
+                _currentBag.push({ name: name, count: _newItemData.qty, desc: _newItemData.desc, rarity: _newItemData.rarity });
+            }
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('entities.bag', _currentBag, { silent: true });
+            } else {
+                gameState.currentBag = _currentBag;
+            }
         }
         UI.afterMemoryChange('items', 'currentBag', undefined);
     },
@@ -4843,7 +4926,15 @@ var MemoryManagerUI = {
 
     savePlot: function() {
         var gm = window.GameMemory; gm.plot.worldSetting = document.getElementById('editPlotWorld').value.trim(); gm.plot.currentChapter = document.getElementById('editPlotCurrent').value.trim();
-        if (typeof gameState !== 'undefined') { gameState.rollingSummary = (gm.plot.worldSetting || '') + '\n' + (gm.plot.currentChapter || ''); }
+        // 【P0-9修复】rollingSummary 走 StateManager 权威源：progress.rollingSummary
+        // 旧实现直写 gameState.rollingSummary，StateManager.get 返回陈旧值，
+        // AI 注入的剧情摘要仍是编辑前的世界设定/章节。
+        var _plotSummary = (gm.plot.worldSetting || '') + '\n' + (gm.plot.currentChapter || '');
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('progress.rollingSummary', _plotSummary, { silent: true });
+        } else if (typeof gameState !== 'undefined') {
+            gameState.rollingSummary = _plotSummary;
+        }
         UI.afterMemoryChange('plot', 'rollingSummary', undefined);
     },
 

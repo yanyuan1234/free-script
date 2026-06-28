@@ -51,6 +51,38 @@ function subtractPlayerMoney(amount) {
 }
 
 // ========================================
+// 【P0-12修复】conversationHistory 读写 helper —— 全部走 StateManager
+// 单一权威源：StateManager.get('progress.conversationHistory')
+// _syncLegacyMirror 自动同步 gameState.conversationHistory 旧字段（仅作只读镜像用）
+// -----------------------------------------------------------------------------
+// 原 phone-ui.js 有 6 处直接 mutate gameState.conversationHistory（push/pop/[]=）：
+//   - 4118 编辑最后一条 assistant 消息内容
+//   - 4968-4969 retryStory 重新生成（pop user+assistant）
+//   - 5118-5119 undoLastTurn 撤销最后一轮（pop x2）
+//   - 7180-7186 saveNpcEdit 注入角色更新消息（push x2）
+// 这些直写绕过 StateManager，导致：
+//   1. StateManager.get('progress.conversationHistory') 返回陈旧值（game.js:2158/2163 读到旧数据）
+//   2. UndoMutator 快照基于 StateManager，注入/删除的消息不进入撤销历史 → 撤销失效
+//   3. gameState 与 StateManager 两源不一致
+// 统一走 _updateConversationHistory 后：StateManager.set 触发 _syncLegacyMirror 自动同步 gameState，
+// 且 UndoMutator 快照正确捕获变更。
+// 注意：必须创建新数组（concat/slice），不能原地 mutate —— 否则 undo 快照引用同一数组会被污染。
+// ========================================
+function _getConversationHistory() {
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        return StateManager.get('progress.conversationHistory') || [];
+    }
+    return (typeof gameState !== 'undefined' && gameState && gameState.conversationHistory) || [];
+}
+function _updateConversationHistory(newHist) {
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('progress.conversationHistory', newHist, { silent: true });
+    } else if (typeof gameState !== 'undefined' && gameState) {
+        gameState.conversationHistory = newHist;
+    }
+}
+
+// ========================================
 // 【P2-11/12 阶段2】UI 常量统一抽取，避免局部重复定义
 // ========================================
 var AVATAR_COLORS = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#1890ff', '#52c41a'];
@@ -317,7 +349,7 @@ function appendForumReply(postIdx, comment) {
     item.innerHTML = '<div class="forum-reply-avatar" style="background:' + avatarColor + '">' + escapeHtml((comment.name || '匿').charAt(0)) + '</div>' +
         '<div class="forum-reply-main"><div class="forum-reply-name">' + escapeHtml(comment.name || '匿名') + '</div>' +
         '<div class="forum-reply-content">' + replyPrefix + escapeHtml(comment.text || '') + '</div>' +
-        '<div class="forum-reply-meta">' + escapeHtml(comment.time || '刚刚') +
+        '<div class="forum-reply-meta">' + escapeHtml(_formatLogTime(comment.time, 'time') || '刚刚') +
         '　<span style="cursor:pointer" onclick="replyToForumComment(' + postIdx + ',' + ((detail
             .querySelectorAll('.forum-reply-item').length)) + ')">回复</span></div></div>';
     list.appendChild(item);
@@ -900,16 +932,17 @@ function _autoExtractWorldNotes(modules) {
 
         // 【修复X17】双重保险：确保 content 是字符串再 trim
         if (typeof content === 'string' && content.trim()) {
-            EnhancedMemory.longTermMemory.worldNotes.push({
+            // 【P0-8修复】改走 GameMemory API，替代直接 EnhancedMemory.longTermMemory.worldNotes.push(...)
+            // 旧实现绕过 API 依赖 getter 返回 _worldNotes 引用，未来 getter 改 deepClone 会静默丢失写入。
+            EnhancedMemory.addWorldNote({
                 title: mod.title,
                 category: categoryMap[mod.type] || '设定',
                 content: content.trim(),
-                timestamp: Date.now(),
                 source: 'auto' // 标记为自动提取
             });
         }
     });
-    
+
     EnhancedMemory.saveToStorage();
     console.log('[世界观] 已自动提取 ' + modules.length + ' 条世界设定到世界页面');
 }
@@ -1544,6 +1577,24 @@ function _applyLogPageStyle(content, type, html) {
             }
         });
     }
+    // 【P0-10修复】朋友圈评论输入框 Enter 键委托：原为内联 onkeydown，CSP unsafe-inline 下不安全。
+    // 发送按钮已改 data-action="sendMomentComment"（由 utils.js _globalA11yDelegate 路由）。
+    // input 的 Enter 键无法用 data-action（非 role=button），此处补 keydown 委托。
+    if (type === 'moments' && !content._momentsKeydownBound) {
+        content._momentsKeydownBound = true;
+        content.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                var input = e.target.closest && e.target.closest('input[data-moment-idx]');
+                if (input) {
+                    e.preventDefault();
+                    var idx = parseInt(input.getAttribute('data-moment-idx'), 10);
+                    if (!isNaN(idx) && typeof sendMomentComment === 'function') {
+                        sendMomentComment(idx);
+                    }
+                }
+            }
+        });
+    }
     if (type === 'achieve') {
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.renderAchievePage) {
             AchievementSystem.renderAchievePage(content);
@@ -1909,7 +1960,7 @@ function renderMomentsPage() {
             html += '<span role="button" tabindex="0" style="font-size:13px;color:#576b95;cursor:pointer;" data-action="showMomentCommentInput" data-args=\'[' + idx + ',null]\'>评论</span>';
             html += '</div>';
             html += '<div id="momentCommentBox_' + idx + '" style="display:none;margin-top:8px;">';
-            html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" placeholder="写评论..." style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;" onkeydown="if(event.key===\'Enter\')sendMomentComment(' + idx + ')"><span style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" onclick="sendMomentComment(' + idx + ')">发送</span></div>';
+            html += '<div style="display:flex;gap:8px;align-items:center;"><input type="text" id="momentCommentInput_' + idx + '" data-moment-idx="' + idx + '" placeholder="写评论..." style="flex:1;border:1px solid #e5e5e5;border-radius:16px;padding:6px 12px;font-size:13px;outline:none;"><span role="button" tabindex="0" style="font-size:13px;color:#576b95;cursor:pointer;white-space:nowrap;" data-action="sendMomentComment" data-args=\'[' + idx + ']\'">发送</span></div>';
             html += '</div>';
             html += '</div>';
         });
@@ -3888,8 +3939,9 @@ function bindEvents() {
                 hideStoryLoading();
                 TypewriterBuffer.stop();
                 streamBuffer = '';
-                _streamModeLocked = false;
-                _streamMode = null;
+                // 【P0-3修复】_streamMode/_streamModeLocked 改走 RuntimeState
+                RuntimeState.streamModeLocked = false;
+                RuntimeState.streamMode = null;
                 if (typeof _streamFullText !== 'undefined') _streamFullText = '';
                 UI.toast('已取消生成');
             }
@@ -4051,7 +4103,8 @@ function bindEvents() {
             return;
         }
 
-        if (gameState.conversationHistory.length === 0) {
+        var _chForEdit = _getConversationHistory();
+        if (_chForEdit.length === 0) {
             UI.toast('暂无可编辑的剧情');
             return;
         }
@@ -4085,9 +4138,14 @@ function bindEvents() {
 
             // 把编辑后的完整文本合并为最后一条 assistant 消息
             // 先找到最后一条 assistant 消息的索引
+            // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+            // StateManager 为权威源，_syncLegacyMirror 自动同步 gameState.conversationHistory。
+            // 必须创建新数组+新对象（slice+Object.assign），不可原地 mutate ——
+            // 否则 undo 快照若引用同一数组/对象会被污染。
+            var _histForEdit = _getConversationHistory();
             var lastAssistantIdx = -1;
-            for (var i = gameState.conversationHistory.length - 1; i >= 0; i--) {
-                if (gameState.conversationHistory[i].role === 'assistant') {
+            for (var i = _histForEdit.length - 1; i >= 0; i--) {
+                if (_histForEdit[i].role === 'assistant') {
                     lastAssistantIdx = i;
                     break;
                 }
@@ -4095,7 +4153,9 @@ function bindEvents() {
 
             if (lastAssistantIdx >= 0) {
                 // 将编辑后的文本写回最后一条 assistant 消息
-                gameState.conversationHistory[lastAssistantIdx].content = editedText;
+                var _newHist = _histForEdit.slice();
+                _newHist[lastAssistantIdx] = Object.assign({}, _histForEdit[lastAssistantIdx], { content: editedText });
+                _updateConversationHistory(_newHist);
             }
 
             autoSave();
@@ -4944,9 +5004,15 @@ function _restoreGameRender() {
 // --- 默认游戏状态 ---
 // --- setWaiting 适配 ---
 async function retryStory() {
-    if (isWaiting || gameState.conversationHistory.length < 3) return;
-    gameState.conversationHistory.pop();
-    var lastUserMsg = gameState.conversationHistory.pop();
+    // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+    // 删除最后两条（assistant 回复 + user 消息），保留 lastUserMsg 用于重新生成。
+    // 原代码两次 pop() 原地 mutate gameState.conversationHistory，绕过 StateManager，
+    // 导致撤销快照引用被污染 + StateManager.get 返回陈旧值。
+    // 新实现用 slice(0, -2) 创建新数组，并通过 _updateConversationHistory 写回权威源。
+    var _histForRetry = _getConversationHistory();
+    if (isWaiting || _histForRetry.length < 3) return;
+    var lastUserMsg = _histForRetry[_histForRetry.length - 2];
+    _updateConversationHistory(_histForRetry.slice(0, -2));
     if (lastUserMsg) {
         // 【日志页面】弹窗提示：AI 正在重新生成，可取消
         if (typeof UI.showGenerating === 'function') {
@@ -5091,13 +5157,16 @@ function deleteLastTurn() {
     }
     
     // 原有逻辑：删除最后一轮对话
-    if (gameState.conversationHistory.length < 3) {
+    // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+    // slice(0, -2) 创建新数组，避免原地 pop 污染 undo 快照引用。
+    var _histForUndo = _getConversationHistory();
+    if (_histForUndo.length < 3) {
         UI.toast('已经是最开始了');
         return;
     }
-    gameState.conversationHistory.pop();
-    gameState.conversationHistory.pop();
-    var lastAI = [...gameState.conversationHistory].reverse().find(m => m.role === 'assistant');
+    var _newHistForUndo = _histForUndo.slice(0, -2);
+    _updateConversationHistory(_newHistForUndo);
+    var lastAI = [..._newHistForUndo].reverse().find(m => m.role === 'assistant');
     if (lastAI) {
         var parsed = parseAIResponse(lastAI.content);
         if (parsed.storyText) renderStory(parsed.storyText);
@@ -7156,14 +7225,20 @@ function saveNpcEdit() {
         }).join('\n') + '\n';
     }
     injectText += '请在后续剧情中按照以上设定来描写该角色。';
-    if (gameState && gameState.conversationHistory && gameState.conversationHistory.length > 0) {
-        gameState.conversationHistory.push({
+    // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+    // concat 创建新数组，避免原地 push 污染 undo 快照引用 + 绕过 StateManager。
+    // 旧实现直 push 到 gameState.conversationHistory，导致：
+    //   1. StateManager.get('progress.conversationHistory') 返回陈旧值（不含注入消息）
+    //   2. UndoMutator 快照基于 StateManager，注入消息不进入撤销历史 → 撤销失效
+    var _histForInject = _getConversationHistory();
+    if (_histForInject.length > 0) {
+        _updateConversationHistory(_histForInject.concat([{
             role: 'user',
             content: injectText
         }, {
             role: 'assistant',
             content: '明白，已更新「' + name + '」的角色设定，后续会保持一致。'
-        });
+        }]));
     }
     renderNpcList();
     UI.hideModal('npcEditModal');

@@ -31,6 +31,13 @@
 
         console.log('[STscriptBridge] 开始集成到游戏系统...');
 
+        // 【P0-14修复】_presetVarCacheKey / _presetVarParsed 原声明在 Hook 3 的 if 块内（line 67-68），
+        // 但 Hook 1 的 loadPreset wrapper（line 37-38）已在使用它们。依赖 var 提升到函数顶部才不报错，
+        // 一旦后续维护误删 if 块或改用 let/const，loadPreset hook 会抛 ReferenceError。
+        // 现统一提升到函数顶部显式声明，与 _initRetryCount 同级，使作用域意图明确。
+        var _presetVarCacheKey = null;
+        var _presetVarParsed = false;
+
         // ── Hook 1: PresetManager.loadPreset ──
         var origLoadPreset = PresetManager.loadPreset;
         PresetManager.loadPreset = function(idx) {
@@ -64,8 +71,6 @@
         // ── Hook 3: 增强 injectPresetGlobalVars ──
         if (typeof injectPresetGlobalVars === 'function') {
             var origInject = injectPresetGlobalVars;
-            var _presetVarCacheKey = null;
-            var _presetVarParsed = false;
 
             injectPresetGlobalVars = function() {
                 origInject.call(this);

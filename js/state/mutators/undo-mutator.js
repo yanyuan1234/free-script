@@ -65,8 +65,11 @@ const UndoMutator = {
     restoreFromSnapshot(snap) {
         if (!snap) return false;
         // 1. conversationHistory：走 StateManager 静默写入
+        // 【P0-13修复】原误写 'transient.conversationHistory'，schema 中无 transient 域，
+        // 写入会创建孤立子树，既不触发 _syncLegacyMirror 同步到 gameState.conversationHistory，
+        // 也不被订阅者监听 → 撤销后对话历史不恢复。正确路径为 'progress.conversationHistory'。
         if (typeof StateManager !== 'undefined' && StateManager.set) {
-            StateManager.set('transient.conversationHistory', snap.conversationHistory || [], { silent: true });
+            StateManager.set('progress.conversationHistory', snap.conversationHistory || [], { silent: true });
         }
         // 2. 角色：通过 CharacterMutator（统一权威）
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.setCharacters) {

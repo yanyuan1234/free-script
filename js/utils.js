@@ -77,7 +77,11 @@ function _globalA11yDelegate(e) {
         if (actEl) {
             var action = actEl.getAttribute('data-action');
             var argsAttr = actEl.getAttribute('data-args');
-            var fn = window[action];
+            // 【P0-2修复】支持 kebab-case action 名 → camelCase 函数名（如 toggle-thought → toggleThought）
+            // 这样 HTML 可保持 kebab-case 约定，JS 函数名保持 camelCase 约定，无需特殊路由表。
+            // 无连字符的 action 名（如 openForumPost）不受影响。
+            var fnName = action.replace(/-([a-z])/g, function(m, c) { return c.toUpperCase(); });
+            var fn = window[fnName];
             if (typeof fn === 'function') {
                 e.preventDefault();
                 try {
@@ -436,8 +440,10 @@ try { localStorage.removeItem(testKey); } catch(e) {}
 }
 };
 
-GlobalCleanup.registerListener(window, 'error', function(event) { if (console && console.error) console.error('[全局错误]', event.message); });
-GlobalCleanup.registerListener(window, 'unhandledrejection', function(event) { if (console && console.error) console.error('[Promise错误]', event.reason); });
+// 【P0-1修复】删除 utils.js 的全局错误处理器（简化版，仅 console.error）。
+// init.js:13-30 已有功能更完整的版本（含 IMG/LINK/SCRIPT 资源错误过滤 + UI.toast + capture 阶段），
+// 两处同时注册会导致每次未捕获错误触发 2 条 console.error + 最多 2 个 toast。
+// 统一保留 init.js 版本，此处不再重复注册。
 
 const ThemeManager = {
     _current: 'light',

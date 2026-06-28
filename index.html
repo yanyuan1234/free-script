@@ -6,6 +6,29 @@
         <meta name="theme-color" content="#f5f5f0">
         <meta name="apple-mobile-web-app-capable" content="yes">
         <meta name="apple-mobile-web-app-status-bar-style" content="default">
+        <!--
+            【CSP 安全策略说明】
+            script-src 中的 'unsafe-eval' 是本项目唯一的高危放宽项，仅服务于一个必要功能：
+            SillyTavern 预设脚本兼容层（tavern-compat.js _executeScriptCode，约 line 723）。
+            该功能通过 new Function 执行预设文件内嵌的自定义脚本，是导入第三方酒馆预设的核心能力。
+
+            安全保障（多层纵深防御）：
+            1. 源头限制：脚本仅来自预设文件（JSON 字段 tavern_helper.scripts[].content），不接受用户直接输入
+            2. 长度限制：单脚本上限 100KB
+            3. 危险模式黑名单（tavern-compat.js:680-708）：拦截 eval / Function / new Function /
+               document.write / 间接 eval (window['eval'] / (0,eval) / Reflect.apply(eval,...)) /
+               setTimeout/setInterval 字符串形式 / constructor 绕过 / __proto__ /
+               window.Function / globalThis.Function / document.cookie / XMLHttpRequest
+            4. 严格模式：'use strict' 前缀 + this=null 绑定，阻止全局泄漏
+            5. 沙箱隔离：仅暴露 getContext/triggerSlash/toastr/eventSource/console/
+               setTimeout/setInterval/clearTimeout/clearInterval/Promise，不暴露 fetch/document/window
+            6. import 语句过滤：替换为注释，阻断模块导入逃逸
+
+            全项目仅此一处使用 new Function（已 Grep 验证）。其余所有脚本均为 'self' 外部文件，
+            无内联 <script>、无内联事件处理器（data-action 委托模式）。
+            移除 'unsafe-eval' 将直接破坏预设脚本执行功能；如未来重构为 Web Worker + blob URL
+            方案可彻底移除此放宽项，但需异步代理沙箱 API，风险较高，暂不实施。
+        -->
         <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' data: blob:; frame-src 'none'; object-src 'none';">
         <title>自由剧本 · FREE SCRIPT</title>
         <link rel="icon" type="image/svg+xml" href="favicon.svg">

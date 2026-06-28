@@ -925,8 +925,9 @@ async function sendAIRequest(userMessage, isInit = false) {
     setWaiting(true);
     showStoryLoading();
     streamBuffer = '';
-    _streamModeLocked = false;
-    _streamMode = null;
+    // 【P0-3修复】_streamMode/_streamModeLocked 改走 RuntimeState
+    RuntimeState.streamModeLocked = false;
+    RuntimeState.streamMode = null;
     TypewriterBuffer.stop();
     // 【修复BUG-11】玩家每进行一次有效行动（非初始化），推进引导任务进度
     if (!isInit && typeof QuestSystem !== 'undefined' && QuestSystem.advanceGuidanceQuest) {
@@ -1912,44 +1913,58 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 现统一为：所有写入走 StateManager.set，由 _syncLegacyMirror 自动同步到 gameState.currency。
             // StateManager 在 StateManager.init 后始终可用（init.js:25 在 DOMContentLoaded 早期调用），
             // 此处仅作最小防御：StateManager 缺失时抛错而非静默双写。
+            // 【P0-4修复】加 _doLegacyStateWrites 守卫：_aiMutatorApplied=true 时 AIResponseMutator._applyCurrency
+            // 已写 entities.currency/currencyName，此处跳过避免双写。
+            // 同时跳过 reconcileFromStory 兜底：mutator 已应用时 AI 显式值优先（reconcile 会用故事文本
+            // 二次加减覆盖 AI 值，可能双计数）。reconcile 仅在 mutator 未应用（fallback 路径）时执行。
             if (gameState && (data.currency !== undefined || data.currencyName)) {
-                if (typeof StateManager === 'undefined' || !StateManager.set) {
-                    throw new Error('[货币] StateManager 未加载，无法写入');
-                }
-                if (data.currency !== undefined) {
-                    StateManager.set('entities.currency', Number(data.currency) || 0, { silent: true });
-                }
-                if (data.currencyName) {
-                    StateManager.set('entities.currencyName', data.currencyName, { silent: true });
-                }
-                // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
-                if (storyText && typeof storyText === 'string') {
-                    // 【P0-2.6 阶段3-1】统一走 CurrencyMutator.get()，删除 gameState.money/coins fallback
-                    var currentBalance = (typeof CurrencyMutator !== 'undefined')
-                        ? CurrencyMutator.get()
-                        : (parseFloat(StateManager.get('entities.currency')) || 0);
-                    var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
-                    if (recon.changed) {
-                        StateManager.set('entities.currency', recon.balance, { silent: true });
-                        console.log('[货币兜底] 从故事文本提取金额:', recon.balance, recon.changes);
+                if (_doLegacyStateWrites) {
+                    if (typeof StateManager === 'undefined' || !StateManager.set) {
+                        throw new Error('[货币] StateManager 未加载，无法写入');
+                    }
+                    if (data.currency !== undefined) {
+                        StateManager.set('entities.currency', Number(data.currency) || 0, { silent: true });
+                    }
+                    if (data.currencyName) {
+                        StateManager.set('entities.currencyName', data.currencyName, { silent: true });
+                    }
+                    // 【修复BUG-09】AI 未返回 currency 时，从故事文本中提取金额兜底（支持中文数字与加减方向）
+                    if (storyText && typeof storyText === 'string') {
+                        // 【P0-2.6 阶段3-1】统一走 CurrencyMutator.get()，删除 gameState.money/coins fallback
+                        var currentBalance = (typeof CurrencyMutator !== 'undefined')
+                            ? CurrencyMutator.get()
+                            : (parseFloat(StateManager.get('entities.currency')) || 0);
+                        var recon = CurrencyReconciler.reconcileFromStory(storyText, currentBalance);
+                        if (recon.changed) {
+                            StateManager.set('entities.currency', recon.balance, { silent: true });
+                            console.log('[货币兜底] 从故事文本提取金额:', recon.balance, recon.changes);
+                        }
                     }
                 }
+                // else: AIResponseMutator._applyCurrency 已写 entities.currency/currencyName，跳过
             }
             // === 新增：提取并累积重要事件 ===
+            // 【P0-5修复】加 _doLegacyStateWrites 守卫：_aiMutatorApplied=true 时 AIResponseMutator._applyKeyEvents
+            // 已通过 gm.addImportantEvents 写入（含 turn/gameTime/importance/decayScore 完整字段 + 去重），
+            // 此处再调 gm.addImportantEvents 虽被去重兜底（同 content 不重复添加），但冗余且 legacy 硬编码
+            // importance:7 与 mutator 的 importance:5（默认）不一致，跳过避免语义混淆。
             if (data.keyEvents && Array.isArray(data.keyEvents)) {
-                // 【H3修复】统一走 gm.addImportantEvents 批量入口
-                // 旧代码直接 push 到 gameState.keyEvents（字符串数组）+ 手动 slice(-30) + _pushKeyEventsToGM，
-                // 与 gm.events（对象数组）schema 冲突，且不触发 saveToStorage
-                var _gm = (typeof window !== 'undefined') ? window.GameMemory : null;
-                if (_gm && _gm.addImportantEvents) {
-                    var _keyEventObjs = data.keyEvents
-                        .filter(function(evt) { return evt && typeof evt === 'string' && evt.trim().length > 0; })
-                        .map(function(evt) { return { content: evt.trim(), importance: 7 }; });
-                    if (_keyEventObjs.length > 0) {
-                        try { _gm.addImportantEvents(_keyEventObjs); } catch (e) { console.warn('[keyEvents]', e); }
+                if (_doLegacyStateWrites) {
+                    // 【H3修复】统一走 gm.addImportantEvents 批量入口
+                    // 旧代码直接 push 到 gameState.keyEvents（字符串数组）+ 手动 slice(-30) + _pushKeyEventsToGM，
+                    // 与 gm.events（对象数组）schema 冲突，且不触发 saveToStorage
+                    var _gm = (typeof window !== 'undefined') ? window.GameMemory : null;
+                    if (_gm && _gm.addImportantEvents) {
+                        var _keyEventObjs = data.keyEvents
+                            .filter(function(evt) { return evt && typeof evt === 'string' && evt.trim().length > 0; })
+                            .map(function(evt) { return { content: evt.trim(), importance: 7 }; });
+                        if (_keyEventObjs.length > 0) {
+                            try { _gm.addImportantEvents(_keyEventObjs); } catch (e) { console.warn('[keyEvents]', e); }
+                        }
                     }
+                    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
                 }
-                // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
+                // else: AIResponseMutator._applyKeyEvents 已写入，跳过
             }
             // === 新增：保存世界状态快照 ===
             var snapshot = {};
@@ -2753,9 +2768,8 @@ function extractStoryStreaming(text) {
     return result.length > 0 ? result : null;
 }
 
-// 流式模式锁定：一旦确定模式，不再切换
-var _streamModeLocked = false;
-var _streamMode = null; // 'json' 或 'plaintext'
+// 【P0-3修复】_streamMode/_streamModeLocked 已迁移到 RuntimeState（core.js:1936-1971），此处不再声明。
+// 流式模式锁定语义：一旦确定模式（json/plaintext），不再切换，避免每帧正则扫描。
 
 function onStreamChunk(delta, fullText) {
     // 【修复】空内容保护：delta和fullText都为空时跳过，避免反复推送空字符串
@@ -2771,8 +2785,8 @@ function onStreamChunk(delta, fullText) {
     // streamBuffer为空时跳过后续处理
     if (!streamBuffer) return;
     // 模式锁定后直接走对应路径，避免每帧都做正则扫描
-    if (_streamModeLocked) {
-        if (_streamMode === 'plaintext') {
+    if (RuntimeState.streamModeLocked) {
+        if (RuntimeState.streamMode === 'plaintext') {
             // 纯文本模式：直接推送到打字机
             TypewriterBuffer.push(streamBuffer);
             return;
@@ -2791,8 +2805,8 @@ function onStreamChunk(delta, fullText) {
     // 未锁定模式：尝试 JSON 提取
     var story = extractStoryStreaming(streamBuffer);
     if (story && story.length > 0) {
-        _streamMode = 'json';
-        _streamModeLocked = true;
+        RuntimeState.streamMode = 'json';
+        RuntimeState.streamModeLocked = true;
         TypewriterBuffer.push(story);
     } else if (streamBuffer.length > 50) {
         // 【修复BUG-01】50字符阈值过低：AI先输出title时"story":尚未出现就被误判为plaintext
@@ -2806,8 +2820,8 @@ function onStreamChunk(delta, fullText) {
             return;
         }
         // 非JSON响应才锁定为纯文本模式
-        _streamMode = 'plaintext';
-        _streamModeLocked = true;
+        RuntimeState.streamMode = 'plaintext';
+        RuntimeState.streamModeLocked = true;
         TypewriterBuffer.push(streamBuffer);
     }
 }
@@ -2882,7 +2896,7 @@ var _reGiggleCNStrip = /【giggle】[\s\S]*?【\/giggle】/gi;
 var _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi;
 var _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi;
 var _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi;
-var _reDecorTagsTyping = /<(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danbu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+var _reDecorTagsTyping = /<(?:ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
 
 // 检测标题是否疑似初始场景（用于防御 AI  confused 回退）
 function _looksLikeInitialScene(title, userPrompt) {
@@ -3209,6 +3223,9 @@ function createThoughtTriggerHTML(id, thoughts) {
         countBadge + '</span>';
 }
 function toggleThought(trigger) {
+    // 【P0-2修复】兼容 utils.js data-action 委托的调用约定（fn.call(actEl) 不传参，元素作为 this）。
+    // 原仅接受 trigger 参数；现 trigger 为 undefined 时回退到 this，两种调用方式都可用。
+    trigger = trigger || this;
     var targetId = trigger.getAttribute('data-target');
     var bubble = document.getElementById(targetId);
     if (!bubble) {

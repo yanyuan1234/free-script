@@ -150,9 +150,11 @@ async function initApp() {
         // 【P1-8 阶段3】game.js 原文件加载时立即执行的 DOM 操作，收拢到 initApp 统一调用
         if (typeof registerGameStartListener === 'function') registerGameStartListener();
 
-        // 【P0修复】全局事件委托：替代内联 onclick，配合白名单 sanitizeHtml
-        // 所有 data-action 属性的点击事件通过委托处理，避免内联事件被 XSS 利用
-        _setupGlobalEventDelegation();
+        // 【P0-2修复】删除 _setupGlobalEventDelegation 调用。
+        // utils.js:62-104 的 _globalA11yDelegate 已是统一的 data-action 委托（支持 kebab→camelCase 自动转换），
+        // init.js 此处的委托是重复注册，且仅处理 toggle-thought 一个 action。
+        // toggleThought 现已兼容 utils.js 委托的 fn.call(actEl) 调用约定（trigger = trigger || this）。
+        // _setupGlobalEventDelegation();
 
         // 设置菜单顶部日期为当天
         try {
@@ -341,30 +343,7 @@ window.FreeScript.unmount = function() {
     if (typeof initApp === 'function') initApp._initialized = false;
 };
 
-// 【P0修复】全局事件委托：替代内联 onclick
-// 通过 data-action 属性路由点击事件，避免内联事件处理器被 XSS 利用
-function _setupGlobalEventDelegation() {
-    // 事件路由表：data-action 值 -> 处理函数
-    const actionHandlers = {
-        'toggle-thought'(el) {
-            if (typeof toggleThought === 'function') toggleThought(el);
-        }
-    };
-
-    GlobalCleanup.registerListener(document, 'click', function(e) {
-        let el = e.target;
-        // 向上查找带 data-action 的元素
-        while (el && el !== document) {
-            const action = el.getAttribute && el.getAttribute('data-action');
-            if (action) {
-                const handler = actionHandlers[action];
-                if (handler) {
-                    e.preventDefault();
-                    handler(el);
-                    return;
-                }
-            }
-            el = el.parentNode;
-        }
-    });
-}
+// 【P0-2修复】已删除 _setupGlobalEventDelegation 函数。
+// 原因：与 utils.js:62-104 的 _globalA11yDelegate 重复注册 document click 事件委托。
+// utils.js 版本已支持 kebab→camelCase 自动转换（toggle-thought → toggleThought），
+// 且 toggleThought 已兼容 fn.call(actEl) 调用约定，无需此处的 actionHandlers 路由表。

@@ -797,7 +797,22 @@ var UI = {
     // 【重构】合并 6 处 "gm.saveToStorage + toast" 二连（原三连，已删除 GameLinker）
     // ========================================
     afterMemoryChange: function(tab, dataKey, toastMsg) {
-        try { if (window.GameMemory) GameMemory.saveToStorage(); } catch (e) { console.warn('[afterMemoryChange] saveToStorage:', e); }
+        try {
+            if (window.GameMemory) {
+                // 【P0-7修复】失效 longTermMemory 缓存（_ltmCache）。
+                // _ltmCache 包含 tables.characters/items/locations/relationships 的深拷贝、
+                // quests、events、plot、permanentFacts→worldAnchors（见 tavern-compat.js:3710-3754 getter）。
+                // 全部 16 处 save*/delete* 调用 afterMemoryChange 时都修改了上述数据之一，
+                // 必须置 _ltmDirty=true，否则下次读取 longTermMemory 返回陈旧快照。
+                // 原实现仅 permanentFacts 的 save/delete（tavern-compat.js:4268/4290）显式置位，
+                // 其余 14 处（saveCharacter/saveItem/saveLocation/saveEvent/saveQuest/savePlot 等）漏置，
+                // 导致编辑角色/物品/地点/事件/任务/剧情后，AI 注入的 longTermMemory 仍是旧快照。
+                // 单点修复覆盖所有现有及未来 save* 路径，避免逐函数补丁的遗漏风险。
+                // 现有 2 处显式 gm._ltmDirty=true 保留作为防御性纵深（无害）。
+                GameMemory._ltmDirty = true;
+                GameMemory.saveToStorage();
+            }
+        } catch (e) { console.warn('[afterMemoryChange] saveToStorage:', e); }
         // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         if (toastMsg) UI.toast(toastMsg);
         if (tab && typeof MemoryManagerUI !== 'undefined' && MemoryManagerUI.switchTab) {
@@ -1913,8 +1928,11 @@ var gameState = createDefaultGameState();
 // 重构时极易遗漏。现统一封装到 RuntimeState 单例，通过 getter/setter 访问。
 // 注意：
 // - gameState 仍是顶层全局（StateManager 已封装其读写，且跨文件引用极广），暂不纳入
-// - _streamModeLocked/_streamMode 声明在 game.js，不在本修复范围
 // - RuntimeState.npcChatState 为对象引用，嵌套修改（.npcName/.chatHistory 等）直接操作底层对象
+// 【P0-3修复】_streamMode/_streamModeLocked 原声明在 game.js 顶层（var），由 core.js/phone-ui.js
+// 跨文件直接赋值重置。该模式依赖全局 var 提升跨脚本可见，strict mode 下会 ReferenceError，
+// 且散落 3 处重置点（sendAIRequest/resetRuntimeState/取消按钮）+ 4 处读写点（onStreamChunk），
+// 重构易遗漏。现纳入 RuntimeState 与 streamBuffer 同域管理（两者本就协同控制流式解析）。
 const RuntimeState = {
     _streamBuffer: '',
     _isWaiting: false,
@@ -1926,6 +1944,8 @@ const RuntimeState = {
         isSending: false,
         abortController: null
     },
+    _streamMode: null,        // 'json' | 'plaintext' | null
+    _streamModeLocked: false, // 模式锁定后不再切换
     MAX_HISTORY: 20,  // 常量，直接暴露
     get streamBuffer() { return this._streamBuffer; },
     set streamBuffer(v) { this._streamBuffer = v; },
@@ -1936,6 +1956,10 @@ const RuntimeState = {
     get npcEditingName() { return this._npcEditingName; },
     set npcEditingName(v) { this._npcEditingName = v; },
     get npcChatState() { return this._npcChatState; },
+    get streamMode() { return this._streamMode; },
+    set streamMode(v) { this._streamMode = v; },
+    get streamModeLocked() { return this._streamModeLocked; },
+    set streamModeLocked(v) { this._streamModeLocked = v; },
     // npcChatState 不提供 setter：嵌套对象通过 RuntimeState.npcChatState.xxx 修改
     // 重置时调 resetNpcChatState()
     resetNpcChatState() {
@@ -1996,8 +2020,9 @@ function resetRuntimeState(scope) {
     RuntimeState.isCompressing = false;
     // 压缩冷却实际使用 window.lastCompressTime（见 game.js）
     window.lastCompressTime = 0;
-    _streamModeLocked = false;
-    _streamMode = null;
+    // 【P0-3修复】_streamMode/_streamModeLocked 改走 RuntimeState
+    RuntimeState.streamModeLocked = false;
+    RuntimeState.streamMode = null;
     if (typeof _streamFullText !== 'undefined') _streamFullText = '';
     // 清空增强记忆系统（防止旧记忆污染新游戏）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.clear) {
