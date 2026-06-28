@@ -3011,22 +3011,31 @@ function renderPlayerStats(player) {
         var _hasOther = player.title || player.personality || player.level !== undefined;
         var _isEmpty = !_hasName && !_hasIdentity && !_hasStats && !_hasOther;
         if (!_isEmpty) {
-            var existing = gameState.playerData || { name: '', stats: [], details: [], bag: [] };
-            gameState.playerData = Object.assign({}, existing, player);
+            var _existingPD = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.player') || { name: '', stats: [], details: [], bag: [] }) : (gameState.playerData || { name: '', stats: [], details: [], bag: [] });
+            var _mergedPD = Object.assign({}, _existingPD, player);
             // 【修复BUG-003】仅在 AI 返回了非空 stats 数组时才覆盖，避免空数组清空已生成的属性
             if (player.stats && Array.isArray(player.stats) && player.stats.length > 0) {
-                gameState.playerData.stats = player.stats;
+                _mergedPD.stats = player.stats;
             }
             if (Array.isArray(player.details) && player.details.length > 0) {
-                gameState.playerData.details = player.details;
+                _mergedPD.details = player.details;
+            }
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('entities.player', _mergedPD, { silent: true });
             }
             if (Array.isArray(player.bag) && player.bag.length > 0) {
-                gameState.playerData.bag = player.bag;
+                _mergedPD.bag = player.bag;
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('entities.player', _mergedPD, { silent: true });
+                }
             }
             // 【修复BUG-002】锁定主角名：禁止 AI 用空名或不同名覆盖玩家设定的名字
-            var _lockedName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || gameState.playerName || existing.name;
-            if (_lockedName && gameState.playerData.name !== _lockedName) {
-                gameState.playerData.name = _lockedName;
+            var _lockedName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || gameState.playerName || _existingPD.name;
+            if (_lockedName && _mergedPD.name !== _lockedName) {
+                _mergedPD.name = _lockedName;
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('entities.player', _mergedPD, { silent: true });
+                }
             }
         }
     }
@@ -4802,8 +4811,8 @@ function _restoreGameRender() {
                             StateManager.set('progress.sceneTitle', data.title || data.scene, { silent: true });
                         }
                     }
-                    if (data.hud) {
-                        gameState._lastHUD = data.hud;
+                    if (data.hud && typeof StateManager !== 'undefined' && StateManager.set) {
+                        StateManager.set('ui.lastHUD', data.hud, { silent: true });
                     }
                     if (data.gameTime) {
                         // 【P1修复BUG-5.7】读档恢复路径统一走 TimeMutator.setTime，避免直接改
@@ -6069,8 +6078,10 @@ function triggerGrandSummary(mode) {
         sendAIRequest(userInput, false);
     } else {
         // 兜底：写入 conversationHistory
-        if (gameState.conversationHistory) {
-            gameState.conversationHistory.push({ role: 'user', content: userInput });
+        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            var _ch = StateManager.get('progress.conversationHistory') || [];
+            _ch.push({ role: 'user', content: userInput });
+            StateManager.set('progress.conversationHistory', _ch, { silent: true });
         }
     }
 }

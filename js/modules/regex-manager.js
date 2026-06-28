@@ -1020,10 +1020,13 @@ applySingleScript: function(text, script) {
     if (script.substituteRegex && script.substituteRegex > 0) {
         var subRegex = script.substituteRegex;
         // 获取宏环境变量
+        var _smPlayerName = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player.name') : '';
+        var _smSnapshot = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.worldSnapshot') : null;
+        var _smOriginal = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('transient.lastOriginalContent') : '';
         var macroEnv = {
-            user: gameState.playerName || '玩家',
-            char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
-            original: gameState._lastOriginalContent || ''
+            user: _smPlayerName || '玩家',
+            char: (_smSnapshot && _smSnapshot.characters && _smSnapshot.characters.length > 0) ? _smSnapshot.characters[0].name : '角色',
+            original: _smOriginal || ''
         };
 
     // 处理 findPattern 中的宏

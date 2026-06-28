@@ -115,7 +115,7 @@ if (typeof document !== 'undefined') {
 // 基准值以 8K context 为1.0x，按比例缩放，无上限
 // 8K→1x, 32K→4x, 128K→16x, 256K→32x, 512K→64x, 1M→128x
 function getContextScale() {
-    const ctx = (typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000;
+    const ctx = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('world.contextSize') || 8000) : 8000;
     return Math.max(0.5, ctx / 8000);
 }
 

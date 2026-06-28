@@ -1977,8 +1977,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                     };
                 });
             }
-            if (Object.keys(snapshot).length > 0 && gameState) {
-                gameState.worldSnapshot = snapshot;
+            if (Object.keys(snapshot).length > 0 && typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('ui.worldSnapshot', snapshot, { silent: true });
             }
         }
         // 处理NPC主动消息
@@ -2091,7 +2091,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 兜底提取摘要
         if (!data || !data.contextSummary) {
             var extractedSummary = extractStr(response, 'contextSummary');
-            if (extractedSummary) gameState.rollingSummary = extractedSummary;
+            if (extractedSummary && typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.rollingSummary', extractedSummary, { silent: true });
+            }
         }
         // 兜底提取keyEvents
         if (!data || !data.keyEvents) {
@@ -2137,21 +2139,21 @@ async function sendAIRequest(userMessage, isInit = false) {
             historyAssistantContent = '【本回合 AI 回复异常，已跳过存储。请重新生成或检查模型输出格式。】';
             if (gameState) gameState._lastThinkingBlocked = true;
         }
-        if (gameState && gameState.conversationHistory) {
-            gameState.conversationHistory.push({
-                role: 'user',
-                content: userMessage
-            }, {
-                role: 'assistant',
-                content: historyAssistantContent
-            });
+        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            var _ch = StateManager.get('progress.conversationHistory') || [];
+            _ch.push({ role: 'user', content: userMessage }, { role: 'assistant', content: historyAssistantContent });
+            StateManager.set('progress.conversationHistory', _ch, { silent: true });
         }
         // 对话历史上限200条，防止内存和token膨胀
-        if (gameState && gameState.conversationHistory && gameState.conversationHistory.length > 200) {
+        var _convHist = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.conversationHistory') : (gameState ? gameState.conversationHistory : []);
+        if (_convHist && _convHist.length > 200) {
             // 保留第一条system消息 + 最近198条
-            var systemMsg = gameState.conversationHistory[0] && gameState.conversationHistory[0].role === 'system'
-                ? [gameState.conversationHistory[0]] : [];
-            gameState.conversationHistory = systemMsg.concat(gameState.conversationHistory.slice(-(200 - systemMsg.length)));
+            var systemMsg = _convHist[0] && _convHist[0].role === 'system'
+                ? [_convHist[0]] : [];
+            var trimmedHist = systemMsg.concat(_convHist.slice(-(200 - systemMsg.length)));
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.conversationHistory', trimmedHist, { silent: true });
+            }
         }
         // 触发事件：CHARACTER_MESSAGE_RENDERED（AI消息渲染后）
         if (typeof TavernHelperCompat !== 'undefined') {
@@ -2462,12 +2464,11 @@ function _parseStructuredSummary(summary) {
     if (stateMatch) {
         // 【P0 修复】原代码用整对象赋值覆盖 worldSnapshot，会丢失 sendAIRequest 中设置的
         // {player, hud, bag, quests, characters} 完整结构。改为局部更新保留其他字段。
-        if (typeof gameState !== 'undefined') {
-            if (!gameState.worldSnapshot || typeof gameState.worldSnapshot !== 'object') {
-                gameState.worldSnapshot = {};
-            }
-            gameState.worldSnapshot.lastUpdate = Date.now();
-            gameState.worldSnapshot.summary = stateMatch[1].trim();
+        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            var _ws = StateManager.get('ui.worldSnapshot') || {};
+            _ws.lastUpdate = Date.now();
+            _ws.summary = stateMatch[1].trim();
+            StateManager.set('ui.worldSnapshot', _ws, { silent: true });
         }
     }
 }
@@ -2561,8 +2562,10 @@ function _prepareCompressionData(conv) {
  */
 function _applyCompressionResult(sys, keep, summary) {
     // 重建：system prompt + 近期对话
-    gameState.conversationHistory = sys ? [sys].concat(keep) : keep.slice();
-    gameState.rollingSummary = summary;
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('progress.conversationHistory', sys ? [sys].concat(keep) : keep.slice(), { silent: true });
+        StateManager.set('progress.rollingSummary', summary, { silent: true });
+    }
     autoSave();
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.recordCompression) {
         EnhancedMemory.recordCompression(true);
@@ -3737,6 +3740,11 @@ async function loadFromSlot(slot) {
         // 同时处理 maxTokens 历史 bug（80000）和 _stats.startTime 重置
         ensureGameStateFields(gameState);
         if (gameState) gameState._version = GAME_VERSION;
+
+        // 【P1-11 阶段四】读档时清除引导任务缓存，防止跨存档任务进度污染
+        if (typeof QuestSystem !== 'undefined' && QuestSystem._cachedGuidanceQuest) {
+            QuestSystem._cachedGuidanceQuest = null;
+        }
 
         // 恢复记忆数据（从存档中还原EnhancedMemory）
         if (data.memoryData) {

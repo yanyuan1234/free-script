@@ -1266,16 +1266,10 @@ var PresetManager = {
     if (hasThinkingContent) {
         // 【自动配置】自动解析标签 - 这是需要手动配置的
         if (thinkingTagType === '<thinking>') {
-            gameState._cotPrefix = '<thinking>';
-            gameState._cotSuffix = '</thinking>';
             manualConfigs.push('自动解析: 前缀<thinking> 后缀</thinking>（请在API设置中确认）');
-            } else if (thinkingTagType === 'ECoT') {
-            gameState._cotPrefix = '<ECoT>';
-            gameState._cotSuffix = '</ECoT>';
+        } else if (thinkingTagType === 'ECoT') {
             manualConfigs.push('自动解析: 前缀<ECoT> 后缀</ECoT>（请在API设置中确认）');
-            } else if (thinkingTagType === '💭') {
-            gameState._cotPrefix = '💭';
-            gameState._cotSuffix = '💭';
+        } else if (thinkingTagType === '💭') {
             manualConfigs.push('自动解析: 前缀💭 后缀💭（请在API设置中确认）');
         }
     }

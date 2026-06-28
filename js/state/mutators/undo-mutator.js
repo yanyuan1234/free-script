@@ -64,9 +64,9 @@ const UndoMutator = {
     // 而是逐个 Mutator 写入，由 _syncLegacyMirror 自动维护 gameState 旧字段
     restoreFromSnapshot(snap) {
         if (!snap) return false;
-        // 1. conversationHistory：直接 setSilent（无专门 mutator，因为是 transient data）
-        if (typeof gameState !== 'undefined' && gameState) {
-            gameState.conversationHistory = snap.conversationHistory || [];
+        // 1. conversationHistory：走 StateManager 静默写入
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('transient.conversationHistory', snap.conversationHistory || [], { silent: true });
         }
         // 2. 角色：通过 CharacterMutator（统一权威）
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.setCharacters) {

@@ -243,53 +243,45 @@ var SmartConfigEngine = {
 
         var applied = [];
 
-        // 1. 应用自动解析设置
+        // 1. 记录自动解析设置
         if (config.autoParse) {
-            gameState._cotPrefix = config.autoParse.prefix;
-            gameState._cotSuffix = config.autoParse.suffix;
             applied.push('自动解析: ' + config.autoParse.prefix + ' ... ' + config.autoParse.suffix);
         }
 
-        // 2. 应用API设置
+        // 2. 记录API设置
         if (config.apiSettings) {
             if (config.apiSettings.promptPostProcessing) {
-                gameState._promptPostProcessing = config.apiSettings.promptPostProcessing;
                 applied.push('提示词后处理: ' + config.apiSettings.promptPostProcessing);
             }
-        if (config.apiSettings.extraParams) {
-            gameState._apiExtraParams = config.apiSettings.extraParams;
-            applied.push('附加参数: ' + JSON.stringify(config.apiSettings.extraParams));
+            if (config.apiSettings.extraParams) {
+                applied.push('附加参数: ' + JSON.stringify(config.apiSettings.extraParams));
+            }
+            if (config.apiSettings.apiUrl) {
+                applied.push('API地址: ' + config.apiSettings.apiUrl);
+            }
         }
-    if (config.apiSettings.apiUrl) {
-        gameState._apiUrl = config.apiSettings.apiUrl;
-        applied.push('API地址: ' + config.apiSettings.apiUrl);
-    }
-    }
 
-    // 3. 记录模型推荐
-    if (config.modelRecommendations.length > 0) {
-        gameState._recommendedModels = config.modelRecommendations;
-        applied.push('推荐模型: ' + config.modelRecommendations.join(', '));
-    }
+        // 3. 记录模型推荐
+        if (config.modelRecommendations.length > 0) {
+            applied.push('推荐模型: ' + config.modelRecommendations.join(', '));
+        }
 
-    // 4. 记录插件需求
-    if (config.pluginRequirements.length > 0) {
-        gameState._requiredPlugins = config.pluginRequirements;
-        var pluginNames = config.pluginRequirements.map(function(p) { return p.name; });
-        applied.push('需要插件: ' + pluginNames.join(', '));
-    }
+        // 4. 记录插件需求
+        if (config.pluginRequirements.length > 0) {
+            var pluginNames = config.pluginRequirements.map(function(p) { return p.name; });
+            applied.push('需要插件: ' + pluginNames.join(', '));
+        }
 
-    // 5. 记录温度推荐
-    if (config.temperatureGuide) {
-        gameState._temperatureGuide = config.temperatureGuide;
-        var tempStr = '';
-        if (config.temperatureGuide.recommended) {
-            tempStr = config.temperatureGuide.recommended;
+        // 5. 记录温度推荐
+        if (config.temperatureGuide) {
+            var tempStr = '';
+            if (config.temperatureGuide.recommended) {
+                tempStr = config.temperatureGuide.recommended;
             } else if (config.temperatureGuide.low && config.temperatureGuide.high) {
-            tempStr = config.temperatureGuide.low + ' - ' + config.temperatureGuide.high;
+                tempStr = config.temperatureGuide.low + ' - ' + config.temperatureGuide.high;
+            }
+            applied.push('温度推荐: ' + tempStr);
         }
-    applied.push('温度推荐: ' + tempStr);
-    }
 
     // 输出日志
     if (applied.length > 0) {

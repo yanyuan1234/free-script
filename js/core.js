@@ -1583,7 +1583,13 @@ var SaveDB = {
             if (jsonStr.length > 4.5 * 1024 * 1024) {
                 Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
             }
-            Storage.set(Storage.KEYS.LOCAL_SAVES, jsonStr);
+            var _setResult = Storage.set(Storage.KEYS.LOCAL_SAVES, jsonStr);
+            if (!_setResult.success) {
+                console.error('❌ localStorage 存档写入失败:', _setResult.error, _setResult.message);
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('存档写入失败：' + (_setResult.message || '存储空间不足') + '，请导出存档');
+                }
+            }
         } catch (e) {
             // 尝试清理后重试一次
             try {
@@ -1592,7 +1598,13 @@ var SaveDB = {
                 var saves = this._lsGetAll();
                 if (data === null) delete saves[slot];
                 else saves[slot] = data;
-                Storage.set(Storage.KEYS.LOCAL_SAVES, JSON.stringify(saves));
+                var _retryResult = Storage.set(Storage.KEYS.LOCAL_SAVES, JSON.stringify(saves));
+                if (!_retryResult.success) {
+                    console.error('❌ 清理后仍无法写入，存档可能丢失:', _retryResult.error);
+                    if (typeof UI !== 'undefined' && UI.toast) {
+                        UI.toast('存档写入失败：' + (_retryResult.message || '存储空间不足') + '，请导出存档后清理');
+                    }
+                }
             } catch (e2) {
                 console.error('❌ 清理后仍无法写入，存档可能丢失:', e2);
                 // 尝试提示用户
@@ -3433,8 +3445,11 @@ if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._summaryLayers) {
 }
 
 // 同时更新游戏的滚动摘要（如果AI没有返回contextSummary）
-if (!gameState.rollingSummary || gameState.rollingSummary.length < 50) {
-    gameState.rollingSummary = summaryText.substring(0, 300);
+var _rs = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.rollingSummary') : (gameState.rollingSummary || '');
+if (!_rs || _rs.length < 50) {
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('progress.rollingSummary', summaryText.substring(0, 300), { silent: true });
+    }
     console.log('[深度融合] 已更新滚动摘要');
 }
 }
@@ -5498,18 +5513,19 @@ async function initializeGame() {
         // 【修复BUG-002】同步 playerName，确保全项目读取一致
         // 此前新游戏流程从不设置 gameState.playerName，只有读档时（loadGameState）才同步，
         // 导致新游戏个人页始终显示"未命名"
-        if (!gameState.playerName && gameState.protagonistSetup && gameState.protagonistSetup.mcName) {
-            gameState.playerName = gameState.protagonistSetup.mcName;
+        var _smPlayer = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.player') || {}) : (gameState.playerData || {});
+        var _smPlayerName = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('world.playerName') || '') : (gameState.playerName || '');
+        var _mcName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
+        if (!_smPlayerName && _mcName) _smPlayerName = _mcName;
+        if (!_smPlayer.name && _smPlayerName) _smPlayer.name = _smPlayerName;
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            if (_smPlayerName) StateManager.set('world.playerName', _smPlayerName, { silent: true });
+            if (_smPlayer.name) StateManager.set('entities.player', _smPlayer, { silent: true });
         }
-        if (!gameState.playerData) gameState.playerData = {};
-        if (!gameState.playerData.name && gameState.playerName) {
-            gameState.playerData.name = gameState.playerName;
+        var _systemPrompt = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSystemPrompt) ? RuntimeBridge.buildSystemPrompt() : '';
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('progress.conversationHistory', [{ role: 'system', content: _systemPrompt }], { silent: true });
         }
-gameState.systemPrompt = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSystemPrompt) ? RuntimeBridge.buildSystemPrompt() : '';
-gameState.conversationHistory = [{
-        role: 'system',
-        content: gameState.systemPrompt
-    }];
 // 【优化】移除 customStyle 注入——customStyle 是死字段（无 UI 输入框），文风由 writingStyle 统一管理
 // 旧代码在此注入【写作风格要求】对话，与文风选择（writingStyle）语义重复，可能互相矛盾
 // 初始化游戏时间显示

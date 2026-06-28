@@ -361,8 +361,10 @@ _executeSingleCommand: function(cmdStr) {
         case 'sys':
         case 'system':
             // 添加系统消息到对话历史
-            if(gameState && gameState.conversationHistory && argsStr) {
-                gameState.conversationHistory.push({role: 'system', content: argsStr});
+            if(argsStr && typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+                var _ch = StateManager.get('progress.conversationHistory') || [];
+                _ch.push({role: 'system', content: argsStr});
+                StateManager.set('progress.conversationHistory', _ch, { silent: true });
             }
             result=''; break;
         case 'persona':
@@ -3032,7 +3034,9 @@ var GameMemory = {
         // 【P1优化】根据类型分配重要性权重
         // 核心设定(pc/世界规则/角色) = 1.0, 次要(设定/承诺) = 0.5
         var _importance = (type === 'pc_identity' || type === 'world_rule' || type === 'npc_profile') ? 1.0 : 0.5;
-        var anchor = { content: content, source: source || 'auto', locked: true, importance: _importance, createdTurn: createdTurn || self.currentTurn };
+        // 【P1-12 阶段四】自动提取的事实不锁定，允许淘汰算法清理；手动添加的锁定保留
+        var _isManual = (source === 'manual');
+        var anchor = { content: content, source: source || 'auto', locked: _isManual, importance: _importance, createdTurn: createdTurn || self.currentTurn };
         self.permanentFacts[key].push(anchor);
         var total = 0; Object.keys(self.permanentFacts).forEach(function(k) { total += self.permanentFacts[k].length; });
         // 【P1优化】超过30条时按重要性权重淘汰（保留locked和高权重）
