@@ -122,6 +122,10 @@ var MC_FIELD_MAP = {
     setupPlayerDesc: 'mcPersonality'
 };
 
+// 【P2-12 修复】头像颜色调色板常量，避免多处重复定义
+var AVATAR_COLORS_STANDARD = ['#ff4d4f', '#07c160', '#1890ff', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#52c41a'];
+var AVATAR_COLORS_EXTENDED = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#1890ff', '#52c41a'];
+
 // ========================================
 // 【P1-PU5 阶段2-3】API 日志/错误项渲染器
 // 抽取前：showApiDetail + refresh handler 共有 4 份完全相同的
@@ -1612,6 +1616,7 @@ function renderChatPage() {
             '</div>';
     }
 
+    var colors = AVATAR_COLORS_STANDARD;
     var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var html = '<div class="chat-list-page">' +
         '<div class="chat-list">' +
@@ -1999,6 +2004,7 @@ function renderForumPage() {
     var _key = 'forum:' + commentMods.length + '|' + _lastSig;
     if (shouldSkipPageRender('renderForumPage', _key)) return;
     var playerName = gameState.playerName || '我';
+    var colors = AVATAR_COLORS_EXTENDED;
     var tagClasses = ['hot', 'bao', 'xin', 'hot', 'bao', 'xin'];
     var timeLabels = ['刚刚', '1分钟前', '3分钟前', '5分钟前', '10分钟前', '半小时前', '1小时前', '2小时前', '昨天', '前天'];
 
@@ -2352,6 +2358,7 @@ function renderDiaryPage() {
     var diaries = gameState._npcDiaries || {};
     var currentDiaryNpc = gameState._currentDiaryNpc || '';
     var chars = Object.values(gameState.allCharacters || {});
+    var colors = AVATAR_COLORS_EXTENDED.slice(0, 8);
     var now = new Date();
     var dateStr = String(now.getMonth() + 1).padStart(2, '0') + '.' + String(now.getDate()).padStart(2,
         '0');

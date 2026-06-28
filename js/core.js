@@ -4557,26 +4557,41 @@ function extractErrorMessage(errObj, fallback) {
 
 // 把 PresetManager 当前预设里的"高级采样参数"合并到 presetParams
 // 这些参数是 PresetManager.getParams() 没暴露的，需要手动取
+// 【P2-25 修复】抽取通用字段合并函数，消除 12+ 行手写 if
+function _mergePresetField(target, source, key, type, defaultVal, check) {
+    var sv = source[key];
+    if (sv == null) return;
+    if (check === 'undefined') {
+        if (target[key] !== undefined) return;
+    } else if (check === 'ne') {
+        if (sv === defaultVal) return;
+    } else if (check === 'positive') {
+        if (Number(sv) <= 0) return;
+    }
+    if (type === 'string') target[key] = String(sv);
+    else if (type === 'number') target[key] = Number(sv) || defaultVal;
+}
+
 function mergeAdvancedPresetParams(presetParams) {
     if (typeof PresetManager === 'undefined') return;
     if (!PresetManager.presets || PresetManager.currentPresetIndex < 0) return;
     var _curPreset = PresetManager.presets[PresetManager.currentPresetIndex];
     if (!_curPreset || !_curPreset.params) return;
     var _pp = _curPreset.params;
-    if (_pp.top_k != null && presetParams.top_k === undefined) presetParams.top_k = Number(_pp.top_k) || 0;
-    if (_pp.top_a != null && presetParams.top_a === undefined) presetParams.top_a = Number(_pp.top_a) || 0;
-    if (_pp.min_p != null && presetParams.min_p === undefined) presetParams.min_p = Number(_pp.min_p) || 0;
-    if (_pp.repetition_penalty != null && _pp.repetition_penalty !== 1) presetParams.repetition_penalty = Number(_pp.repetition_penalty) || 1;
-    if (_pp.typical_p != null && _pp.typical_p !== 1) presetParams.typical_p = Number(_pp.typical_p) || 1;
-    if (_pp.tail_free_sampling != null && _pp.tail_free_sampling !== 1) presetParams.tail_free_sampling = Number(_pp.tail_free_sampling) || 1;
-    if (_pp.mirostat_mode != null && _pp.mirostat_mode !== 0) presetParams.mirostat_mode = Number(_pp.mirostat_mode) || 0;
-    if (_pp.mirostat_tau != null && _pp.mirostat_tau !== 5.0) presetParams.mirostat_tau = Number(_pp.mirostat_tau) || 5.0;
-    if (_pp.mirostat_eta != null && _pp.mirostat_eta !== 0.1) presetParams.mirostat_eta = Number(_pp.mirostat_eta) || 0.1;
-    if (_pp.dry_multiplier != null && _pp.dry_multiplier !== 0) presetParams.dry_multiplier = Number(_pp.dry_multiplier) || 0;
-    if (_pp.xtc_probability != null && _pp.xtc_probability !== 0) presetParams.xtc_probability = Number(_pp.xtc_probability) || 0;
-    if (_pp.reasoning_effort != null) presetParams.reasoning_effort = String(_pp.reasoning_effort);
-    if (_pp.seed != null) presetParams.seed = Number(_pp.seed) || null;
-    if (_pp.max_tokens && Number(_pp.max_tokens) > 0) presetParams.max_tokens = Number(_pp.max_tokens);
+    _mergePresetField(presetParams, _pp, 'top_k', 'number', 0, 'undefined');
+    _mergePresetField(presetParams, _pp, 'top_a', 'number', 0, 'undefined');
+    _mergePresetField(presetParams, _pp, 'min_p', 'number', 0, 'undefined');
+    _mergePresetField(presetParams, _pp, 'repetition_penalty', 'number', 1, 'ne');
+    _mergePresetField(presetParams, _pp, 'typical_p', 'number', 1, 'ne');
+    _mergePresetField(presetParams, _pp, 'tail_free_sampling', 'number', 1, 'ne');
+    _mergePresetField(presetParams, _pp, 'mirostat_mode', 'number', 0, 'ne');
+    _mergePresetField(presetParams, _pp, 'mirostat_tau', 'number', 5.0, 'ne');
+    _mergePresetField(presetParams, _pp, 'mirostat_eta', 'number', 0.1, 'ne');
+    _mergePresetField(presetParams, _pp, 'dry_multiplier', 'number', 0, 'ne');
+    _mergePresetField(presetParams, _pp, 'xtc_probability', 'number', 0, 'ne');
+    _mergePresetField(presetParams, _pp, 'reasoning_effort', 'string');
+    _mergePresetField(presetParams, _pp, 'seed', 'number', null);
+    _mergePresetField(presetParams, _pp, 'max_tokens', 'number', 0, 'positive');
 }
 
 // 【优化 #13 + #18】过滤请求参数：去掉 null/undefined/默认值/非法 reasoning_effort
