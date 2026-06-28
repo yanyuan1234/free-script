@@ -1967,30 +1967,39 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // else: AIResponseMutator._applyKeyEvents 已写入，跳过
             }
             // === 新增：保存世界状态快照 ===
-            var snapshot = {};
-            if (data.player) snapshot.player = data.player;
+            // 【P1-20修复】用 MERGE 语义：先读取已有 worldSnapshot，再局部更新。
+            // 旧实现 `var snapshot = {}` 用 REPLACE 语义整体覆盖，会擦除 _parseStructuredSummary
+            // (game.js:2465) 写入的 summary/lastUpdate 字段，导致下一轮 AI 回合这些字段丢失。
+            // 【P1-21修复】player/characters 改从权威源 StateManager.entities 派生，
+            // 不再从 AI 原始 data.player / gameState.allCharacters 直接取。
+            // 旧实现 worldSnapshot.player = data.player（AI 原始），但 mutator 可能 normalize
+            // （过滤空 stats、补全缺失字段、锁定主角名），导致 worldSnapshot 与 entities 不一致。
+            // 30+ 处读取 worldSnapshot 的代码（phone-ui/tavern-compat/macro-engine）现与
+            // entities 数据源统一，消除双数据源分裂风险。
+            var snapshot = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('ui.worldSnapshot') || {}) : {};
+            // player 从 entities 派生（mutator normalize 后的权威值）
+            if (typeof StateManager !== 'undefined' && StateManager.get) {
+                var _entPlayer = StateManager.get('entities.player');
+                if (_entPlayer && _entPlayer.name) snapshot.player = _entPlayer;
+            }
             if (data.hud) snapshot.hud = data.hud;
             if (data.bag) snapshot.bag = data.bag;
             if (gameState && gameState.currentQuests && gameState.currentQuests.length > 0) {
                 snapshot.quests = gameState.currentQuests;
             }
-            // 从累积的allCharacters取最新NPC列表
-            // 【数据联通】gameState.allCharacters 已是 gm.tables.characters 的别名
-            if (!gameState || !gameState.allCharacters || typeof gameState.allCharacters !== 'object') {
-                // 旧存档/首次开局：建立别名（不清空，保留权威源已有数据）
-                if (typeof _ensureDataLinkage === 'function') _ensureDataLinkage();
-            }
-            var charKeys = Object.keys((gameState && gameState.allCharacters) || {});
-            if (charKeys.length > 0 && gameState) {
-                snapshot.characters = charKeys.map(function(key) {
-                    var c = gameState.allCharacters[key];
-                    return {
-                        name: c.name,
-                        title: c.title || '',
-                        relation: c.relation || '',
-                        favorability: c.favorability || 0
-                    };
-                });
+            // characters 从 entities 派生（mutator 处理后的权威值，含主角过滤）
+            if (typeof StateManager !== 'undefined' && StateManager.get) {
+                var _entChars = StateManager.get('entities.characters');
+                if (Array.isArray(_entChars) && _entChars.length > 0) {
+                    snapshot.characters = _entChars.map(function(c) {
+                        return {
+                            name: c.name,
+                            title: c.title || '',
+                            relation: c.relation || '',
+                            favorability: c.favorability || 0
+                        };
+                    });
+                }
             }
             if (Object.keys(snapshot).length > 0 && typeof StateManager !== 'undefined' && StateManager.set) {
                 StateManager.set('ui.worldSnapshot', snapshot, { silent: true });
