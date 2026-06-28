@@ -1378,7 +1378,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 清理历史消息中的装饰性标签（减少token浪费）
         // 这些标签对AI生成没有帮助，但会占用大量上下文
         // 月读预设通过正则脚本实现此功能，这里作为内置兜底
-        var decorTags = /<(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+        // 【P2-15修复】使用模块级常量 _reDecorTags，避免每次请求重编译
+        _reDecorTags.lastIndex = 0;
         messages.forEach(function(msg, idx) {
             if (msg.content && typeof msg.content === 'string' && msg.role === 'assistant') {
                 // 只清理历史消息（非最后一条assistant消息）
@@ -1390,7 +1391,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     }
                 }
                 if (!isLastAssistant) {
-                    msg.content = msg.content.replace(decorTags, '');
+                    msg.content = msg.content.replace(_reDecorTags, '');
                 }
             }
         });
@@ -1676,12 +1677,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         // <thinking>...</thinking>, <ECoT>...</ECoT>, 💭...💭
         // 💭...💭, <cot>...</cot>, <reasoning>...</reasoning>
         // <chain_of_thought>...</chain_of_thought>
-        var cotRegex = /(?:<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)([\s\S]+?)(?:<\/(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)|💭([\s\S]+?)💭/gi;
         var cotMatches = [];
         var cleanStoryText = storyText;
         // 提取所有COT内容
+        // 【P2-15修复】使用模块级常量 _reCotTags，避免每次请求重编译
+        _reCotTags.lastIndex = 0;  // 重置全局正则的 lastIndex（exec 复用必须重置）
         var cotMatch;
-        while ((cotMatch = cotRegex.exec(storyText)) !== null) {
+        while ((cotMatch = _reCotTags.exec(storyText)) !== null) {
             // 捕获组1: XML标签格式 <thinking>...</thinking>
             // 捕获组2: 💭...💭 格式
             var cotContent = (cotMatch[1] || cotMatch[2] || '').trim();
@@ -2892,6 +2894,15 @@ function renderStory(text) {
 // 全局心声计数器
 var globalThoughtId = 0;
 // 【性能优化】预编译 formatStory 中所有正则，避免每次调用都重新编译
+// 【P2-15修复】sendAIRequest 内联正则提升为模块级常量
+// cotRegex：思维链标签提取（<thinking>/<ECoT>/<cot>/<reasoning>/<chain_of_thought>/💭）
+var _reCotTags = /(?:<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)([\s\S]+?)(?:<\/(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)|💭([\s\S]+?)💭/gi;
+// decorTags：装饰性标签清理（giggle/ice/snow/echo/danmu/branches/prologue 等）
+var _reDecorTags = /<(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+// _reInitialSceneMarkers：初始场景标识（第一章/苏醒/开始/序幕等）
+var _reInitialSceneMarkers = /第\s*1\s*[章回]|第一章|第1回|初始|开始|苏醒|醒来|开局|起点|序幕|序章/;
+// _reCnTwoChars：连续 2 个中文字符（_looksLikeInitialScene 内联正则）
+var _reCnTwoChars = /[\u4e00-\u9fa5]{2}/;
 var _reHtmlLt = /&lt;/g;
 var _reHtmlGt = /&gt;/g;
 var _reHtmlQuot = /&quot;/g;
@@ -2920,15 +2931,16 @@ function _looksLikeInitialScene(title, userPrompt) {
     var promptHead = p.substring(0, 30);
     var hasPromptKeyword = false;
     // 提取 prompt 前30字符中所有连续的2字子串（中文语义下2字词覆盖度更高）
+    // 【P2-15修复】使用模块级常量 _reCnTwoChars
     for (let i = 0; i + 2 <= promptHead.length; i++) {
         var seg = promptHead.substring(i, i + 2);
-        if (/[\u4e00-\u9fa5]{2}/.test(seg) && t.indexOf(seg) !== -1) {
+        if (_reCnTwoChars.test(seg) && t.indexOf(seg) !== -1) {
             hasPromptKeyword = true;
             break;
         }
     }
-    var initialMarkers = /第\s*1\s*[章回]|第一章|第1回|初始|开始|苏醒|醒来|开局|起点|序幕|序章/;
-    return hasPromptKeyword && initialMarkers.test(t);
+    // 【P2-15修复】使用模块级常量 _reInitialSceneMarkers
+    return hasPromptKeyword && _reInitialSceneMarkers.test(t);
 }
 
 // 【修复BUG-M1】通用标签清理：移除 AI 错误输出的控制指令和未识别标签

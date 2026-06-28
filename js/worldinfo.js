@@ -1620,7 +1620,16 @@ var WorldInfo = {
             if (keys[i]) escapedKeys.push(keys[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         }
         if (escapedKeys.length === 0) return false;
-        var combinedRegex = new RegExp('(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
+        // 【P2-13修复】matchKeys 全词匹配路径也使用 _regexCache，与 matchKeysAll 缓存策略一致
+        // 旧实现每次 new RegExp，scan/recursiveScan 热路径重复编译
+        var _cacheKey = '(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)' + (caseSensitive ? '' : 'i');
+        var self = this;
+        if (!self._regexCache) self._regexCache = new Map();
+        var combinedRegex = self._regexCache.get(_cacheKey);
+        if (!combinedRegex) {
+            combinedRegex = new RegExp('(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)', caseSensitive ? '' : 'i');
+            self._regexCache.set(_cacheKey, combinedRegex);
+        }
         return combinedRegex.test(haystack);
     },
 

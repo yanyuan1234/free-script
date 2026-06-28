@@ -2618,7 +2618,8 @@ function _getCachedRegExp(pattern, flags) {
     return re;
 }
 function extractStr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
+    // 【P2-6修复】接入 _getCachedRegExp 缓存，避免热路径重复 new RegExp
+    const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
     if (!m) return null;
     let r = '',
     esc = false;
@@ -2647,7 +2648,8 @@ return r.length > 0 ? r : null;
 }
 // 状态机提取数组
 function extractArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    // 【P2-6修复】接入 _getCachedRegExp 缓存
+    const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         let i = m.index + m[0].length,
         items = [],
@@ -2718,7 +2720,8 @@ return Object.keys(obj).length > 0 ? obj : null;
 }
 // 状态机提取对象数组
 function extractObjArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    // 【P2-6修复】接入 _getCachedRegExp 缓存
+    const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         const result = [];
         let i = m.index + m[0].length;
