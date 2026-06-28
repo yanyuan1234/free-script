@@ -318,8 +318,10 @@ function _pushCurrentQuestsToGM() {
     _pushTableToGM('quests', 'currentQuests', 'quests', _TABLE_MAPPERS.quests);
 }
 
-// 把 gameState.relationships 反向推送到 gm.tables.relationships
+// 把 gameState.relationships 反向推送到 gm.tables.relationships（localStorage 实际存储源）
 // 【阶段1批6】委托 _pushTableToGM 通用函数（relationships 是 keyed by from→to）
+// 【P1-18修复】现仅由 RelationshipMutator._persistToGMTables() 内部调用（单一持久化入口），
+// 外部 3 处分散调用（systems.js / ai-response-mutator.js / phone-ui.js）已全部删除。
 function _pushRelationshipsToGM() {
     _pushTableToGM('relationships', 'relationships', 'relationships', null);
 }
@@ -2593,7 +2595,8 @@ function _getCachedRegExp(pattern, flags) {
     return re;
 }
 function extractStr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
+    // 【P1-2修复 + P2-6】接入 _getCachedRegExp 缓存，避免热路径重复 new RegExp
+    const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
     if (!m) return null;
     let r = '',
     esc = false;
@@ -2622,7 +2625,8 @@ return r.length > 0 ? r : null;
 }
 // 状态机提取数组
 function extractArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    // 【P1-2修复 + P2-6】接入 _getCachedRegExp 缓存
+    const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         let i = m.index + m[0].length,
         items = [],
@@ -2673,27 +2677,12 @@ return items.length > 0 ? items : null;
 // 状态机提取对象
 // 【P3-M4 阶段4】fp 正则提到模块顶层（避免每次调用重新构造），调用前重置 lastIndex
 var _OBJ_STR_RE = /"(\w+)"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"/g;
-function extractObj(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\{`));
-        if (!m) return null;
-        const start = m.index + m[0].length - 1;
-        const end = _findMatching(text, '{', '}', start);
-        if (end !== -1) {
-            try {
-                return JSON.parse(text.slice(start, end + 1))
-            } catch {}
-    }
-// 手动提取（JSON.parse 失败时，用正则扫 string 字段兜底）
-const partial = text.slice(start);
-const obj = {};
-_OBJ_STR_RE.lastIndex = 0;
-let fm;
-while ((fm = _OBJ_STR_RE.exec(partial)) !== null) obj[fm[1]] = fm[2].replace(/\\n/g, '\n').replace(/\\"/g, '"');
-return Object.keys(obj).length > 0 ? obj : null;
-}
+// 【P1-4修复】删除 extractObj：全项目零调用（仅 backup/index.html 有旧版）。
+// extractObjArr 已覆盖对象数组提取场景，单对象提取由 ResponseParser Level 2 处理。
 // 状态机提取对象数组
 function extractObjArr(text, field) {
-    const m = text.match(new RegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
+    // 【P1-2修复 + P2-6】接入 _getCachedRegExp 缓存
+    const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         const result = [];
         let i = m.index + m[0].length;
@@ -2713,7 +2702,8 @@ return result.length > 0 ? result : null;
 }
 // 【阶段1-A1】robustParse 已删除：与 ResponseParser._tryRobustJSON 完全重复
 // 字段级状态机提取已由 ResponseParser Level 2（_tryRobustJSON + _repairTruncatedJSON）覆盖
-// extractStr/extractArr/extractObj/extractObjArr 保留：仍被 game.js 多处用于从纯文本提取字段
+// 【P3-4修复】订正失实注释：extractObj 已删除，extractStr/extractArr/extractObjArr 仍被 game.js 调用
+// extractStr/extractArr/extractObjArr 保留：仍被 game.js 多处用于从纯文本提取字段
 // 【阶段1-A1】_parseMemTags 已删除：与 ResponseParser._tryMemTags 完全重复
 // <mem> 标签解析统一由 ResponseParser.parse 的 Level 3 处理
 
@@ -4407,12 +4397,8 @@ function withSaveLock(fn, label) {
     return run;
 }
 
-function isSaveLocked() {
-    return _saveLockState.holder !== null;
-}
-function getSaveLockHolder() {
-    return _saveLockState.holder;
-}
+// 【P1-3修复】删除 isSaveLocked / getSaveLockHolder：全项目零调用。
+// withSaveLock（带锁执行）仍被使用，这两个查询函数从未被调用。
 async function autoSave() {
     if (_autoSaveTimer) return; // 防抖：已有待执行的保存，跳过
     // 加载中不自动保存，避免读到半合并状态

@@ -623,8 +623,6 @@ var WorldInfo = {
         UI.toast('已创建新世界书');
     },
 
-    // 【P2清理】删除 toggleBook / toggleEntry（全项目零调用）
-
     // 快速删除条目（从列表直接删除）
     quickDeleteEntry: async function(uid) {
         var book = this.getCurrentBook();
@@ -2092,5 +2090,4 @@ var WorldInfo = {
         positionTexts: positionTexts
         };
     }
-    // 【P2清理】删除 getInjectionByRole（全项目零调用）
 };

@@ -147,8 +147,7 @@ var QuestSystem = {
         html += '<div class="quest-filter-bar">' + filterBtns + '</div>';
         html += '<div class="quest-list-container" id="questListContainer">';
         if (quests.length === 0) {
-            html +=
-            '<div class="quest-empty-state"><div class="quest-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><p>暂无任务</p><p style="font-size:12px;margin-top:4px;">开始游戏后任务会自动生成</p></div>';
+            html += renderEmptyState('clock', '暂无任务', '开始游戏后任务会自动生成', { wrapClass: 'quest-empty-state', iconClass: 'quest-empty-icon' });
             } else {
             html += this.renderQuestList(quests);
         }
@@ -160,10 +159,9 @@ var QuestSystem = {
         const self = this;
         // 【优化】主线 → 支线 → 隐藏，进行中 → 已完成 → 已失败
         var typeOrder = { '主线': 0, '支线': 1, '隐藏': 2 };
-        // 合入自定义类型的排序
-        for (var k in QuestSystem._customTypes) { typeOrder[QuestSystem._customTypes[k].label] = QuestSystem._customTypes[k].sortOrder; }
+        // 【P1-9修复】删除 _customTypes / _customStatuses 的 for-in 循环：
+        // 动态类型注册系统已删除（见第14行注释），这两个属性从未定义，for-in 永远不迭代。
         var statusOrder = { '进行中': 0, '已完成': 1, '已失败': 2, '已放弃': 3 };
-        for (var k in QuestSystem._customStatuses) { statusOrder[QuestSystem._customStatuses[k].label] = QuestSystem._customStatuses[k].sortOrder; }
         var sorted = quests.slice().sort(function(a, b) {
             var ta = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99;
             var tb = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99;
@@ -234,7 +232,7 @@ var QuestSystem = {
             if (lc) {
                 lc.innerHTML = filtered.length > 0 ? self.renderQuestList(
                 filtered) :
-                '<div class="quest-empty-state"><div class="quest-empty-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></div><p>该分类下暂无任务</p></div>';
+                renderEmptyState('search', '该分类下暂无任务', null, { wrapClass: 'quest-empty-state', iconClass: 'quest-empty-icon' });
             }
         });
     });
@@ -363,9 +361,18 @@ var AchievementSystem = {
     return gameState._achievements;
     },
     calculateStats() {
+        // 【P1-30修复】统一走 StateManager 权威源，不再直读 legacy gameState 字段。
+        // 旧实现直读 gameState.conversationHistory/allCharacters/currentBag/relationships，
+        // 可能拿到 _syncLegacyMirror 尚未同步的旧值。与 QuestSystem（line 16 走 StateManager）风格统一。
+        var _ch = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.conversationHistory') || []) : (gameState.conversationHistory || []);
+        var _chars = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.characters') || []) : [];
+        var _bag = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.bag') || []) : [];
+        var _rels = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.relationships') || []) : (gameState.relationships || []);
+        // allCharacters 是对象，entities.characters 是数组，统一转数组长度
+        var _npcCount = Array.isArray(_chars) ? _chars.length : Object.keys(_chars || {}).length;
         var stats = {
-            storyCount: (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length,
-            npcCount: Object.keys(gameState.allCharacters || {}).length,
+            storyCount: _ch.filter(m => m.role === 'assistant').length,
+            npcCount: _npcCount,
             friendlyNpc: 0,
             romanceNpc: 0,
             allyNpc: 0,
@@ -377,17 +384,16 @@ var AchievementSystem = {
             locations: 0,
             hiddenLocations: 0
             };
-        if (gameState.currentBag) {
-            stats.bagItems = gameState.currentBag.reduce(function(s, i) {
+        if (_bag && _bag.length > 0) {
+            stats.bagItems = _bag.reduce(function(s, i) {
                 return s + (i.count || 1);
                 }, 0);
-            gameState.currentBag.forEach(function(i) {
+            _bag.forEach(function(i) {
                 if (i.rarity === '珍稀' || i.rarity === '精良') stats.rareItems += i.count || 1;
                 if (i.rarity === '传说') stats.legendaryItems += i.count || 1;
                 });
         }
-    var rels = gameState.relationships || [];
-    rels.forEach(function(r) {
+    _rels.forEach(function(r) {
         if (r.from === '主角' || r.to === '主角') {
             if (r.type === '友好' || r.type === '盟友' || r.type === '师徒') stats.friendlyNpc++;
             if (r.type === '暧昧' || r.type === '恋人') stats.romanceNpc++;
@@ -503,7 +509,7 @@ var AchievementSystem = {
         var html = '<div class="achieve-page">';
         // 【修复BUG-L1】没有成就数据时显示占位提示，避免 0/0 白屏/空屏
         if (all.length === 0) {
-            html += '<div class="empty-state" style="padding:40px 20px;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><p>成就系统即将开放</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">随着剧情推进，AI 将自动生成可解锁的成就</p></div></div>';
+            html += renderEmptyState('clock', '成就系统即将开放', '随着剧情推进，AI 将自动生成可解锁的成就', { wrapStyle: 'padding:40px 20px;', hintStyle: 'font-size:13px;margin-top:8px;color:var(--text-secondary);' }) + '</div>';
             container.innerHTML = html;
             return;
         }
@@ -887,15 +893,14 @@ function mergeRelationships(newRels) {
     }).filter(Boolean);
     // 【P0-2.9 阶段3-3】统一走 RelationshipMutator → entities.relationships，
     // StateManager._syncLegacyMirror 自动同步 gameState.relationships 旧字段
+    // 【P1-18修复】_pushRelationshipsToGM 持久化已收敛进 RelationshipMutator.mergeRelationships
+    // 内部，此处不再手动调用，消除跨文件双写链
     if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
         RelationshipMutator.mergeRelationships(normalized);
     } else {
         // 【P0-2.9】RelationshipMutator 不可用时直接抛错，不再静默双写
         throw new Error('[mergeRelationships] RelationshipMutator 未加载，无法同步关系');
     }
-    // 兼容旧流程：仍触发 _pushRelationshipsToGM 让 gm.tables.relationships 同步
-    // （GameMemory 是 EnhancedMemory 持久化层，仍是 gm 内部的存储源）
-    if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
 }
 
 // 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网

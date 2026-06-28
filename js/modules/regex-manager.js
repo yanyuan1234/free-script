@@ -870,9 +870,6 @@ testScript: function() {
     UI.createModal({ html: html });
 },
 
-
-// 【P2清理】删除 toggleScript / quickDeleteScript（全项目零调用）
-
 // 删除脚本（编辑弹窗内）
 deleteScript: async function() {
     if (!this._editingId) {

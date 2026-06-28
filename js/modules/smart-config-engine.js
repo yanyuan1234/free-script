@@ -305,6 +305,4 @@ var SmartConfigEngine = {
         }
         return config;
     },
-
-    // 【P2清理】删除 getConfigSummary（全项目零调用）
 };

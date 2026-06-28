@@ -596,51 +596,12 @@ const AIResponseMutator = {
             }
         });
 
-        // 3. 合并图谱条目到 StateManager.entities.relationships（max 10）
-        // _syncLegacyMirror 自动同步到 gameState.relationships（供 renderRelationships 读取）
-        if (graphEntries.length > 0 && typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
-            var existing = StateManager.get('entities.relationships') || [];
-            if (!Array.isArray(existing)) existing = [];
-            // 合并：相同 from↔to 对（双向算同一对）更新，新对追加
-            graphEntries.forEach(function(nr) {
-                var existIdx = -1;
-                for (var i = 0; i < existing.length; i++) {
-                    var er = existing[i];
-                    if ((er.from === nr.from && er.to === nr.to) || (er.from === nr.to && er.to === nr.from)) {
-                        existIdx = i;
-                        break;
-                    }
-                }
-                if (existIdx !== -1) {
-                    existing[existIdx] = nr;
-                } else {
-                    existing.push(nr);
-                }
-            });
-            // 上限 10 条（保留最近），与 legacy mergeRelationships 一致
-            if (existing.length > 10) existing = existing.slice(-10);
-            StateManager.set('entities.relationships', existing, { silent: true });
-
-            // 4. 推送到 gm.tables.relationships（供 MemoryManagerUI + 存档读取）
-            // _syncLegacyMirror 已将 entities.relationships 同步到 gameState.relationships，
-            // _pushRelationshipsToGM 从 gameState.relationships 推送到 gm.tables.relationships
-            if (typeof _pushRelationshipsToGM === 'function') {
-                try { _pushRelationshipsToGM(); } catch (e) {
-                    console.warn('[AIResponseMutator] _pushRelationshipsToGM 失败:', e && e.message);
-                }
-            } else if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
-                // 兜底：直接推送（与 core.js _pushRelationshipsToGM 逻辑一致）
-                if (!window.GameMemory.tables.relationships) window.GameMemory.tables.relationships = {};
-                existing.forEach(function(r) {
-                    if (!r || !r.from || !r.to) return;
-                    var key = r.from + '->' + r.to;
-                    if (window.GameMemory.tables.relationships[key]) {
-                        Object.assign(window.GameMemory.tables.relationships[key], r);
-                    } else {
-                        window.GameMemory.tables.relationships[key] = Object.assign({}, r);
-                    }
-                });
-            }
+        // 3. 合并图谱条目到 StateManager.entities.relationships（max 10）+ 持久化到 gm.tables
+        // 【P1-18修复】原代码内联重复了 RelationshipMutator.mergeRelationships 的合并逻辑
+        // （双向匹配 + 上限 10 + StateManager.set）+ 手动调 _pushRelationshipsToGM + 兜底直写。
+        // 现统一委托 RelationshipMutator.mergeRelationships，其内部自动完成 SM 写入 + gm.tables 持久化。
+        if (graphEntries.length > 0 && typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
+            RelationshipMutator.mergeRelationships(graphEntries, { silent: true });
         }
     },
 

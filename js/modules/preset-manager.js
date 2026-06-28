@@ -1365,8 +1365,6 @@ var PresetManager = {
     console.log('[预设] 已加载 ' + versions.length + ' 个预设版本快照:', versions.map(function(v) { return v.name; }).join(', '));
     },
 
-    // 【P2清理】删除 switchEntryState（仅 backup/index.html 引用，全项目零调用）
-
     _applyPromptsToSystemPrompt: function(preset) {
         // 【关键】有预设时只取游戏上下文（玩家设定/记忆/私聊），不包含默认格式规则
         // 预设才是最高优先级，格式规则由预设的 system_prompt=true 条目完全控制
@@ -1987,6 +1985,4 @@ var PresetManager = {
     // ========================================
     // 从 PresetEngine 合并的方法
     // ========================================
-
-    // 【P2清理】删除 buildBaseGameRules（全项目零调用）
 };

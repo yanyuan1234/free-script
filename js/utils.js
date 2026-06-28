@@ -519,8 +519,8 @@ const Logger = (function() {
         return parts.join(' ');
     }
     return {
-        LEVELS: LEVELS,
         // 【P2清理】删除 debug/info/log/getLevel/setLevel（全项目零调用），保留 warn/error
+        // 【P1-5修复】删除 LEVELS 对外暴露（全项目零读取）
         warn()  { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
         error() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} }
     };
@@ -556,52 +556,6 @@ function shouldSkipPageRender(pageName, dataKey) {
     return false;
 }
 
-// 【P2-3修复】时间格式化工具函数：持久化存时间戳（Date.now()），显示时统一格式化
-// 优势：跨时区读档时自动显示为当地时间，数据本身无歧义
-// 入参 ts 支持：number(时间戳)、string(ISO字符串或老格式本地字符串)、Date 对象
-function _coerceTs(ts) {
-    if (ts == null) return Date.now();
-    if (typeof ts === 'number') return ts;
-    if (ts instanceof Date) return ts.getTime();
-    // 字符串：先尝试 ISO 或标准日期格式
-    var t = Date.parse(ts);
-    if (!isNaN(t)) return t;
-    // 兜底：当前时间
-    return Date.now();
-}
-function formatTime(ts) {
-    // 仅时分秒，用于聊天消息、评论等
-    return new Date(_coerceTs(ts)).toLocaleTimeString();
-}
-function formatDate(ts) {
-    // 仅日期，用于日记、成就解锁日等
-    return new Date(_coerceTs(ts)).toLocaleDateString();
-}
-function formatDateTime(ts) {
-    // 完整日期时间，用于存档时间、邮件、论坛帖子等
-    return new Date(_coerceTs(ts)).toLocaleString();
-}
-function formatTimeShort(ts) {
-    // HH:mm 短格式，用于朋友圈等
-    return new Date(_coerceTs(ts)).toLocaleTimeString().slice(0, 5);
-}
-
-// 【P2-3修复】时间字段迁移：将对象数组中指定字段从字符串转为时间戳
-// 只转看起来像老格式（包含中文或冒号的字符串）的，已是数字时间戳不动
-function migrateTimeFields(arr, fieldName) {
-    if (!Array.isArray(arr)) return;
-    for (var i = 0; i < arr.length; i++) {
-        var item = arr[i];
-        if (!item || item[fieldName] == null) continue;
-        if (typeof item[fieldName] === 'number') continue;
-        if (typeof item[fieldName] === 'string') {
-            var parsed = Date.parse(item[fieldName]);
-            if (!isNaN(parsed)) {
-                item[fieldName] = parsed;
-            }
-        }
-    }
-}
 
 // ========================================
 // bindFresh：通用一次性事件绑定（替代 cloneNode + replaceChild + addEventListener 三步反模式）
@@ -633,6 +587,63 @@ function bindFresh(elOrId, event, handler, refKey) {
 
 if (typeof window !== 'undefined') window.bindFresh = bindFresh;
 if (typeof module !== 'undefined' && module.exports) module.exports.bindFresh = bindFresh;
+
+// ========================================
+// renderEmptyState：统一空状态渲染（P1-23）
+// ========================================
+// 替代散落在 phone-ui.js / systems.js 的 11+ 处 SVG 内联空状态。
+// 设计：
+//   - iconType 参数化 SVG（globe/mail/cart/backpack/book/users/trophy/clock/search）
+//   - 也支持文本字符图标（如 '世' '单'）或 'none'/空值（无图标占位）
+//   - SVG 加 role="img" + aria-label，提升 a11y（修复原版无障碍缺失）
+//   - options.textOnly=true 时仅渲染一行文字（用于"暂无错误记录"等极简场景）
+//   - options.wrapClass / iconClass / wrapStyle / hintStyle 可覆盖默认样式
+const _EMPTY_STATE_SVGS = {
+    globe:    '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+    mail:     '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+    cart:     '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+    backpack: '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+    book:     '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+    users:    '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    trophy:   '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg>',
+    clock:    '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>',
+    search:   '<svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>'
+};
+
+function renderEmptyState(iconType, title, hint, options) {
+    options = options || {};
+    var _esc = (typeof escapeHtml === 'function') ? escapeHtml : function(s) { return String(s == null ? '' : s); };
+    var wrapClass = options.wrapClass || 'empty-state';
+    var iconClass = options.iconClass || 'empty-state-icon';
+    var wrapStyleAttr = options.wrapStyle ? ' style="' + options.wrapStyle + '"' : '';
+
+    // textOnly 模式：仅渲染一行文字（无图标、无副标题），用于极简空状态
+    if (options.textOnly) {
+        return '<div class="' + wrapClass + '"' + wrapStyleAttr + '>' + _esc(title || '') + '</div>';
+    }
+
+    var iconHtml = '';
+    if (iconType && _EMPTY_STATE_SVGS[iconType]) {
+        // 命中预定义 SVG：加 role="img" + aria-label 提升 a11y
+        var label = _esc(title || iconType);
+        iconHtml = '<div class="' + iconClass + '" role="img" aria-label="' + label + '">' + _EMPTY_STATE_SVGS[iconType] + '</div>';
+    } else if (!iconType || iconType === 'none') {
+        // 无图标：空 div 占位（保持原版布局间距）
+        iconHtml = '<div class="' + iconClass + '"></div>';
+    } else {
+        // 文本字符图标（如 '世' '单'）
+        iconHtml = '<div class="' + iconClass + '">' + _esc(iconType) + '</div>';
+    }
+
+    var titleHtml = title ? '<p>' + _esc(title) + '</p>' : '';
+    var hintStyle = options.hintStyle || 'font-size:12px;margin-top:4px;';
+    var hintHtml = hint ? '<p style="' + hintStyle + '">' + _esc(hint) + '</p>' : '';
+
+    return '<div class="' + wrapClass + '"' + wrapStyleAttr + '>' + iconHtml + titleHtml + hintHtml + '</div>';
+}
+
+if (typeof window !== 'undefined') window.renderEmptyState = renderEmptyState;
+if (typeof module !== 'undefined' && module.exports) module.exports.renderEmptyState = renderEmptyState;
 
 // ========================================
 // parseTheaterItems：通用小剧场 HTML 解析器

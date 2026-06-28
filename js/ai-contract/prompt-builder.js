@@ -20,14 +20,10 @@ const PromptBuilder = {
         };
     },
 
-    // 【P2清理】删除 unregisterSection（全项目零调用）
-
     // 设置模式
     setMode(mode) {
         this._mode = mode || 'json';
     },
-
-    // 【P2清理】删除 getMode（全项目零调用）
 
     // 构建 system prompt
     buildSystemPrompt(context) {

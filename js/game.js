@@ -166,6 +166,18 @@ function _applyUseSysprompt(messages) {
     return messages;
 }
 
+// 【P1-35修复】抽取主系统提示词推送逻辑，消除 sendAIRequest 内 2 处重复内联。
+// 与 _applyUseSysprompt 语义不同：_applyUseSysprompt 转换 ALL system 消息（用于 NPC 私聊等专用路径），
+// _pushSystemPrompt 仅控制主 systemPrompt 的角色（system 或 user），不影响后续 world info 等系统消息。
+function _pushSystemPrompt(messages) {
+    if (!gameState || !gameState.systemPrompt || !gameState.systemPrompt.trim()) return;
+    if (gameState._useSysprompt !== false) {
+        messages.push({ role: 'system', content: gameState.systemPrompt });
+    } else {
+        messages.push({ role: 'user', content: gameState.systemPrompt });
+    }
+}
+
 // 【P1性能优化】统一的世界书扫描入口，支持轮次级缓存
 // NPC 私聊/论坛/结局/剧情主路径都通过此函数获取世界书注入，避免同一轮内重复扫描
 // 缓存失效时机：跨轮（totalTurns 变化）
@@ -897,25 +909,8 @@ function applyLengthPreset(preset) {
  * 【修复P1-1】合并双预设系统——现在统一调用 _applyUnifiedPreset（phone-ui.js）
  * 此前 applyParamPreset 和 applyArchetype 是两套独立系统，字段重叠但不一致，需要 baseline 重置补丁
  */
-function applyParamPreset(preset) {
-    // 兼容历史别名：moonread→conservative, fruit→natural, gomorrah→passionate
-    var _legacyAliases = {
-        moonread: 'conservative',
-        fruit: 'natural',
-        gomorrah: 'passionate'
-    };
-    var key = _legacyAliases[preset] || preset;
-    if (!_applyUnifiedPreset(key, {})) return;
-    var p = UNIFIED_PRESETS[PRESET_ALIASES[key] || key];
-    if (!p) return;
-    // 显示信息
-    var infoEl = document.getElementById('paramPresetInfo');
-    if (infoEl) {
-        infoEl.style.display = 'block';
-        infoEl.textContent = '已应用: ' + p._name + ' — ' + p._desc;
-    }
-    if (typeof UI !== 'undefined') UI.toast('已应用参数: ' + p._name);
-}
+// 【P1-6修复】删除 applyParamPreset：全项目零调用。
+// 统一入口 _applyUnifiedPreset（phone-ui.js）已取代，applyArchetype 为当前唯一调用入口。
 
 async function sendAIRequest(userMessage, isInit = false) {
     if (isWaiting) return;
@@ -1006,11 +1001,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 构建isInit消息列表（含世界书position注入和世界快照）
             messages = [];
             // 主系统提示词
-            if (gameState && gameState._useSysprompt !== false) {
-                messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
-                messages.push({ role: 'user', content: gameState.systemPrompt });
-            }
+            // 【P1-35修复】改调 _pushSystemPrompt，消除内联重复
+            _pushSystemPrompt(messages);
             // 世界书position注入（与主路径一致的depth 0-5）
             var _initWIPos = (gameState && gameState._wiPositionTexts) || null;
             var _initPosPrompts = (gameState && gameState._positionPrompts) || {};
@@ -1116,12 +1108,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 支持 use_sysprompt 配置（月读预设设为 false）
             // 【酒馆兼容】use_sysprompt=false 时，不使用 system 角色，
             // 而是把系统提示词内容作为第一条 user 消息发送（酒馆标准行为）
-            if (gameState && gameState._useSysprompt !== false) {
-                messages.push({ role: 'system', content: gameState.systemPrompt });
-            } else if (gameState && gameState.systemPrompt && gameState.systemPrompt.trim()) {
-                // use_sysprompt=false：内容不丢弃，改为 user 角色发送
-                messages.push({ role: 'user', content: gameState.systemPrompt });
-            }
+            // 【P1-35修复】改调 _pushSystemPrompt，消除内联重复
+            _pushSystemPrompt(messages);
 
             // 辅助函数：合并世界书和预设提示词
             // 【可配置顺序】默认世界书在前（酒馆常规行为），部分预设期望预设在前
@@ -1952,7 +1940,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
             }
             // === 新增：保存世界状态快照 ===
-            var snapshot = {};
+            // 【P1-20修复】用 MERGE 语义：先读取已有 worldSnapshot，再局部更新。
+            // 旧实现 `var snapshot = {}` 用 REPLACE 语义整体覆盖，会擦除 _parseStructuredSummary
+            // (game.js:2465) 写入的 summary/lastUpdate 字段，导致下一轮 AI 回合这些字段丢失。
+            var snapshot = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('ui.worldSnapshot') || {}) : {};
             if (data.player) snapshot.player = data.player;
             if (data.hud) snapshot.hud = data.hud;
             if (data.bag) snapshot.bag = data.bag;
@@ -3309,11 +3300,9 @@ function renderChoices(choices) {
                 input.value = '';
                 input.focus();
             }
-            if (typeof sendAIRequest === 'function') {
-                sendAIRequest(text);
-            } else {
-                fillChoiceToInput(text);
-            }
+            // 【P1-16修复】删除不可达 else 分支：sendAIRequest 在本文件内定义，必为 function。
+            // 原 else 分支调用 fillChoiceToInput（已一并删除），永远不会执行。
+            sendAIRequest(text);
         });
     });
     // 【修复X6】选项面板默认展开：AI 生成新选项后玩家应能直接看到，无需手动点击
@@ -3342,14 +3331,7 @@ function toggleChoicesPanel() {
         if (icon) icon.style.transform = 'rotate(-90deg)';
     }
 }
-function fillChoiceToInput(text) {
-    var input = document.getElementById('customAction');
-    if (input) {
-        input.value = text;
-        input.disabled = false;
-        input.focus();
-    }
-}
+// 【P1-16修复】删除 fillChoiceToInput：仅从不可达 else 分支调用（sendAIRequest 必为 function）。
 
 // ========================================
 // 第5层: 数据管理 - NPC人物（累积 + 弹窗详情）
@@ -3384,20 +3366,11 @@ function mergeCharacters(chars) {
 // 【阶段1统一】删除角色：统一委托 CharacterMutator.removeCharacter
 // 替代原直接 delete gameState.allCharacters[name]（绕过 StateManager 导致不同步）
 // 【P1-PU7 阶段4】删 fallback，强制走 Mutator
-function deleteCharacter(name) {
-    UI.confirm('删除角色', '确定删除角色「' + escapeHtml(name) + '」？此操作不可撤回').then(function(ok) {
-        if (!ok) return;
-        if (typeof CharacterMutator === 'undefined' || !CharacterMutator.removeCharacter) {
-            throw new Error('CharacterMutator.removeCharacter 不可用，无法删除角色');
-        }
-        CharacterMutator.removeCharacter(name);
-        renderNpcList();
-        UI.hideModal('npcDetailModal');
-        autoSave();
-    }).catch(function(err) {
-        console.error('[NPC] 删除角色失败:', err);
-    });
-}
+// 【P1-7修复】删除顶层 deleteCharacter：全项目零调用。
+// MemoryManagerUI.deleteCharacter（tavern-compat.js:4377）是实际使用的删除入口，
+// 由 _btn 生成的 onclick="MemoryManagerUI.deleteCharacter(...)" 调用。
+// NPC 详情弹窗的删除按钮走 phone-ui.js 的 NPC 编辑页面，不经过此函数。
+
 // ========================================
 // 存档系统 - 数据层
 // ========================================
@@ -4314,11 +4287,8 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         if (_typeCounts[_m.type] <= 20) _trimmed.unshift(_m);
     }
     // 【全量修复-P2】方向反转：写入权威源 StateManager，_syncLegacyMirror 自动回写 gameState._worldModules
-    if (typeof StateManager !== 'undefined' && StateManager.set) {
-        StateManager.set('ui.worldModules', _trimmed, { silent: true });
-    } else if (typeof gameState !== 'undefined') {
-        gameState._worldModules = _trimmed;
-    }
+    // 【P1-17修复】删除不可达 else if 分支：StateManager 由 index.html 静态加载，运行时必存在。
+    StateManager.set('ui.worldModules', _trimmed, { silent: true });
 }
 
 // 【P1-8 阶段3】顶层全局封装：原文件加载时立即执行的 DOM 操作收拢到命名函数，由 init.js 调用

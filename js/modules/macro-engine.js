@@ -19,8 +19,6 @@ var MacroEngine = {
         }
     },
 
-    // 【P2清理】删除 saveLocalVars / saveGlobalVars / resetLocalVars（空壳代理，VariableStore 已自动处理持久化，全项目零调用）
-
     // 设置局部变量
     setLocalVar: function(name, value) {
         if (!name || typeof VariableStore === 'undefined') return '';
@@ -1250,8 +1248,6 @@ var MacroEngine = {
 
         return true;
         },
-
-    // 【P2清理】删除 _dedent（全项目零调用）
 
     /**
     * 处理变量简写

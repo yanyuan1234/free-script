@@ -844,8 +844,7 @@ function renderWorldModules(modules) {
         return;
     }
     if (gameState._worldModules.length === 0) {
-        subContentEl.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><p>暂无世界信息</p></div>';
+        subContentEl.innerHTML = renderEmptyState('globe', '暂无世界信息');
         if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
         return;
     }
@@ -1610,7 +1609,7 @@ function renderChatPage() {
 
     if (chattedNames.length === 0) {
         return '<div class="chat-list-page">' +
-            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">NPC 会在剧情推进中主动发来消息</p></div>' +
+            renderEmptyState('none', '暂无消息', 'NPC 会在剧情推进中主动发来消息', { hintStyle: 'font-size:13px;margin-top:8px;color:var(--text-secondary);' }) +
             '</div>';
     }
 
@@ -1683,7 +1682,7 @@ function renderWorldPage() {
     var _key = modules.length + '|' + _lastTitle + '|' + _lastMain;
     if (shouldSkipPageRender('renderWorldPage', _key)) return;
     if (modules.length === 0) {
-        return '<div class="empty-state"><div class="empty-state-icon">世</div><p>暂无世界信息</p></div>';
+        return renderEmptyState('世', '暂无世界信息');
     }
 
     return modules.map(function(mod) {
@@ -2006,7 +2005,7 @@ function renderForumPage() {
 
     if (commentMods.length === 0) {
         return '<div class="forum-page">' +
-            '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);"><div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无论坛帖子</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div></div>' +
+            '<div style="flex:1;display:flex;align-items:center;justify-content:center;background:var(--bg);">' + renderEmptyState('users', '暂无论坛帖子', '游戏进行中会自动生成') + '</div>' +
             '<div class="forum-tab-bar"><div class="forum-tab-item active"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div><div class="forum-tab-item"><div class="forum-tab-icon">#</div><span>话题</span></div><div class="forum-tab-item"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div></div>' +
             '</div>';
     }
@@ -2203,8 +2202,7 @@ function renderRankPage() {
     rankItems.forEach(function(it, i) { currentNameToRank[it.name] = i; });
     var rowHtml = '';
     if (rankItems.length === 0) {
-        rowHtml =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2z"/></svg></div><p>暂无排行数据</p><p style="font-size:12px;margin-top:4px;">游戏进行中会自动生成</p></div>';
+        rowHtml = renderEmptyState('trophy', '暂无排行数据', '游戏进行中会自动生成');
     } else {
         rowHtml = rankItems.map(function(it, i) {
             var rankClass = i === 0 ? 'top1' : i === 1 ? 'top2' : i === 2 ? 'top3' : '';
@@ -2340,7 +2338,7 @@ function renderItemsPage() {
         '<div class="items-flow-header"><span class="items-flow-title">最近流水</span><span class="items-flow-count">' +
         cardMods.length + '</span></div>' +
         '<div class="items-flow-list">' + (flowItems ||
-            '<div class="empty-state" style="padding:30px 0;">暂无流水记录</div>') + '</div>' +
+            renderEmptyState(null, '暂无流水记录', null, { wrapStyle: 'padding:30px 0;', textOnly: true })) + '</div>' +
         '</div>' +
         '</div>' +
         '</div>';
@@ -2536,8 +2534,7 @@ function renderMailPage() {
 
     var mailListHtml = '';
     if (allMails.length === 0) {
-        mailListHtml =
-            '<div class="empty-state" style="padding:60px 0;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>收件箱为空</p><p style="font-size:12px;margin-top:4px;">暂无邮件</p></div>';
+        mailListHtml = renderEmptyState('mail', '收件箱为空', '暂无邮件', { wrapStyle: 'padding:60px 0;' });
     } else {
         mailListHtml = allMails.map(function(mail, i) {
             var unread = mail.read ? '' : ' unread';
@@ -2612,8 +2609,7 @@ function renderShopPage() {
 
     var goodsHtml = '';
     if (allGoods.length === 0) {
-        goodsHtml =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></div><p>商店暂无商品</p><p style="font-size:12px;margin-top:4px;">探索世界解锁更多商品</p></div>';
+        goodsHtml = renderEmptyState('cart', '商店暂无商品', '探索世界解锁更多商品');
     } else {
         goodsHtml = allGoods.map(function(g, gi) {
             var icon = g.icon || '包';
@@ -2993,7 +2989,7 @@ function renderDefaultPage(type) {
             achieve: '成就系统即将开放'
         };
         var hint = hints[type] || '该功能将在游戏进行中自动填充';
-        return '<div class="empty-state"><div class="empty-state-icon">单</div><p>暂无内容</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);padding:0 24px;text-align:center;">' + escapeHtml(hint) + '</p></div>';
+        return renderEmptyState('单', '暂无内容', hint, { hintStyle: 'font-size:13px;margin-top:8px;color:var(--text-secondary);padding:0 24px;text-align:center;' });
     }
 }
 
@@ -3337,8 +3333,7 @@ function renderBag(items) {
         if (typeof RenderCache !== 'undefined') RenderCache.mark('renderBag', bagKey);
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     if (currentBag.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
+        container.innerHTML = renderEmptyState('backpack', '背包空空如也');
         return;
     }
     // 【修复X3】物品数据需要转义；并使用与 renderItemsPage 一致的 items-box 结构，保证 filterBagItems 仍可工作
@@ -3425,8 +3420,7 @@ function renderRecapPage() {
                 '<div class="timeline-item-summary" style="white-space:pre-wrap;line-height:1.6;">' +
                 escapeHtml(memSummary.substring(0, 500)) + '</div></div></div>';
         } else {
-            container.innerHTML =
-                '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
+            container.innerHTML = renderEmptyState('book', '暂无剧情记录');
         }
     } else {
         // 【修复X7/BUG-03】剧情回顾摘要需要转义；卡片标题优先用 story title
@@ -3612,18 +3606,8 @@ function showPresetAction(idx) {
 
     UI.showModal('presetActionModal');
 
-    // 绑定按钮事件
-    var newStartBtn = document.getElementById('btnPresetStartNew').cloneNode(true);
-    var newEditBtn = document.getElementById('btnPresetEdit').cloneNode(true);
-    var newDeleteBtn = document.getElementById('btnPresetDelete').cloneNode(true);
-    document.getElementById('btnPresetStartNew').parentNode.replaceChild(newStartBtn, document
-        .getElementById('btnPresetStartNew'));
-    document.getElementById('btnPresetEdit').parentNode.replaceChild(newEditBtn, document.getElementById(
-        'btnPresetEdit'));
-    document.getElementById('btnPresetDelete').parentNode.replaceChild(newDeleteBtn, document
-        .getElementById('btnPresetDelete'));
-
-    newStartBtn.addEventListener('click', function() {
+    // 绑定按钮事件（【P1-22】cloneNode 三步模式统一迁移到 bindFresh，消除 DOM 节点替换开销）
+    bindFresh('btnPresetStartNew', 'click', function() {
         UI.hideModal('presetActionModal');
         // 记录当前预设的存档槽位，游戏开始后自动存档到这里
         gameState._currentPresetSlotId = preset.saveSlotId;
@@ -3643,24 +3627,19 @@ function showPresetAction(idx) {
 
     // 绑定"继续旅程"按钮
     if (continueBtn) {
-        var newContinueBtn = continueBtn.cloneNode(true);
-        continueBtn.parentNode.replaceChild(newContinueBtn, continueBtn);
-        newContinueBtn.style.display = 'flex'; // 始终显示
-        newContinueBtn.addEventListener('click', function() {
+        continueBtn.style.display = 'flex'; // 始终显示
+        bindFresh(continueBtn, 'click', function() {
             // 打开存档列表页面
             showPresetSaveList(preset);
         });
     }
 
-    newEditBtn.addEventListener('click', function() {
+    bindFresh('btnPresetEdit', 'click', function() {
         UI.hideModal('presetActionModal');
         // 显示编辑弹窗
         document.getElementById('editPresetName').value = preset.name;
         UI.showModal('editPresetModal');
-        var saveBtn = document.getElementById('btnConfirmEditPreset');
-        var newSaveBtn = saveBtn.cloneNode(true);
-        saveBtn.parentNode.replaceChild(newSaveBtn, saveBtn);
-        newSaveBtn.addEventListener('click', function() {
+        bindFresh('btnConfirmEditPreset', 'click', function() {
             var name = document.getElementById('editPresetName').value.trim();
             if (!name) {
                 UI.toast('请输入预设名称');
@@ -3674,7 +3653,7 @@ function showPresetAction(idx) {
         });
     });
 
-    newDeleteBtn.addEventListener('click', function() {
+    bindFresh('btnPresetDelete', 'click', function() {
         var slotId = preset.saveSlotId;
         presets.splice(idx, 1);
         savePresets(presets);
@@ -3705,10 +3684,7 @@ function showPresetSaveList(preset) {
     UI.showModal('presetSaveListModal');
 
     // 绑定返回按钮
-    var backBtn = document.getElementById('btnBackToPresetAction');
-    var newBackBtn = backBtn.cloneNode(true);
-    backBtn.parentNode.replaceChild(newBackBtn, backBtn);
-    newBackBtn.addEventListener('click', function() {
+    bindFresh('btnBackToPresetAction', 'click', function() {
         UI.hideModal('presetSaveListModal');
         UI.showModal('presetActionModal');
     });
@@ -3737,13 +3713,14 @@ function showPresetSaveList(preset) {
             // 绑定点击加载
             listBody.querySelector('.pearl-card').addEventListener('click', function() {
                 UI.hideModal('presetSaveListModal');
+                // 【P1-8修复】合并链式双重 catch：第一个 catch 返回 resolved promise，第二个 catch 永远不执行。
                 loadFromSlot(preset.saveSlotId).then(function() {
                     gameState._currentPresetSlotId = preset.saveSlotId;
                     gameState._currentPresetName = preset.name;
                 }).catch(function(e) {
-                    console.error('加载预设存档失败:', e);
+                    console.error('[预设系统] 加载预设存档失败:', e);
                     UI.toast('加载存档失败', 'error');
-                }).catch(function(err) { console.error('[预设系统] 操作失败:', err); });
+                });
             });
         } else {
             // 无存档，显示空状态
@@ -3754,10 +3731,11 @@ function showPresetSaveList(preset) {
                 '</div>';
         }
     }).catch(function(e) {
-        console.error('查询存档失败:', e);
+        // 【P1-8修复】合并链式双重 catch：第一个 catch 返回 resolved promise，第二个 catch 永远不执行。
+        console.error('[预设系统] 查询存档失败:', e);
         listBody.innerHTML =
             '<div style="text-align:center;padding:40px;color:var(--text-secondary);">加载失败，请重试</div>';
-    }).catch(function(err) { console.error('[预设系统] 操作失败:', err); });
+    });
 }
 
 // ========================================
@@ -5063,10 +5041,11 @@ function deleteLastTurn() {
         // 这里仅需要把 gameState 数据推回 gm（GameMemory 内部缓存），保证读取一致
         if (typeof _pushCurrentBagToGM === 'function') _pushCurrentBagToGM();
         if (typeof _pushCurrentQuestsToGM === 'function') _pushCurrentQuestsToGM();
-        if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
-        // 【阶段5统一】undo 后 _pushRelationshipsToGM 已把 gameState.relationships 推到 gm.tables
-        // 再调用 _syncRelationshipsToGameState 让单一同步点统一更新 StateManager
-        if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
+        // 【P1-18修复】删除 _pushRelationshipsToGM + _syncRelationshipsToGameState 双调用：
+        // UndoMutator 内部已调 RelationshipMutator.mergeRelationships，后者现在自动完成
+        // StateManager 写入 + gm.tables.relationships 持久化（_pushRelationshipsToGM 已收敛进 Mutator）。
+        // 原 _syncRelationshipsToGameState 是 gm.tables→StateManager 的反向同步，在 UndoMutator
+        // 已写 StateManager 的场景下是冗余往返（可能因 keyed→array 转换丢字段）。
         if (typeof _pushKeyEventsToGM === 'function') _pushKeyEventsToGM();
         // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         // 【v3审查修复】撤销后刷新回合数标签与场景标题，否则 UI 仍显示撤销前的值
@@ -5345,8 +5324,7 @@ function showApiDetail(slot) {
                         .error || '未知错误') + '</div></div>';
             }).join('');
         } else {
-            errorListEl.innerHTML =
-                '<div class="empty-state">暂无错误记录</div>';
+            errorListEl.innerHTML = renderEmptyState(null, '暂无错误记录', null, { textOnly: true });
         }
     }
 
@@ -5365,7 +5343,7 @@ function showApiDetail(slot) {
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot || l.success;
         });
-        if (errorListEl) errorListEl.innerHTML = '<div class="empty-state">暂无错误记录</div>';
+        if (errorListEl) errorListEl.innerHTML = renderEmptyState(null, '暂无错误记录', null, { textOnly: true });
         UI.toast('已清空该配置的错误记录');
     });
 
@@ -5460,10 +5438,7 @@ function showApiDetail(slot) {
     });
 
     // 绑定复制按钮
-    var copyBtn = document.getElementById('btnCopyApi');
-    var newCopyBtn = copyBtn.cloneNode(true);
-    copyBtn.parentNode.replaceChild(newCopyBtn, copyBtn);
-    newCopyBtn.addEventListener('click', function() {
+    bindFresh('btnCopyApi', 'click', function() {
         var currentModel = document.getElementById('detailApiModelSelect').value || document
             .getElementById('detailApiModelInput').value.trim();
         LocalGameAPI._configs.push({
@@ -5482,10 +5457,7 @@ function showApiDetail(slot) {
     });
 
     // 绑定删除按钮
-    var deleteBtn = document.getElementById('btnDeleteApi');
-    var newDeleteBtn = deleteBtn.cloneNode(true);
-    deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-    newDeleteBtn.addEventListener('click', async function() {
+    bindFresh('btnDeleteApi', 'click', async function() {
         if (await UI.confirm('删除API', '确定要删除这个API配置吗？')) {
             LocalGameAPI._configs.splice(slot, 1);
             if (LocalGameAPI._currentSlot >= LocalGameAPI._configs.length) {
@@ -5501,9 +5473,7 @@ function showApiDetail(slot) {
     // 绑定tab切换（概览/错误）
     var tabs = document.querySelectorAll('#apiDetailModal [data-api-tab]');
     tabs.forEach(function(tab) {
-        var newTab = tab.cloneNode(true);
-        tab.parentNode.replaceChild(newTab, tab);
-        newTab.addEventListener('click', function() {
+        bindFresh(tab, 'click', function() {
             var target = this.getAttribute('data-api-tab');
             tabs.forEach(function(t) {
                 t.classList.remove('active');
@@ -5520,17 +5490,15 @@ function showApiDetail(slot) {
     // 绑定获取模型列表按钮
     var fetchModelsBtn = document.getElementById('btnFetchModelsDetail');
     if (fetchModelsBtn) {
-        var newFetchBtn = fetchModelsBtn.cloneNode(true);
-        fetchModelsBtn.parentNode.replaceChild(newFetchBtn, fetchModelsBtn);
-        newFetchBtn.addEventListener('click', async function() {
+        bindFresh(fetchModelsBtn, 'click', async function() {
             var url = document.getElementById('detailApiUrl').value.trim();
             var key = document.getElementById('detailApiKey').value.trim();
             if (!url || !key) {
                 UI.toast('请先填写接口地址和密钥');
                 return;
             }
-            newFetchBtn.disabled = true;
-            newFetchBtn.textContent = '获取中...';
+            fetchModelsBtn.disabled = true;
+            fetchModelsBtn.textContent = '获取中...';
             try {
                 var models = await LocalGameAPI.fetchModels(url, key);
                 var select = document.getElementById('detailApiModelSelect');
@@ -5570,17 +5538,15 @@ function showApiDetail(slot) {
             } catch (e) {
                 UI.toast(translateError(e.message));
             }
-            newFetchBtn.disabled = false;
-            newFetchBtn.textContent = '获取模型列表';
+            fetchModelsBtn.disabled = false;
+            fetchModelsBtn.textContent = '获取模型列表';
         });
     }
 
     // 绑定失败模型列表按钮
     var failedModelsBtn = document.getElementById('btnFailedModelsDetail');
     if (failedModelsBtn) {
-        var newFailedBtn = failedModelsBtn.cloneNode(true);
-        failedModelsBtn.parentNode.replaceChild(newFailedBtn, failedModelsBtn);
-        newFailedBtn.addEventListener('click', function() {
+        bindFresh(failedModelsBtn, 'click', function() {
             var failedModels = LocalGameAPI.getFailedModels();
             var select = document.getElementById('detailApiModelSelect');
             if (failedModels.length === 0) {
@@ -5602,19 +5568,13 @@ function showApiDetail(slot) {
     }
 
     // 绑定返回按钮
-    var backBtn = document.getElementById('apiDetailBack');
-    var newBackBtn = backBtn.cloneNode(true);
-    backBtn.parentNode.replaceChild(newBackBtn, backBtn);
-    newBackBtn.addEventListener('click', function() {
+    bindFresh('apiDetailBack', 'click', function() {
         UI.hideModal('apiDetailModal');
         UI.showModal('apiConfigModal');
     });
 
     // 绑定刷新按钮（刷新统计数据）
-    var refreshBtn = document.getElementById('apiDetailRefresh');
-    var newRefreshBtn = refreshBtn.cloneNode(true);
-    refreshBtn.parentNode.replaceChild(newRefreshBtn, refreshBtn);
-    newRefreshBtn.addEventListener('click', function() {
+    bindFresh('apiDetailRefresh', 'click', function() {
         var stats = LocalGameAPI.getRequestStats(slot);
         var reqEl = document.getElementById('apiDetailRequests');
         var modelEl = document.getElementById('apiDetailModels');
@@ -5638,18 +5598,14 @@ function showApiDetail(slot) {
                 // 【P1-PU5 阶段2-3】改用 renderErrorItemHtml
                 errorListEl.innerHTML = errorLogs.map(renderErrorItemHtml).join('');
             } else {
-                errorListEl.innerHTML =
-                    '<div class="empty-state">暂无错误记录</div>';
+                errorListEl.innerHTML = renderEmptyState(null, '暂无错误记录', null, { textOnly: true });
             }
         }
         UI.toast('已刷新统计');
     });
 
     // 密码显示切换
-    var togglePwd = document.getElementById('detailApiTogglePwd');
-    var newTogglePwd = togglePwd.cloneNode(true);
-    togglePwd.parentNode.replaceChild(newTogglePwd, togglePwd);
-    newTogglePwd.addEventListener('click', function() {
+    bindFresh('detailApiTogglePwd', 'click', function() {
         var input = document.getElementById('detailApiKey');
         input.type = input.type === 'password' ? 'text' : 'password';
     });
@@ -5671,10 +5627,7 @@ function showCreateApiModal() {
     });
     UI.showModal('createApiModal');
 
-    var confirmBtn = document.getElementById('btnConfirmCreateApi');
-    var newConfirmBtn = confirmBtn.cloneNode(true);
-    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-    newConfirmBtn.addEventListener('click', function() {
+    bindFresh('btnConfirmCreateApi', 'click', function() {
         var url = document.getElementById('createApiUrl').value.trim();
         var key = document.getElementById('createApiKey').value.trim();
         if (!url || !key) {
@@ -5698,26 +5651,21 @@ function showCreateApiModal() {
     });
 
     // 密码切换
-    var togglePwd = document.getElementById('createApiTogglePwd');
-    var newTogglePwd = togglePwd.cloneNode(true);
-    togglePwd.parentNode.replaceChild(newTogglePwd, togglePwd);
-    newTogglePwd.addEventListener('click', function() {
+    bindFresh('createApiTogglePwd', 'click', function() {
         var input = document.getElementById('createApiKey');
         input.type = input.type === 'password' ? 'text' : 'password';
     });
 
     // 获取模型列表
     var fetchBtn = document.getElementById('btnFetchModelsCreate');
-    var newFetchBtn = fetchBtn.cloneNode(true);
-    fetchBtn.parentNode.replaceChild(newFetchBtn, fetchBtn);
-    newFetchBtn.addEventListener('click', async function() {
+    bindFresh(fetchBtn, 'click', async function() {
         var url = document.getElementById('createApiUrl').value.trim();
         var key = document.getElementById('createApiKey').value.trim();
         if (!url || !key) {
             UI.toast('请先填写接口地址和密钥');
             return;
         }
-        newFetchBtn.disabled = true;
+        fetchBtn.disabled = true;
         try {
             var models = await LocalGameAPI.fetchModels(url, key);
             var select = document.getElementById('createApiModelSelect');
@@ -5750,17 +5698,14 @@ function showCreateApiModal() {
         } catch (e) {
             UI.toast(translateError(e.message));
         }
-        newFetchBtn.disabled = false;
+        fetchBtn.disabled = false;
     });
 }
 function showCreateGroupModal() {
     document.getElementById('createGroupName').value = '';
     UI.showModal('createGroupModal');
 
-    var confirmBtn = document.getElementById('btnConfirmCreateGroup');
-    var newConfirmBtn = confirmBtn.cloneNode(true);
-    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
-    newConfirmBtn.addEventListener('click', function() {
+    bindFresh('btnConfirmCreateGroup', 'click', function() {
         var name = document.getElementById('createGroupName').value.trim();
         if (!name) {
             UI.toast('请输入分组名称');
@@ -7194,8 +7139,7 @@ function renderNpcPage() {
     var container = document.getElementById('characterList');
     if (!container) return;
     if (chars.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无角色</p><p style="font-size:12px;margin-top:4px;">AI会在剧情中自动创造角色</p></div>';
+        container.innerHTML = renderEmptyState('users', '暂无角色', 'AI会在剧情中自动创造角色');
     } else {
         container.innerHTML = chars.map(function(c) {
             var fav = Number(c.favorability) || 0;

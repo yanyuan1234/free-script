@@ -1363,15 +1363,16 @@ var GameMemory = {
 
         // 辅助：检查内容中是否精确提到某个名称（避免子串误匹配）
         // 例如 "小明" 不会匹配 "小明王"，但会匹配 "小明说"、"叫小明"
+        // 【P1-25修复】统一用边界检查，不再对长名称走 indexOf 子串匹配。
+        // 旧实现对 ≤2 字名称用边界检查，对长名称直接 indexOf，导致：
+        //   - "李明" 会匹配到 "李明星" → 误判角色被提及 → 不触发休眠提醒
+        //   - "小明月" 中包含 "小明" → 误匹配
+        // 现统一用 (?:^|[^\u4e00-\u9fa5a-zA-Z0-9]) + name + (?:[^\u4e00-\u9fa5a-zA-Z0-9]|$)
+        // 对中文场景 \b 不可靠（\b 只在 ASCII 字符边界生效），故用 Unicode 范围排除。
         function isMentioned(name) {
             if (!name || name.length < 1) return false;
-            // 简单名称（1-2字）用边界检查，复杂名称直接包含检查
-            if (name.length <= 2) {
-                // 短名称需要更严格的匹配：前后不能是中文/字母/数字
-                var re = new RegExp('(^|[^\\u4e00-\\u9fa5a-zA-Z0-9])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\u4e00-\\u9fa5a-zA-Z0-9]|$)');
-                return re.test(content);
-            }
-            return content.indexOf(name) >= 0;
+            var re = new RegExp('(^|[^\\u4e00-\\u9fa5a-zA-Z0-9])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\u4e00-\\u9fa5a-zA-Z0-9]|$)');
+            return re.test(content);
         }
 
         // 更新角色休眠状态
@@ -3364,7 +3365,11 @@ var GameMemory = {
     // 原 BUG：lastCompressionTurn 初始化为 0 后从未更新，导致 turnsSinceLastCompress 永远 = currentTurn，
     // 15 回合后事件触发冷却形同虚设（turnsSinceLastCompress >= cooldownMinutes 恒为 true）
     recordCompression: function(success) {
-        var currentTurn = (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
+        // 【P1-26修复】统一用 self.currentTurn，不再读 gameState._stats.totalTurns。
+        // GameMemory 内部其他 30+ 处都用 self.currentTurn，唯独此处读镜像字段。
+        // gameState._stats 是 _syncLegacyMirror 的延后镜像，与 self.currentTurn 更新时机不同，
+        // 可能导致压缩冷却计算偏差（turnsSinceLastCompress = currentTurn - lastCompressionTurn）。
+        var currentTurn = this.currentTurn || 0;
         var cd = (this.compressionConfig && this.compressionConfig.cooldownMinutes) || 15;
         if (success) {
             this.compressionConfig.lastCompressionTurn = currentTurn;
@@ -4128,6 +4133,8 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return;
         gm.tables.locations[name].sceneState = document.getElementById('editSceneState').value.trim();
         gm.tables.locations[name].locked = document.getElementById('editSceneLocked').checked;
+        // 【P1-24/P0-7修复】失效 longTermMemory 缓存：locationTable 是 deepClone 快照
+        gm._ltmDirty = true;
         UI.afterMemoryChange('sceneState', 'worldSnapshot', '场景状态已保存');
     },
 
@@ -4321,6 +4328,39 @@ var MemoryManagerUI = {
         document.getElementById('memoryManagerContent').innerHTML = html + '</div></div>';
     },
 
+    // 【P1-24修复】通用：MemoryManagerUI 写入实体后，同步运行时字段到 gm.tables 并失效缓存
+    // -----------------------------------------------------------------------------
+    // 实体字段（name/title/relation/...）由 GameMemoryAdapter 在 StateManager.set 后通过
+    // MERGE 自动写入 gm.tables（见 game-memory-adapter.js _mergeTable fieldMap）。
+    // 运行时字段（history/gameTime/accessCount/locked/lastChangedTurn 等）不在适配器 fieldMap 中，
+    // 需显式写入。本助手统一 6 处 save* 函数的 rename + ensure-exists + runtime-write + 缓存失效逻辑。
+    //
+    // tableName: 'items' | 'characters' | 'locations'
+    // name: 新名称；oldName: 旧名称（rename 场景，可为 undefined）
+    // runtimeData: 包含运行时字段的对象
+    // runtimeFields: 要写入的运行时字段名数组
+    _syncGMRuntimeEntry: function(tableName, name, oldName, runtimeData, runtimeFields) {
+        var gm = window.GameMemory;
+        if (!gm || !gm.tables[tableName]) return;
+        // rename：删除旧名条目（适配器不会主动删除）
+        if (oldName && oldName !== name && gm.tables[tableName][oldName]) {
+            delete gm.tables[tableName][oldName];
+        }
+        // 确保新名条目存在（适配器应已创建，此处保险）
+        if (!gm.tables[tableName][name]) {
+            gm.tables[tableName][name] = { name: name };
+        }
+        // 仅写入运行时字段（实体字段由 GameMemoryAdapter MERGE 处理，避免重复写入）
+        var entry = gm.tables[tableName][name];
+        for (var i = 0; i < runtimeFields.length; i++) {
+            var f = runtimeFields[i];
+            if (runtimeData[f] !== undefined) entry[f] = runtimeData[f];
+        }
+        // 【P0-7修复】失效 longTermMemory 缓存：characterTable/itemTable/locationTable
+        // 是 deepClone 快照，gm.tables 改动后必须置 _ltmDirty=true，否则下次读取返回旧快照
+        gm._ltmDirty = true;
+    },
+
     saveCharacter: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
         var char = gm.tables.characters[oldName] || {};
@@ -4342,24 +4382,10 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入（角色名可能为空或非法）');
                 return;  // gm.tables 完全未改动，状态一致
             }
-            // Mutator 成功 → 适配器已 MERGE 实体字段（name/title/relation/mood/location/outfit/favorability/status）到 gm.tables[newName]
-            // 现在补齐运行时字段（locked/history/gameTime/accessCount/lastChangedTurn）并处理 rename
-            if (oldName !== newName && gm.tables.characters[oldName]) {
-                delete gm.tables.characters[oldName];
-            }
-            // 适配器创建的新条目只有基本字段，需补齐运行时字段
-            if (!gm.tables.characters[newName]) {
-                gm.tables.characters[newName] = { name: newName };
-            }
-            var gmEntry = gm.tables.characters[newName];
-            gmEntry.history = _newCharData.history;
-            gmEntry.gameTime = _newCharData.gameTime;
-            gmEntry.accessCount = _newCharData.accessCount;
-            gmEntry.lastChangedTurn = _newCharData.lastChangedTurn;
-            gmEntry.locked = _newCharData.locked;
-            // outfit/status 虽在适配器字段映射中，但用户编辑的值需显式覆盖（保险）
-            gmEntry.outfit = _newCharData.outfit;
-            gmEntry.status = _newCharData.status;
+            // 【P1-24修复】Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables[newName]
+            // 仅同步运行时字段（含 outfit/status 防御性覆盖）+ 失效 longTermMemory 缓存
+            this._syncGMRuntimeEntry('characters', newName, oldName, _newCharData,
+                ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
         } else if (typeof gameState !== 'undefined' && gameState.allCharacters) {
             // legacy 兜底（无 StateManager 环境）
             if (oldName !== newName) delete gm.tables.characters[oldName];
@@ -4431,19 +4457,9 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;
             }
-            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.characters[name]
-            // 补齐运行时字段
-            if (!gm.tables.characters[name]) {
-                gm.tables.characters[name] = { name: name };
-            }
-            var gmNewChar = gm.tables.characters[name];
-            gmNewChar.history = _newCharData.history;
-            gmNewChar.gameTime = _newCharData.gameTime;
-            gmNewChar.accessCount = _newCharData.accessCount;
-            gmNewChar.lastChangedTurn = _newCharData.lastChangedTurn;
-            gmNewChar.locked = _newCharData.locked;
-            gmNewChar.outfit = _newCharData.outfit;
-            gmNewChar.status = _newCharData.status;
+            // 【P1-24修复】Mutator 成功 → 适配器已 MERGE 实体字段；仅同步运行时字段 + 失效缓存
+            this._syncGMRuntimeEntry('characters', name, undefined, _newCharData,
+                ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
         } else if (typeof gameState !== 'undefined') {
             // legacy 兜底
             gm.tables.characters[name] = _newCharData;
@@ -4541,24 +4557,10 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;  // gm.tables 未改动
             }
-            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[newName]
-            // 补齐运行时字段（accessCount/gameTime）并处理 rename
-            if (oldName !== newName && gm.tables.items[oldName]) {
-                delete gm.tables.items[oldName];
-            }
-            if (!gm.tables.items[newName]) {
-                gm.tables.items[newName] = { name: newName };
-            }
-            var gmItemEntry = gm.tables.items[newName];
-            gmItemEntry.qty = _newItemData.qty;
-            gmItemEntry.unit = _newItemData.unit;
-            gmItemEntry.rarity = _newItemData.rarity;
-            gmItemEntry.desc = _newItemData.desc;
-            gmItemEntry.obtainedTurn = _newItemData.obtainedTurn;
-            gmItemEntry.lastChangedTurn = _newItemData.lastChangedTurn;
-            gmItemEntry.gameTime = _newItemData.gameTime;
-            gmItemEntry.accessCount = _newItemData.accessCount;
-            gmItemEntry.history = _newItemData.history;
+            // 【P1-24修复】Mutator 成功 → 适配器已 MERGE 实体字段（qty/unit/rarity/desc）到 gm.tables.items[newName]
+            // 仅同步运行时字段（obtainedTurn/lastChangedTurn/gameTime/accessCount/history）+ 失效缓存
+            this._syncGMRuntimeEntry('items', newName, oldName, _newItemData,
+                ['obtainedTurn', 'lastChangedTurn', 'gameTime', 'accessCount', 'history']);
         } else if (typeof _syncItemsToBag === 'function') {
             // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
             if (oldName !== newName) delete gm.tables.items[oldName];
@@ -4635,21 +4637,9 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;
             }
-            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[name]
-            // 补齐运行时字段
-            if (!gm.tables.items[name]) {
-                gm.tables.items[name] = { name: name };
-            }
-            var gmNewItem = gm.tables.items[name];
-            gmNewItem.qty = _newItemData.qty;
-            gmNewItem.unit = _newItemData.unit;
-            gmNewItem.rarity = _newItemData.rarity;
-            gmNewItem.desc = _newItemData.desc;
-            gmNewItem.obtainedTurn = _newItemData.obtainedTurn;
-            gmNewItem.lastChangedTurn = _newItemData.lastChangedTurn;
-            gmNewItem.gameTime = _newItemData.gameTime;
-            gmNewItem.accessCount = _newItemData.accessCount;
-            gmNewItem.history = _newItemData.history;
+            // 【P1-24修复】Mutator 成功 → 适配器已 MERGE 实体字段；仅同步运行时字段 + 失效缓存
+            this._syncGMRuntimeEntry('items', name, undefined, _newItemData,
+                ['obtainedTurn', 'lastChangedTurn', 'gameTime', 'accessCount', 'history']);
         } else if (typeof _syncItemsToBag === 'function') {
             // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
             gm.tables.items[name] = _newItemData;
@@ -4728,20 +4718,10 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;  // gm.tables 未改动
             }
-            // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[newName]
-            // 补齐运行时字段（locked/lastChangedTurn）并处理 rename
-            if (newName !== oldName && gm.tables.locations[oldName]) {
-                delete gm.tables.locations[oldName];
-            }
-            if (!gm.tables.locations[newName]) {
-                gm.tables.locations[newName] = { name: newName };
-            }
-            var gmLocEntry = gm.tables.locations[newName];
-            gmLocEntry.desc = _newLocData.desc;
-            gmLocEntry.features = _newLocData.features;
-            gmLocEntry.charactersPresent = _newLocData.charactersPresent;
-            gmLocEntry.lastChangedTurn = _newLocData.lastChangedTurn;
-            gmLocEntry.locked = _newLocData.locked;
+            // 【P1-24修复】StateManager 成功 → 适配器已 MERGE 实体字段（desc/features/charactersPresent）
+            // 仅同步运行时字段（lastChangedTurn/locked）+ 失效缓存
+            this._syncGMRuntimeEntry('locations', newName, oldName, _newLocData,
+                ['lastChangedTurn', 'locked']);
         } else {
             // legacy 兜底（无 StateManager 环境）
             if (newName !== oldName) delete gm.tables.locations[oldName];
@@ -4792,17 +4772,9 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;
             }
-            // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[name]
-            // 补齐运行时字段
-            if (!gm.tables.locations[name]) {
-                gm.tables.locations[name] = { name: name };
-            }
-            var gmNewLoc = gm.tables.locations[name];
-            gmNewLoc.desc = _newLocData.desc;
-            gmNewLoc.features = _newLocData.features;
-            gmNewLoc.charactersPresent = _newLocData.charactersPresent;
-            gmNewLoc.lastChangedTurn = _newLocData.lastChangedTurn;
-            gmNewLoc.locked = _newLocData.locked;
+            // 【P1-24修复】StateManager 成功 → 适配器已 MERGE 实体字段；仅同步运行时字段 + 失效缓存
+            this._syncGMRuntimeEntry('locations', name, undefined, _newLocData,
+                ['lastChangedTurn', 'locked']);
         } else {
             // legacy 兜底
             gm.tables.locations[name] = _newLocData;
@@ -4844,6 +4816,8 @@ var MemoryManagerUI = {
     savePlot: function() {
         var gm = window.GameMemory; gm.plot.worldSetting = document.getElementById('editPlotWorld').value.trim(); gm.plot.currentChapter = document.getElementById('editPlotCurrent').value.trim();
         if (typeof gameState !== 'undefined') { gameState.rollingSummary = (gm.plot.worldSetting || '') + '\n' + (gm.plot.currentChapter || ''); }
+        // 【P1-24/P0-7修复】失效 longTermMemory 缓存：worldSetting/currentChapterSummary 来自 plot
+        gm._ltmDirty = true;
         UI.afterMemoryChange('plot', 'rollingSummary', undefined);
     },
 
