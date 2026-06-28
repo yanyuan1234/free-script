@@ -40,19 +40,6 @@
         <link rel="stylesheet" href="css/pages.css">
         <link rel="stylesheet" href="css/phone-ui.css">
         <link rel="stylesheet" href="css/systems.css">
-        <style>
-            /* === 酒馆预设融合 UI 样式 === */
-            .eye-item{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:12px;color:var(--text);transition:all .2s;user-select:none}
-            .eye-item:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
-            .eye-item input[type="checkbox"]{margin:0;cursor:pointer;flex-shrink:0}
-            .eye-item span{flex:1;font-weight:500}
-            .archetype-card{cursor:pointer;padding:12px 14px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:2px solid var(--border,rgba(255,255,255,0.1));border-radius:10px;transition:all .2s}
-            .archetype-card:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
-            .archetype-card.active{border-color:var(--accent,var(--primary,#6366f1));background:var(--accent-soft,rgba(99,102,241,0.1))}
-            .archetype-card-title{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)}
-            .archetype-card-desc{font-size:11px;color:var(--text-secondary);line-height:1.4}
-            .archetype-card-params{font-size:10px;color:var(--text-tertiary);margin-top:6px;font-family:monospace}
-        </style>
         </head>
     <body>
         <!-- 加载指示器：JS加载期间显示，initApp完成后隐藏 -->
@@ -332,7 +319,7 @@
                         </svg></button>
                     <h2 class="page-title">创造你的世界</h2>
                     <button class="crystal-btn primary p-8-16 text-13" id="btnCreatePresetFromSetup">
-                        <svg class="icon icon-sm" style="stroke:white;">
+                        <svg class="icon icon-sm" style="stroke:var(--on-accent);">
                             <use href="#icon-plus" />
                         </svg>
                         保存世界
@@ -415,7 +402,7 @@
                 </div>
                 <div class="p-16-20 flex-shrink-0">
                     <button class="crystal-btn primary w-full" id="btnCreateWorld">
-                        <svg class="icon icon-sm" style="stroke:white;">
+                        <svg class="icon icon-sm" style="stroke:var(--on-accent);">
                             <use href="#icon-sparkles" />
                         </svg>
                         创造世界
@@ -529,7 +516,7 @@
                                 <use href="#icon-edit" />
                             </svg></button>
                         <input type="text" class="input-field" id="customAction" placeholder="自定义行动...">
-                        <button class="send-btn" id="btnSendAction"><svg class="icon icon-sm" style="stroke:white;">
+                        <button class="send-btn" id="btnSendAction"><svg class="icon icon-sm" style="stroke:var(--on-accent);">
                                 <use href="#icon-send" />
                             </svg></button>
                     </div>
@@ -1762,7 +1749,7 @@
                         <div class="flex gap-10 p-12-20 border-b">
                             <button class="crystal-btn primary flex-1" id="btnCreateApi"
                                 style="font-size:13px;padding:10px;">
-                                <svg class="icon icon-sm" style="stroke:white;">
+                                <svg class="icon icon-sm" style="stroke:var(--on-accent);">
                                     <use href="#icon-plus" />
                                 </svg>
                                 创建API
@@ -2534,7 +2521,7 @@
                             <label class="field-label">游戏操作</label>
                             <button class="crystal-btn w-full" id="btnExportNovel">导出为小说</button>
                             <button class="crystal-btn primary w-full" id="btnGenerateEnding" style="margin-top:8px;">
-                                <svg class="icon icon-sm" style="stroke:white;">
+                                <svg class="icon icon-sm" style="stroke:var(--on-accent);">
                                     <use href="#icon-sparkles" />
                                 </svg>
                                 生成结局

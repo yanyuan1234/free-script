@@ -66,6 +66,14 @@
     --task-highlight: #a2d2ff;
     --ach-category-active: #1a73e8;
     --deadline-warn: #f44336;
+    /* 【P2-37/41修复】新增语义变量：
+       --on-accent: 彩色/品牌色背景上的文字与图标（红徽章、彩色头像、朋友圈 mockup 等），
+                    双模式恒白，不随主题反转
+       --accent-blue: 链接/操作蓝（iOS 系统蓝 #007AFF），统一 .api-fetch-btn 等处的第二套蓝色
+       --accent-blue-soft: 操作蓝的半透明态（hover 背景），与 --accent-blue 同源 */
+    --on-accent: #ffffff;
+    --accent-blue: #007AFF;
+    --accent-blue-soft: rgba(0, 122, 255, 0.2);
 }
 
 /* ================================================================
@@ -131,6 +139,10 @@
     --task-highlight: #4a90e2;
     --ach-category-active: #4a90e2;
     --deadline-warn: #ff6b6b;
+    /* 【P2-37/41修复】暗色模式：--on-accent 保持白；--accent-blue 提亮为暗色模式 iOS 蓝 #0A84FF */
+    --on-accent: #ffffff;
+    --accent-blue: #0A84FF;
+    --accent-blue-soft: rgba(10, 132, 255, 0.2);
 }
 
 /* ================================================================
@@ -2603,3 +2615,19 @@ a,
     color: var(--text-secondary);
     letter-spacing: 4px;
 }
+
+/* ================================================================
+   酒馆预设融合 UI 组件
+   【P2-38修复】从 index.html 内联 <style> 外置至此，可被浏览器缓存，
+   不再阻塞首屏解析。原内联块的 fallback 值保留，无副作用。
+================================================================ */
+.eye-item{display:flex;align-items:center;gap:6px;padding:8px 10px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:1px solid var(--border,rgba(255,255,255,0.1));border-radius:8px;cursor:pointer;font-size:12px;color:var(--text);transition:all .2s;user-select:none}
+.eye-item:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
+.eye-item input[type="checkbox"]{margin:0;cursor:pointer;flex-shrink:0}
+.eye-item span{flex:1;font-weight:500}
+.archetype-card{cursor:pointer;padding:12px 14px;background:var(--bg-secondary,rgba(255,255,255,0.05));border:2px solid var(--border,rgba(255,255,255,0.1));border-radius:10px;transition:all .2s}
+.archetype-card:hover{background:var(--bg-tertiary,rgba(255,255,255,0.08));transform:translateY(-1px)}
+.archetype-card.active{border-color:var(--accent,var(--primary,#6366f1));background:var(--accent-soft,rgba(99,102,241,0.1))}
+.archetype-card-title{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)}
+.archetype-card-desc{font-size:11px;color:var(--text-secondary);line-height:1.4}
+.archetype-card-params{font-size:10px;color:var(--text-tertiary);margin-top:6px;font-family:monospace}
