@@ -4801,7 +4801,8 @@ function _restoreGameRender() {
                         renderQuests();
                     }
                     if (data.relationships) {
-                        mergeRelationships(data.relationships);
+                        // 【P0-2 修复】_restoreGameRender 为 UI 恢复路径，状态已在 loadFromSlot 中恢复，
+                        // 不再调用 mergeRelationships 重复写入，仅刷新 UI
                         renderRelationships();
                     }
                     // 【修复】保存关键数据到gameState，确保读档后能恢复
@@ -4885,7 +4886,7 @@ function _restoreGameRender() {
         // 恢复场景标题和HUD数据
         var loadedSceneTitle = (typeof StateManager !== 'undefined' && StateManager.get)
             ? (StateManager.get('progress.sceneTitle') || '')
-            : (gameState._lastSceneTitle || '');
+            : '';
         if (loadedSceneTitle) {
             updateSceneTitle(loadedSceneTitle);
         } else if (gameState.userPrompt) {
