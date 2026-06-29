@@ -2278,7 +2278,8 @@ function updateTokenCount(currentResponse) {
     }
 
     // 智能压缩检查
-        if (gameState && gameState.autoCompress !== false && !isCompressing && !isWaiting && typeof EnhancedMemory !== 'undefined') {
+    // 【P3-11修复】修正缩进：原 2241 行多了 4 个前导空格
+    if (gameState && gameState.autoCompress !== false && !isCompressing && !isWaiting && typeof EnhancedMemory !== 'undefined') {
         var triggerResult = EnhancedMemory.shouldTriggerCompression(estimated, (gameState && gameState.maxTokens) || 4096);
         if (triggerResult.shouldCompress) {
             var cooldownMs = (EnhancedMemory.compressionConfig.cooldownMinutes || 15) * 60 * 1000;

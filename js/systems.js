@@ -919,7 +919,8 @@ function getRelationTagClass(type) {
     var t = type.toLowerCase();
 
     // 爱情/暧昧类关键词
-    if (/爱|恋|心动|暧昧|暗恋|喜欢|钟情|倾心|爱慕|迷恋|痴迷| sweetheart|crush|beloved/.test(t)) {
+    // 【P3-8修复】去掉 sweetheart 前多余空格，改为 \s* 兼容前后空白
+    if (/爱|恋|心动|暧昧|暗恋|喜欢|钟情|倾心|爱慕|迷恋|痴迷|\s*sweetheart|crush|beloved/.test(t)) {
         return 'relation-tag-love';
     }
     // 敌对/仇恨类关键词

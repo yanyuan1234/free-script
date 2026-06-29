@@ -3,13 +3,8 @@
 // 第16层: 最后的初始化和事件
 // ========================================
 // TypewriterBuffer.render 已内置优化，无需覆盖
-// ========================================
-// 初始化
-// ========================================
-// 初始化
-// ========================================
 
-// 【P1-7】原 patch.js 全局错误处理迁入 init.js
+// 【P3-6修复】合并重复注释块
 GlobalCleanup.registerListener(window, 'error', function(e) {
     // 过滤图片/CSS等资源加载错误（不显示给用户）
     if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'LINK' || e.target.tagName === 'SCRIPT')) {

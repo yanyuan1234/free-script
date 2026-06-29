@@ -24,7 +24,7 @@
     --danger: #ff3b30;
     --success: #34c759;
     --success-bg: #f6ffed;          /* 成功提示淡色背景（phone-ui.css 成功提示框） */
-    --warning: #ffb800;             /* 警告色（用于"标签输出"小标） */
+    /* 【P3-28修复】删除 27 行重复的 --warning: #ffb800，统一以 35 行 --warning: #ff9800 为准 */
     --link: #576b95;
     --wechat-green: #95EC69;
     /* 心声系统变量 */

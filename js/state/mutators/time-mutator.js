@@ -68,9 +68,10 @@ const TimeMutator = {
         },
 
         // "HH:MM" → 分钟数；无法解析返回 null
+        // 【P3-18修复】正则字符类 [::] 冗余（等价于 [:]），改为 [::] 兼容全角冒号
         _timeToMinutes(t) {
             if (!t || typeof t !== 'string') return null;
-            var m = t.match(/(\d{1,2})[::](\d{2})/);
+            var m = t.match(/(\d{1,2})[:：](\d{2})/);
             if (!m) return null;
             var h = parseInt(m[1], 10);
             var min = parseInt(m[2], 10);
