@@ -511,7 +511,8 @@
 }
 
 .npc-chat-loading::before {
-    content: '对方正在输入中';
+    /* 【P3-31修复】文案从 JS data-loading-text 属性读取，避免硬编码 */
+    content: attr(data-loading-text, '对方正在输入中');
 }
 
 /* 【P2修复】重命名为 pulse-opacity，避免与 base.css 的 @keyframes pulse（autoSaveDot 缩放动画）同名冲突

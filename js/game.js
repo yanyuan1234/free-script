@@ -3879,6 +3879,9 @@ async function requestNpcReply(playerText) {
     var loading = document.createElement('div');
     loading.className = 'npc-chat-loading';
     loading.id = 'npcChatLoading';
+    // 【P3-31修复】文案改用 data-loading-text 属性，CSS 通过 attr() 读取
+    // 原 CSS ::before { content: '对方正在输入中' } 硬编码，无法国际化/动态化
+    loading.setAttribute('data-loading-text', '对方正在输入中');
     document.querySelector('.chat-detail-page').appendChild(loading);
     try {
         var name = npcChatState.npcName;

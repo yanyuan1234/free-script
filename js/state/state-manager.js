@@ -236,12 +236,16 @@ const StateManager = {
 
     // 内部：模式匹配
     // 支持：'**'（全匹配）、'entities.*'（单层通配）、'entities.**'（多层通配）
+    // 【P3-22说明】`**` 仅作为模式末尾的"匹配剩余所有路径段"使用（如 'entities.**'）。
+    // `**` 出现在中间位置（如 'a.**.b'）不支持递归匹配，会在此处直接 return true
+    // （匹配 a 后剩余路径全部命中）。这是已知限制，当前全项目无中间 `**` 用例。
+    // 若未来需要严格 glob 风格递归匹配，需重写为回溯算法。
     _matchPattern(pattern, path) {
         if (pattern === '**') return true;
         const pParts = pattern.split('.');
         const pathParts = path.split('.');
         for (let i = 0; i < pParts.length; i++) {
-            if (pParts[i] === '**') return true;
+            if (pParts[i] === '**') return true;  // 末尾或中间 `**`：匹配剩余所有
             if (pParts[i] === '*') {
                 if (i >= pathParts.length) return false;
                 continue;

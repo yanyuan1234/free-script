@@ -113,6 +113,10 @@ var QuestSystem = {
         if (status === 'failed') return quests.filter(function(q) {
             return q.status === QuestSystem.STATUS.FAILED;
             });
+        // 【P3-9说明】abandoned 分支保留为状态机完整性预留：
+        // ABANDONED 状态在 QuestMutator/QuestSystem.STATUS 中有定义，AI 可能返回此状态。
+        // 当前 UI（renderQuestPage）未启用"已放弃"筛选按钮，但 filterByStatus/bindFilterEvents
+        // 已支持，未来启用只需在 renderQuestPage 补按钮即可。
         if (status === 'abandoned') return quests.filter(function(q) {
             return q.status === QuestSystem.STATUS.ABANDONED;
             });
