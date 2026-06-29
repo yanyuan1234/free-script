@@ -3310,8 +3310,12 @@ if (!window._thoughtBubbleClickHandler) {
     GlobalCleanup.registerListener(document, 'click', window._thoughtBubbleClickHandler);
 }
 // --- HUD渲染 ---
+// 【P3-7修复】renderHUD 接收 hudData 参数但当前实现仅刷新时间 UI。
+// 保留参数：3 处调用方（game.js:1753、phone-ui.js:4895/4969）以 data.hud 存在性作为
+// "本轮有 HUD 数据"的信号，删除参数会丢失这层语义。hudData 未来若恢复显示需重新接入。
 function renderHUD(hudData) {
-    // 不再显示HUD数据（魅力/运气/心情），改为显示游戏时间
+    // hudData 当前未使用：原显示魅力/运气/心情，已改为仅显示游戏时间
+    void hudData; // 显式标记参数有意忽略，避免 lint 误报
     GameTimeSystem.updateUI();
 }
 // --- 选项渲染 ---

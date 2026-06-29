@@ -50,8 +50,8 @@ const PromptBuilder = {
     },
 
     // 构建 user prompt
-    buildUserPrompt(input, context) {
-        context = context || {};
+    // 【P3-21修复】删除未使用的 context 参数（全项目零调用，简化签名）
+    buildUserPrompt(input) {
         if (!input || typeof input !== 'string') return '';
         return input;
     },
