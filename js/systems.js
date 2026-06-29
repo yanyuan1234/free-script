@@ -774,7 +774,7 @@ function renderQuests() {
         return (order[a.status] || 0) - (order[b.status] || 0);
     });
     var html =
-        '<div class="module-header" onclick="toggleQuestList()" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:var(--task-highlight);transition:transform .2s">▼</span></div>';
+        '<div class="module-header" data-action="toggleQuestList" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:var(--task-highlight);transition:transform .2s">▼</span></div>';
     html += '<div class="quest-list" id="questListInner">';
     sorted.forEach(function(q) {
         var isDone = q.status === '已完成' || q.status === '失败';

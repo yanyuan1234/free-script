@@ -35,6 +35,16 @@
 // 【P0-2修复】论坛跨帖联动生成新帖的帖子上限（避免无限生成）
 var MAX_FORUM_POSTS = 8;
 
+// 【P0-4修复】CSP 合规：为 _globalA11yDelegate 委托器提供 UI.hideModal / DOM 操作的全局包装
+// 委托器只支持 window[funcName]，不支持 UI.hideModal 这种对象方法或 DOM 链式调用，故此处包装
+function hideModalByName(name) {
+    if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal(name);
+}
+function triggerImportFile() {
+    var el = document.getElementById('importFileInput');
+    if (el) el.click();
+}
+
 
 // ========================================
 // 【P0-2.6 阶段3-1】玩家货币读写 helper —— 全部走 CurrencyMutator
@@ -6500,7 +6510,7 @@ async function openSaveLoadModal() {
             html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
                 escapeHtml(autoData.name || '自动存档') + '</div><div class="sl-slot-meta">' + escapeHtml(
                     autoData.time || '') +
-                '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(0)">读取</button></div></div>';
+                '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" data-action="loadFromSlot" data-args="[0]">读取</button></div></div>';
         } else {
             html +=
                 '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">暂无自动存档</div></div></div>';
@@ -6513,20 +6523,20 @@ async function openSaveLoadModal() {
                 html += '<div class="sl-slot"><div class="sl-slot-info"><div class="sl-slot-name">' +
                     escapeHtml(s.data.name || ('存档 ' + s.slot)) + '</div><div class="sl-slot-meta">' +
                     escapeHtml(s.data.time || '') +
-                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" onclick="loadFromSlot(' +
-                    s.slot + ')">读取</button><button class="sl-btn" onclick="saveToSlot(' + s.slot +
-                    ')">覆盖</button><button class="sl-btn danger" onclick="deleteSaveSlot(' + s.slot +
-                    ')">删除</button></div></div>';
+                    '</div></div><div class="sl-slot-actions"><button class="sl-btn primary" data-action="loadFromSlot" data-args="[' +
+                    s.slot + ']">读取</button><button class="sl-btn" data-action="saveToSlot" data-args="[' + s.slot +
+                    ']">覆盖</button><button class="sl-btn danger" data-action="deleteSaveSlot" data-args="[' + s.slot +
+                    ']">删除</button></div></div>';
             } else {
                 html +=
                     '<div class="sl-slot sl-slot-empty"><div class="sl-slot-info"><div class="sl-slot-name">存档位 ' +
                     s.slot +
-                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" onclick="saveToSlot(' +
-                    s.slot + ')">保存</button></div></div>';
+                    ' - 空</div></div><div class="sl-slot-actions"><button class="sl-btn" data-action="saveToSlot" data-args="[' +
+                    s.slot + ']">保存</button></div></div>';
             }
         }
         html +=
-            '<div class="sl-bottom-actions"><button class="sl-btn" onclick="UI.hideModal(\'saveLoadModal\')">关闭</button></div>';
+            '<div class="sl-bottom-actions"><button class="sl-btn" data-action="hideModalByName" data-args=\'["saveLoadModal"]\'>关闭</button></div>';
         body.innerHTML = html;
     } catch (e) {
         console.error('openSaveLoadModal出错:', e);
@@ -6552,17 +6562,17 @@ async function renderSaveUI() {
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8;flex-wrap:wrap;gap:4px">' +
                 '<span style="font-size:13px;color:var(--text-tertiary);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis">' +
                 displayName + '</span>' + '<div style="display:flex;gap:4px;flex-shrink:0">' +
-                '<button class="save-action-btn" onclick="renameSave(' + slot + ')">改名</button>' +
-                '<button class="save-action-btn" onclick="loadFromSlot(' + slot + ')">读取</button>' + (
-                    showSave ? '<button class="save-action-btn" onclick="safeSaveSlot(' + slot +
-                    ')">覆盖</button>' : '') +
-                '<button class="save-action-btn" onclick="deleteFromSlot(' + slot +
-                ')" style="color:#ff6b6b">删除</button>' + '</div></div>';
+                '<button class="save-action-btn" data-action="renameSave" data-args="[' + slot + ']">改名</button>' +
+                '<button class="save-action-btn" data-action="loadFromSlot" data-args="[' + slot + ']">读取</button>' + (
+                    showSave ? '<button class="save-action-btn" data-action="safeSaveSlot" data-args="[' + slot +
+                    ']">覆盖</button>' : '') +
+                '<button class="save-action-btn" data-action="deleteFromSlot" data-args="[' + slot +
+                ']" style="color:#ff6b6b">删除</button>' + '</div></div>';
         } else {
             displayName = icon + ' ' + label + ' - 空';
             return '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e0ecf8">' +
                 '<span style="font-size:13px;color:var(--text-tertiary)">' + displayName + '</span>' + (showSave ?
-                    '<button class="save-action-btn" onclick="safeSaveSlot(' + slot + ')">保存</button>' :
+                    '<button class="save-action-btn" data-action="safeSaveSlot" data-args="[' + slot + ']">保存</button>' :
                     '') + '</div>';
         }
     }
@@ -6585,8 +6595,8 @@ async function renderSaveUI() {
     html += '<div style="margin-top:14px;padding-top:12px;border-top:2px dashed var(--border)">' +
         '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;text-align:center">包 存档导入 / 导出</div>' +
         '<div style="display:flex;gap:8px">' +
-        '<button class="pixel-btn blue big" onclick="exportSaves()" style="flex:1">导出全部存档</button>' +
-        '<button class="pixel-btn big" onclick="document.getElementById(\'importFileInput\').click()" style="flex:1">导入存档</button>' +
+        '<button class="pixel-btn blue big" data-action="exportSaves" style="flex:1">导出全部存档</button>' +
+        '<button class="pixel-btn big" data-action="triggerImportFile" style="flex:1">导入存档</button>' +
         '</div>' +
         '<div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:6px">导出为JSON文件，可在其他设备导入恢复</div>' +
         '</div>';
