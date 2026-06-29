@@ -488,13 +488,17 @@ var PresetManager = {
     // 解析酒馆预设格式
     parsePreset: function(data, fileName) {
         // 辅助函数：安全取值，避免 0 被 falsy 吞掉
-        // 兼容两种调用：safeNum(a, b, def) 和 safeNum(a, b, c, def)
-        function safeNum(a, b, c, def) {
-            if (a != null) return a;
-            if (b != null) return b;
-            if (arguments.length === 3) return c;
-            if (c != null) return c;
-            return def;
+        // 【P3-16修复】统一为 rest 参数签名：safeNum(...candidates, defaultValue)
+        // 取第一个非 null/undefined 的候选值，全为空则返回 defaultValue。
+        // 原实现用 arguments.length 重载（3参/4参两种语义），易误用。
+        function safeNum() {
+            var args = Array.prototype.slice.call(arguments);
+            if (args.length === 0) return undefined;
+            var defaultValue = args[args.length - 1];
+            for (var i = 0; i < args.length - 1; i++) {
+                if (args[i] != null) return args[i];
+            }
+            return defaultValue;
         }
         // 提取参数（支持多种字段名，兼容 Chat Completion 和 Text Completion 两种格式）
         // 包含所有酒馆支持的采样参数

@@ -716,7 +716,7 @@
     .wi-search::placeholder { color:var(--text-tertiary); }
     .wi-section { padding:12px 14px; }
     .wi-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--text-tertiary); margin-bottom:8px; }
-    .wi-entry-card { padding:10px 12px; border-radius:var(--radius-sm); margin-bottom:6px; transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s; }
+    .wi-entry-card { padding:10px 12px; border-radius:var(--radius-sm); margin-bottom:6px; transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast); }
 .wi-entry-card:active { background:var(--bg); }
 .wi-entry-card.selected { background:var(--accent-soft); border-color:var(--accent); }
     .wi-entry-card .entry-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
@@ -741,13 +741,13 @@
     .collapse-body { padding:14px; display:none; border-top:1px solid var(--border); }
     .collapse-panel.open .collapse-body { display:block; }
     .wi-checkbox { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; color:var(--text-secondary); }
-    .wi-checkbox-box { width:16px; height:16px; border-radius:4px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: transform 0.15s, background 0.15s, border-color 0.15s; }
+    .wi-checkbox-box { width:16px; height:16px; border-radius:4px; border:2px solid var(--border); display:flex; align-items:center; justify-content:center; flex-shrink:0; transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast); }
     .wi-checkbox.checked .wi-checkbox-box { background:var(--accent); border-color:var(--accent); }
     .wi-checkbox.checked .wi-checkbox-box svg { display:block; }
     .wi-checkbox-box svg { display:none; width:10px; height:10px; color:white; }
     .wi-field { margin-bottom:12px; }
     .wi-field-label { display:block; font-size:11px; font-weight:600; color:var(--text-tertiary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.3px; }
-    .wi-field-input { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:13px; color:var(--text); outline:none; transition:border-color 0.15s; }
+    .wi-field-input { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--border); border-radius:8px; font-size:13px; color:var(--text); outline:none; transition:border-color var(--transition-fast); }
     .wi-field-input:focus { border-color:var(--accent); }
     .wi-field-input::placeholder { color:var(--text-tertiary); }
     .wi-field-input[readonly] { color:var(--text-tertiary); background:var(--accent-soft); }
@@ -755,7 +755,7 @@
     .wi-field-col3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
     .wi-slider-row { display:flex; align-items:center; gap:8px; }
     .wi-slider-label { font-size:11px; font-weight:600; color:var(--text-secondary); min-width:60px; }
-    .wi-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 16px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition: transform 0.15s, opacity 0.15s, background 0.15s; }
+    .wi-btn { display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:10px 16px; border-radius:10px; font-size:13px; font-weight:600; cursor:pointer; border:none; transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast); }
     .wi-btn-primary { background:var(--text); color:var(--card); }
     .wi-btn-primary:active { opacity:0.8; }
     /* .wi-btn-danger 危险按钮样式 */
@@ -765,7 +765,7 @@
     .wi-btn-row .wi-btn { flex:1; }
     .wi-divider { height:1px; background:var(--border); margin:0; }
     .wi-filter-tabs { display:flex; gap:4px; padding:10px 14px 0; border-bottom:1px solid var(--border); flex-shrink:0; }
-    .wi-filter-tab { padding:6px 12px; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-bottom:2px solid transparent; cursor:pointer; transition: transform 0.15s, opacity 0.15s, background 0.15s; }
+    .wi-filter-tab { padding:6px 12px; font-size:12px; font-weight:500; color:var(--text-secondary); background:transparent; border:none; border-bottom:2px solid transparent; cursor:pointer; transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast); }
     .wi-filter-tab:hover { color:var(--text); }
     .wi-filter-tab.active { color:var(--accent); border-bottom-color:var(--accent); }
     .wi-global-settings { display:flex; gap:8px; padding:10px 14px; border-bottom:1px solid var(--border); flex-shrink:0; flex-wrap:wrap; align-items:center; }
@@ -773,22 +773,25 @@
     .wi-global-settings input[type="number"] { width:56px; padding:4px 6px; border:1px solid var(--border); border-radius:6px; font-size:12px; color:var(--text); background:var(--bg); outline:none; text-align:center; }
     .wi-global-settings input[type="checkbox"] { accent-color:var(--accent); }
     /* 预设卡片 */
-    .preset-card { padding:12px; border-radius:var(--radius-sm); margin-bottom:6px; transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s; }
+    .preset-card { padding:12px; border-radius:var(--radius-sm); margin-bottom:6px; transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast); }
     .preset-card .preset-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; }
     .preset-card .preset-card-name { font-size:13px; font-weight:600; color:var(--text); }
     .preset-card .preset-card-params { display:flex; flex-wrap:wrap; gap:4px; }
     .preset-card .preset-card-params span { font-size:11px; padding:2px 6px; background:var(--accent-soft); border-radius:4px; color:var(--text-secondary); }
     .preset-card .preset-card-actions { display:flex; gap:6px; margin-top:8px; }
-    .preset-card .preset-card-actions button, .regex-card .regex-card-actions button { padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--text-secondary); transition: transform 0.15s, opacity 0.15s, background 0.15s; }
+    .preset-card .preset-card-actions button, .regex-card .regex-card-actions button { padding:5px 10px; border-radius:6px; font-size:11px; font-weight:600; cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--text-secondary); transition: transform var(--transition-fast), opacity var(--transition-fast), background var(--transition-fast); }
     .preset-card .preset-card-actions button:active, .regex-card .regex-card-actions button:active { background:var(--accent-soft); }
     .preset-card .preset-card-actions button.delete-btn, .regex-card .regex-card-actions button.delete-btn { color:var(--danger); background:var(--card); border-color:var(--danger); }
     /* 正则卡片 */
-    .regex-card { padding:12px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s; }
+    .regex-card { padding:12px; background:var(--card); border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:6px; transition: transform var(--transition-fast), opacity var(--transition-fast), box-shadow var(--transition-fast); }
     .regex-card .regex-card-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:4px; }
     .regex-card .regex-card-name { font-size:13px; font-weight:600; color:var(--text); }
     .regex-card .regex-card-pattern { font-size:11px; color:var(--text-tertiary); font-family:monospace; background:var(--bg); padding:4px 8px; border-radius:4px; margin:4px 0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
     .regex-card .regex-card-tags { display:flex; gap:4px; margin-top:4px; }
     .regex-card .regex-card-tags span { font-size:10px; padding:2px 6px; border-radius:4px; font-weight:600; }
+    /* 【P3-30修复】tag-input 用 --success、tag-output 用 --rarity-uncommon，语义不一致。
+       注：保持现有色值（避免视觉回归），仅补充注释说明语义。
+       未来可新增 --tag-input / --tag-output 语义变量统一管理。 */
     .regex-card .regex-card-tags .tag-input { background:rgba(52,199,89,0.1); color:var(--success); }
     .regex-card .regex-card-tags .tag-output { background:rgba(0,122,255,0.1); color:var(--rarity-uncommon); }
     .regex-card .regex-card-tags .tag-disabled {

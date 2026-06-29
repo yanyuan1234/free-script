@@ -21,6 +21,7 @@
     --shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
     --shadow-soft: 0 2px 12px rgba(0, 0, 0, 0.06);
     --transition: 0.2s ease;
+    --transition-fast: 0.15s ease;   /* 【P3-32新增】快速过渡动画时长（systems.css 8+ 处使用） */
     --danger: #ff3b30;
     --success: #34c759;
     --success-bg: #f6ffed;          /* 成功提示淡色背景（phone-ui.css 成功提示框） */
