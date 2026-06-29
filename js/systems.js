@@ -607,7 +607,7 @@ var AchievementSystem = {
                     t.style.borderColor = 'var(--border)';
                 });
                 this.style.background = 'var(--ach-category-active)';
-                this.style.color = '#fff';
+                this.style.color = 'var(--on-accent)';  /* 【P2-52·阶段6】彩色背景上的文字统一走 --on-accent */
                 this.style.borderColor = 'var(--ach-category-active)';
                 var cat = this.dataset.catFilter;
                 container.querySelectorAll('.achieve-category-header').forEach(function(h) {

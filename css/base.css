@@ -75,6 +75,18 @@
     --on-accent: #ffffff;
     --accent-blue: #007AFF;
     --accent-blue-soft: rgba(0, 122, 255, 0.2);
+    /* 【P2-52修复·阶段6】z-index 语义层级 token（消除魔法数字）
+       命名按层级递增：base < sticky < dropdown < overlay < modal < popover-high < loading < toast
+       数值保留原硬编码值，仅做语义化封装，不改实际层叠行为
+       说明：单次使用的离散值（z:2/5/20/101/600）未 token 化，避免过度设计 */
+    --z-base: 1;            /* 装饰性元素最低层（shop banner 文字/图标） */
+    --z-sticky: 10;         /* sticky 头部、下拉列表、flex 容器 */
+    --z-dropdown: 50;       /* 下拉菜单、浮层提示 */
+    --z-overlay: 100;       /* 模态遮罩、固定头部栏 */
+    --z-modal: 200;         /* phone-ui 模态遮罩（高于 base.css overlay） */
+    --z-popover-high: 500;  /* 高优先级浮层（pages.css 下拉面板） */
+    --z-loading: 99999;     /* 全屏加载层（仅次于 toast） */
+    --z-toast: 999999;      /* Toast 通知，最高层 */
 }
 
 /* ================================================================
@@ -618,7 +630,7 @@ input:checked + .slider:before {
     position: absolute;
     inset: 0;
     background: rgba(0, 0, 0, .4);
-    z-index: 100;
+    z-index: var(--z-overlay);  /* 【P2-52·阶段6】模态遮罩层 */
     justify-content: center;
     align-items: flex-end;
     padding: 0;
@@ -718,7 +730,7 @@ input:checked + .slider:before {
     top: 20px;
     left: 50%;
     transform: translateX(-50%);
-    z-index: 999999;
+    z-index: var(--z-toast);  /* 【P2-52·阶段6】Toast 最高层 */
     display: flex;
     flex-direction: column;
     gap: 8px;
@@ -925,11 +937,11 @@ input:checked + .slider:before {
 }
 
 .z-10 {
-    z-index: 10
+    z-index: var(--z-sticky)  /* 【P2-52·阶段6】工具类，等价于原 z-index:10 */
 }
 
 .z-50 {
-    z-index: 50
+    z-index: var(--z-dropdown)  /* 【P2-52·阶段6】工具类，等价于原 z-index:50 */
 }
 
 /* === Padding === */
@@ -2584,7 +2596,7 @@ a,
 .app-loading {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    z-index: 99999;
+    z-index: var(--z-loading);  /* 【P2-52·阶段6】全屏加载层，仅次于 toast */
     background: var(--bg);
     display: flex;
     flex-direction: column;
