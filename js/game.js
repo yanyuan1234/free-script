@@ -2106,10 +2106,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
         // 【修复 P1-1】统一 token 估算系数为 1.7 字符/token（与 utils.js estimateTokensUtil 一致）
-        var currentTokens = response ? estimateTokensUtil(response) : 0;
-        gameState._stats.totalTokens = (gameState._stats.totalTokens || 0) + currentTokens;
-        if (currentTokens > (gameState._stats.maxTokensInTurn || 0)) {
-            gameState._stats.maxTokensInTurn = currentTokens;
+        // 【P2-36修复】改名 outputTokens，避免与 sendAIRequest 输入端 currentTokens 语义复用
+        var outputTokens = response ? estimateTokensUtil(response) : 0;
+        gameState._stats.totalTokens = (gameState._stats.totalTokens || 0) + outputTokens;
+        if (outputTokens > (gameState._stats.maxTokensInTurn || 0)) {
+            gameState._stats.maxTokensInTurn = outputTokens;
         }
         var charCount = Object.keys(gameState.allCharacters || {}).length;
         if (charCount > (gameState._stats.totalCharacters || 0)) {
@@ -2242,9 +2243,10 @@ function updateTokenCount(currentResponse) {
     var totalTokenEl = document.getElementById('totalTokenCount');
 
     if (currentResponse && currentTokenEl) {
-        var currentTokens = estimateTokensUtil(currentResponse);
-        currentTokenEl.textContent = currentTokens > 1000 ?
-            (currentTokens / 1000).toFixed(1) + 'k' : currentTokens;
+        // 【P2-36修复】改名 outputTokens，语义为"本轮输出 token 数"
+        var outputTokens = estimateTokensUtil(currentResponse);
+        currentTokenEl.textContent = outputTokens > 1000 ?
+            (outputTokens / 1000).toFixed(1) + 'k' : outputTokens;
     } else if (currentTokenEl) {
         currentTokenEl.textContent = '0';
     }

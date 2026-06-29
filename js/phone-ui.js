@@ -4853,6 +4853,14 @@ async function _generateEndingRender(stories) {
 }
 // --- 设置弹窗 ---
 // --- 恢复游戏界面 ---
+// 【P2-25修复】抽取默认选项渲染，消除 _restoreGameRender 中三处重复的 choices 字面量
+// variant: 'noChoices'（无 choices 或解析失败）| 'noLastAI'（无最后 AI 回复）
+function _renderDefaultChoices(variant) {
+    var choices = (variant === 'noLastAI')
+        ? [{ id: 'A', text: '继续' }, { id: 'B', text: '查看状态' }, { id: 'C', text: '探索' }]
+        : [{ id: 'A', text: '继续' }, { id: 'B', text: '观察四周' }, { id: 'C', text: '等待' }];
+    renderChoices(choices);
+}
 function restoreGame() {
     try {
         UI.showPage('storyPage');
@@ -4927,52 +4935,16 @@ function _restoreGameRender() {
                     }
                 }
                 if (!data || !data.choices) {
-                    renderChoices([{
-                            id: 'A',
-                            text: '继续'
-                        },
-                        {
-                            id: 'B',
-                            text: '观察四周'
-                        },
-                        {
-                            id: 'C',
-                            text: '等待'
-                        }
-                    ]);
+                    _renderDefaultChoices('noChoices');
                 }
             } catch (parseErr) {
                 console.warn('解析最后回复失败:', parseErr);
                 document.getElementById('storyText').innerHTML = '<p>存档已恢复，点击「继续」推进剧情。</p>';
-                renderChoices([{
-                        id: 'A',
-                        text: '继续'
-                    },
-                    {
-                        id: 'B',
-                        text: '观察四周'
-                    },
-                    {
-                        id: 'C',
-                        text: '等待'
-                    }
-                ]);
+                _renderDefaultChoices('noChoices');
             }
         } else {
             document.getElementById('storyText').innerHTML = '<p>存档已恢复。点击选项或输入文字继续游戏。</p>';
-            renderChoices([{
-                    id: 'A',
-                    text: '继续'
-                },
-                {
-                    id: 'B',
-                    text: '查看状态'
-                },
-                {
-                    id: 'C',
-                    text: '探索'
-                }
-            ]);
+            _renderDefaultChoices('noLastAI');
         }
 
         // 从gameState固定数据渲染
