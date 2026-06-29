@@ -1647,6 +1647,8 @@ var WorldInfo = {
     matchTriggers: function(haystack, triggers, entry) {
         if (!triggers || triggers.length === 0) return false;
         var caseSensitive = entry.caseSensitive || false;
+        var self = this;
+        if (!self._regexCache) self._regexCache = {};
 
         return triggers.some(function(trigger) {
             if (!trigger) return false;
@@ -1678,7 +1680,16 @@ var WorldInfo = {
                 return false;
             }
 
-        var regex = new RegExp(pattern, flags);
+        // 【P2-43·阶段7】复用 _regexCache，避免 some 循环内每次 new RegExp
+        // 缓存键：pattern + '|' + flags（与 matchKeys 缓存键风格一致）
+        var _cacheKey = pattern + '|' + flags;
+        var regex = self._regexCache[_cacheKey];
+        if (!regex) {
+            regex = new RegExp(pattern, flags);
+            self._regexCache[_cacheKey] = regex;
+        } else {
+            regex.lastIndex = 0;  // 重置 gi 标志的 lastIndex，支持多次 test 调用
+        }
         return regex.test(haystack);
         } catch(e) {
             console.warn('[WorldInfo] 无效的trigger正则:', trigger, e);

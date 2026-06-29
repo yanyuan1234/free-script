@@ -692,17 +692,22 @@ function parseTheaterItems(html, schema) {
     var re = new RegExp('<div[^>]*class=["\']' + itemClass + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'gi');
     var matches = html.match(re) || [];
 
+    // 【P3-4.3·阶段7】预编译每个 field 的两条正则，避免 matches.forEach × Object.keys.forEach 双层循环内 N×M 次 new RegExp
+    // multiline/body 字段用 [\s\S]*?</div> 抓取；普通字段用 [^<]+ 抓取
+    var multilineFields = schema.multilineFields || [];
+    var fieldRegexes = {};
+    Object.keys(fields).forEach(function (fieldName) {
+        var className = fields[fieldName];
+        var isMultiline = multilineFields.indexOf(fieldName) >= 0;
+        fieldRegexes[fieldName] = isMultiline
+            ? new RegExp('class=["\']' + className + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'i')
+            : new RegExp('class=["\']' + className + '["\'][^>]*>([^<]+)', 'i');
+    });
+
     matches.forEach(function (match) {
         var parts = {};
         Object.keys(fields).forEach(function (fieldName) {
-            var className = fields[fieldName];
-            var value;
-            // 如果是 body 字段(包含子 div),用 [\s\S]*?</div> 抓取
-            if (schema.multilineFields && schema.multilineFields.indexOf(fieldName) >= 0) {
-                value = (match.match(new RegExp('class=["\']' + className + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'i')) || [])[1];
-            } else {
-                value = (match.match(new RegExp('class=["\']' + className + '["\'][^>]*>([^<]+)', 'i')) || [])[1];
-            }
+            var value = (match.match(fieldRegexes[fieldName]) || [])[1];
             // 字段转换器
             var tf = transformers[fieldName];
             if (tf === 'int') value = parseInt(value, 10) || defaults[fieldName] || 0;

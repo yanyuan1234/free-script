@@ -1068,6 +1068,14 @@ var PresetAppManager = (function() {
         'tableEdit':  { name: '表格',     icon: '', color: '#6EE7B7' }
         // 文生图已移除：不解析、不显示、节省token
     };
+    // 【P3-4.3·阶段7】预编译每个 _appDefs 标签的正则（_appDefs 为模块级常量，不动态变更）
+    // 旧代码：parseFromText 与 stripDecorTags 各自在 forEach 内 new RegExp，N 次构造同一组正则
+    // 现：模块加载时一次性预编译，两函数共享引用，并复用 lastIndex=0 支持多次调用
+    var _appTagRegexes = {};
+    Object.keys(_appDefs).forEach(function(tag) {
+        var escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        _appTagRegexes[tag] = new RegExp('<' + escapedTag + '[\\s>][\\s\\S]*?<\\/' + escapedTag + '>', 'gi');
+    });
 
     // 从AI回复文本中解析所有装饰XML标签
     // giggle标签已在剧情中渲染为心声触发器，不需要在日志页面重复显示
@@ -1080,9 +1088,8 @@ var PresetAppManager = (function() {
         Object.keys(_appDefs).forEach(function(tag) {
             // 跳过排除的标签
             if (_excludeTags.indexOf(tag) !== -1) return;
-            // 处理标签名中的特殊字符
-            var escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var regex = new RegExp('<' + escapedTag + '[\\s>][\\s\\S]*?<\\/' + escapedTag + '>', 'gi');
+            var regex = _appTagRegexes[tag];
+            regex.lastIndex = 0;  // 【P3-4.3·阶段7】复用预编译正则，重置 lastIndex 支持 gi 标志多次调用
             var matches = text.match(regex);
             if (matches && matches.length > 0) {
                 // 合并多个同名标签的内容
@@ -1152,11 +1159,11 @@ var PresetAppManager = (function() {
         var result = text;
 
         // 移除所有已定义的装饰标签（排除giggle，因为心声需要在剧情中显示）
-        // 【性能优化】动态标签也用预编译正则，避免 forEach + new RegExp
+        // 【P3-4.3·阶段7】复用 _appTagRegexes 预编译正则（与 parseFromText 共享）
         Object.keys(_appDefs).forEach(function(tag) {
             if (_excludeTags.indexOf(tag) !== -1) return;
-            var escapedTag = tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-            var regex = new RegExp('<' + escapedTag + '[\\s>][\\s\\S]*?<\\/' + escapedTag + '>', 'gi');
+            var regex = _appTagRegexes[tag];
+            regex.lastIndex = 0;  // 重置 gi 标志的 lastIndex
             result = result.replace(regex, '');
         });
 

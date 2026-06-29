@@ -2095,6 +2095,7 @@ Object.defineProperty(window, 'MAX_HISTORY', {
 // 优化：段落级渲染节流、标点智能停顿、统一光标、脏检查
 var TypewriterBuffer = {
     queue: '',
+    _queueIdx: 0,  // 【P3-4.3·阶段7】queue 读取指针，替代 substring(1) 逐字拷贝（O(n²)→O(n)）
     displayed: '',
     isTyping: false,
     timer: null,
@@ -2126,15 +2127,19 @@ var TypewriterBuffer = {
         if (typeof this.displayed !== 'string') this.displayed = '';
         // 【修复BUG-04】newText 是完整文本（displayed + queue + 新增），不是增量
         var newSuffix = newText.substring(this.displayed.length);
-        if (newSuffix.indexOf(this.queue) === 0) {
-            // 原 queue 是 newSuffix 前缀，只追加差异（最优路径）
-            this.queue += newSuffix.substring(this.queue.length);
-        } else if (this.queue.indexOf(newSuffix) === 0 && newSuffix.length > 0) {
-            // newSuffix 是原 queue 前缀：流式过程中文本被截短，保持 queue 不变等待恢复
-            // 避免覆盖导致闪烁或丢字
+        // 【P3-4.3·阶段7】_queueIdx 表示已消费的前缀长度，剩余待消费 = queue.slice(_queueIdx)
+        var remaining = this._queueIdx >= this.queue.length ? '' : this.queue.substring(this._queueIdx);
+        if (newSuffix.indexOf(remaining) === 0) {
+            // 原 remaining 是 newSuffix 前缀，只追加差异（最优路径）
+            this.queue = remaining + newSuffix.substring(remaining.length);
+            this._queueIdx = 0;
+        } else if (remaining.indexOf(newSuffix) === 0 && newSuffix.length > 0) {
+            // newSuffix 是原 remaining 前缀：流式过程中文本被截短，保持 queue 不变等待恢复
+            // 避免覆盖导致闪烁或丢字（_queueIdx 不动，仍指向已消费位置）
         } else {
             // 内容发生变化，用新的完整 suffix 替换 queue
             this.queue = newSuffix;
+            this._queueIdx = 0;
         }
     if (!this.isTyping) this.start();
     },
@@ -2151,7 +2156,7 @@ var TypewriterBuffer = {
         try { _showSkipButton(); } catch (e) {}
         const self = this;
     TimerManager.setInterval('typewriter', function() {
-        if (self.queue.length === 0) {
+        if (self._queueIdx >= self.queue.length) {
             self.pause();
             if (self._currentParaChars) {
                 self._completedParagraphs.push(self._currentParaChars);
@@ -2168,8 +2173,7 @@ var TypewriterBuffer = {
         }
     return;
     }
-    var ch = self.queue[0];
-    self.queue = self.queue.substring(1);
+    var ch = self.queue[self._queueIdx++];  // 【P3-4.3·阶段7】指针前移，避免 substring(1) 拷贝
     self.displayed += ch;
 
     // 段落分割：遇到换行且当前段落有内容时，完成当前段落
@@ -2188,7 +2192,7 @@ var TypewriterBuffer = {
         self.pause();
         self._pauseTimer = TimerManager.setTimeout('typewriterPause', function() {
             self._pauseTimer = null;
-            if (self.queue.length > 0 || self._currentParaChars.length > 0) {
+            if (self._queueIdx < self.queue.length || self._currentParaChars.length > 0) {
                 self.start();
                 } else {
                 self.pause();
@@ -2209,7 +2213,7 @@ var TypewriterBuffer = {
         this._visibilityHandler = function() {
             if (document.hidden && self.isTyping) {
                 self.pause();
-            } else if (!document.hidden && !self.isTyping && self.queue.length > 0) {
+            } else if (!document.hidden && !self.isTyping && self._queueIdx < self.queue.length) {
                 // 【修复X15】页面重新可见时自动恢复打字
                 // 旧代码只 pause 不 resume，切回标签页后打字机永久停滞
                 self.start();
@@ -2226,6 +2230,7 @@ var TypewriterBuffer = {
         if (this._pauseTimer) { TimerManager.clearTimeout('typewriterPause'); this._pauseTimer = null; }
         this.pause();
         this.queue = '';
+        this._queueIdx = 0;  // 【P3-4.3·阶段7】同步重置指针
         this.displayed = '';
         this._lastRendered = '';
         this.onComplete = null;
@@ -2249,8 +2254,10 @@ var TypewriterBuffer = {
         // 确保 queue 和 displayed 已初始化
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        this.displayed += this.queue;
+        // 【P3-4.3·阶段7】只追加未消费部分（_queueIdx 之后），而非整个 queue
+        this.displayed += this._queueIdx >= this.queue.length ? '' : this.queue.substring(this._queueIdx);
         this.queue = '';
+        this._queueIdx = 0;  // 【P3-4.3·阶段7】同步重置指针
         this.pause();
         this.render();
         if (this.onComplete) {
@@ -2260,14 +2267,14 @@ var TypewriterBuffer = {
     },
     // 【用户需求】明确的「跳过」方法（与 flush 行为一致，但语义清晰）
     skip() {
-        if (!this.isTyping && this.queue.length === 0) return false;
+        if (!this.isTyping && this._queueIdx >= this.queue.length) return false;
         this.flush();
         return true;
     },
     isFinished() {
         // 确保 queue 已初始化
         if (typeof this.queue !== 'string') this.queue = '';
-        return this.queue.length === 0 && !this.isTyping;
+        return this._queueIdx >= this.queue.length && !this.isTyping;
     },
     render() {
         var storyEl = DOMCache.get('storyText', true);
@@ -2308,7 +2315,7 @@ var TypewriterBuffer = {
                 storyEl.appendChild(this._currentParaEl);
             }
             // 【修复BUG-M6】生成过程中添加闪烁光标，提示文本尚未完成，避免玩家误以为截断
-            var cursorHtml = (this.isTyping || this.queue.length > 0) ? '<span class="typing-cursor">▌</span>' : '';
+            var cursorHtml = (this.isTyping || this._queueIdx < this.queue.length) ? '<span class="typing-cursor">▌</span>' : '';
             // currentText 已经过标签清理，innerHTML 安全
             this._currentParaEl.innerHTML = escapeHtml(currentText) + cursorHtml;
         } else if (this._currentParaEl) {
@@ -2316,7 +2323,7 @@ var TypewriterBuffer = {
             this._currentParaEl = null;
         }
         // 【修复】非打字状态时清理残留光标
-        if (!this.isTyping && this.queue.length === 0) {
+        if (!this.isTyping && this._queueIdx >= this.queue.length) {
             this.cleanCursor();
         }
     },
@@ -4862,6 +4869,9 @@ function parseAIResponseFallback(rawBody) {
     return rawBody;
 }
 
+// 【P3-4.3·阶段7】SSE 事件分隔符预编译常量（原 while 循环内字面量正则每次求值）
+var _SSE_SEP = /\r?\n\r?\n/;
+
 // 【优化 #15】执行流式 AI 请求
 async function executeAIStream(url, body, apiKey, signal, onChunk) {
     var res = await fetch(url, {
@@ -4919,7 +4929,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
                 }
             }
         sseBuffer += chunk;
-        var events = sseBuffer.split(/\r?\n\r?\n/);
+        var events = sseBuffer.split(_SSE_SEP);  // 【P3-4.3·阶段7】引用预编译常量
         sseBuffer = events.pop() || '';
         for (let i = 0; i < events.length; i++) {
             parseSSEEventText(events[i], ctx);

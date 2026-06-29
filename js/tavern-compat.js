@@ -915,6 +915,10 @@ var GameMemory = {
     // 可触发 35+ 次 getter 调用。现按 dirty 标志缓存，permanentFacts 变更时置 dirty。
     _ltmCache: null,
     _ltmDirty: true,
+    // 【P2-40·阶段7】_updateDormantStatus 内 isMentioned 短名称正则缓存
+    // 旧代码：每次 _updateDormantStatus 调用重建 isMentioned 闭包，闭包内短名称分支每次 new RegExp
+    // 现：实例级缓存，同一 name 的正则只构造一次，跨多轮 AI 叙事复用
+    _dormantNameRegexCache: {},
     // 【P2-29修复】LTM 脏标志统一入口：所有写入点调用此方法置脏，
     // 替代散落各处的 `XXX._ltmDirty = true`。新增写入点一律调用 _markLtmDirty()，
     // 避免遗漏（如 P0-7 的 MemoryManagerUI 各 save* 函数曾漏置脏导致缓存陈旧）。
@@ -1435,12 +1439,19 @@ var GameMemory = {
 
         // 辅助：检查内容中是否精确提到某个名称（避免子串误匹配）
         // 例如 "小明" 不会匹配 "小明王"，但会匹配 "小明说"、"叫小明"
+        // 【P2-40·阶段7】短名称正则改用实例级 _dormantNameRegexCache 缓存
+        // 旧代码：每次调用 new RegExp；现：同 name 只构造一次，跨多轮 AI 叙事复用
+        if (!self._dormantNameRegexCache) self._dormantNameRegexCache = {};
         function isMentioned(name) {
             if (!name || name.length < 1) return false;
             // 简单名称（1-2字）用边界检查，复杂名称直接包含检查
             if (name.length <= 2) {
                 // 短名称需要更严格的匹配：前后不能是中文/字母/数字
-                var re = new RegExp('(^|[^\\u4e00-\\u9fa5a-zA-Z0-9])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\u4e00-\\u9fa5a-zA-Z0-9]|$)');
+                var re = self._dormantNameRegexCache[name];
+                if (!re) {
+                    re = new RegExp('(^|[^\\u4e00-\\u9fa5a-zA-Z0-9])' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\u4e00-\\u9fa5a-zA-Z0-9]|$)');
+                    self._dormantNameRegexCache[name] = re;
+                }
                 return re.test(content);
             }
             return content.indexOf(name) >= 0;
