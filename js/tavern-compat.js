@@ -3424,6 +3424,16 @@ var GameMemory = {
         var cd = (this.compressionConfig && this.compressionConfig.cooldownMinutes) || 15;
         if (success) {
             this.compressionConfig.lastCompressionTurn = currentTurn;
+            // 【P2-6修复】成功压缩时记录到 summaryHistory，供 phone-ui.js 压缩统计显示
+            // 旧代码：summaryHistory 只在初始化与 reset 时被引用，recordCompression 不 push，统计恒为 0
+            if (!this.summaryHistory) this.summaryHistory = [];
+            this.summaryHistory.push({
+                turn: currentTurn,
+                time: Date.now(),
+                success: true
+            });
+            // 保留最近 50 条，避免无限增长
+            if (this.summaryHistory.length > 50) this.summaryHistory = this.summaryHistory.slice(-50);
         } else {
             // 失败：设 1 回合短冷却，使下一回合 turnsSinceLastCompress = cd，冷却刚好解除
             this.compressionConfig.lastCompressionTurn = currentTurn - cd + 1;
@@ -3441,7 +3451,24 @@ var GameMemory = {
     },
 
     getStats: function() {
-        return { totalMessages: this.stats.totalMessages, totalCharacters: Object.keys(this.tables.characters).length, totalItems: Object.keys(this.tables.items).length, totalLocations: Object.keys(this.tables.locations).length, totalEvents: this.events.length, timelineLength: this.timeline.length, memorySize: JSON.stringify(this).length };
+        // 【P1-8修复】JSON.stringify(this) 在循环引用时抛 TypeError，导致 renderOverview 面板空白
+        // 修复：try/catch 包裹，失败时用白名单字段估算大小
+        var memorySize = 0;
+        try {
+            memorySize = JSON.stringify(this).length;
+        } catch (e) {
+            // 循环引用兜底：用主要字段估算
+            try {
+                memorySize = JSON.stringify({
+                    permanentFacts: this.permanentFacts,
+                    tables: this.tables,
+                    events: this.events,
+                    timeline: this.timeline,
+                    workingMemory: this.workingMemory
+                }).length;
+            } catch (e2) { memorySize = 0; }
+        }
+        return { totalMessages: this.stats.totalMessages, totalCharacters: Object.keys(this.tables.characters).length, totalItems: Object.keys(this.tables.items).length, totalLocations: Object.keys(this.tables.locations).length, totalEvents: this.events.length, timelineLength: this.timeline.length, memorySize: memorySize };
     },
 
     saveToStorage: function() {

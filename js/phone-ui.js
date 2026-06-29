@@ -5490,9 +5490,10 @@ function showApiDetail(slot) {
 
     // 绑定测试按钮
     // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
-    // 【P0-2.4 阶段1】改用 let 块作用域，避免 50ms 间隔内连开 2 个 slot 时旧 controller 被覆盖
-    // 旧实现：var 在 showApiDetail 函数体内被 hoisting 共享同一变量，导致引用错乱
-    let _testAbortCtrl = null;
+    // 【P1-2修复】_testAbortCtrl 从函数闭包改为挂到 newTestBtn DOM 节点
+    // 旧实现问题：showApiDetail 每次重开弹窗都重新执行，新的 let _testAbortCtrl 是新闭包，
+    // 但 newCancelBtn 的 addEventListener 引用的是上一个闭包（已为 null），cancel 按钮失效
+    // 修复：controller 挂到 newTestBtn._testAbortCtrl，cancel 按钮读 DOM 节点属性，跨闭包可见
     bindFresh('btnTestApiDetail', 'click', async function() {
         var newTestBtn = this;  // bindFresh 内部 this 指向元素
         var newCancelBtn = document.getElementById('btnCancelTestApi');
@@ -5500,8 +5501,8 @@ function showApiDetail(slot) {
         newTestBtn.disabled = true;
         if (newCancelBtn) newCancelBtn.style.display = '';
 
-        // 创建 AbortController 用于取消测试
-        _testAbortCtrl = new AbortController();
+        // 创建 AbortController 用于取消测试，挂到 DOM 节点
+        newTestBtn._testAbortCtrl = new AbortController();
 
         // 添加try-finally确保按钮状态恢复
         try {
@@ -5515,7 +5516,7 @@ function showApiDetail(slot) {
                 apiKey: document.getElementById('detailApiKey').value.trim(),
                 model: document.getElementById('detailApiModelSelect').value || document
                     .getElementById('detailApiModelInput').value.trim()
-            }, _testAbortCtrl.signal);
+            }, newTestBtn._testAbortCtrl.signal);
 
             // 保存连接状态
             LocalGameAPI._connectionStatus[slot] = result.success;
@@ -5535,17 +5536,20 @@ function showApiDetail(slot) {
             newTestBtn.textContent = '测试连接';
             newTestBtn.disabled = false;
             newCancelBtn.style.display = 'none';
-            _testAbortCtrl = null;
+            newTestBtn._testAbortCtrl = null;
         }
     });
     // 绑定取消测试按钮
     newCancelBtn.addEventListener('click', function() {
-        if (_testAbortCtrl) {
-            _testAbortCtrl.abort();
-            _testAbortCtrl = null;
+        var newTestBtn = document.getElementById('btnTestApiDetail');
+        if (newTestBtn && newTestBtn._testAbortCtrl) {
+            newTestBtn._testAbortCtrl.abort();
+            newTestBtn._testAbortCtrl = null;
         }
-        newTestBtn.textContent = '测试连接';
-        newTestBtn.disabled = false;
+        if (newTestBtn) {
+            newTestBtn.textContent = '测试连接';
+            newTestBtn.disabled = false;
+        }
         newCancelBtn.style.display = 'none';
     });
 

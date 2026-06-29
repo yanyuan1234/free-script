@@ -12,6 +12,11 @@ var WorldInfo = {
     },
     // 【P2-7 阶段2】正则缓存，避免 scan 时重复 new RegExp
     _regexCache: {},
+    // 【P1-5修复】统一条目禁用判断：enabled=false / disable=true / disabled=true 三字段任一为真即禁用
+    // 旧代码各读取点判断不一致（有的漏读 enabled===false），导致禁用后 UI 仍显示为启用
+    isEntryDisabled: function(entry) {
+        return !!(entry && (entry.enabled === false || entry.disable === true || entry.disabled === true));
+    },
     // 公共辅助函数：获取编辑面板中所有自定义checkbox元素
     _getEditCheckboxes: function() {
         return {
@@ -483,7 +488,7 @@ var WorldInfo = {
     var filter = this.currentFilter || 'all';
     var filteredKeys = keys.filter(function(uid) {
         var entry = entries[uid];
-        var disabled = entry.disable || entry.disabled || false;
+        var disabled = WorldInfo.isEntryDisabled(entry);
         if (filter === 'enabled') return !disabled;
         if (filter === 'disabled') return disabled;
         return true;
@@ -519,7 +524,7 @@ var WorldInfo = {
         } else {
         filteredKeys.forEach(function(uid) {
             var entry = entries[uid];
-            var disabled = entry.disable || entry.disabled || false;
+            var disabled = WorldInfo.isEntryDisabled(entry);
             var keywords = entry.key || entry.keys || [];
             var comment = entry.comment || '';
             var constant = entry.constant || false;
@@ -572,7 +577,7 @@ var WorldInfo = {
             if (book && book.entries[enableEl.dataset.wiEntryEnable]) {
                 var entry = book.entries[enableEl.dataset.wiEntryEnable];
                 // 兼容旧格式读取，但只写入 enabled
-                if (entry.disable || entry.disabled || entry.enabled === false) {
+                if (WorldInfo.isEntryDisabled(entry)) {
                     entry.enabled = true;
                     WorldInfo.save(); WorldInfo.renderCurrentView();
                 }
@@ -585,7 +590,7 @@ var WorldInfo = {
         var book = WorldInfo.getCurrentBook();
         if (book && book.entries[disableEl.dataset.wiEntryDisable]) {
             var entry = book.entries[disableEl.dataset.wiEntryDisable];
-            if (!entry.disable && !entry.disabled && entry.enabled !== false) {
+            if (!WorldInfo.isEntryDisabled(entry)) {
                 entry.enabled = false;
                 WorldInfo.save(); WorldInfo.renderCurrentView();
             }
@@ -1433,7 +1438,7 @@ var WorldInfo = {
         Object.keys(allEntries).forEach(function(uid) {
             var entry = allEntries[uid];
             // 只检查enabled字段，不再检查disable
-            if (!entry || entry.disable === true || entry.disabled === true || entry.enabled === false) return;
+            if (!entry || WorldInfo.isEntryDisabled(entry)) return;
 
             // 常驻条目直接激活
             if (entry.constant) {
@@ -1735,7 +1740,7 @@ var WorldInfo = {
             Object.keys(allEntries).forEach(function(uid) {
                 var entry = allEntries[uid];
                 // 只检查enabled字段
-                if (!entry || entry.disable === true || entry.disabled === true || entry.enabled === false || activatedIds[uid]) return;
+                if (!entry || WorldInfo.isEntryDisabled(entry) || activatedIds[uid]) return;
                 if (entry.constant || entry.excludeRecursion || entry.preventRecursion) return;
 
                 // delay_until_recursion: 只在递归扫描阶段激活

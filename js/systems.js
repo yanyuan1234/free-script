@@ -270,6 +270,19 @@ function _cssVar(name, fallback) {
     } catch (e) {}
     return fallback;
 }
+// 【P1-6/P1-7修复】ach.rarity/category 安全归一化
+// 旧代码问题：① ach.rarity.toUpperCase() 对非字符串（数字/null）抛 TypeError 中断成就检测；
+//             ② 636/691/693 行 ach.rarity 直接拼 class 属性未 escapeHtml，AI 返回恶意串可 XSS
+// 修复：统一用本工具归一化为大写字符串并校验白名单，非字符串或非法值回落 COMMON
+var _ACHIEVEMENT_RARITY_WHITELIST = { COMMON: 1, RARE: 1, EPIC: 1, LEGENDARY: 1 };
+function _normalizeRarity(r) {
+    var s = String(r == null ? 'common' : r).toUpperCase();
+    return _ACHIEVEMENT_RARITY_WHITELIST[s] ? s : 'COMMON';
+}
+// 【P1-7修复】ach.category 同样可能为非字符串，归一化为大写字符串避免 toUpperCase 抛错
+function _normalizeCategory(c) {
+    return String(c == null ? 'general' : c).toUpperCase();
+}
 // 成就稀有度 → 背景色（var(--ach-*-bg)）
 function _achBgColor(rarity) {
     var map = { common: '--ach-common-bg', rare: '--ach-rare-bg', epic: '--ach-epic-bg', legendary: '--ach-legendary-bg' };
@@ -462,12 +475,12 @@ var AchievementSystem = {
     pd.progress[ach.id] = np;
     var mp = ach.maxProgress || 1;
     if (np >= mp) {
-        var rar = AchievementSystem.RARITY[ach.rarity.toUpperCase()] ||
+        var rar = AchievementSystem.RARITY[_normalizeRarity(ach.rarity)] ||
         AchievementSystem.RARITY.COMMON;
         pd.unlocked.push({
             id: ach.id,
             unlockedAt: Date.now(),
-            rarity: ach.rarity
+            rarity: _normalizeRarity(ach.rarity)
             });
         pd.totalPoints += rar.points;
         newly.push(Object.assign({}, ach, {
@@ -624,7 +637,7 @@ var AchievementSystem = {
         var pr = pd.progress[ach.id] || 0;
         var mp = ach.maxProgress || 1;
         var pp = Math.min(100, Math.round((pr / mp) * 100));
-        var rar = this.RARITY[ach.rarity.toUpperCase()] || this.RARITY.COMMON;
+        var rar = this.RARITY[_normalizeRarity(ach.rarity)] || this.RARITY.COMMON;
         var ut = '';
         if (isU && uD) {
             var d = new Date(uD.unlockedAt);
@@ -633,15 +646,15 @@ var AchievementSystem = {
     var ph = '';
     if (!isU && ach.maxProgress) {
         ph = '<div class="achieve-progress-row"><div class="achieve-progress-track"><div class="achieve-progress-fill ' +
-        ach.rarity + '" style="width:' + pp +
+        escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) + '" style="width:' + pp +
         '%;"></div></div><span class="achieve-progress-text">' + pr + '/' + mp +
         '</span></div>';
     }
     var nb = (isU && uD && Date.now() - uD.unlockedAt < 86400000) ?
     '<span class="new-badge">NEW</span>' : '';
     return '<div class="achieve-item ' + (isU ? '' : 'locked') + '" data-achieve-id="' + escapeHtml(ach.id) +
-    '" data-achieve-category="' + escapeHtml(ach.category.toUpperCase()) + '"><div class="achieve-icon-wrap ' + escapeHtml(ach.rarity) + '">' + escapeHtml(ach.icon) +
-    '<div class="achieve-rarity-badge ' + escapeHtml(ach.rarity) +
+    '" data-achieve-category="' + escapeHtml(_normalizeCategory(ach.category)) + '"><div class="achieve-icon-wrap ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) + '">' + escapeHtml(ach.icon) +
+    '<div class="achieve-rarity-badge ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) +
     '"></div></div><div class="achieve-info"><div class="achieve-name">' + escapeHtml(ach.name) + nb +
     '</div><div class="achieve-desc">' + escapeHtml(ach.desc) + '</div>' + ph + ut +
     '</div><div class="achieve-points">' + (isU ? '√ ' : '') + rar.points + '</div></div>';
@@ -685,17 +698,17 @@ var AchievementSystem = {
         var isU = pd.unlocked.some(function(u) {
             return u.id === id;
             });
-        var rar = this.RARITY[ach.rarity.toUpperCase()] || this.RARITY.COMMON;
+        var rar = this.RARITY[_normalizeRarity(ach.rarity)] || this.RARITY.COMMON;
         var html =
         '<div style="text-align:center;">' +
-        '<div class="achieve-icon-wrap ' + ach.rarity +
+        '<div class="achieve-icon-wrap ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) +
         '" style="margin:0 auto 16px;width:80px;height:80px;font-size:40px;">' + escapeHtml(String(ach.icon || '')) +
-        '<div class="achieve-rarity-badge ' + ach.rarity + '"></div></div>' +
+        '<div class="achieve-rarity-badge ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) + '"></div></div>' +
         '<div style="font-size:20px;font-weight:700;margin-bottom:8px;">' + escapeHtml(String(ach.name || '')) + '</div>' +
         // 【P1-SY1 阶段3-4】成就稀有度徽章背景/文字色统一走 CSS 变量
         // 通过 inline style 绑定 var(--ach-*) 即可，暗色模式自动适配
         '<div style="margin-bottom:16px;"><span style="padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;background:' +
-        _achBgColor(ach.rarity) + ';color:' + _achTextColor(ach.rarity) +
+        _achBgColor(_normalizeRarity(ach.rarity).toLowerCase()) + ';color:' + _achTextColor(_normalizeRarity(ach.rarity).toLowerCase()) +
         ';">' + rar.label + '</span></div>' +
         '<div style="font-size:14px;color:var(--text-secondary);line-height:1.8;margin-bottom:20px;">' +
         escapeHtml(ach.desc || '') + '</div>' +

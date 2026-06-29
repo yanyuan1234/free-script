@@ -672,8 +672,13 @@ var UI = {
         yesBtn._confirmHandler = function() {
             UI.hideModal('confirmModal');
             if (yesBtn._confirmResolve) yesBtn._confirmResolve(true);
+            yesBtn._confirmResolve = null;
         };
         yesBtn.addEventListener('click', yesBtn._confirmHandler);
+    }
+    // 【P2-29修复】覆盖前先 resolve(false) 给上一个未完成的 Promise，避免悬挂
+    if (yesBtn._confirmResolve) {
+        yesBtn._confirmResolve(false);
     }
     yesBtn._confirmResolve = resolve;
     // 绑定"否"按钮，防止Promise永远悬挂
@@ -683,8 +688,12 @@ var UI = {
             noBtn._confirmHandler = function() {
                 UI.hideModal('confirmModal');
                 if (noBtn._confirmResolve) noBtn._confirmResolve(false);
+                noBtn._confirmResolve = null;
             };
             noBtn.addEventListener('click', noBtn._confirmHandler);
+        }
+        if (noBtn._confirmResolve) {
+            noBtn._confirmResolve(false);
         }
         noBtn._confirmResolve = resolve;
     }
@@ -4465,8 +4474,13 @@ async function autoSave() {
                 dot.style.animation = 'pulse 0.9s ease-in-out infinite';
             }
             if (typeof SaveDB !== 'undefined') {
-                // 【阶段四】autoSave 明确开启序列化缓存，手动保存保持默认不重缓存
-                await SaveDB.set(0, (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('', true) : null);
+                // 【P1-1修复】buildSaveData 不可用时传 null 会被 SaveDB._setRaw 解释为删除 slot 0（自动存档丢失）
+                // 修复：data 为 null 时跳过本次写入，保留上一次的有效自动存档
+                var _autoSaveData = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('', true) : null;
+                if (_autoSaveData !== null && _autoSaveData !== undefined) {
+                    // 【阶段四】autoSave 明确开启序列化缓存，手动保存保持默认不重缓存
+                    await SaveDB.set(0, _autoSaveData);
+                }
             }
             // 【顶栏指示】自动存档完成：显示一秒钟后淡出
             if (dot) {
