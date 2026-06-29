@@ -2810,9 +2810,11 @@ function onStreamChunk(delta, fullText) {
             return;
         }
         // JSON 模式：继续提取 story 字段
-        var story = extractStoryStreaming(streamBuffer);
-        if (story && story.length > 0) {
-            TypewriterBuffer.push(story);
+        // 【P2-35修复】原 var story 与下方未锁定分支同名重复声明（var 提升到函数作用域），
+        // 维护者易误读为两个独立变量。此处改名为 lockedStory 明确语义。
+        var lockedStory = extractStoryStreaming(streamBuffer);
+        if (lockedStory && lockedStory.length > 0) {
+            TypewriterBuffer.push(lockedStory);
         } else if (streamBuffer.length > 200) {
             // 【优化】JSON 模式但 story 提取失败且累积超过 200 字时，记录警告便于调试
             // 旧代码静默丢弃内容，用户可能看到空白剧情却不知原因
