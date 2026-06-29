@@ -32,6 +32,9 @@
 //
 // 注：本会话仅完成短期文档化，物理迁移涉及 80+ 调用点，延后到独立重构任务。
 
+// 【P0-2修复】论坛跨帖联动生成新帖的帖子上限（避免无限生成）
+var MAX_FORUM_POSTS = 8;
+
 
 // ========================================
 // 【P0-2.6 阶段3-1】玩家货币读写 helper —— 全部走 CurrencyMutator
@@ -492,7 +495,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
                 delay += 300 + Math.random() * 500;
             });
             // 跨帖联动：身份高时可能生成新帖
-            if (data.maySpawnNewPost && modules.length < 8) {
+            if (data.maySpawnNewPost && commentMods.length < MAX_FORUM_POSTS) {
                 TimerManager.setTimeout('spawnForumPost_' + postIdx, function() {
                     spawnForumPostAboutPlayer(postIdx, playerText, playerName);
                 }, delay + 500);

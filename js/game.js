@@ -1690,7 +1690,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 从storyText中移除COT标签（不显示给用户）
         if (cotMatches.length > 0) {
-            cleanStoryText = storyText.replace(cotRegex, '').trim();
+            cleanStoryText = storyText.replace(_reCotTags, '').trim();
             // 保存原始内容（含COT）供 {{original}} 宏使用
             if (gameState) gameState._lastOriginalContent = storyText;
             // 保存COT内容供调试查看

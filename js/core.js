@@ -443,6 +443,8 @@ var UI = {
         if (fromPage && fromPage.id === 'logPage' && id !== 'logPage' && typeof closeLogSubPage === 'function') {
             try { closeLogSubPage(); } catch (e) {}
         }
+        // 【P0-6修复】el 为 null（页面 id 不存在 DOM）时后续 scrollTop/querySelector 会抛 TypeError，提前返回
+        if (!el) return;
         el.scrollTop = 0;
         var body = el.querySelector('.page-body');
         if (body) body.scrollTop = 0;

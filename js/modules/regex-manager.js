@@ -1022,7 +1022,7 @@ applySingleScript: function(text, script) {
         // 获取宏环境变量
         var _smPlayerName = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player.name') : '';
         var _smSnapshot = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.worldSnapshot') : null;
-        var _smOriginal = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('transient.lastOriginalContent') : '';
+        var _smOriginal = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('ui.lastOriginalContent') : '';
         var macroEnv = {
             user: _smPlayerName || '玩家',
             char: (_smSnapshot && _smSnapshot.characters && _smSnapshot.characters.length > 0) ? _smSnapshot.characters[0].name : '角色',
