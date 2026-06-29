@@ -44,6 +44,13 @@ function triggerImportFile() {
     var el = document.getElementById('importFileInput');
     if (el) el.click();
 }
+// 【P2-12修复】空状态渲染工具：统一 4 处简单空状态的 HTML 结构
+// 仅抽"纯文字 + 可选 hint"的简单空状态；带 SVG icon 的复杂空状态保留原样（避免参数爆炸）
+function renderEmptyState(msg, hint) {
+    var html = '<div class="empty-state"><p>' + escapeHtml(msg || '暂无内容') + '</p>';
+    if (hint) html += '<p style="font-size:12px;margin-top:4px;">' + escapeHtml(hint) + '</p>';
+    return html + '</div>';
+}
 
 
 // ========================================
@@ -5233,7 +5240,7 @@ function renderAPISettings() {
     var currentSlot = LocalGameAPI._currentSlot;
 
     if (configs.length === 0) {
-        container.innerHTML = '<div class="empty-state"><p>暂无API配置</p></div>';
+        container.innerHTML = renderEmptyState('暂无API配置');
         return;
     }
 
@@ -5435,8 +5442,7 @@ function showApiDetail(slot) {
                         .error || '未知错误') + '</div></div>';
             }).join('');
         } else {
-            errorListEl.innerHTML =
-                '<div class="empty-state">暂无错误记录</div>';
+            errorListEl.innerHTML = renderEmptyState('暂无错误记录');
         }
     }
 
@@ -5455,7 +5461,7 @@ function showApiDetail(slot) {
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot || l.success;
         });
-        if (errorListEl) errorListEl.innerHTML = '<div class="empty-state">暂无错误记录</div>';
+        if (errorListEl) errorListEl.innerHTML = renderEmptyState('暂无错误记录');
         UI.toast('已清空该配置的错误记录');
     });
 
@@ -5732,8 +5738,7 @@ function showApiDetail(slot) {
                 // 【P1-PU5 阶段2-3】改用 renderErrorItemHtml
                 errorListEl.innerHTML = errorLogs.map(renderErrorItemHtml).join('');
             } else {
-                errorListEl.innerHTML =
-                    '<div class="empty-state">暂无错误记录</div>';
+                errorListEl.innerHTML = renderEmptyState('暂无错误记录');
             }
         }
         UI.toast('已刷新统计');

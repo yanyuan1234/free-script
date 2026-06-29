@@ -122,19 +122,21 @@ const ResponseParser = {
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;
-        // 【P2-2修复】Step 1 改调 OutputSanitizer.stripThinking，统一标签集合。
-        // 标签集合已合并为超集（think/thinking/reasoning/thought/analysis/ECoT/💭）。
-        // Step 2-3 的截断检测逻辑保留在此处（OutputSanitizer 无此能力）。
-        var tags = ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
+        // 【P1-13修复】引用 output-sanitizer.js 的 THINKING_TAGS 常量（7 标签超集）
+        // 旧代码：本地 tags 数组仅 5 标签，fallback/Step2/Step4 用此数组会漏处理 ECoT/💭
+        // 现统一引用常量，fallback 与截断检测都覆盖全部 7 标签
+        var tags = (typeof THINKING_TAGS !== 'undefined') ? THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking) {
             s = OutputSanitizer.stripThinking(s);
         } else {
-            // fallback：OutputSanitizer 不可用时用原逻辑
+            // fallback：OutputSanitizer 不可用时用 tags 常量循环
             for (var i = 0; i < tags.length; i++) {
                 var tag = tags[i];
                 var pairRe = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?</' + tag + '\\s*>', 'gi');
                 s = s.replace(pairRe, '');
             }
+            // 💭 emoji 包围（非标签），fallback 时也需处理
+            s = s.replace(/💭[\s\S]*?💭/g, '');
         }
 
         // Step 2: 检查是否有未匹配的开标签（思考末尾被 max_tokens 截断，无闭标签）

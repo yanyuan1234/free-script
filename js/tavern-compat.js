@@ -1,3 +1,25 @@
+// 【P1-阶段5-去重】永久事实类型双向映射常量
+// 旧代码：5 处重复定义同样的 typeMap（3 处反向 oldType→newKey、2 处正向 newKey→oldType）
+// 现统一为两个常量，所有调用点引用，消除键名/键值拼写不一致隐患
+// 反向：旧 worldAnchor.type（snake_case）→ permanentFacts 的 newKey（camelCase）
+var _FACT_OLDTYPE_TO_NEWKEY = {
+    pc_identity: 'pcIdentity',
+    setting: 'settings',
+    world_rule: 'worldRules',
+    npc_profile: 'npcProfiles',
+    promise: 'promises',
+    world_place: 'worldPlaces'
+};
+// 正向：permanentFacts 的 newKey（camelCase）→ 旧 worldAnchor.type（snake_case）
+var _FACT_NEWKEY_TO_OLDTYPE = {
+    pcIdentity: 'pc_identity',
+    settings: 'setting',
+    worldRules: 'world_rule',
+    npcProfiles: 'npc_profile',
+    promises: 'promise',
+    worldPlaces: 'world_place'
+};
+
 var TavernHelperCompat = {
     _slashCommands: {},
     _pipeValue: '',
@@ -1066,7 +1088,7 @@ var GameMemory = {
         }
         var ltm = old.longTermMemory || {};
         if (ltm.worldAnchors && ltm.worldAnchors.length > 0) {
-            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
+            var typeMap = _FACT_OLDTYPE_TO_NEWKEY;  // 【P1-阶段5-去重】引用顶部常量
             ltm.worldAnchors.forEach(function(a) {
                 var key = typeMap[a.type] || 'settings';
                 if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
@@ -3068,7 +3090,7 @@ var GameMemory = {
     // 【P2清理】删除 getRelativeTime（全项目零调用）
     addWorldAnchor: function(type, content, source, createdTurn) {
         var self = this;
-        var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
+        var typeMap = _FACT_OLDTYPE_TO_NEWKEY;  // 【P1-阶段5-去重】引用顶部常量
         var key = typeMap[type] || type;
         if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
         if (self.permanentFacts[key].some(function(a) { return a && a.content === content; })) return null;
@@ -3820,7 +3842,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         }
         // worldAnchors: 从 permanentFacts 映射（只读快照）
         var worldAnchors = [];
-        var typeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
+        var typeMap = _FACT_NEWKEY_TO_OLDTYPE;  // 【P1-阶段5-去重】引用顶部常量
         Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; var list = self.permanentFacts[key]; if (Array.isArray(list)) list.forEach(function(a) { if (a) worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
         // 【P1修复BUG-011-longTermMemory只读快照】characterTable/itemTable/locationTable/relationships
         // 改为深拷贝快照，禁止外部通过引用直接写入 tables.characters/items/locations/relationships。
@@ -3863,7 +3885,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         var self = this;
         // 恢复永久事实
         if (val.worldAnchors && Array.isArray(val.worldAnchors)) {
-            var typeMap = { pc_identity: 'pcIdentity', setting: 'settings', world_rule: 'worldRules', npc_profile: 'npcProfiles', promise: 'promises', world_place: 'worldPlaces' };
+            var typeMap = _FACT_OLDTYPE_TO_NEWKEY;  // 【P1-阶段5-去重】引用顶部常量
             val.worldAnchors.forEach(function(a) {
                 if (!a) return;
                 var key = typeMap[a.type] || 'settings';
@@ -4359,7 +4381,7 @@ var MemoryManagerUI = {
         var type = document.getElementById('newFactType').value;
         var content = (document.getElementById('newFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
-        var oldTypeMap = { pcIdentity: 'pc_identity', settings: 'setting', worldRules: 'world_rule', npcProfiles: 'npc_profile', promises: 'promise', worldPlaces: 'world_place' };
+        var oldTypeMap = _FACT_NEWKEY_TO_OLDTYPE;  // 【P1-阶段5-去重】引用顶部常量
         var result = gm.addWorldAnchor(oldTypeMap[type] || type, content, 'manual', gm.currentTurn);
         if (result) {
             gm.saveToStorage(); UI.toast && UI.toast('已添加');

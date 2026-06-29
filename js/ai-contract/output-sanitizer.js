@@ -2,6 +2,10 @@
 // 输出清理器
 // 清理 AI 输出中的思维链、HTML、光标符号、JSON 前缀等噪声
 // ========================================
+// 【P1-13修复】思维链标签集合统一常量：output-sanitizer 与 response-parser 共享
+// 旧代码：output-sanitizer 用 7 标签（硬编码在 7 个 replace 里），response-parser 用 5 标签数组
+// 现统一为常量，两处引用，消除标签集不一致隐患
+const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT'];
 const OutputSanitizer = {
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
@@ -27,18 +31,16 @@ const OutputSanitizer = {
 
     stripThinking(text) {
         if (!text || typeof text !== 'string') return '';
-        // 【P2-2修复】统一标签集合：原仅处理 thinking/ECoT/analysis/💭，
-        // response-parser._stripThinkingTokens 另处理 think/reasoning/thought。
-        // 现合并为统一超集，消除两份标签集合不一致的隐患。
+        // 【P1-13修复】用 THINKING_TAGS 常量循环生成正则，避免标签集合与 response-parser 不一致
         // 标签支持属性（\b[^>]*），如 <think type="x">。
-        return text
-            .replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, '')
-            .replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking\s*>/gi, '')
-            .replace(/<reasoning\b[^>]*>[\s\S]*?<\/reasoning\s*>/gi, '')
-            .replace(/<thought\b[^>]*>[\s\S]*?<\/thought\s*>/gi, '')
-            .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis\s*>/gi, '')
-            .replace(/<ECoT\b[^>]*>[\s\S]*?<\/ECoT\s*>/gi, '')
-            .replace(/💭[\s\S]*?💭/g, '');
+        var s = text;
+        for (var i = 0; i < THINKING_TAGS.length; i++) {
+            var tag = THINKING_TAGS[i];
+            var re = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?</' + tag + '\\s*>', 'gi');
+            s = s.replace(re, '');
+        }
+        // 💭 是 emoji 包围（非标签），单独处理
+        return s.replace(/💭[\s\S]*?💭/g, '');
     },
 
     stripHTMLAndCursors(text) {
