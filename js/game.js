@@ -506,6 +506,10 @@ function buildSystemPrompt(includeFormatRules) {
         if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.permanentFacts) {
             _pcIdentity = EnhancedMemory.permanentFacts.pcIdentity || '';
         }
+        // 【P2-32修复】统一走 PromptBuilder：includeFormatRules=false 时通过
+        // ctx.skipDefaultFormat 让 format section 返回空字符串，不再手工拼装。
+        // 原手工路径丢失 identity/world/terms/protagonist/preference/state/workflow/gametime
+        // 等关键上下文，导致预设场景下 AI 缺失游戏状态信息。
         var ctx = {
             setupText: _setupText,
             userPrompt: _safeUserPrompt,
@@ -521,6 +525,7 @@ function buildSystemPrompt(includeFormatRules) {
             termsPrompt: _termsPrompt,
             formatAnchor: _formatAnchor,
             formatRules: _formatRules,
+            skipDefaultFormat: !includeFormatRules,
             gameTime: (gameState && gameState.gameTime) || {},
             pureTextMode: !!(gameState && gameState.pureTextMode),
             generateChoices: !(gameState && gameState.generateChoices === false),
@@ -528,16 +533,7 @@ function buildSystemPrompt(includeFormatRules) {
             worldTerms: _terms,
             turn: turn
         };
-        var prompt = PromptBuilder.buildSystemPrompt(ctx);
-        // 保持原有 includeFormatRules=false 时的简化行为：只要设定/记忆/格式锚点
-        if (!includeFormatRules) {
-            return [_setupText, _narrativeEnhancement,
-                _memoryText ? '【当前状态】（始终生效>本轮变化>旧记录）\n' + _memoryText : '',
-                _chatContextText, _formatAnchor].filter(Boolean).join('\n\n');
-        }
-        // 【阶段4清理】原后置补丁已删除：termsPrompt/formatAnchor 已注册为 PromptBuilder section
-        // (terms order=25, formatAnchor order=71)，由 PromptBuilder.buildSystemPrompt 统一组装
-        return prompt;
+        return PromptBuilder.buildSystemPrompt(ctx);
     }
 
     // 【P1修复BUG-011-prompt构建】删除 legacy 双路径：PromptBuilder 已稳定接入

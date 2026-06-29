@@ -193,7 +193,12 @@ const PromptBuilder = {
         }, { order: 60 });
 
         // format：输出格式要求
+        // 【P2-32修复】支持 ctx.skipDefaultFormat：预设场景下预设自带格式规则，
+        // 跳过默认 format section（仍保留 formatAnchor 硬锚点）。
+        // 原实现 game.js 在 includeFormatRules=false 时绕过 PromptBuilder 手工拼装，
+        // 丢失 identity/world/terms/protagonist/preference/state/workflow/gametime 等上下文。
         this.registerSection('format', function(ctx) {
+            if (ctx.skipDefaultFormat) return '';
             if (ctx.formatRules) return ctx.formatRules;
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
             const hasChoices = ctx.generateChoices !== false;
