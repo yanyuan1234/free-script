@@ -122,13 +122,19 @@ const ResponseParser = {
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;
+        // 【P2-2修复】Step 1 改调 OutputSanitizer.stripThinking，统一标签集合。
+        // 标签集合已合并为超集（think/thinking/reasoning/thought/analysis/ECoT/💭）。
+        // Step 2-3 的截断检测逻辑保留在此处（OutputSanitizer 无此能力）。
         var tags = ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
-
-        // Step 1: 剥离所有配对思考块（\b[^>]* 支持标签带属性，如 <think type="x">）
-        for (var i = 0; i < tags.length; i++) {
-            var tag = tags[i];
-            var pairRe = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?</' + tag + '\\s*>', 'gi');
-            s = s.replace(pairRe, '');
+        if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking) {
+            s = OutputSanitizer.stripThinking(s);
+        } else {
+            // fallback：OutputSanitizer 不可用时用原逻辑
+            for (var i = 0; i < tags.length; i++) {
+                var tag = tags[i];
+                var pairRe = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?</' + tag + '\\s*>', 'gi');
+                s = s.replace(pairRe, '');
+            }
         }
 
         // Step 2: 检查是否有未匹配的开标签（思考末尾被 max_tokens 截断，无闭标签）

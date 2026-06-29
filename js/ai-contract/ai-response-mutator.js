@@ -586,29 +586,34 @@ const AIResponseMutator = {
         });
 
         // 3. 合并图谱条目到 StateManager.entities.relationships（max 10）
-        // _syncLegacyMirror 自动同步到 gameState.relationships（供 renderRelationships 读取）
-        if (graphEntries.length > 0 && typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
-            var existing = StateManager.get('entities.relationships') || [];
-            if (!Array.isArray(existing)) existing = [];
-            // 合并：相同 from↔to 对（双向算同一对）更新，新对追加
-            graphEntries.forEach(function(nr) {
-                var existIdx = -1;
-                for (var i = 0; i < existing.length; i++) {
-                    var er = existing[i];
-                    if ((er.from === nr.from && er.to === nr.to) || (er.from === nr.to && er.to === nr.from)) {
-                        existIdx = i;
-                        break;
+        // 【P2-4修复】改调 RelationshipMutator.mergeRelationships，消除手写"双向匹配+上限10条"重复逻辑。
+        // 原代码 line 593-611 与 RelationshipMutator.mergeRelationships (relationship-mutator.js:18-37) 完全重复。
+        // 现统一委托，_syncLegacyMirror 自动同步到 gameState.relationships。
+        if (graphEntries.length > 0) {
+            if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
+                RelationshipMutator.mergeRelationships(graphEntries, { silent: true });
+            } else if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+                // fallback：RelationshipMutator 不可用时用原逻辑
+                var existing = StateManager.get('entities.relationships') || [];
+                if (!Array.isArray(existing)) existing = [];
+                graphEntries.forEach(function(nr) {
+                    var existIdx = -1;
+                    for (var i = 0; i < existing.length; i++) {
+                        var er = existing[i];
+                        if ((er.from === nr.from && er.to === nr.to) || (er.from === nr.to && er.to === nr.from)) {
+                            existIdx = i;
+                            break;
+                        }
                     }
-                }
-                if (existIdx !== -1) {
-                    existing[existIdx] = nr;
-                } else {
-                    existing.push(nr);
-                }
-            });
-            // 上限 10 条（保留最近），与 legacy mergeRelationships 一致
-            if (existing.length > 10) existing = existing.slice(-10);
-            StateManager.set('entities.relationships', existing, { silent: true });
+                    if (existIdx !== -1) {
+                        existing[existIdx] = nr;
+                    } else {
+                        existing.push(nr);
+                    }
+                });
+                if (existing.length > 10) existing = existing.slice(-10);
+                StateManager.set('entities.relationships', existing, { silent: true });
+            }
 
             // 4. 推送到 gm.tables.relationships（供 MemoryManagerUI + 存档读取）
             // _syncLegacyMirror 已将 entities.relationships 同步到 gameState.relationships，
@@ -619,8 +624,9 @@ const AIResponseMutator = {
                 }
             } else if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
                 // 兜底：直接推送（与 core.js _pushRelationshipsToGM 逻辑一致）
+                var _existingForGM = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.relationships') || []) : [];
                 if (!window.GameMemory.tables.relationships) window.GameMemory.tables.relationships = {};
-                existing.forEach(function(r) {
+                _existingForGM.forEach(function(r) {
                     if (!r || !r.from || !r.to) return;
                     var key = r.from + '->' + r.to;
                     if (window.GameMemory.tables.relationships[key]) {

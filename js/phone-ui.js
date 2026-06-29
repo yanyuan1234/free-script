@@ -100,6 +100,18 @@ function favToWidth(fav) {
     return Math.max(0, Math.min(100, 50 + fav / 2));
 }
 
+// 【P2-8修复】拉伸容器第一个子元素填满剩余空间，消除 4+ 处重复样板
+// 模式：content.innerHTML = ...; var child = content.firstElementChild;
+//       if (child) { child.style.flex = '1'; child.style.minHeight = '0'; }
+function _stretchFirstChild(container) {
+    if (!container) return;
+    var child = container.firstElementChild;
+    if (child) {
+        child.style.flex = '1';
+        child.style.minHeight = '0';
+    }
+}
+
 // 【P2-26修复】魔法数字抽常量，消除散落各处的硬编码数值
 // - 头像相关：AVATAR_MAX_DIM / AVATAR_MAX_SIZE（2 处使用，位于 3862/3875 与 6800/6812）
 // - NPC 聊天历史裁剪阈值与保留条数（7130/7131）
@@ -2042,7 +2054,7 @@ function toggleMomentLike(idx) {
     autoSave();
     // 刷新朋友圈页面
     var content = document.getElementById('logSubContent');
-    if (content) { content.innerHTML = renderMomentsPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
+    if (content) { content.innerHTML = renderMomentsPage(); _stretchFirstChild(content); }
 }
 function showMomentCommentInput(idx, el) {
     var box = document.getElementById('momentCommentBox_' + idx);
@@ -2062,7 +2074,7 @@ function sendMomentComment(idx) {
     UI.toast('评论成功');
     // 刷新朋友圈页面
     var content = document.getElementById('logSubContent');
-    if (content) { content.innerHTML = renderMomentsPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
+    if (content) { content.innerHTML = renderMomentsPage(); _stretchFirstChild(content); }
 }
 
 function renderForumPage() {
@@ -2790,7 +2802,7 @@ function buyShopItem(index) {
     autoSave();
     var newCurrency = getPlayerMoney();
     var content = document.getElementById('logSubContent');
-    if (content) { content.innerHTML = renderShopPage(); var child = content.firstElementChild; if (child) { child.style.flex = '1'; child.style.minHeight = '0'; } }
+    if (content) { content.innerHTML = renderShopPage(); _stretchFirstChild(content); }
     var shopBal = document.getElementById('shopBalanceDisplay');
     if (shopBal) shopBal.textContent = newCurrency;
     var balanceAmount = document.querySelector('.items-balance-amount');

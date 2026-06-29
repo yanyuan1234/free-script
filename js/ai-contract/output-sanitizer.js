@@ -27,10 +27,17 @@ const OutputSanitizer = {
 
     stripThinking(text) {
         if (!text || typeof text !== 'string') return '';
+        // 【P2-2修复】统一标签集合：原仅处理 thinking/ECoT/analysis/💭，
+        // response-parser._stripThinkingTokens 另处理 think/reasoning/thought。
+        // 现合并为统一超集，消除两份标签集合不一致的隐患。
+        // 标签支持属性（\b[^>]*），如 <think type="x">。
         return text
-            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-            .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
-            .replace(/<analysis>[\s\S]*?<\/analysis>/gi, '')
+            .replace(/<think\b[^>]*>[\s\S]*?<\/think\s*>/gi, '')
+            .replace(/<thinking\b[^>]*>[\s\S]*?<\/thinking\s*>/gi, '')
+            .replace(/<reasoning\b[^>]*>[\s\S]*?<\/reasoning\s*>/gi, '')
+            .replace(/<thought\b[^>]*>[\s\S]*?<\/thought\s*>/gi, '')
+            .replace(/<analysis\b[^>]*>[\s\S]*?<\/analysis\s*>/gi, '')
+            .replace(/<ECoT\b[^>]*>[\s\S]*?<\/ECoT\s*>/gi, '')
             .replace(/💭[\s\S]*?💭/g, '');
     },
 
