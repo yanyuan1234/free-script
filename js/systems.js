@@ -175,10 +175,10 @@ var QuestSystem = {
         const self = this;
         // 【优化】主线 → 支线 → 隐藏，进行中 → 已完成 → 已失败
         var typeOrder = { '主线': 0, '支线': 1, '隐藏': 2 };
-        // 合入自定义类型的排序
-        for (var k in QuestSystem._customTypes) { typeOrder[QuestSystem._customTypes[k].label] = QuestSystem._customTypes[k].sortOrder; }
+        // 【P2-10修复】删除 _customTypes/_customStatuses 的 for-in 循环
+        // 动态类型注册系统（registerType/registerStatus）已在 systems.js:14 删除，
+        // _customTypes/_customStatuses 从未定义，for-in 循环遍历 undefined 无效果且易误导
         var statusOrder = { '进行中': 0, '已完成': 1, '已失败': 2, '已放弃': 3 };
-        for (var k in QuestSystem._customStatuses) { statusOrder[QuestSystem._customStatuses[k].label] = QuestSystem._customStatuses[k].sortOrder; }
         var sorted = quests.slice().sort(function(a, b) {
             var ta = typeOrder[a.type] !== undefined ? typeOrder[a.type] : 99;
             var tb = typeOrder[b.type] !== undefined ? typeOrder[b.type] : 99;
