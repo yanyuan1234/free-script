@@ -2,7 +2,7 @@
 // 角色变更器 - CharacterMutator
 // ========================================
 const CharacterMutator = {
-    // 【P2-5修复】公共主角过滤方法，消除 game.js mergeCharacters 与
+
     // AIResponseMutator._applyCharacters 的重复实现（两处 filter 逻辑完全一致）
     // 过滤规则：name 非空字符串 → 排除 undefined/null → 排除主角（含子串互含匹配）
     filterOutPlayer(chars) {
@@ -26,7 +26,7 @@ const CharacterMutator = {
 
     // 设置角色列表
     setCharacters(characters, options) {
-        // 【P0修复BUG-005】类型安全：characters 可能是单个对象或非数组，强制转为数组
+
         const arr = Array.isArray(characters) ? characters : (characters ? [characters] : []);
         const normalized = arr.map(this.normalizeCharacter.bind(this)).filter(Boolean);
         // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 allCharacters
@@ -34,11 +34,11 @@ const CharacterMutator = {
     },
 
     // 合并角色：同名更新，新名追加
-    // 【修复BUG-005】增加模糊匹配：NPC 自报姓名时（如"补丁长袍女孩"→"莉莉安"），
+
     // 通过描述重叠识别为同一角色并合并，避免人际关系/聊天/排行榜出现重复条目。
     mergeCharacters(characters, options) {
         var self = this;
-        // 【P0修复BUG-005】类型安全：
+
         // 1. characters 可能是单个对象或非数组，强制转为数组
         // 2. StateManager.get 返回值可能不是数组（脏数据），用 Array.isArray 兜底
         const inputList = Array.isArray(characters) ? characters : (characters ? [characters] : []);
@@ -82,7 +82,7 @@ const CharacterMutator = {
         return String(name).replace(/[（(].*?[）)]/g, '').trim();
     },
 
-    // 【修复BUG-005】模糊匹配：识别同一角色的不同名称
+
     // 策略：新角色的 desc 包含现有角色名（或反之），且匹配片段≥3字，视为同一角色
     _findFuzzyMatch(list, newChar) {
         if (!list || list.length === 0 || !newChar) return -1;
@@ -135,7 +135,7 @@ const CharacterMutator = {
         return this.setCharacters(updated, options);
     },
 
-    // 【阶段1统一】整字段替换（用于NPC编辑面板等需要替换多个字段的场景）
+
     // name: 旧角色名（用于查找），newChar: 完整角色对象（替换后）
     replaceCharacter(name, newChar, options) {
         const normalized = this.normalizeCharacter(newChar);
@@ -163,7 +163,7 @@ const CharacterMutator = {
         return this.setCharacters(updated, options);
     },
 
-    // 【阶段1统一】删除角色（替代直接 delete gameState.allCharacters[name]）
+
     removeCharacter(name, options) {
         if (!name) return false;
         const characters = StateManager.get('entities.characters') || [];
@@ -172,14 +172,14 @@ const CharacterMutator = {
         return this.setCharacters(filtered, options);
     },
 
-    // 【阶段1统一】获取单个角色（深拷贝，安全）
+
     getCharacter(name) {
         const characters = StateManager.get('entities.characters') || [];
         return characters.find(function(c) { return c.name === name; }) || null;
     },
 
     // 标准化角色
-    // 【P1修复BUG-4.15】统一 character schema：CharacterMutator 为权威 schema。
+
     // - name 为身份字段
     // - 保留 GameMemory 运行时字段（mood/location/outfit/status/history/gameTime/
     //   accessCount/lastChangedTurn/locked），避免 mutator 回写时丢失这些累积状态
@@ -207,7 +207,7 @@ const CharacterMutator = {
             tags: Array.isArray(raw.tags) ? raw.tags : [],
             stats: this.normalizeStats(raw.stats),
             notes: raw.notes || '',
-            // 【P1修复BUG-4.15】GameMemory 运行时字段（避免回写丢失）
+
             mood: raw.mood || '',
             location: raw.location || '',
             outfit: raw.outfit || '',
@@ -221,7 +221,7 @@ const CharacterMutator = {
     },
 
     // 标准化状态值
-    // 【P1修复BUG-4.12】字段名统一为 {label, value}（原 {name, value}），
+
     // 与 ai-output-schema.js 的 player.stats 归一化保持一致，下游 UI 统一通过 s.label 读取
     normalizeStats(stats) {
         if (!stats) return [];

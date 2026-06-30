@@ -45,7 +45,7 @@ const StateSchema = {
                     stats: [],
                     level: 1,
                     exp: 0,
-                    // 【P1-PU8 阶段4】玩家头像（base64 dataURL），由设置页面上传
+
                     avatar: ''
                 },
                 characters: [],
@@ -55,7 +55,7 @@ const StateSchema = {
                 events: [],
                 currency: 0,
                 currencyName: '金币',
-                // 【阶段5】relationships 纳入 schema 管理（原为 gameState.relationships 旧字段）
+
                 relationships: []
             },
             time: {
@@ -68,13 +68,13 @@ const StateSchema = {
                 lastChoices: [],
                 logSubPage: '',
                 lastHUD: null,
-                // 【阶段5】worldModules 纳入 schema 管理（原为 gameState._worldModules 旧字段）
+
                 // 40处UI读取点依赖，原 _syncLegacyMirror 完全未覆盖
                 worldModules: [],
-                // 【阶段1】撤销栈（替代 gameState._undoHistory）
+
                 undoHistory: [],
                 maxUndoHistory: 50,
-                // 【阶段1】UI 临时状态（纳入 schema 统一管理）
+
                 notifSeenSnapshot: null,
                 lastRankSnapshot: null,
                 lastInputTokens: 0,
@@ -85,7 +85,7 @@ const StateSchema = {
                 lastCotContent: '',
                 worldSnapshot: {}
             },
-            // 【P1-PU9 阶段4】UI/UX 设置字段
+
             // 替代原 gameState.fontSize / autoCompress / summaryThreshold / useStream / writingStyle
             // / pinnedModules 直写，纳入 StateManager 统一管理
             settings: {
@@ -95,14 +95,14 @@ const StateSchema = {
                 useStream: true,
                 writingStyle: '',
                 pinnedModules: {},
-                // 【阶段1】扩展：补齐未注册字段，消除 30+ 处 gameState.xxx 直写
+
                 cotMode: false,                  // 是否启用 CoT(思维链)输出
                 chapterMode: false,              // 是否按章节生成
                 presetArchetype: 'standard',     // 预设原型(standard / coc / etc.)
                 wordCountConfig: { min: 200, max: 800 },  // 每次 AI 输出字数范围
                 generateChoices: true,           // 是否在 AI 输出末尾生成选项(覆盖 world.generateChoices)
                 narrativeEyes: 'first',          // 叙事视角(first / second / third)
-                // 【阶段1】API 临时测试状态
+
                 apiTestingSlot: -1
             }
         };
@@ -131,41 +131,40 @@ const StateSchema = {
         'currency': 'entities.currency',
         'currencyName': 'entities.currencyName',
         'keyEvents': 'entities.events',
-        // 【阶段5】relationships 和 _worldModules 纳入映射
+
         'relationships': 'entities.relationships',
         '_worldModules': 'ui.worldModules',
         'gameTime': 'time',
         '_lastChoices': 'ui.lastChoices',
         '_lastHUD': 'ui.lastHUD',
         'currentPage': 'ui.currentPage',
-        // 【P1-PU9 阶段4】UI/UX 设置字段纳入状态层
+
         'fontSize': 'settings.fontSize',
         'autoCompress': 'settings.autoCompress',
         'summaryThreshold': 'settings.summaryThreshold',
         'useStream': 'settings.useStream',
         'writingStyle': 'settings.writingStyle',
         'pinnedModules': 'settings.pinnedModules',
-        // 【阶段1】扩展：补齐未注册字段
+
         'cotMode': 'settings.cotMode',
         'chapterMode': 'settings.chapterMode',
         'presetArchetype': 'settings.presetArchetype',
         'wordCountConfig': 'settings.wordCountConfig',
         'narrativeEyes': 'settings.narrativeEyes',
         'apiTestingSlot': 'settings.apiTestingSlot',
-        // 【阶段1】撤销栈纳入 schema 管理(替代 gameState._undoHistory 旧字段)
+
         'undoHistory': 'ui.undoHistory',
         '_undoHistory': 'ui.undoHistory',
-        // 【阶段1】通知快照、榜单快照等 UI 临时状态
+
         '_notifSeenSnapshot': 'ui.notifSeenSnapshot',
         '_lastRankSnapshot': 'ui.lastRankSnapshot',
-        '_lastChoices': 'ui.lastChoices',
         '_lastInputTokens': 'ui.lastInputTokens',
         '_lastContextUsage': 'ui.lastContextUsage',
         '_lastTruncated': 'ui.lastTruncated',
         '_lastValidationWarning': 'ui.lastValidationWarning',
         '_lastOriginalContent': 'ui.lastOriginalContent',
         '_lastCotContent': 'ui.lastCotContent',
-        // 【阶段1】存档撤销相关
+
         '_MAX_UNDO_HISTORY': 'ui.maxUndoHistory',
         'worldSnapshot': 'ui.worldSnapshot'
     },
@@ -221,7 +220,7 @@ const StateSchema = {
         if (!state || typeof state !== 'object') {
             return this.getDefaultState();
         }
-        // 【P0-2.6 阶段3-1】旧货币字段迁移：money/coins → entities.currency
+
         // 旧存档可能用 gameState.money 或 gameState.coins 存货币，
         // 启动时一次性迁移到 entities.currency，然后从旧字段删掉避免下次再走 fallback
         if (state.entities && typeof state.entities.currency !== 'number') {
@@ -239,7 +238,7 @@ const StateSchema = {
         // 处理旧字段映射：把旧字段迁移到新路径
         for (const legacyName in this._legacyToPath) {
             if (legacyName.indexOf('.') !== -1) {
-                // 【P1修复】嵌套旧字段（如 _stats.totalTurns）需特殊处理
+
                 // _deepMerge 会把 _stats 原样保留到 result._stats，但新代码读 progress.turn
                 if (legacyName === '_stats.totalTurns') {
                     if (state._stats && state._stats.totalTurns !== undefined) {
@@ -259,7 +258,7 @@ const StateSchema = {
     },
 
     // 深拷贝
-    // 【P1修复】防止原型污染：跳过 __proto__/constructor/prototype 键
+
     deepClone(obj) {
         if (obj === null || typeof obj !== 'object') return obj;
         if (Array.isArray(obj)) {
@@ -281,7 +280,7 @@ const StateSchema = {
     },
 
     // 深合并（source 覆盖 target）
-    // 【P1修复】防止原型污染：跳过 __proto__/constructor/prototype 键
+
     _deepMerge(target, source) {
         if (!source || typeof source !== 'object') return target;
         const keys = Object.keys(source);
@@ -301,7 +300,7 @@ const StateSchema = {
     },
 
     // 按点分路径设置值
-    // 【P1修复】防止原型污染：跳过危险键
+
     _setByPath(obj, path, value) {
         if (!path) return;
         const parts = path.split('.');

@@ -4,7 +4,7 @@
 // ========================================
 // TypewriterBuffer.render 已内置优化，无需覆盖
 
-// 【P3-6修复】合并重复注释块
+
 GlobalCleanup.registerListener(window, 'error', function(e) {
     // 过滤图片/CSS等资源加载错误（不显示给用户）
     if (e.target && (e.target.tagName === 'IMG' || e.target.tagName === 'LINK' || e.target.tagName === 'SCRIPT')) {
@@ -24,7 +24,7 @@ GlobalCleanup.registerListener(window, 'unhandledrejection', function(e) {
     e.preventDefault();
 });
 
-// 【P1-7】原 patch.js gameState 路径兜底初始化迁入 init.js
+
 if (typeof gameState === 'undefined') {
     window.gameState = {};
 }
@@ -105,7 +105,7 @@ async function initApp() {
         await SaveDB.migrate();
         loadGameSettings();
 
-        // 【修复 P1】崩溃恢复检查：beforeunload 写入的 AUTO_SAVE_BACKUP 此前只写不读，
+
         // 导致崩溃后备份就在 localStorage 里却无法恢复。这里检查备份是否比自动存档更新
         try {
             var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
@@ -142,10 +142,10 @@ async function initApp() {
         // 绑定事件
         bindEvents();
 
-        // 【P1-8 阶段3】game.js 原文件加载时立即执行的 DOM 操作，收拢到 initApp 统一调用
+
         if (typeof registerGameStartListener === 'function') registerGameStartListener();
 
-        // 【P0-2修复】删除 _setupGlobalEventDelegation 调用。
+
         // utils.js:62-104 的 _globalA11yDelegate 已是统一的 data-action 委托（支持 kebab→camelCase 自动转换），
         // init.js 此处的委托是重复注册，且仅处理 toggle-thought 一个 action。
         // toggleThought 现已兼容 utils.js 委托的 fn.call(actEl) 调用约定（trigger = trigger || this）。
@@ -167,7 +167,7 @@ async function initApp() {
         }
 
         // 隐藏加载指示器
-        // 【P0修复BUG-009】改用 .is-hidden 状态类触发 opacity 过渡（0.3s 淡出），
+
         // 原 .hidden 类被 base.css .hidden{display:none!important} 覆盖，
         // 导致淡出动画失效、元素立即消失。400ms 后从 DOM 移除（略长于 300ms 过渡）。
         const loadingEl = document.getElementById('appLoading');
@@ -176,7 +176,7 @@ async function initApp() {
             TimerManager.setTimeout('hideLoading', () => { if (loadingEl.parentNode) loadingEl.remove(); }, 400);
         }
 
-        // 【阶段三】运行时基础可访问性增强
+
         enhanceAccessibility();
     } catch(initErr) {
         console.error('[INIT] 初始化失败:', initErr);
@@ -190,7 +190,7 @@ async function initApp() {
     }
 }
 
-// 【阶段三】运行时基础可访问性增强：为大量静态 HTML 补丁式补充 ARIA 属性
+
 function enhanceAccessibility() {
     try {
         // 1. 所有无 type 的 button 默认设为 type="button"，避免表单默认提交
@@ -272,7 +272,7 @@ if (document.readyState === 'loading') {
     initApp();
 }
 
-// 【P2-19 阶段2】原 index.html 内联脚本外置：narrativeEyes 可调开关绑定
+
 (function() {
     document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
         cb.addEventListener('change', function() {
@@ -290,40 +290,7 @@ if (document.readyState === 'loading') {
     });
 })();
 
-// 【P2-19 阶段2】原 index.html 内联脚本外置：版本徽章点击清缓存 + 硬刷
-(function () {
-    function bind() {
-        var badge = document.getElementById('buildVersionBadge');
-        if (!badge || badge.__bound) return;
-        badge.__bound = true;
-        badge.addEventListener('click', async function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-                if (window.caches && caches.keys) {
-                    var keys = await caches.keys();
-                    await Promise.all(keys.map(function (k) { return caches.delete(k); }));
-                }
-            } catch (err) { /* ignore */ }
-            try {
-                if (window.localStorage) {
-                    // 不清用户的游戏存档，只清"导航历史/会话"类缓存
-                }
-            } catch (err) { /* ignore */ }
-            // 硬刷（绕过 HTTP 缓存）
-            var u = new URL(window.location.href);
-            u.searchParams.set('_', Date.now().toString(36));
-            window.location.replace(u.toString());
-        });
-    }
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bind);
-    } else {
-        bind();
-    }
-})();
 
-// 【P2-D13 阶段4】暴露 FreeScript 命名空间与 unmount 入口
 // 便于热重载 / 嵌入场景下主动释放监听器与定时器
 window.FreeScript = window.FreeScript || {};
 window.FreeScript.unmount = function() {
@@ -338,7 +305,7 @@ window.FreeScript.unmount = function() {
     if (typeof initApp === 'function') initApp._initialized = false;
 };
 
-// 【P0-2修复】已删除 _setupGlobalEventDelegation 函数。
+
 // 原因：与 utils.js:62-104 的 _globalA11yDelegate 重复注册 document click 事件委托。
 // utils.js 版本已支持 kebab→camelCase 自动转换（toggle-thought → toggleThought），
 // 且 toggleThought 已兼容 fn.call(actEl) 调用约定，无需此处的 actionHandlers 路由表。

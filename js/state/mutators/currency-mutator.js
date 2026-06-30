@@ -1,7 +1,7 @@
 // ========================================
 // 货币变更器 - CurrencyMutator
 // ========================================
-// 【P1-PU1 阶段2-1】统一货币读写入口，替代 phone-ui.js 的
+
 //   - getPlayerMoney()     4 套 fallback 链 (gameState.currency || money || coins || 0)
 //   - subtractPlayerMoney() 直写 gameState.currency -= amount（绕开 StateManager）
 //   - getCurrencyName()    直读 gameState.currencyName

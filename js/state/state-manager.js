@@ -8,7 +8,7 @@ const StateManager = {
     _inTransaction: false,
     _pendingChanges: [],
     _transactionBackup: null,   // 事务快照，用于真正回滚
-    // 【P1修复P1-J】删除 _legacyMode 字段：原注释"迁移期间允许 getLegacy/setLegacy"但全项目零读取，
+
     // 是一个误导性的"撛设开关"（永远为 true，无切换为 false 的路径）。
     // getLegacy/setLegacy 当前仍在使用（_syncLegacyMirror 桥接 gameState ↔ StateManager），
     // 是否可用由方法本身的存在性决定，无需此标志。
@@ -100,7 +100,7 @@ const StateManager = {
     },
 
     // 事务：批量变更，结束时统一通知
-    // 【P0修复】真正回滚：进入事务前保存快照，异常时恢复
+
     transaction(fn) {
         if (this._inTransaction) {
             // 嵌套事务直接执行（由最外层事务统一保证回滚）
@@ -138,7 +138,7 @@ const StateManager = {
     // 内部：同步镜像到旧字段名（数据断层修复）
     // 新路径写入后，同时写入对应的旧顶层字段，保证 UI 直接读 gameState.xxx 不为空
     //
-    // 【P1修复BUG-5.3】_syncLegacyMirror 是单向只读镜像（StateManager → legacy gameState 字段）。
+
     // - 方向：仅 StateManager.set → gameState.<legacy>（供 UI 读取兼容）
     // - 禁止：UI 层不可直接写 gameState.<legacy>（绕过 StateManager 会导致两份数据不同步）
     // - 迁移路径（3 阶段）：
@@ -160,7 +160,7 @@ const StateManager = {
             this._state[legacyName] = obj;
             return;
         }
-        // 【阶段5修复bug】progress.turn → _stats.totalTurns 的镜像因 key 含 '.' 未生效
+
         // _legacyToPath 中 '_stats.totalTurns' 是嵌套路径，getLegacyName 返回 '_stats.totalTurns'，
         // 但 this._state['_stats.totalTurns'] 是字面量属性，不会写入 _state._stats.totalTurns
         if (path === 'progress.turn') {
@@ -168,7 +168,7 @@ const StateManager = {
             this._state._stats.totalTurns = value;
             return;
         }
-        // 【阶段1-A2】entities.events（对象数组）→ keyEvents（字符串数组）
+
         // StateManager.entities.events 是对象数组 [{content, turn, importance, ...}]
         // gameState.keyEvents 是旧格式字符串数组，供 indexOf 等使用
         // 转换确保两种 schema 各自一致，避免对象/字符串混用
@@ -217,7 +217,7 @@ const StateManager = {
     },
 
     // 内部：通知订阅者
-    // 【性能优化】按监听器 pattern 只拷贝相关子树，避免每次全量深拷贝
+
     _notify(changes) {
         if (!changes || changes.length === 0) return;
         const self = this;
@@ -236,7 +236,7 @@ const StateManager = {
 
     // 内部：模式匹配
     // 支持：'**'（全匹配）、'entities.*'（单层通配）、'entities.**'（多层通配）
-    // 【P3-22说明】`**` 仅作为模式末尾的"匹配剩余所有路径段"使用（如 'entities.**'）。
+
     // `**` 出现在中间位置（如 'a.**.b'）不支持递归匹配，会在此处直接 return true
     // （匹配 a 后剩余路径全部命中）。这是已知限制，当前全项目无中间 `**` 用例。
     // 若未来需要严格 glob 风格递归匹配，需重写为回溯算法。

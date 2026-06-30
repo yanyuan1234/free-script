@@ -3,7 +3,7 @@
 // 第7层: 论坛系统
 // ========================================
 //
-// 【P1修复BUG-7.10 / P1-7.16】UI 层绕过 StateManager 直接读写业务状态字段
+
 // -----------------------------------------------------------------------------
 // 项目架构：StateManager 是权威源 + _syncLegacyMirror 单向镜像到 gameState 旧字段
 // （供 UI 读取兼容，参见 state-manager.js 顶部 P1-5.3 注释）。
@@ -32,22 +32,22 @@
 //
 // 注：本会话仅完成短期文档化，物理迁移涉及 80+ 调用点，延后到独立重构任务。
 
-// 【P0-2修复】论坛跨帖联动生成新帖的帖子上限（避免无限生成）
+
 var MAX_FORUM_POSTS = 8;
 
-// 【P0-4修复】CSP 合规：为 _globalA11yDelegate 委托器提供 UI.hideModal / DOM 操作的全局包装
+
 // 委托器只支持 window[funcName]，不支持 UI.hideModal 这种对象方法或 DOM 链式调用，故此处包装
 function hideModalByName(name) {
     if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal(name);
 }
-// 【阶段2·CSP】toggle-thought-bubble 包装：原 onclick 内联 event.stopPropagation + classList.toggle
+
 // 委托器调用时 this 即为 actEl（绑定 data-action 的元素），等价于原 this 语义
 function toggleThoughtBubble() {
     // 由 _globalA11yDelegate 在 click 时调用，event 已在 document 层处理；
     // 这里仅切换 expanded 类，stopPropagation 由调用方在 needed 时处理
     if (this && this.classList) this.classList.toggle('expanded');
 }
-// 【阶段2·CSP】论坛评论输入框回车发送：原为内联 onkeydown（违反 CSP），
+
 // 改为 document 层 keydown 委托，匹配 data-keydown-action="sendForumComment"
 // 仅在 Enter 且无 Shift 时触发（与原逻辑一致）；用 data-keydown-action 而非 data-action
 // 避免被 click 委托器误匹配（click 委托器会查 window[fnName] 并 warn）
@@ -78,7 +78,7 @@ function triggerImportFile() {
     var el = document.getElementById('importFileInput');
     if (el) el.click();
 }
-// 【P2-12修复】空状态渲染工具：统一 4 处简单空状态的 HTML 结构
+
 // 仅抽"纯文字 + 可选 hint"的简单空状态；带 SVG icon 的复杂空状态保留原样（避免参数爆炸）
 function renderEmptyState(msg, hint) {
     var html = '<div class="empty-state"><p>' + escapeHtml(msg || '暂无内容') + '</p>';
@@ -88,7 +88,7 @@ function renderEmptyState(msg, hint) {
 
 
 // ========================================
-// 【P0-2.6 阶段3-1】玩家货币读写 helper —— 全部走 CurrencyMutator
+
 // 单一权威源：StateManager.get('entities.currency')
 // _syncLegacyMirror 自动同步 gameState.currency 旧字段（仅作只读镜像用）
 // 删 gameState.money/coins 旧字段：旧存档若带这两个字段，启动时通过
@@ -97,7 +97,7 @@ function renderEmptyState(msg, hint) {
 function getPlayerMoney() {
     return CurrencyMutator.get();
 }
-// 【P2-16修复】集中 allCharacters 数组访问，消除 4 处 Object.values 重复调用
+
 // 当前为直接访问（无性能问题——4 处均在事件驱动的渲染函数中，非每帧热路径）；
 // 如未来出现性能问题，可在此函数内加缓存 + 在 CharacterMutator 写入时失效。
 function getAllCharactersArray() {
@@ -112,7 +112,7 @@ function subtractPlayerMoney(amount) {
 }
 
 // ========================================
-// 【P0-12修复】conversationHistory 读写 helper —— 全部走 StateManager
+
 // 单一权威源：StateManager.get('progress.conversationHistory')
 // _syncLegacyMirror 自动同步 gameState.conversationHistory 旧字段（仅作只读镜像用）
 // -----------------------------------------------------------------------------
@@ -135,7 +135,7 @@ function _getConversationHistory() {
     }
     return (typeof gameState !== 'undefined' && gameState && gameState.conversationHistory) || [];
 }
-// 【P1-4·阶段8】conversationHistory 快照 helper —— 返回深拷贝
+
 // 用于撤销快照、retryStory 重渲染等需要"不被后续 mutate 污染"的场景
 // 旧代码：phone-ui.js 7 处直读 gameState.conversationHistory 旧镜像
 //   - 5196 saveUndoState 传数组引用给 UndoMutator（最高风险：快照被污染）
@@ -160,17 +160,17 @@ function _updateConversationHistory(newHist) {
 }
 
 // ========================================
-// 【P2-11/12 阶段2】UI 常量统一抽取，避免局部重复定义
+
 // ========================================
 var AVATAR_COLORS = ['#8d6e63', '#03a9f4', '#ff4d4f', '#07c160', '#722ed1', '#fa8c16', '#eb2f96', '#13c2c2', '#1890ff', '#52c41a'];
 
-// 【P2-9修复】好感度转进度条宽度百分比，消除 2 处重复的 Math.max(0, Math.min(100, 50 + fav / 2))
+
 // fav 范围 -100~100，映射到 0~100% 宽度（50% 为中性）
 function favToWidth(fav) {
     return Math.max(0, Math.min(100, 50 + fav / 2));
 }
 
-// 【P2-8修复】拉伸容器第一个子元素填满剩余空间，消除 4+ 处重复样板
+
 // 模式：content.innerHTML = ...; var child = content.firstElementChild;
 //       if (child) { child.style.flex = '1'; child.style.minHeight = '0'; }
 function _stretchFirstChild(container) {
@@ -182,7 +182,7 @@ function _stretchFirstChild(container) {
     }
 }
 
-// 【P2-26修复】魔法数字抽常量，消除散落各处的硬编码数值
+
 // - 头像相关：AVATAR_MAX_DIM / AVATAR_MAX_SIZE（2 处使用，位于 3862/3875 与 6800/6812）
 // - NPC 聊天历史裁剪阈值与保留条数（7130/7131）
 // - 撤销栈上限（与 core.js:1869 _MAX_UNDO_HISTORY / UndoMutator.pushSnapshot 默认值一致）
@@ -193,7 +193,7 @@ var NPC_CHAT_HISTORY_KEEP = 50;                // NPC 聊天历史保留条数�
 var UNDO_HISTORY_LIMIT = 50;                   // 撤销栈上限（toast 显示用，与 core.js _MAX_UNDO_HISTORY 一致）
 
 // ========================================
-// 【P2-阶段3-14】按类型筛选世界模块 helper
+
 // 统一 phone-ui.js 中 13+ 处 (gameState._worldModules || []).filter(m => m.type === 'xxx')
 // 支持单类型字符串或类型数组（兼容 BUG-007 的 comments/forum 双类型）
 // ========================================
@@ -206,7 +206,7 @@ function getModulesByType(type) {
 }
 
 // ========================================
-// 【P2-R1 阶段4】邮件扁平化 helper
+
 // 抽取前：phone-ui.js 内 2 处完全相同 6 行嵌套循环
 //   - renderMailPage (2497-2504)
 //   - openMailDetail (599-606)
@@ -223,7 +223,7 @@ function collectMailsFromModules() {
 }
 
 // ========================================
-// 【P2-R2/A1 阶段4】好感度 → 颜色映射 helper
+
 // 抽取前：phone-ui.js 内 2 处 7 档 favColor 重复硬编码
 //   - renderNpcList 卡片 favColor (7210-7217)
 //   - openNpcDetail 详情页 favColor (7335-7342)
@@ -243,7 +243,7 @@ function favColorOf(fav) {
 
 
 // ========================================
-// 【P2-R5 阶段4】主角设定 inputId → mc 字段名 映射常量
+
 // 抽取前：phone-ui.js 内 2 处 7 字段 mcMap 完全重复定义
 //   - startNewGame (3931-3939)
 //   - 收集主角设定 (4589-4597)
@@ -260,9 +260,8 @@ var MC_FIELD_MAP = {
 };
 
 
-
 // ========================================
-// 【P1-PU5 阶段2-3】API 日志/错误项渲染器
+
 // 抽取前：showApiDetail + refresh handler 共有 4 份完全相同的
 // 12 行内联模板（recentLogs visible/hidden/all + refresh），且 refresh handler
 // 还存在 XSS 隐患（log.error/log.model 未走 escapeHtml）。
@@ -303,7 +302,7 @@ function renderErrorItemHtml(log) {
 }
 
 // ========================================
-// 【P3-P1 阶段4】日志时间格式化 helper
+
 // 抽取前：phone-ui.js 内 3 处 `new Date(log.time).toLocaleString()` 每次新建 Date
 //   - renderLogItemHtml (134)
 //   - renderErrorItemHtml (153)
@@ -410,7 +409,7 @@ function sendForumComment(postIdx, replyToName) {
     var newComment = {
         name: playerName,
         text: text,
-        time: Date.now(),  // 【P2-3修复】持久化存时间戳
+        time: Date.now(),
         isPlayer: true,
         replyTo: replyToName || ''
     };
@@ -509,7 +508,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         if (_forumMemText) sysMsg += '【剧情记忆】\n' + _forumMemText + '\n\n';
     }
     // 注入世界书（让NPC知道世界设定）
-    // 【P1修复BUG-011-世界书入口】删除 `: WorldInfo.buildInjection(...)` 兜底分支
+
     if (typeof getWorldInfoInjection === 'function') {
         var _forumWI = getWorldInfoInjection();
         var _forumWIText = isObject(_forumWI) ? (_forumWI.text || '') : (_forumWI || '');
@@ -526,7 +525,7 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
         '当决定触发新帖时，包装成对象：{"replies": [...], "maySpawnNewPost": true}';
     // 【一致性修复】注入预设写作风格，与主剧情/私聊同步
     sysMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
-    // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user
+
     var _forumMsg = _applyUseSysprompt([{
         role: 'system',
         content: sysMsg
@@ -548,13 +547,13 @@ function requestForumNpcReplies(postIdx, playerText, playerName) {
                     commentMods[postIdx].comments.push({
                         name: r.name,
                         text: r.text,
-                        time: Date.now(),  // 【P2-3修复】持久化存时间戳
+                        time: Date.now(),
                         replyTo: r.replyTo || ''
                     });
                     appendForumReply(postIdx, {
                         name: r.name,
                         text: r.text,
-                        time: Date.now(),  // 【P2-3修复】持久化存时间戳
+                        time: Date.now(),
                         replyTo: r.replyTo || ''
                     });
                     autoSave();
@@ -594,7 +593,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         if (_spawnMemText) sysMsg += '【剧情记忆】\n' + _spawnMemText + '\n\n';
     }
     // 注入世界书（让新帖符合世界设定——P1 修复：跨帖生成前漏注世界书）
-    // 【P1修复BUG-011-世界书入口】删除直调 WorldInfo.buildInjection，统一走 getWorldInfoInjection
+
     if (typeof getWorldInfoInjection === 'function') {
         var _spawnWI = getWorldInfoInjection();
         var _spawnWIText = isObject(_spawnWI) ? (_spawnWI.text || '') : (_spawnWI || '');
@@ -608,7 +607,7 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
         '{"title":"新帖子标题","author":"发帖人昵称","main":"帖子正文"}';
     // 【一致性修复】注入预设写作风格，与主剧情/私聊同步
     sysMsg += (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '');
-    // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user（与其他 side function 一致）
+
     var _spawnMsg = _applyUseSysprompt([{
         role: 'system',
         content: sysMsg
@@ -664,7 +663,7 @@ function switchItemsTab(type, el) {
     var tabs = target.parentElement.querySelectorAll('.items-tab-btn');
     for (var i = 0; i < tabs.length; i++) {
         tabs[i].classList.remove('active');
-        // 【P2-A5 阶段4】tab 切换时同步 aria-selected 状态
+
         tabs[i].setAttribute('aria-selected', 'false');
     }
     target.classList.add('active');
@@ -680,7 +679,7 @@ function filterBagItems(category, el) {
         var tabs = el.parentElement.querySelectorAll('.items-sub-tab');
         for (var i = 0; i < tabs.length; i++) {
             tabs[i].classList.remove('active');
-            // 【P2-A5 阶段4】子 tab 同步 aria-selected
+
             tabs[i].setAttribute('aria-selected', 'false');
         }
         el.classList.add('active');
@@ -750,17 +749,17 @@ function openDiaryDatePicker() {
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
         '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" role="button" tabindex="0" data-action="hideModalByName" data-args=\'["diaryDatePicker"]\'>×</span></div>' +
         dateList.map(function(d) {
-            // 【优化·XSS 修复】旧代码只转义单引号，不防 XSS；新代码先 escapeHtml 再转义单引号
+
             // d 来自 AI 返回的日记数据，可能含恶意字符
             // 【J修复】统一用 escapeAttr（转义 \ ' " < > \n \r），替代 escapeHtml+手动单引号转义
-            // 【阶段2·CSP】onclick → data-action 委托；日期串用 JSON.stringify 保证 JS 字符串安全嵌入 data-args
+
             var safeD = escapeAttr(d);
             return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" role="button" tabindex="0" data-action="diaryJumpToDate" data-args=\'' + JSON.stringify([d]) + '\'>' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div>';
     UI.createModal({ id: 'diaryDatePicker', html: listHtml, persistent: false });
 }
-// 【P2清理】删除 closeDiaryDatePicker（全项目零调用）
+
 function diaryJumpToDate(dateStr) {
     var npcName = gameState._currentDiaryNpc;
     if (!npcName) return;
@@ -849,9 +848,9 @@ function deleteMail(index) {
         }
     }
 }
-// 【P2清理】删除 buildModuleHTML（全项目零调用）
+
 // 模块级：根据 gameState._worldModules 控制 logFeat-calendar / logFeat-author_note 元素显隐
-// 【P0 修复】原定义嵌套在 renderLogPage 内部，外层 typeof 检查永远返回 'undefined'，
+
 // 导致 renderWorldModules 三处调用永远不执行，日历/作者备注入口无法及时刷新。
 function updateLogFeatureVisibility() {
     if (typeof gameState === 'undefined') return;
@@ -871,9 +870,9 @@ function renderWorldModules(modules) {
     var _existingMods = (typeof StateManager !== 'undefined' && StateManager.get)
         ? (StateManager.get('ui.worldModules') || [])
         : (Array.isArray(gameState._worldModules) ? gameState._worldModules : []);
-    // 【修复BUG-007】forum 与 comments 同为论坛类型，都应累积；forum 也需结构标准化
+
     var accumulateTypes = { 'chat': true, 'comments': true, 'forum': true, 'moments': true, 'mail': true, 'diary': true, 'achievements': true, 'achievement': true };
-    // 【修复BUG-007/015】标准化 AI 返回的模块结构，消除 prompt↔渲染器结构错配：
+
     //   - forum: AI 返回 items:[{author,content,replies}] → 拆为多个 comments 模块（模块级字段）
     //   - moments: AI 返回 items:[{author,content,time,likes,comments}] → 重命名为 posts（渲染器读 posts）
     modules = modules.map(function(mod) {
@@ -908,7 +907,7 @@ function renderWorldModules(modules) {
             }
             return normalized;
         }
-        // 【修复BUG-015】moments 标准化：AI 按 prompt 返回 items，渲染器读 posts
+
         if (mod.type === 'moments' && Array.isArray(mod.items) && !mod.posts) {
             mod.posts = mod.items.map(function(it) {
                 return {
@@ -969,7 +968,7 @@ function renderWorldModules(modules) {
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0 && modules.length > 0) {
         _autoExtractWorldNotes(modules);
     }
-    // 【修复】世界页是通过 renderWorldPage() 渲染到 logSubContent 里的，
+
     // 不存在独立的 logWorldContent 容器。检测用户是否正停留在世界子页面，
     // 如果是则用最新数据重新渲染；否则只更新 gameState，下次进入世界页时自动反映。
     var subContainer = document.getElementById('logSubContainer');
@@ -1031,14 +1030,14 @@ function _autoExtractWorldNotes(modules) {
                 }).join('\n');
             }
         } else {
-            // 【修复X17】mod.content 可能是 undefined/数组/对象（非字符串），不能直接用 || ''
+
             // 因为数组是 truthy，[] || '' 会得到 [] 而非 ''，后续 .trim() 抛 TypeError
             content = (typeof mod.content === 'string') ? mod.content : '';
         }
 
-        // 【修复X17】双重保险：确保 content 是字符串再 trim
+
         if (typeof content === 'string' && content.trim()) {
-            // 【P0-8修复】改走 GameMemory API，替代直接 EnhancedMemory.longTermMemory.worldNotes.push(...)
+
             // 旧实现绕过 API 依赖 getter 返回 _worldNotes 引用，未来 getter 改 deepClone 会静默丢失写入。
             EnhancedMemory.addWorldNote({
                 title: mod.title,
@@ -1053,13 +1052,13 @@ function _autoExtractWorldNotes(modules) {
     console.log('[世界观] 已自动提取 ' + modules.length + ' 条世界设定到世界页面');
 }
 
-// 【P2清理】删除 _extractKeywords（全项目零调用）
+
 // 统一获取剧情列表的辅助函数（storyHistory 已合并到 conversationHistory）
-// 【修复BUG-03】历史消息可能是 JSON 字符串（_slimAssistantMessage 精简格式 {"title":"...","story":"..."}）
+
 // 旧实现直接返回 m.content，回顾页显示为原始 JSON 字符串，玩家无法阅读
 // 现解析 JSON 提取 title/story，并标记思考内容为隐藏（与 BUG-04 拦截呼应）
 function getStoryList() {
-    // 【P1-4·阶段8】走 _getConversationHistory() 统一入口，StateManager 为权威源
+
     var list = _getConversationHistory()
         .filter(function(m) { return m.role === 'assistant'; })
         .map(function(m, idx) {
@@ -1120,7 +1119,7 @@ var PresetAppManager = (function() {
         'tableEdit':  { name: '表格',     icon: '', color: '#6EE7B7' }
         // 文生图已移除：不解析、不显示、节省token
     };
-    // 【P3-4.3·阶段7】预编译每个 _appDefs 标签的正则（_appDefs 为模块级常量，不动态变更）
+
     // 旧代码：parseFromText 与 stripDecorTags 各自在 forEach 内 new RegExp，N 次构造同一组正则
     // 现：模块加载时一次性预编译，两函数共享引用，并复用 lastIndex=0 支持多次调用
     var _appTagRegexes = {};
@@ -1141,7 +1140,7 @@ var PresetAppManager = (function() {
             // 跳过排除的标签
             if (_excludeTags.indexOf(tag) !== -1) return;
             var regex = _appTagRegexes[tag];
-            regex.lastIndex = 0;  // 【P3-4.3·阶段7】复用预编译正则，重置 lastIndex 支持 gi 标志多次调用
+            regex.lastIndex = 0;
             var matches = text.match(regex);
             if (matches && matches.length > 0) {
                 // 合并多个同名标签的内容
@@ -1191,7 +1190,7 @@ var PresetAppManager = (function() {
         }
     }
 
-    // 【性能优化】预编译 stripDecorTags 中所有正则，合并同类标签为单个正则
+
     // 将所有 XML 标签对合并为一个正则，避免 20+ 次独立的 replace 调用
     var _decorTagNames = ['gossip_rules', 'snow_rules', '激活群组', 'NSFW设计',
         'tableThink', 'tableEdit', 'horae', 'horaeevent', 'image', 'imgthink', '文生图', 'details'];
@@ -1211,7 +1210,7 @@ var PresetAppManager = (function() {
         var result = text;
 
         // 移除所有已定义的装饰标签（排除giggle，因为心声需要在剧情中显示）
-        // 【P3-4.3·阶段7】复用 _appTagRegexes 预编译正则（与 parseFromText 共享）
+
         Object.keys(_appDefs).forEach(function(tag) {
             if (_excludeTags.indexOf(tag) !== -1) return;
             var regex = _appTagRegexes[tag];
@@ -1223,7 +1222,7 @@ var PresetAppManager = (function() {
         _reStyleDiv.lastIndex = 0;
         result = result.replace(_reStyleDiv, '');
 
-        // 【性能优化】合并所有固定标签名为单个正则匹配
+
         _decorTagsRegex.lastIndex = 0;
         result = result.replace(_decorTagsRegex, '');
 
@@ -1311,7 +1310,7 @@ var PresetAppManager = (function() {
 
 // --- 日志页面渲染 ---
 function renderLogPage() {
-    // 【性能优化】日志页数据未变时跳过整页重绘（点击导航栏频繁触发）
+
     try {
         var _presetApps = (gameState && gameState._presetApps) || {};
         var _wMods = (gameState && gameState._worldModules) || [];
@@ -1403,7 +1402,7 @@ function getLogPageRenderers() {
     if (_logPageRenderers) return _logPageRenderers;
     _logPageRenderers = {
         chat: renderChatPage,
-        // 【P2-D6 阶段4】quests/achieve 不再走 null 占位函数，
+
         // 直接绑定到 QuestSystem / AchievementSystem 已有渲染方法
         quests: function() {
             if (typeof QuestSystem !== 'undefined' && typeof QuestSystem.renderQuests === 'function') {
@@ -1498,7 +1497,7 @@ function _openPresetApp(tag) {
     if (logSubTitle) logSubTitle.textContent = title;
     var subContainer = document.getElementById('logSubContainer');
     if (!subContainer) return;
-    // 【修复】.hidden class 用了 display:none !important，会压住 style.display。
+
     // 必须移除 class 才能让 inline style 生效。
     subContainer.classList.remove('hidden');
     subContainer.style.display = 'block';
@@ -1620,7 +1619,7 @@ function openLogSubPage(type) {
     if (logSubTitle) logSubTitle.textContent = title;
     var subContainer = document.getElementById('logSubContainer');
     if (!subContainer) return;
-    // 【修复】.hidden class 用了 display:none !important，会压住 style.display。
+
     // 必须移除 class 才能让 inline style 生效。
     subContainer.classList.remove('hidden');
     subContainer.style.display = 'block';
@@ -1658,7 +1657,7 @@ function _applyLogPageStyle(content, type, html) {
         content.style.display = 'block';
     }
 
-    // 【修复BUG-02】renderItemsPage 在缓存命中时返回 undefined，应跳过写入而非覆盖为 "undefined"
+
     if (html !== null && html !== undefined) {
         if (html instanceof HTMLElement) {
             content.innerHTML = '';
@@ -1691,7 +1690,7 @@ function _applyLogPageStyle(content, type, html) {
             }
         });
     }
-    // 【P0-10修复】朋友圈评论输入框 Enter 键委托：原为内联 onkeydown，CSP unsafe-inline 下不安全。
+
     // 发送按钮已改 data-action="sendMomentComment"（由 utils.js _globalA11yDelegate 路由）。
     // input 的 Enter 键无法用 data-action（非 role=button），此处补 keydown 委托。
     if (type === 'moments' && !content._momentsKeydownBound) {
@@ -1762,7 +1761,7 @@ function renderChatPage() {
         return aiChatMap[name] || (chattedNpcs[name] && gameState.allCharacters[name]);
     });
 
-    // 【性能】渲染缓存——切回来时数据没变就不重渲染
+
     var _seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var _seenSig = Object.keys(_seen).sort().map(function(k) { return k + ':' + _seen[k]; }).join(',');
     var _totalLogs = 0;
@@ -1842,7 +1841,7 @@ function renderChatPage() {
 }
 function renderWorldPage() {
     var modules = gameState._worldModules || [];
-    // 【性能】渲染缓存
+
     var _lastTitle = modules.length > 0 ? (modules[modules.length-1].title || '') : '';
     var _lastMain = modules.length > 0 ? String(modules[modules.length-1].main || modules[modules.length-1].content || '').slice(0, 40) : '';
     var _key = modules.length + '|' + _lastTitle + '|' + _lastMain;
@@ -1925,7 +1924,7 @@ function renderMomentsPage() {
     var momentModules = modules.filter(function(m) {
         return m.type === 'moments';
     });
-    // 【性能】渲染缓存
+
     var _lastContent = momentModules.length > 0 ? String(momentModules[momentModules.length-1].content || '').slice(0, 30) : '';
     var _key = 'moments:' + momentModules.length + '|' + _lastContent;
     if (shouldSkipPageRender('renderMomentsPage', _key)) return;
@@ -1982,7 +1981,7 @@ function renderMomentsPage() {
     html += '<div class="date-header">' + dateStr + '</div>';
 
     if (posts.length === 0) {
-        // 【P2修复BUG-013】朋友圈缺失时显示"暂无动态"占位，而非使用故事文本填充
+
         // 修复历史Bug：原"写 暂无朋友圈动态"包含残留的"写 "前缀字符
         html +=
             '<div class="empty-state" style="padding:60px 20px;text-align:center;">' +
@@ -2157,10 +2156,10 @@ function sendMomentComment(idx) {
 }
 
 function renderForumPage() {
-    // 【修复BUG-007】AI prompt 要求 type:"forum"，但渲染器和 ensureLogFallbacks 用 type:"comments"。
+
     // 此前 AI 返回的 forum 模块被过滤掉导致论坛永远空白。现同时接受两种类型。
     var commentMods = getModulesByType(['comments', 'forum']);
-    // 【性能】渲染缓存
+
     var _lastMod = commentMods.length > 0 ? commentMods[commentMods.length-1] : null;
     var _lastSig = _lastMod ? String(_lastMod.title || '').slice(0, 20) + '|' + (_lastMod.comments || []).length : '';
     var _key = 'forum:' + commentMods.length + '|' + _lastSig;
@@ -2325,7 +2324,7 @@ function renderForumPage() {
 // 渲染排行榜页面
 function renderRankPage() {
     var rankMods = getModulesByType('ranking');
-    // 【性能】渲染缓存
+
     var _key = 'rank:' + rankMods.length + '|' + (rankMods[0] ? String(rankMods[0].title || '').slice(0, 20) : '');
     if (shouldSkipPageRender('renderRankPage', _key)) return;
     var playerData = gameState.playerData || {};
@@ -2434,7 +2433,7 @@ function renderRankPage() {
 }
 function renderItemsPage() {
     var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])).filter(function(item) {
-        // 【修复BUG-M2】过滤占位/空值物品
+
         if (!item) return false;
         var name = String(item.name || item.title || '').trim();
         return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知';
@@ -2442,7 +2441,7 @@ function renderItemsPage() {
     var playerName = gameState.playerName || '我';
     var currency = getPlayerMoney();
     var currencyName = getCurrencyName();
-    // 【性能】渲染缓存（基于过滤后的 bag）
+
     var _lastItem = bag.length > 0 ? String(bag[bag.length-1].name || bag[bag.length-1].title || '') : '';
     var _key = 'items:' + bag.length + '|' + currency + '|' + _lastItem;
     if (shouldSkipPageRender('renderItemsPage', _key)) return;
@@ -2686,14 +2685,14 @@ function renderDiaryPage() {
 // 渲染邮件页面
 function renderMailPage() {
     var mailModules = getModulesByType('mail');
-    // 【性能】渲染缓存
+
     var _lastMod = mailModules.length > 0 ? mailModules[mailModules.length-1] : null;
     var _lastSig = _lastMod ? (_lastMod.items ? _lastMod.items.length : 0) : 0;
     var _key = 'mail:' + mailModules.length + '|' + _lastSig;
     if (shouldSkipPageRender('renderMailPage', _key)) return;
-    // 【P2-R1 阶段4】抽 collectMailsFromModules() 消除 2 处重复
+
     var allMails = collectMailsFromModules();
-    // 【阶段3清理】原 if (allMails.length === 0) allMails = gameState._mails || [];
+
     // _mails 从未被任何代码写入（死字段），删除 fallback。
     // 所有邮件数据统一来自 _worldModules 的 type:'mail' 模块。
 
@@ -2732,8 +2731,8 @@ function renderMailPage() {
 // 渲染商店页面
 function renderShopPage() {
     var shopModules = getModulesByType('shop');
-    // 【性能】渲染缓存
-    // 【P2-阶段3-15】统一走 getPlayerMoney（原缺失 coins fallback，现已对齐其他读取点）
+
+
     var _currency = getPlayerMoney();
     var _key = 'shop:' + shopModules.length + '|' + _currency;
     if (shouldSkipPageRender('renderShopPage', _key)) return;
@@ -2763,7 +2762,6 @@ function renderShopPage() {
         }
     });
 
-    // 【阶段3清理】_shopGoods 死字段已删除，商品数据统一来自 _worldModules
 
     var catHtml = '';
     if (categories.length > 0) {
@@ -2843,7 +2841,7 @@ function buyShopItem(index) {
     shopModules.forEach(function(mod) {
         if (mod.items && Array.isArray(mod.items)) { mod.items.forEach(function(item) { allGoods.push(item); }); }
     });
-    // 【阶段3清理】_shopGoods 死字段已删除，商品数据统一来自 _worldModules
+
     if (index < 0 || index >= allGoods.length) return;
     var item = allGoods[index];
     var price = safeInt(item.price, 0);
@@ -2861,7 +2859,7 @@ function buyShopItem(index) {
     subtractPlayerMoney(price);
     // 加入背包
     var bagItem = { name: item.name || '未知物品', icon: item.icon || '物', count: item.count || 1, desc: item.desc || item.description || '', rarity: item.rarity || '普通', rarityClass: item.rarityClass || 'common' };
-    // 【P2-B3 阶段4】BagMutator.addItem 已含合并逻辑（bag-mutator.js:81-93），
+
     // 删 fallback 直写，强制走 Mutator
     if (typeof BagMutator === 'undefined' || !BagMutator.addItem) {
         throw new Error('BagMutator.addItem 不可用，无法购买物品');
@@ -2871,7 +2869,7 @@ function buyShopItem(index) {
     if (typeof _pushCurrentBagToGM === 'function') {
         try { _pushCurrentBagToGM(); } catch (e) { console.warn('[buyShopItem] push 失败:', e); }
     }
-    // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange('currentBag')：死代码空操作
+
     if (item.count !== undefined && item.count !== null) {
         item.count = Math.max(0, safeInt(item.count, 0) - 1);
     }
@@ -2890,7 +2888,7 @@ function buyShopItem(index) {
 
 // 【小剧场融合】日程表页面渲染
 function renderCalendarPage() {
-    // 【性能】渲染缓存
+
     var _calMod = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'calendar'; });
     var _events = (_calMod && _calMod.events) || [];
     var _lastTime = _events.length > 0 ? String(_events[_events.length-1].time || _events[_events.length-1].title || '') : '';
@@ -2977,7 +2975,7 @@ function renderCalendarPage() {
 
 // 【小剧场融合】作者有话说页面渲染
 function renderAuthorNotePage() {
-    // 【性能】渲染缓存
+
     var _noteMod = gameState._worldModules && gameState._worldModules.find(function(m) { return m.type === 'author_note'; });
     var _theaterNotes = gameState._theaterContent ? Object.keys(gameState._theaterContent).filter(function(k) {
         return gameState._theaterContent[k] && gameState._theaterContent[k].type === 'author_note';
@@ -3010,7 +3008,7 @@ function renderAuthorNotePage() {
                     source: key,
                     content: theater.content,
                     html: theater.html,
-                    time: Date.now()  // 【P2-3修复】持久化存时间戳
+                    time: Date.now()
                 });
             }
         });
@@ -3078,7 +3076,7 @@ function renderDefaultPage(type) {
             // 修复：AI 返回的字段全部 escapeHtml，防止 XSS
             switch (mod.type) {
                 case 'text':
-                    // 【P1-21·阶段9】补 escapeHtml：原注释声称"AI 返回的字段全部 escapeHtml"
+
                     // 但实际未 escape，与同文件 1823/1878/3107 处的 sibling 实现不一致（XSS 漏洞）
                     inner = '<div style="font-size:14px;line-height:1.7;">' + parseMarkdown(escapeHtml(mod
                         .content || '')) + '</div>';
@@ -3146,7 +3144,7 @@ function renderDefaultPage(type) {
                 (mod.title || '信息') + '</div>' + inner + '</div>';
         }).join('');
     } else {
-        // 【修复BUG-L2】为各空状态子页面提供更明确的引导
+
         var hints = {
             chat: 'NPC 会在剧情推进中主动发来消息',
             forum: '论坛内容会随剧情推进由 AI 自动生成',
@@ -3169,7 +3167,7 @@ function renderDefaultPage(type) {
 function renderPlayerStats(player) {
     // 如果AI返回了新数据，更新存储（使用Object.assign确保字段完整）
     if (player) {
-        // 【修复BUG-003】AI 返回纯文本时，AIOutputSchema.normalize 填充默认空 player
+
         // { name: '', identity: '', stats: [] }，此处若不拦截会用空 stats 覆盖已有属性。
         // 判定为"空 player"（无 name/identity 且 stats 为空数组）时跳过更新，仅刷新页面。
         var _hasName = String(player.name || '').trim();
@@ -3180,7 +3178,7 @@ function renderPlayerStats(player) {
         if (!_isEmpty) {
             var _existingPD = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.player') || { name: '', stats: [], details: [], bag: [] }) : (gameState.playerData || { name: '', stats: [], details: [], bag: [] });
             var _mergedPD = Object.assign({}, _existingPD, player);
-            // 【修复BUG-003】仅在 AI 返回了非空 stats 数组时才覆盖，避免空数组清空已生成的属性
+
             if (player.stats && Array.isArray(player.stats) && player.stats.length > 0) {
                 _mergedPD.stats = player.stats;
             }
@@ -3196,7 +3194,7 @@ function renderPlayerStats(player) {
                     StateManager.set('entities.player', _mergedPD, { silent: true });
                 }
             }
-            // 【修复BUG-002】锁定主角名：禁止 AI 用空名或不同名覆盖玩家设定的名字
+
             var _lockedName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || gameState.playerName || _existingPD.name;
             if (_lockedName && _mergedPD.name !== _lockedName) {
                 _mergedPD.name = _lockedName;
@@ -3209,10 +3207,10 @@ function renderPlayerStats(player) {
     renderPlayerPage();
 }
 function renderPlayerPage() {
-    // 【性能优化】避免相同数据触发重绘（页面切回时尤其有用）
+
     try {
         var pd = gameState.playerData || {};
-        // 【修复】原 cacheKey 漏算 identity/title/stats/personality，
+
         // 导致 AI 更新主角属性或身份后个人页不重绘
         var statsSig = '';
         if (Array.isArray(pd.stats)) {
@@ -3224,7 +3222,7 @@ function renderPlayerPage() {
             lv: pd.level, exp: pd.exp,
             favs: (gameState.relationships || []).length,
             inv: (gameState.currentBag || []).length,
-            // 【P1-4·阶段8】走 _getConversationHistory() 统一入口
+
             r: _getConversationHistory().length
         });
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderPlayerPage', cacheKey)) return;
@@ -3236,7 +3234,7 @@ function renderPlayerPage() {
     var avatarFallback = document.getElementById('playerPageAvatarFallback');
     var staticFields = document.getElementById('playerStaticFields');
     var dynamicFields = document.getElementById('playerDynamicFields');
-    // 【修复】移除对已删除的 playerEvents 元素的检查（已改为 relationNet）
+
     if (!nameEl || !subEl || !avatarFallback || !staticFields || !dynamicFields) return;
 
     // === 联动1：个人页面显示"记忆锚点"提示（让玩家知道AI记得什么）===
@@ -3281,7 +3279,7 @@ function renderPlayerPage() {
             var rsHtml = '💞 <b>最近的人际关系：</b><br>';
             topChars.forEach(function(c) {
                 var fav = Math.round(c.favorability || 0);
-                // 【修复】原 emoji 分级有重叠 bug：30<=fav<60 和 -20<=fav<30 都返回◇
+
                 // 现按好感/中立/反感三档清晰划分
                 var emoji;
                 if (fav >= 60) emoji = '♥';        // 好感
@@ -3304,7 +3302,7 @@ function renderPlayerPage() {
             '<svg class="icon" style="width:36px;height:36px;stroke-width:1.5;"><use href="#icon-user"/></svg>';
         staticFields.innerHTML = '<p class="text-soft" style="font-size:13px;">AI会根据世界观自动生成</p>';
         dynamicFields.innerHTML = '<p class="text-soft" style="font-size:13px;">属性将由AI根据世界观动态生成</p>';
-        // 【修复】eventsEl 已改为 relationNet，直接渲染导航栏
+
         var relNetEl = document.getElementById('relationNet');
         if (relNetEl) relNetEl.innerHTML = '<p class="text-soft" style="font-size:13px;">暂无关系记录</p>';
         renderNavBar('playerNav', [{
@@ -3396,7 +3394,7 @@ function renderPlayerPage() {
 
     // 关系网
     var rels = gameState.relationships || [];
-    // 【修复】关系网为空但已有角色时，自动从角色推断关系，避免"关系摘要"已列出角色而关系网仍显示空状态
+
     if (rels.length === 0 && Object.keys(gameState.allCharacters || {}).length > 0 && typeof _inferRelationshipsFromCharacters === 'function') {
         _inferRelationshipsFromCharacters();
         rels = gameState.relationships || [];
@@ -3461,11 +3459,11 @@ function renderPlayerPage() {
 }
 // --- 背包渲染 ---
 function renderBag(items) {
-    // 【修复BUG-08】renderBag 原用替换语义，AI 只返回本轮新物品时会清空旧物品
+
     // 改为合并语义：以现有 currentBag 为基础，合并/覆盖 AI 返回的物品
     if (items && Array.isArray(items)) {
         if (StateManager && BagMutator) {
-            // 【P0-2.6 阶段1】走 BagMutator.mergeItems，_syncLegacyMirror 自动同步到 gameState.currentBag
+
             // 删除 fallback 死分支：StateManager 与 BagMutator 均为核心依赖,必加载
             BagMutator.mergeItems(items, { silent: true });
         } else {
@@ -3473,13 +3471,13 @@ function renderBag(items) {
             throw new Error('[renderBag] StateManager 或 BagMutator 未加载,无法合并物品');
         }
     }
-    // 【修复BUG-02】refreshAllPanels() 调用 renderBag() 不传参时，不要清空背包
+
     // 不传参表示仅重绘当前背包
     var currentBag = StateManager ? StateManager.get('entities.bag') : gameState.currentBag;
     if (!Array.isArray(currentBag)) {
         currentBag = [];
         if (StateManager) StateManager.set('entities.bag', currentBag, { silent: true });
-        // 【P0-2.6 阶段1】删除冗余 gameState.currentBag 直写
+
         // _syncLegacyMirror 已自动从 entities.bag 同步到 gameState.currentBag
     }
     // 【数据联通】同步写入权威源 gm.tables.items
@@ -3490,11 +3488,11 @@ function renderBag(items) {
     if (typeof _ensureDataLinkage === 'function') {
         try { _ensureDataLinkage(); } catch (e) { console.warn('[renderBag] 数据联动失败:', e); }
     }
-    // 【修复】itemsGrid 是在 renderItemsPage() 中通过 innerHTML 动态创建到 logSubContent 里的，
+
     // 不存在时仅更新 gameState.currentBag，下次进入物品页会自动用最新数据渲染。
     var container = document.getElementById('itemsGrid');
     if (!container) return;
-    // 【性能优化】背包内容未变则跳过重绘
+
     try {
         var bagKey = JSON.stringify(currentBag.map(function(it) {
             return [it.id || it.name, it.count || it.amount || 1];
@@ -3507,8 +3505,8 @@ function renderBag(items) {
             '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="背包空空如也" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
         return;
     }
-    // 【修复X3】物品数据需要转义；并使用与 renderItemsPage 一致的 items-box 结构，保证 filterBagItems 仍可工作
-    // 【修复BUG-M2】同步过滤占位/空值物品，避免在物品网格中显示“无”等占位条目
+
+
     container.innerHTML = currentBag.filter(function(item) {
         if (!item) return false;
         var name = String(item.name || item.title || '').trim();
@@ -3567,7 +3565,7 @@ function exportStoryText() {
 function renderRecapPage() {
     var container = document.getElementById('recapList');
     if (!container) return;
-    // 【性能优化】剧情回顾数据未变时跳过整页重绘（每次点击导航栏都会触发）
+
     try {
         var storiesProbe = getStoryList();
         var _key = storiesProbe.length + '|' + (storiesProbe.length ? storiesProbe[storiesProbe.length - 1].text.length : 0);
@@ -3595,7 +3593,7 @@ function renderRecapPage() {
                 '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无剧情记录" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
         }
     } else {
-        // 【修复X7/BUG-03】剧情回顾摘要需要转义；卡片标题优先用 story title
+
         container.innerHTML = '<div class="recap-timeline">' + stories.map(function(s, i) {
             var isCurrent = i === stories.length - 1;
             var summary = (s.text || '').substring(0, 80);
@@ -3646,7 +3644,7 @@ function showRecapDetail(idx) {
     var titleEl = document.getElementById('recapDetailTitle');
     var bodyEl = document.getElementById('recapDetailBody');
     if (!titleEl || !bodyEl) return;
-    // 【修复BUG-03】使用 getStoryList 已解析的 title；若空则回退到"第N段"
+
     titleEl.textContent = s.title || '第' + (idx + 1) + '段';
     // s.text 已是 JSON 解析后的 story 字段（getStoryList 处理过），直接 formatStory 即可
     // 仅在 s.text 仍是 JSON 字符串时（旧历史数据）兜底解析一次
@@ -3940,7 +3938,7 @@ function bindEvent(id, event, handler, opts) {
         }
         return false;
     }
-    // 【性能优化】防重复绑定：使用 _hasBound 标记，同一元素同一事件只绑定一次
+
     var bindKey = '_bound_' + event;
     if (el[bindKey]) return true;
     el[bindKey] = true;
@@ -3951,7 +3949,7 @@ function bindEvent(id, event, handler, opts) {
     }
     return true;
 }
-// 【P2清理】删除 bindEventQuery（全项目零调用）
+
 // 页面加载时自动恢复上次填写的内容
 function renderMenu() {
     // 渲染预设页面
@@ -3999,7 +3997,7 @@ function bindEvents() {
                     var compressedData = canvas.toDataURL('image/jpeg', 0.8);
                     
                     // 保存玩家头像
-                    // 【P0-2.2 阶段1】键名修正：playerData.avatar → entities.player.avatar
+
                     // 旧键名 playerData.avatar 不在 _legacyToPath 映射中，订阅者收不到变更通知
                     // 正确键名 entities.player.avatar 触发订阅 + _syncLegacyMirror 自动同步到 gameState.playerData.avatar
                     if (typeof StateManager !== 'undefined' && StateManager.set) {
@@ -4054,10 +4052,9 @@ function bindEvents() {
                 hideStoryLoading();
                 TypewriterBuffer.stop();
                 streamBuffer = '';
-                // 【P0-3修复】_streamMode/_streamModeLocked 改走 RuntimeState
+
                 RuntimeState.streamModeLocked = false;
                 RuntimeState.streamMode = null;
-                if (typeof _streamFullText !== 'undefined') _streamFullText = '';
                 UI.toast('已取消生成');
             }
         });
@@ -4130,7 +4127,7 @@ function bindEvents() {
         var mcFields = ['setupPlayerName', 'setupPlayerGender', 'setupPlayerIdentity',
             'setupPlayerAge', 'setupPlayerAppearance', 'setupPlayerAbility', 'setupPlayerDesc'
         ];
-        // 【P2-R5 阶段4】抽公共 MC_FIELD_MAP，删局部重复
+
         var mcMap = MC_FIELD_MAP;
         mcFields.forEach(function(id) {
             var el = document.getElementById(id);
@@ -4141,7 +4138,7 @@ function bindEvents() {
             name: name,
             prompt: prompt,
             mc: mc,
-            time: Date.now()  // 【P2-3修复】持久化存时间戳
+            time: Date.now()
         });
         if (presets.length > 20) presets = presets.slice(0, 20);
         savePresets(presets);
@@ -4253,7 +4250,7 @@ function bindEvents() {
 
             // 把编辑后的完整文本合并为最后一条 assistant 消息
             // 先找到最后一条 assistant 消息的索引
-            // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+
             // StateManager 为权威源，_syncLegacyMirror 自动同步 gameState.conversationHistory。
             // 必须创建新数组+新对象（slice+Object.assign），不可原地 mutate ——
             // 否则 undo 快照若引用同一数组/对象会被污染。
@@ -4338,7 +4335,7 @@ function bindEvents() {
 
     // 日志子页面返回按钮（已在 renderLogPage 中绑定，此处不再重复）
 
-    // 【修复X13】移除 streamOn/streamOff 事件绑定
+
     // 这两个元素已从 index.html 中移除（流式开关改由预设面板的 presetStreamToggle 控制）
     // 旧代码每次加载都会打 warn "element not found: streamOn/streamOff"
 
@@ -4360,11 +4357,11 @@ function bindEvents() {
         });
     });
 
-    // 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组
+
     // 自动压缩
     bindEvent('autoCompressToggle', 'change', function() {
         gameState.autoCompress = this.checked;
-        // 【P1-PU9 阶段4】同步状态层
+
         if (typeof StateManager !== 'undefined' && StateManager.set) {
             StateManager.set('settings.autoCompress', this.checked, { silent: true });
         }
@@ -4378,11 +4375,11 @@ function bindEvents() {
     // 触发阈值选择
     bindEvent('compressThreshold', 'change', function() {
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory.compressionConfig.triggerThreshold = parseFloat(this.value);
-        // 【修复 P1】同步持久化到 SETTINGS，否则刷新后 loadGameSettings 会用 SETTINGS 旧值覆盖 EnhancedMemory
+
         saveGameSettings();
         UI.toast('触发阈值已设置为 ' + (this.value * 100) + '%');
     });
-    // 【修复P3】移除 btnRollbackSummary 处理器——EnhancedMemory.rollbackSummary 是 stub（恒返回 false），按钮无效
+
     // 更新压缩统计
     function updateCompressionStats() {
         var statsEl = document.getElementById('compressionStats');
@@ -4403,7 +4400,7 @@ function bindEvents() {
         manualCompress();
     });
 
-    // 【修复P2-3】移除 btnSettingsBackToMenu（与 header 的 btnBackToMenu 重复）
+
     // 用户关闭设置弹窗后点击 header 返回主页即可
 
     // 导出为小说
@@ -4545,7 +4542,7 @@ function bindEvents() {
         UI.toast(msg);
     });
 
-    // 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组
+
     // 自动轮询
     bindEvent('apiAutoRotateToggle', 'change', function() {
         LocalGameAPI.setAutoRotate(this.checked);
@@ -4591,12 +4588,12 @@ function bindEvents() {
         });
     });
 
-    // 【修复P2-1】初始化布尔开关 UI（switch checkbox，替代双按钮组的 active class 切换）
+
     // 初始化自动轮询UI
     var _apiRotateEl = document.getElementById('apiAutoRotateToggle');
     if (_apiRotateEl) _apiRotateEl.checked = !!LocalGameAPI._autoRotate;
 
-    // 【修复X13】移除 streamOn/streamOff 初始化代码（元素已不存在）
+
     // 流式开关状态由预设面板的 presetStreamToggle 控制
 
     // 初始化字体大小UI
@@ -4769,7 +4766,7 @@ function startNewGame() {
     }
 
     // ======== 重置所有游戏数据 ========
-    // 【修复P1-3】统一调用 resetRuntimeState('full')，替代分散的重置逻辑
+
     // 此前 startNewGame/loadFromSlot/handleImportFile 三处各自重置不同字段子集，极易字段遗漏
     resetRuntimeState('full');
 
@@ -4783,7 +4780,7 @@ function startNewGame() {
 
     // 收集主角设定
     gameState.protagonistSetup = {};
-    // 【P2-R5 阶段4】抽公共 MC_FIELD_MAP，删局部重复
+
     Object.keys(MC_FIELD_MAP).forEach(function(id) {
         var el = document.getElementById(id);
         if (el && el.value.trim()) gameState.protagonistSetup[MC_FIELD_MAP[id]] = el.value.trim();
@@ -4856,7 +4853,7 @@ async function _generateEndingRender(stories) {
         // 【动态化】根据 contextSize 动态计算截断长度，不再硬编码 15000
         // 旧代码截断到 15000 字，长游戏的后半段剧情 AI 看不到，结局生成质量差
         // 新策略：按 contextSize 的 60% 估算（留 40% 给 prompt 和输出），最少 10000 字
-        // 【P2-1修复】统一调用 getContextSize()
+
         var _ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000);
         var _maxEndingChars = Math.max(10000, Math.floor(_ctxSize * 0.6 * 1.7));
         if (allText.length > _maxEndingChars) allText = allText.substring(0, _maxEndingChars) + '\n\n...（后续内容省略）';
@@ -4881,7 +4878,7 @@ async function _generateEndingRender(stories) {
             if (_endingMemText) prompt += '【剧情记忆】\n' + _endingMemText + '\n\n';
         }
         // 注入世界书（让结局风格符合世界设定——P1 修复：结局生成前漏注世界书）
-        // 【P1修复BUG-011-世界书入口】删除 `: WorldInfo.buildInjection(...)` 兜底分支
+
         if (typeof getWorldInfoInjection === 'function') {
             var _endingWI = getWorldInfoInjection();
             var _endingWIText = isObject(_endingWI) ? (_endingWI.text || '') : (_endingWI || '');
@@ -4897,7 +4894,7 @@ async function _generateEndingRender(stories) {
             (typeof getPresetStyleBlock === 'function' ? getPresetStyleBlock() : '') +
             '【剧情】\n' + allText;
 
-        // 【P0边界修复】_useSysprompt=false 时把 system role 转为 user
+
         var _endingMsg = _applyUseSysprompt([{
             role: 'system',
             content: '你是一位讲故事的人，正在为一段旅程画上有余韵的句号。'
@@ -4933,7 +4930,7 @@ async function _generateEndingRender(stories) {
 }
 // --- 设置弹窗 ---
 // --- 恢复游戏界面 ---
-// 【P2-25修复】抽取默认选项渲染，消除 _restoreGameRender 中三处重复的 choices 字面量
+
 // variant: 'noChoices'（无 choices 或解析失败）| 'noLastAI'（无最后 AI 回复）
 function _renderDefaultChoices(variant) {
     var choices = (variant === 'noLastAI')
@@ -4958,7 +4955,7 @@ function restoreGame() {
 function _restoreGameRender() {
     try {
         // 恢复最后一条AI回复的剧情和选项
-        // 【P1-4·阶段8】走 _getConversationHistory() 统一入口，避免直读旧镜像
+
         var lastAI = null;
         var _hist = _getConversationHistory();
         for (var i = _hist.length - 1; i >= 0; i--) {
@@ -4989,13 +4986,13 @@ function _restoreGameRender() {
                         renderQuests();
                     }
                     if (data.relationships) {
-                        // 【P0-2 修复】_restoreGameRender 为 UI 恢复路径，状态已在 loadFromSlot 中恢复，
+
                         // 不再调用 mergeRelationships 重复写入，仅刷新 UI
                         renderRelationships();
                     }
-                    // 【修复】保存关键数据到gameState，确保读档后能恢复
+
                     if (data.title || data.scene) {
-                        // 【P0-2.7 阶段3-3】统一走 StateManager，删除 _lastSceneTitle 直写
+
                         if (typeof StateManager !== 'undefined' && StateManager.set) {
                             StateManager.set('progress.sceneTitle', data.title || data.scene, { silent: true });
                         }
@@ -5004,7 +5001,7 @@ function _restoreGameRender() {
                         StateManager.set('ui.lastHUD', data.hud, { silent: true });
                     }
                     if (data.gameTime) {
-                        // 【P1修复BUG-5.7】读档恢复路径统一走 TimeMutator.setTime，避免直接改
+
                         // gameState.gameTime 绕过状态层；读档切换到不同时间线是合理场景，
                         // 通过 skipMonotonicCheck 跳过单调性校验，避免读档后时间被错误拦截
                         if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
@@ -5094,7 +5091,7 @@ function _restoreGameRender() {
 // --- 默认游戏状态 ---
 // --- setWaiting 适配 ---
 async function retryStory() {
-    // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+
     // 删除最后两条（assistant 回复 + user 消息），保留 lastUserMsg 用于重新生成。
     // 原代码两次 pop() 原地 mutate gameState.conversationHistory，绕过 StateManager，
     // 导致撤销快照引用被污染 + StateManager.get 返回陈旧值。
@@ -5148,7 +5145,7 @@ async function continueStory() {
     } else if (typeof UI !== 'undefined' && UI.toast) {
         UI.toast('正在继续剧情...');
     }
-    // 【修复】使用预设的 continue_nudge_prompt，而非硬编码文本
+
     var continuePrompt = '[Continue your last message...]';
     var continuePrefill = '';
     try {
@@ -5176,7 +5173,7 @@ async function continueStory() {
                 console.error('[继续剧情] 异步操作失败:', e);
             });
         }
-        // 【优化·时序修复】_continuePrefill 必须在 sendAIRequest 完成后才清除
+
         // 旧代码同步清除，但 sendAIRequest 是异步的，AI 请求可能拿不到该值
         // 新代码：在 then/catch 后清除，确保 sendAIRequest 内部能读到
         if (p && typeof p.then === 'function') {
@@ -5198,11 +5195,11 @@ function deleteLastTurn() {
     }
     if (UndoMutator.size() > 0) {
         var lastUndo = UndoMutator.popSnapshot();
-        // 【P0-2.3 阶段1】撤销恢复：委托 UndoMutator.restoreFromSnapshot
+
         // 旧实现 5 字段直写 gameState + 反向同步调用 = 数据孤岛与多套存储风险
         // 新实现：UndoMutator 内部按字段委托各 Mutator，由 _syncLegacyMirror 自动维护 gameState 镜像
         UndoMutator.restoreFromSnapshot(lastUndo);
-        // 【P1-PU3 阶段4】撤销时过滤主角：CharacterMutator.setCharacters 会标准化，但需要
+
         // 确认主角在 _undoChars 快照中已剔除（避免回退后"主角复活"）
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.setCharacters) {
             const _playerName = (typeof gameState !== 'undefined' && gameState) ? gameState.playerName : '';
@@ -5220,21 +5217,21 @@ function deleteLastTurn() {
         if (typeof _pushCurrentBagToGM === 'function') _pushCurrentBagToGM();
         if (typeof _pushCurrentQuestsToGM === 'function') _pushCurrentQuestsToGM();
         if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
-        // 【阶段5统一】undo 后 _pushRelationshipsToGM 已把 gameState.relationships 推到 gm.tables
+
         // 再调用 _syncRelationshipsToGameState 让单一同步点统一更新 StateManager
         if (typeof _syncRelationshipsToGameState === 'function') _syncRelationshipsToGameState();
         if (typeof _pushKeyEventsToGM === 'function') _pushKeyEventsToGM();
-        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
+
         // 【v3审查修复】撤销后刷新回合数标签与场景标题，否则 UI 仍显示撤销前的值
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
-        // 【P1-PU4 阶段4】统一 sceneTitle 条件：当 lastUndo.sceneTitle === '' 时也要走 updateSceneTitle('')
+
         // 旧逻辑：StateManager.set 写入空串但 updateSceneTitle 因 && lastUndo 真值判断被跳过，导致 UI 显示空标题
         if (typeof updateSceneTitle === 'function' && lastUndo.sceneTitle !== undefined) {
             updateSceneTitle(lastUndo.sceneTitle || '');
         }
 
         // 重新渲染
-        // 【P1-4·阶段8】走快照深拷贝，避免 spread 浅拷贝在后续解析中被污染
+
         var lastAI = getConversationHistorySnapshot().reverse().find(m => m.role === 'assistant');
         if (lastAI) {
             var parsed = parseAIResponse(lastAI.content);
@@ -5248,7 +5245,7 @@ function deleteLastTurn() {
     }
     
     // 原有逻辑：删除最后一轮对话
-    // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+
     // slice(0, -2) 创建新数组，避免原地 pop 污染 undo 快照引用。
     var _histForUndo = _getConversationHistory();
     if (_histForUndo.length < 3) {
@@ -5267,7 +5264,7 @@ function deleteLastTurn() {
 }
 
 // 保存当前状态到撤销历史（在AI回复前调用）
-// 【P0-2.3 阶段1】委托 UndoMutator.pushSnapshot，替代直接 gameState._undoHistory.push({...})
+
 // 旧实现 5 字段深拷贝 + 5 字段直写 + 反向同步调用 = 9 处职责，违反单一职责原则
 // 新实现：UndoMutator 内部统一安全克隆 + StateManager.set，
 // 由 _syncLegacyMirror 自动维护 gameState._undoHistory 镜像
@@ -5276,7 +5273,7 @@ function saveUndoState() {
         throw new Error('[saveUndoState] UndoMutator 未加载，无法保存撤销历史');
     }
     UndoMutator.pushSnapshot({
-        // 【P1-4·阶段8】走快照深拷贝——saveUndoState 场景关键：
+
         // 旧实现直接传引用，UndoMutator 后续 mutate 会污染当前 conversationHistory
         conversationHistory: getConversationHistorySnapshot(),
         allCharacters: (typeof gameState !== 'undefined' && gameState) ? (gameState.allCharacters || {}) : {},
@@ -5463,7 +5460,7 @@ function showApiDetail(slot) {
                     'style="font-size:12px;color:var(--primary);cursor:pointer;">展开全部 (' + stats.recentLogs.length + '条)</a>' +
                     '</div>';
                 // 绑定展开/折叠
-                // 【P0-2.5 阶段1】闭包外先存元素引用，避免 50ms 内关闭再开时 listener 绑到已不在 DOM 的旧节点
+
                 // 改用直接 addEventListener（不再用 setTimeout 异步），listener 登记到 GlobalCleanup
                 // 弹窗关闭时通过 GlobalCleanup.cleanup 或显式 removeEventListener 释放
                 var _toggleEl = document.getElementById('apiRecentToggle');
@@ -5513,7 +5510,7 @@ function showApiDetail(slot) {
     }
 
     // 绑定清空最近请求按钮
-    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
+
     bindFresh('btnClearApiRecent', 'click', function() {
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot;
@@ -5534,7 +5531,7 @@ function showApiDetail(slot) {
     UI.showModal('apiDetailModal');
 
     // 绑定保存按钮
-    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
+
     bindFresh('btnSaveApiDetail', 'click', function() {
         var compatibleMode = document.getElementById('detailApiCompatibleMode');
         LocalGameAPI.setConfig(slot, {
@@ -5552,7 +5549,7 @@ function showApiDetail(slot) {
     });
 
     // 绑定设为当前按钮
-    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
+
     bindFresh('btnSetCurrentApi', 'click', function() {
         LocalGameAPI.setCurrentSlot(slot);
         UI.hideModal('apiDetailModal');
@@ -5561,8 +5558,8 @@ function showApiDetail(slot) {
     });
 
     // 绑定测试按钮
-    // 【P1-3 阶段1】cloneNode + replace + addEventListener 三步反模式 → bindFresh
-    // 【P1-2修复】_testAbortCtrl 从函数闭包改为挂到 newTestBtn DOM 节点
+
+
     // 旧实现问题：showApiDetail 每次重开弹窗都重新执行，新的 let _testAbortCtrl 是新闭包，
     // 但 newCancelBtn 的 addEventListener 引用的是上一个闭包（已为 null），cancel 按钮失效
     // 修复：controller 挂到 newTestBtn._testAbortCtrl，cancel 按钮读 DOM 节点属性，跨闭包可见
@@ -5789,7 +5786,7 @@ function showApiDetail(slot) {
         var recentEl = document.getElementById('apiDetailRecent');
         if (recentEl) {
             if (stats.recentLogs.length > 0) {
-                // 【P1-PU5 阶段2-3】改用 renderLogItemHtml，统一 XSS 防护
+
                 recentEl.innerHTML = stats.recentLogs.map(renderLogItemHtml).join('');
             } else {
                 recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
@@ -5801,7 +5798,7 @@ function showApiDetail(slot) {
                 return l.slot === slot && !l.success;
             }).slice(-10).reverse();
             if (errorLogs.length > 0) {
-                // 【P1-PU5 阶段2-3】改用 renderErrorItemHtml
+
                 errorListEl.innerHTML = errorLogs.map(renderErrorItemHtml).join('');
             } else {
                 errorListEl.innerHTML = renderEmptyState('暂无错误记录');
@@ -5951,8 +5948,8 @@ function saveGameSettings() {
     };
     var activeFont = document.querySelector('[data-fontsize].active');
     StateManager.set('settings.fontSize', activeFont ? (fontSizeMap[activeFont.dataset.fontsize] || 16) : 16, { silent: true });
-    // 【修复S1】读取剧情长度设置并同步到gameState.maxTokens
-    // 【修复P1-2】统一调用 _syncMaxTokens，替代分散的内联同步
+
+
     var storyLengthEl = document.getElementById('settingStoryLength');
     if (storyLengthEl) {
         var len = parseInt(storyLengthEl.value);
@@ -5963,12 +5960,12 @@ function saveGameSettings() {
         }
     }
     // 保存字数控制配置
-    // 【修复 P0-4】所有字段统一 null 检查，避免元素不存在时崩溃
+
     var wcMinEl = document.getElementById('wcMin');
     var wcMaxEl = document.getElementById('wcMax');
     var wcParaMinEl = document.getElementById('wcParaMin');
     var wcParaMaxEl = document.getElementById('wcParaMax');
-    // 【优化·边界校验】min > max 时自动交换，避免注入矛盾指令给 AI
+
     var _wcMin = safeInt(wcMinEl ? wcMinEl.value : '', 1500);
     var _wcMax = safeInt(wcMaxEl ? wcMaxEl.value : '', 3000);
     if (_wcMin > _wcMax) { var _tmp = _wcMin; _wcMin = _wcMax; _wcMax = _tmp; }
@@ -5999,9 +5996,9 @@ function saveGameSettings() {
         presencePenalty: pm ? (pm.presence_penalty || 0) : 0,
         repeatPenalty: pm ? (pm.repeat_penalty || 1.1) : 1.1
     };
-    // 【修复P0-1】不再同步 gameState.temperature——temperature 统一由 PresetManager.currentParams 管理
+
     // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
-    // 【修复P2-1】从 switch checkbox 读取 autoCompress，替代双按钮组的 active class 判断
+
     var _autoCompressToggleEl = document.getElementById('autoCompressToggle');
     StateManager.set('settings.autoCompress', _autoCompressToggleEl ? _autoCompressToggleEl.checked : true, { silent: true });
     StateManager.set('settings.summaryThreshold', parseInt(document.getElementById('summaryThreshold') ? document.getElementById('summaryThreshold').value : 6) || 0, { silent: true });
@@ -6010,17 +6007,17 @@ function saveGameSettings() {
     if (writingStyleEl) StateManager.set('settings.writingStyle', writingStyleEl.value, { silent: true });
     var cotModeEl = document.getElementById('settingCotMode');
     if (cotModeEl) StateManager.set('settings.cotMode', cotModeEl.value, { silent: true });
-    // 【修复P2-1】移除 anti429Mode UI 读取——该字段是死代码，没有任何代码读取它来影响请求
+
     // squashSystemMessages 已固定开启，不需要从UI读取
     // === 酒馆预设融合：叙事融合层 v2 ===
     // 章节模式
     var chapterModeEl = document.getElementById('settingChapterMode');
     if (chapterModeEl) StateManager.set('settings.chapterMode', chapterModeEl.value, { silent: true });
-    // 【修复P3】squelchRules/npcDescriptionRules 字段已从 createDefaultGameState 移除——死代码
+
     // NSFW 内容控制应通过自定义风格/设定实现，而非无效的安慰剂开关
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
     StateManager.set('settings.generateChoices', true, { silent: true });
-    // 【阶段1批7】从 StateManager 读 settings 写入持久层（不再读 gameState 镜像）
+
     // _syncLegacyMirror 维护 gameState 旧字段镜像，但权威源是 StateManager
     var _sm = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get.bind(StateManager) : function() { return null; };
     var _saveResult = Storage.setJSON(Storage.KEYS.SETTINGS, {
@@ -6031,7 +6028,7 @@ function saveGameSettings() {
         summaryThreshold: _sm('settings.summaryThreshold') !== null ? _sm('settings.summaryThreshold') : 6,
         generateChoices: _sm('settings.generateChoices') !== null ? _sm('settings.generateChoices') : true,
         maxTokens: _sm('settings.maxTokens') || 0,
-        // 【修复P0-3】持久化 compressThreshold，此前不保存导致刷新后 UI 显示 80% 但实际用 92%
+
         compressThreshold: (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) ? EnhancedMemory.compressionConfig.triggerThreshold : 0.92,
         defaultParams: defaultParams,
         // 【酒馆预设融合】叙事增强设置
@@ -6040,11 +6037,11 @@ function saveGameSettings() {
         // === 酒馆预设融合 v2 ===
         chapterMode: _sm('settings.chapterMode') || '',
         narrativeEyes: _sm('settings.narrativeEyes') || 'first',
-        // 【修复P2-3】不再导出 squelchRules——死代码，UI 已移除
+
         presetArchetype: _sm('settings.presetArchetype') || 'standard'
     });
     applyFontSize();
-    // 【修复 P2】检查 Storage.setJSON 返回值，配额超限时提示用户而非虚假"保存成功"
+
     if (_saveResult && _saveResult.success === false) {
         if (typeof UI !== 'undefined' && UI.toast) UI.toast('保存失败：存储空间不足，请导出存档后清理');
         console.warn('[saveGameSettings] 存储失败:', _saveResult.error);
@@ -6065,7 +6062,7 @@ function saveGameSettings() {
     }
 })();
 
-// 【修复P1-2】统一 max_tokens 同步入口——此前 max_tokens 有 4 重表示（PresetManager.currentParams.max_tokens / gameState.maxTokens / settingStoryLength / presetMaxTokens），
+
 // 同步逻辑分散在 6 处，任何一处遗漏都会导致"请求用的长度"和"压缩计算用的长度"不一致。
 // 现在统一调用 _syncMaxTokens()，从 PresetManager.currentParams.max_tokens（唯一源）同步到其他 3 处。
 function _syncMaxTokens(value) {
@@ -6089,7 +6086,7 @@ function _syncMaxTokens(value) {
 }
 
 // === 推荐档位切换 ===
-// 【修复P1-1】合并双预设系统——此前 applyParamPreset（game.js）和 applyArchetype（phone-ui.js）
+
 // 是两套独立的预设系统，字段重叠但不完全一致，需要 SAMPLING_PARAMS_BASELINE 重置补丁避免互相污染。
 // 现在统一为 UNIFIED_PRESETS 单一预设表，两个函数都从它读取，天然无残留问题。
 // 字段集：temperature/top_p/top_k/frequency_penalty/presence_penalty/max_tokens/repeat_penalty
@@ -6140,7 +6137,7 @@ var PRESET_ALIASES = {
     balanced: 'natural',
     creative: 'passionate'
 };
-// 【修复P1-1】统一的参数应用函数——applyParamPreset 和 applyArchetype 都调用它
+
 // 从 UNIFIED_PRESETS 读取完整字段集，一次性写入 PresetManager，无需 baseline 重置
 function _applyUnifiedPreset(presetKey, opts) {
     var key = PRESET_ALIASES[presetKey] || presetKey;
@@ -6159,7 +6156,7 @@ function _applyUnifiedPreset(presetKey, opts) {
         if (typeof PresetManager.syncParamsToUI === 'function') PresetManager.syncParamsToUI();
     }
     // 同步 max_tokens 到 gameState（压缩计算用）和 UI
-    // 【修复P1-2】统一调用 _syncMaxTokens，替代分散的内联同步
+
     if (typeof _syncMaxTokens === 'function') {
         _syncMaxTokens(p.max_tokens);
     } else {
@@ -6255,7 +6252,7 @@ function triggerGrandSummary(mode) {
 }
 async function exportSaves() {
     try {
-        // 【阶段二】导出走全局存档锁，避免与写入操作并发
+
         var allSaves = await withSaveLock(async function() {
             return await SaveDB.getAll();
         }, 'exportSaves');
@@ -6267,7 +6264,7 @@ async function exportSaves() {
             _exportInfo: {
                 game: 'freeScript',
                 version: 1,
-                exportTime: Date.now(),  // 【P2-3修复】持久化存时间戳
+                exportTime: Date.now(),
                 slotCount: Object.keys(allSaves).length
             },
             saves: allSaves
@@ -6320,7 +6317,7 @@ async function handleImportFile(e) {
             merge = await UI.confirm('合并导入', '确认以【合并模式】导入？（不会覆盖已有存档）');
             if (!merge) return;
         }
-        // 【阶段二】实际写入走全局存档锁，UI 确认在锁外完成
+
         await withSaveLock(async function() {
             if (overwrite) {
                 // 覆盖模式
@@ -6352,7 +6349,7 @@ async function handleImportFile(e) {
         console.error('导入失败:', e);
     }
 }
-// 【修复】将字数控制配置同步到设置 UI 的通用方法
+
 // 从传入的 wordCountConfig 回填所有 wc* 控件，确保打开设置弹窗时显示已保存的值
 function _syncWordCountConfigToUI(wc) {
     if (!wc) return;
@@ -6370,7 +6367,7 @@ function _syncWordCountConfigToUI(wc) {
     if (get('wcPacing')) get('wcPacing').value = wc.pacing || 'steady';
 }
 
-// 【修复 P1】将已保存的设置同步到设置弹窗 UI（除 wordCountConfig 外的其他控件）
+
 // openSettingsModal 和 loadGameSettings 共用，避免两处回填逻辑分叉
 function _syncSettingsToUI(d) {
     var get = function(id) { return document.getElementById(id); };
@@ -6418,7 +6415,7 @@ function _syncSettingsToUI(d) {
 
 function openSettingsModal() {
     // 更新上下文信息
-    // 【P1-4·阶段8】走 _getConversationHistory() 统一入口，避免 2 处直读旧镜像
+
     var _hist = _getConversationHistory();
     var msgCount = _hist.length;
     var estimated = estimateTokensForMessagesUtil(_hist);
@@ -6428,13 +6425,13 @@ function openSettingsModal() {
 
     // 更新剧情长度
     var lengthEl = document.getElementById('settingStoryLength');
-    // 【修复P1-2】统一默认值为 4096，与全局一致（此前这里是 2048，与 PresetManager 默认 4096 不一致）
+
     if (lengthEl) lengthEl.value = gameState.maxTokens || 4096;
 
-    // 【修复P3】移除 7 个死 ID 引用——settingContextLength/settingTemperature/settingTopP/settingTopK/
+
     // settingFreqPen/settingPresPen/settingRepeatPen 在 HTML 中均不存在（参数由预设管理器控制）
 
-    // 【修复 P0】回填字数控制 UI——此前 openSettingsModal 不回填，导致每次打开都显示 HTML 默认值
+
     // 优先从 Storage 读取用户上次保存的值（避免被预设加载覆盖），回退到 gameState.wordCountConfig
     var _savedSettings = null;
     try {
@@ -6444,7 +6441,7 @@ function openSettingsModal() {
     var _savedWc = (_savedSettings && _savedSettings.wordCountConfig) ? _savedSettings.wordCountConfig : null;
     _syncWordCountConfigToUI(_savedWc || gameState.wordCountConfig);
 
-    // 【修复 P1】回填其他设置控件——与 wordCountConfig 同类问题，打开弹窗时也需从 Storage 回填
+
     // 否则用户改了不保存就关闭，下次打开看到的是 DOM 残留而非已保存值
     _syncSettingsToUI(_savedSettings);
 
@@ -6460,10 +6457,10 @@ function loadGameSettings() {
     if (s) {
         try {
             var d = JSON.parse(s);
-            // 【修复P0-1】不再恢复 gameState.temperature——统一由 PresetManager.currentParams 管理
+
             gameState.fontSize = d.fontSize || 16;
             gameState.autoCompress = d.autoCompress !== false;
-            // 【P1-PU9 阶段4】加载时一次性同步到状态层
+
             if (typeof StateManager !== 'undefined' && StateManager.set) {
                 StateManager.set('settings.fontSize', gameState.fontSize, { silent: true });
                 StateManager.set('settings.autoCompress', gameState.autoCompress, { silent: true });
@@ -6479,7 +6476,7 @@ function loadGameSettings() {
             if (gameState.wordCountConfig) {
                 _syncWordCountConfigToUI(gameState.wordCountConfig);
             }
-            // 【修复P0-3】恢复 compressThreshold 到 UI 和 EnhancedMemory
+
             // 此前不恢复导致刷新后 UI 显示 80%（HTML 默认）但实际压缩用 92%（EnhancedMemory 默认）
             var _savedThreshold = d.compressThreshold !== undefined ? d.compressThreshold : 0.92;
             if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) {
@@ -6488,16 +6485,16 @@ function loadGameSettings() {
             // 【酒馆预设融合】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
-            // 【修复P2-1】不再恢复 anti429Mode——死代码已移除
+
             // squashSystemMessages 固定开启，不再从存档恢复（预设可覆盖）
             // === 酒馆预设融合 v2 恢复 ===
             if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
-            // 【修复P3】不再恢复 npcDescriptionRules——死代码字段已从 createDefaultGameState 移除
+
             if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
                 gameState.narrativeEyes = d.narrativeEyes;
             }
             if (d.presetArchetype !== undefined) gameState.presetArchetype = d.presetArchetype;
-            // 【修复 P1】统一回填设置 UI（summaryThreshold/compressThreshold/writingStyle/cotMode/
+
             // chapterMode/narrativeEyes/presetArchetype/autoCompressToggle），与 openSettingsModal 共用
             _syncSettingsToUI({
                 summaryThreshold: gameState.summaryThreshold,
@@ -6540,13 +6537,13 @@ function loadGameSettings() {
 // 存档系统 - UI操作（从 game.js 收拢）
 // ========================================
 
-// 【P2清理】删除 SAVE_GAME_ID / LOCAL_SAVE_KEY（全项目零调用）
+
 // 保留 LOCAL_MANUAL_COUNT / LOCAL_EXT_START / LOCAL_EXT_END（openSaveLoadModal 在用）
 const LOCAL_MANUAL_COUNT = 5;
 const LOCAL_EXT_START = 6;
 const LOCAL_EXT_END = 10;
 
-// 【P2清理】删除 safeLoadOldManual（全项目零调用）
+
 async function renameSave(slot) {
     try {
         var data = await SaveDB.get(slot);
@@ -6679,7 +6676,7 @@ async function renderSaveUI() {
         '</div>';
     ct.innerHTML = html;
 }
-// 【P2清理】删除 openLoadModal（全项目零调用）
+
 // 安全读档包装（解决async onclick静默失败问题）
 function safeLoadSlot(slot) {
     loadFromSlot(slot).catch(function(e) {
@@ -6718,7 +6715,7 @@ function openNpcChat(name) {
         if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
         gameState._chattedNpcs[name] = true;
     }
-    // 【优化】打开聊天时标记该 NPC 的消息为已读
+
     if (gameState && gameState._notifSeenSnapshot) {
         if (!gameState._notifSeenSnapshot.chat) gameState._notifSeenSnapshot.chat = {};
         var npcSent = ((gameState._chatLogs && gameState._chatLogs[name]) || []).filter(function(m) {
@@ -6818,7 +6815,7 @@ function toggleChatMenu() {
     });
     var header = document.querySelector('.chat-detail-header');
     if (header) header.appendChild(menu);
-    // 【性能优化】用 once 选项监听器自动清理，防止重复打开菜单导致监听器累积
+
     var closeMenu = function(e) {
         if (!menu.contains(e.target) && e.target.id !== 'chatDetailMore') {
             menu.remove();
@@ -6839,11 +6836,11 @@ function editChatRemark() {
     panel.id = 'chatRemarkPanel';
     panel.style.cssText =
         'position:absolute;top:44px;left:8px;right:8px;background:var(--bg);border-radius:12px;box-shadow:0 4px 20px rgba(0,0,0,0.12);padding:12px 16px;z-index:200';
-    // 【P2-48修复】改用项目统一 escapeHtml 工具函数（core.js:4017），
+
     // 补齐单引号（&#39;）与反引号（&#96;）转义，消除内联转义的不一致
     var safeRemark = escapeHtml(currentRemark);
     panel.innerHTML = '<div style="font-size:13px;color:var(--text-secondary);margin-bottom:8px">备注名</div>' +
-        // 【P2-A3 阶段4】加 aria-label（备注名输入）
+
         '<input type="text" id="remarkInput" aria-label="角色备注名" value="' + safeRemark +
         '" placeholder="输入备注名" style="width:100%;height:36px;border:1px solid #e5e5e5;border-radius:8px;padding:0 12px;font-size:14px;outline:none;box-sizing:border-box">' +
         '<div style="display:flex;gap:8px;margin-top:10px;justify-content:flex-end">' +
@@ -6983,7 +6980,7 @@ function toggleEmojiPanel() {
     var panel = document.getElementById('emojiPanel');
     if (!panel) return;
     var trigger = document.getElementById('chatEmojiBtn');
-    // 【P3-4.4·阶段10】同步 aria-expanded/aria-hidden，供屏幕阅读器朗读展开状态
+
     if (panel.classList.contains('open')) {
         panel.classList.remove('open');
         panel.setAttribute('aria-hidden', 'true');
@@ -7204,7 +7201,7 @@ function renderRichMessage(text) {
         return '<div class="rich-location"><div class="rich-location-name">' + escapeHtml(loc) +
             '</div></div>';
     });
-    // 【修复C P2-2】对NPC聊天消息进行HTML净化，防止XSS
+
     return sanitizeHtml(text);
 }
 function addNpcChatBubble(role, text, skipPush) {
@@ -7277,14 +7274,14 @@ function saveNpcEdit() {
     var title = titleEl ? titleEl.value.trim() : '';
     var relation = relationEl ? relationEl.value.trim() : '';
     var favor = favorEl ? parseInt(favorEl.value) : NaN;
-    // 【修复 P2】输入为空或非数字时，取当前角色已有好感度，而非硬编码 50（与 openEditNpcModal 默认值 0 一致）
+
     if (isNaN(favor)) {
         var _curC = gameState.allCharacters && gameState.allCharacters[name];
         favor = (_curC && _curC.favorability !== undefined) ? _curC.favorability : 0;
     }
     var desc = descEl ? descEl.value.trim() : '';
     var extra = extraEl ? extraEl.value.trim() : '';
-    // 【修复】好感度范围与渲染一致为 -100~100（原 0-100 无法表达反感）
+
     favor = Math.max(-100, Math.min(100, favor));
     var details = [];
     if (extra) {
@@ -7306,7 +7303,7 @@ function saveNpcEdit() {
             }
         });
     }
-    // 【阶段1统一】NPC 编辑保存：统一委托 CharacterMutator.replaceCharacter
+
     // 替代原直接 delete + gameState.allCharacters[name]=（绕过 StateManager 导致不同步）
     var _newCharObj = {
         name: name,
@@ -7316,7 +7313,7 @@ function saveNpcEdit() {
         desc: desc,
         details: details
     };
-    // 【P1-PU7 阶段4】删 fallback，强制走 Mutator；不可用则抛错让上层感知
+
     if (typeof CharacterMutator === 'undefined' || !CharacterMutator.replaceCharacter) {
         throw new Error('CharacterMutator.replaceCharacter 不可用，无法保存 NPC 编辑');
     }
@@ -7332,7 +7329,7 @@ function saveNpcEdit() {
         }).join('\n') + '\n';
     }
     injectText += '请在后续剧情中按照以上设定来描写该角色。';
-    // 【P0-12修复】走 _getConversationHistory/_updateConversationHistory：
+
     // concat 创建新数组，避免原地 push 污染 undo 快照引用 + 绕过 StateManager。
     // 旧实现直 push 到 gameState.conversationHistory，导致：
     //   1. StateManager.get('progress.conversationHistory') 返回陈旧值（不含注入消息）
@@ -7352,18 +7349,16 @@ function saveNpcEdit() {
     autoSave();
     UI.toast('角色「' + name + '」已保存');
 }
-function renderNpcList() {
-    renderNpcPage();
-}
+var renderNpcList = renderNpcPage;
 function renderNpcPage() {
     // 确保 allCharacters 已初始化
     if (gameState && !gameState.allCharacters) gameState.allCharacters = {};
     var chars = getAllCharactersArray();
-    // 【性能优化】数据未变时跳过整页重绘（每次点击导航栏都会触发此函数）
+
     try {
-        // 【修复】原 key 只算 length/totalFav/lastName，漏算 title/relation/desc/details，
+
         // 导致 AI 更新角色状态描述或关系后人际页不重绘
-        // 【P2-47修复】补算 details 字段：AI 更新角色 details 后 RenderCache.same 仍返回 true 跳过重绘，
+
         // 人际页看不到 details 变化。details 是数组，用 length + JSON 串作为签名。
         var totalFav = 0, sigParts = [];
         for (var _ci = 0; _ci < chars.length; _ci++) {
@@ -7389,7 +7384,7 @@ function renderNpcPage() {
             var sn = escapeAttr(c.name);
             // 【修改】直接使用AI返回的relation字段，不再硬编码好感度等级
             var favLevel = c.relation || '中立';
-            // 【P2-R2/A1 阶段4】抽公共 favColorOf()：原 7 档硬编码重复 2 处，
+
             // 浅色 #b8c5d0/#9a8c98 在白底上对比度 < 4.5:1，一并加深底色（hex 加深约 30%）
             var favColor = favColorOf(fav);
 
@@ -7408,7 +7403,7 @@ function renderNpcPage() {
                 '<div class="char-tags">' + tagsHtml + '</div>' +
                 '<div class="char-stats">' +
                 '<div class="char-stat-row"><span>好感</span><div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' +
-                // 【修复】好感度范围 -100~100，映射到 0~100% 宽度（0 为中点 50%）
+
                 // 原 width:fav% 对负值非法（如 -40%），浏览器忽略显示空条
                 favToWidth(fav) + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
@@ -7463,14 +7458,14 @@ function openNpcDetail(name) {
     // 构建详情内容
     var html = '';
     // 头像和名称
-    // 【P2-D9 阶段4】<h3> 下方已展示 c.title（身份/称号），下方 key='身份' 字段重复，去掉 <p>
+
     html += '<div style="text-align:center;margin-bottom:16px;">' +
         '<div class="avatar avatar-lg" style="margin:0 auto;"><span>' + escapeHtml(c.name.charAt(0)) + '</span></div>' +
         '<h3 style="font-size:20px;font-weight:600;margin-top:10px;">' + escapeHtml(c.name) + (c.title ? ' <span style="font-size:14px;color:var(--text-secondary);font-weight:400;">· ' + escapeHtml(c.title) + '</span>' : '') + '</h3>' +
         '</div>';
 
     // 基本信息字段（key-value 行）
-    // 【P2-D9 阶段1】删除 key:'身份' 重复字段：<h3> 已展示 c.title,避免下方行重复渲染
+
     var baseFields = [
         {
             key: '关系',
@@ -7506,7 +7501,7 @@ function openNpcDetail(name) {
         fav = Math.max(-100, Math.min(100, fav));
         // 使用AI动态生成的关系描述，不再硬编码等级名称
         var favLevel = c.relation || '中立';
-        // 【P2-R2/A1 阶段4】抽公共 favColorOf()，浅色底色加深以提升对比度
+
         var favColor = favColorOf(fav);
 
         html += '<div class="pearl-card" style="padding:12px;margin-bottom:12px;">' +
@@ -7515,7 +7510,7 @@ function openNpcDetail(name) {
             '<span style="display:flex;align-items:center;gap:8px;">' +
             '<span style="font-size:12px;color:#fff;background:' + favColor + ';padding:2px 8px;border-radius:10px;font-weight:500;">' + favLevel + '</span>' +
             '<span style="font-size:14px;color:var(--text);font-weight:600;">' + fav + '</span></span></div>' +
-            // 【修复】好感度 -100~100 映射到 0~100% 宽度（0 为中点 50%），原 width:fav% 对负值非法
+
             '<div class="progress-bar" style="background:' + favColor + '20;"><div class="progress-fill" style="width:' + favToWidth(fav) + '%;background:' + favColor + ';"></div></div></div>';
     }
 
@@ -7523,7 +7518,7 @@ function openNpcDetail(name) {
     UI.showModal('npcDetailModal');
 
     // 绑定编辑按钮
-    // 【P0-2.7 阶段1】使用 named function + removeEventListener 防多次 open 累积
+
     // 旧代码 cloneNode + replaceChild + addEventListener 模式：
     // 第二次 openNpcDetail 时 getElementById('btnNpcEdit') 拿到旧 clone 节点(脱离 DOM),
     // 新 DOM 中的 newEditBtn 节点虽然有 btnNpcEdit ID 但绑定的 listener 引用已被替换,

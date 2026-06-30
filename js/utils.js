@@ -6,7 +6,7 @@ const DOMCache = {
     _cache: {},
     _permanent: {},
     _maxAge: 30000,
-    _maxSize: 100, // 【性能优化】限制缓存条目数，防止内存泄漏
+    _maxSize: 100,
     get(id, permanent) {
         if (permanent && this._permanent[id]) return this._permanent[id];
         const c = this._cache[id];
@@ -22,7 +22,7 @@ const DOMCache = {
     return el;
 },
 clear() { this._cache = {}; },
-// 【性能优化】超出容量时淘汰最旧的条目
+
 _evictIfNeeded() {
     const keys = Object.keys(this._cache);
     if (keys.length <= this._maxSize) return;
@@ -77,7 +77,7 @@ function _globalA11yDelegate(e) {
         if (actEl) {
             var action = actEl.getAttribute('data-action');
             var argsAttr = actEl.getAttribute('data-args');
-            // 【P0-2修复】支持 kebab-case action 名 → camelCase 函数名（如 toggle-thought → toggleThought）
+
             // 这样 HTML 可保持 kebab-case 约定，JS 函数名保持 camelCase 约定，无需特殊路由表。
             // 无连字符的 action 名（如 openForumPost）不受影响。
             var fnName = action.replace(/-([a-z])/g, function(m, c) { return c.toUpperCase(); });
@@ -109,7 +109,7 @@ if (typeof document !== 'undefined') {
 
 // escapeHTML / sanitizeHTML 已统一到 core.js 的 escapeHtml，此处不再重复定义
 
-// 【P2清理】删除 debounce / throttle / safeExecute / dynamicTruncateLen（全项目零调用）
+
 // 保留 getContextScale（被多处使用）
 
 // ========================================
@@ -119,7 +119,7 @@ if (typeof document !== 'undefined') {
 // 基准值以 8K context 为1.0x，按比例缩放，无上限
 // 8K→1x, 32K→4x, 128K→16x, 256K→32x, 512K→64x, 1M→128x
 
-// 【P2-1修复】contextSize 统一读取入口
+
 // 原问题：同一语义（模型上下文窗口大小）被 gameState.contextSize 与 StateManager.get('world.contextSize')
 // 两个真相源承载，各读取点 fallback 不一致（8000 vs 8192 vs 动态探测）。
 // 统一入口：优先 StateManager（权威源），回落 legacy gameState，最后兜底 8000。
@@ -196,7 +196,6 @@ function isObject(v) {
     return v !== null && typeof v === 'object';
 }
 
-// 【P2清理】删除 safeFloat / isPlainObject（全项目零调用，safeInt/isObject 仍在使用）
 
 // 统一的 token 估算函数（与 game.js updateTokenCount 保持一致）
 // 经验上中文 1.5 字符/token，英文 4 字符/token。统一取 1.7 字符/token
@@ -315,7 +314,7 @@ function safeSetItem(key, value) {
         return { success: false, error: 'quota_exceeded', message: '存储空间不足', required: dataSize, available: capacity.total - capacity.used };
     }
 localStorage.setItem(key, value);
-// 【性能优化】写入成功后使容量缓存失效
+
 if (typeof StorageMonitor !== 'undefined') StorageMonitor.invalidateCache();
 return { success: true, used: dataSize };
 } catch(e) {
@@ -327,7 +326,7 @@ Logger.error('localStorage写入失败:', e.message);
 return { success: false, error: 'write_error', message: e.message, key: key };
 }
 }
-// 【P2清理】删除 safeGetItem（与 Storage.get 实现逐字相同，全项目零调用）
+
 
 // ========================================
 // 【统一管理】Storage 命名空间：集中声明所有 localStorage key 常量
@@ -392,7 +391,7 @@ const Storage = {
 const StorageMonitor = {
     DEFAULT_LIMIT: 5 * 1024 * 1024,
     MAX_LIMIT: 10 * 1024 * 1024,
-    // 【性能优化】缓存容量检查结果，避免每次写入都遍历整个localStorage
+
     _capacityCache: null,
     _capacityCacheTime: 0,
     _CAPACITY_CACHE_TTL: 30000, // 30秒缓存
@@ -411,9 +410,9 @@ Logger.error('计算localStorage使用量失败:', e.message);
 }
 return used;
 },
-// 【P2清理】删除 getRemainingSpace（全项目零调用，保留 checkCapacity/getUsedSpace/invalidateCache）
+
 checkCapacity() {
-    // 【性能优化】使用缓存的容量检查结果
+
     const now = Date.now();
     if (this._capacityCache && (now - this._capacityCacheTime < this._CAPACITY_CACHE_TTL)) {
         return this._capacityCache;
@@ -424,12 +423,12 @@ checkCapacity() {
     this._capacityCacheTime = now;
     return this._capacityCache;
 },
-// 【性能优化】写入后使缓存失效
+
 invalidateCache() {
     this._capacityCache = null;
     this._capacityCacheTime = 0;
 },
-// 【P2清理】删除 warnIfFull（全项目零调用）
+
 _estimateTotalSpace() {
     const testKey = '__storage_test_' + Date.now();
     const testValue = 'x';
@@ -456,7 +455,7 @@ try { localStorage.removeItem(testKey); } catch(e) {}
 }
 };
 
-// 【P0-1修复】删除 utils.js 的全局错误处理器（简化版，仅 console.error）。
+
 // init.js:13-30 已有功能更完整的版本（含 IMG/LINK/SCRIPT 资源错误过滤 + UI.toast + capture 阶段），
 // 两处同时注册会导致每次未捕获错误触发 2 条 console.error + 最多 2 个 toast。
 // 统一保留 init.js 版本，此处不再重复注册。
@@ -502,7 +501,7 @@ const ThemeManager = {
             star.classList.remove('dark-mode');
         }
     }
-    // 【P2清理】删除 ThemeManager.toggle（与 toggleTheme 互相调用形成死循环，无外部入口）
+
 };
 
 (function() {
@@ -542,14 +541,14 @@ const Logger = (function() {
     }
     return {
         LEVELS: LEVELS,
-        // 【P2清理】删除 debug/info/log/getLevel/setLevel（全项目零调用），保留 warn/error
+
         warn()  { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
         error() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} }
     };
 })();
 
 // ========================================
-// 【性能优化】渲染缓存：避免相同输入触发重复重绘
+
 // ========================================
 // 用法（render 函数内）：
 //   var key = JSON.stringify({ a: gameState.a, b: gameState.b });
@@ -565,10 +564,10 @@ const RenderCache = {
     mark(name, key) {
         this._keys[name] = key;
     }
-    // 【P2清理】删除 invalidate（全项目零调用；存档切换/删除消息场景通过 RenderCache.mark 重写实现失效）
+
 };
 
-// 【性能】页面渲染缓存快捷助手：
+
 // 返回 true 表示应跳过渲染（数据未变化，DOM 仍保留上次的 HTML）
 // 返回 false 表示应继续渲染
 function shouldSkipPageRender(pageName, dataKey) {
@@ -578,7 +577,7 @@ function shouldSkipPageRender(pageName, dataKey) {
     return false;
 }
 
-// 【P2-3修复】时间格式化工具函数：持久化存时间戳（Date.now()），显示时统一格式化
+
 // 优势：跨时区读档时自动显示为当地时间，数据本身无歧义
 // 入参 ts 支持：number(时间戳)、string(ISO字符串或老格式本地字符串)、Date 对象
 function _coerceTs(ts) {
@@ -608,7 +607,7 @@ function formatTimeShort(ts) {
     return new Date(_coerceTs(ts)).toLocaleTimeString().slice(0, 5);
 }
 
-// 【P2-3修复】时间字段迁移：将对象数组中指定字段从字符串转为时间戳
+
 // 只转看起来像老格式（包含中文或冒号的字符串）的，已是数字时间戳不动
 function migrateTimeFields(arr, fieldName) {
     if (!Array.isArray(arr)) return;
@@ -692,7 +691,7 @@ function parseTheaterItems(html, schema) {
     var re = new RegExp('<div[^>]*class=["\']' + itemClass + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'gi');
     var matches = html.match(re) || [];
 
-    // 【P3-4.3·阶段7】预编译每个 field 的两条正则，避免 matches.forEach × Object.keys.forEach 双层循环内 N×M 次 new RegExp
+
     // multiline/body 字段用 [\s\S]*?</div> 抓取；普通字段用 [^<]+ 抓取
     var multilineFields = schema.multilineFields || [];
     var fieldRegexes = {};

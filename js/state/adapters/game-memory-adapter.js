@@ -2,7 +2,7 @@
 // GameMemory 适配器 - GameMemoryAdapter
 // 维护 StateManager 与 GameMemory 之间的同步
 // ========================================
-// 【P1修复P1-K】原实现 syncToGameMemory 每次 entities 变更都做全量 REPLACE
+
 // （tables.items = toMap(bag) 等），把 GameMemory 在这些对象上维护的运行时字段
 // （dormantSince / accessCount / history / locked / obtainedTurn 等）全部清空。
 // 改为 MERGE：按 name 走查 StateManager 数据，已存在条目只更新实体字段，保留运行时字段；
@@ -107,7 +107,7 @@ const GameMemoryAdapter = {
             });
 
             // === quests / events：数组 MERGE（按 title/content 去重）===
-            // 【P1修复P1-M】gm.quests 已统一为 QuestMutator schema（title 为身份字段），
+
             // 无需 title↔content 别名映射，直接用 title 作为去重键
             const quests = StateManager.get('entities.quests') || [];
             if (Array.isArray(quests) && GameMemory.quests) {

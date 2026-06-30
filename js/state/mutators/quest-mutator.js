@@ -36,7 +36,7 @@ const QuestMutator = {
 
     // 设置任务列表（智能合并，不直接覆盖）
     setQuests(quests, options) {
-        // 【P0修复BUG-005】类型安全：quests 可能是单个对象，强制转为数组
+
         const arr = Array.isArray(quests) ? quests : (quests ? [quests] : []);
         const incoming = arr.map(this.normalizeQuest.bind(this)).filter(Boolean);
         const rawExisting = StateManager.get('entities.quests');
@@ -82,7 +82,7 @@ const QuestMutator = {
     },
 
     // 选择更高的进度字符串
-    // 【P1修复】比较比率（current/total）而非仅比较分子，防止进度倒退
+
     _pickHigherProgress(a, b) {
         const pa = this._parseProgressParts(a);
         const pb = this._parseProgressParts(b);
@@ -126,7 +126,7 @@ const QuestMutator = {
     },
 
     // 根据剧情文本自动推进任务进度
-    // 【P1修复BUG-4.8】与 QuestSystem.advanceGuidanceQuest 职责分离说明：
+
     // - autoAdvanceByStory：基于剧情文本关键词 + 完成类动词，标记 AI 返回的持久化任务完成
     //   操作对象：StateManager.get('entities.quests')（AI 返回的任务）
     // - advanceGuidanceQuest：基于玩家行动计数，推进临时引导任务（"继续探索"）进度
@@ -145,7 +145,7 @@ const QuestMutator = {
             if (!q || q.status === self.STATUS.COMPLETED || q.status === self.STATUS.FAILED) return;
             const title = String(q.title || '');
             if (!title) return;
-            // 【P1修复BUG-4.8】跳过引导任务（id 前缀 'guidance_'）：引导任务仅通过
+
             // advanceGuidanceQuest 的行动计数推进，不参与关键词匹配，避免"继续探索"
             // 等泛化关键词误触发完成
             if (q.id && String(q.id).indexOf('guidance_') === 0) return;
@@ -171,7 +171,7 @@ const QuestMutator = {
     },
 
     // 从任务标题提取关键词（中文按词/字，英文按词）
-    // 【P1修复】stopWords 改为整词匹配，避免子串误过滤（如"前进"含"前"被误删）
+
     _extractKeywords(title) {
         const t = String(title).toLowerCase().trim();
         if (!t) return [];
@@ -187,7 +187,7 @@ const QuestMutator = {
     },
 
     // 标准化任务
-    // 【P1修复BUG-4.13】统一 quest schema：QuestMutator 为权威 schema。
+
     // - title 为身份字段（旧 content 已在 sync 层迁移为 title，此处兼容读取但不输出）
     // - 保留 GameMemory 运行时字段（createdTurn/resolvedTurn/stale），避免 mutator 回写时丢失
     normalizeQuest(raw) {
@@ -215,7 +215,7 @@ const QuestMutator = {
             rewards: this.normalizeRewards(raw.rewards),
             deadline: raw.deadline || raw.timeLimit || null,
             priority: raw.priority || 50,
-            // 【P1修复BUG-4.13】GameMemory 运行时字段（避免回写丢失）
+
             createdTurn: raw.createdTurn || 0,
             resolvedTurn: raw.resolvedTurn || 0,
             stale: !!raw.stale

@@ -4,7 +4,7 @@
 const BagMutator = {
     // 设置整个物品列表（标准化后）
     setItems(items, options) {
-        // 【P0修复BUG-005】类型安全：items 可能是单个对象，强制转为数组
+
         const arr = Array.isArray(items) ? items : (items ? [items] : []);
         const normalized = arr.map(this.normalizeItem.bind(this)).filter(Boolean);
         // 【数据断层修复】只写新路径，StateManager._syncLegacyMirror 自动同步到 currentBag
@@ -12,10 +12,10 @@ const BagMutator = {
     },
 
     // 合并物品：保留已有，更新/插入新物品（同 renderBag 语义）
-    // 【修复BUG-08】原 mergeItems 用物品名做精确匹配，"磨边羊毛袜"与"磨边的羊毛袜"会被当作两个物品
+
     // 现在精确匹配失败时再用归一化名称（去"的"、空格、标点）做模糊匹配，避免命名差异导致重复
     mergeItems(items, options) {
-        // 【P0修复BUG-005】类型安全：items 可能是单个对象，强制转为数组
+
         const inputItems = Array.isArray(items) ? items : (items ? [items] : []);
         const rawBag = StateManager.get('entities.bag');
         const bag = Array.isArray(rawBag) ? rawBag : [];
@@ -65,7 +65,7 @@ const BagMutator = {
         return this.setItems(bag, options);
     },
 
-    // 【修复BUG-08】物品名归一化：去除"的"、空格、标点，统一为可比较形式
+
     // 例："磨边的羊毛袜" 与 "磨边羊毛袜" → "磨边羊毛袜"
     _normalizeItemName(name) {
         if (!name) return '';
@@ -93,7 +93,7 @@ const BagMutator = {
     },
 
     // 标准化物品格式
-    // 【P1修复BUG-4.14】统一 item schema：BagMutator 为权威 schema。
+
     // - count 为身份字段（旧 qty 已在 sync 层映射为 count，此处兼容读取但不输出）
     // - 保留 GameMemory 运行时字段（obtainedTurn/lastChangedTurn/history），避免 mutator 回写时丢失
     normalizeItem(raw) {
@@ -110,7 +110,7 @@ const BagMutator = {
             return null;
         }
         let count = 1;
-        // 【P1修复BUG-4.14】兼容 qty（GameMemory 字段名）→ count 统一
+
         const rawCount = raw.count !== undefined ? raw.count : raw.qty;
         if (rawCount !== undefined) {
             const parsed = parseInt(rawCount);
@@ -129,7 +129,7 @@ const BagMutator = {
             equippable: !!raw.equippable,
             equipped: !!raw.equipped,
             slot: raw.slot || '',
-            // 【P1修复BUG-4.14】GameMemory 运行时字段（避免回写丢失）
+
             obtainedTurn: raw.obtainedTurn || 0,
             lastChangedTurn: raw.lastChangedTurn || 0,
             history: Array.isArray(raw.history) ? raw.history : []

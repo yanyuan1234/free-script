@@ -4,7 +4,7 @@
  * 依赖：smart-config-engine.js
  * 被依赖：regex-manager.js
  */
-// 【P2-14修复】抽取 prompt_order 查找逻辑，消除两处重复 find
+
 // 优先取单人聊天（character_id=100000）的 order，找不到则取第一个非空 group
 function _findPromptOrderGroup(data) {
     if (!data || !data.prompt_order || !Array.isArray(data.prompt_order) || data.prompt_order.length === 0) {
@@ -138,7 +138,7 @@ var PresetManager = {
     }
     // 同步游戏设置的流式开关
     gameState.useStream = this.currentParams.stream !== false;
-    // 【修复P3】移除 streamOn/streamOff 死引用——P2-1 已改为 switch checkbox，这两个 ID 不再存在
+
     },
     syncParamsFromUI: function() {
         var tempEl = document.getElementById('presetTemp');
@@ -167,12 +167,12 @@ var PresetManager = {
         }
         // 同步游戏设置的流式开关
         gameState.useStream = this.currentParams.stream !== false;
-        // 【修复P3】移除 streamOn/streamOff 死引用——P2-1 已改为 switch checkbox，这两个 ID 不再存在
+
 
     this.saveCurrentParams();
 
     // 【同步】预设max_tokens修改后，同步到设置页面的"剧情长度"和gameState
-    // 【修复P1-2】统一调用 _syncMaxTokens（phone-ui.js），替代分散的内联同步
+
     if (typeof _syncMaxTokens === 'function') {
         _syncMaxTokens(this.currentParams.max_tokens);
     } else {
@@ -372,7 +372,7 @@ var PresetManager = {
         }
 
     // 构建参数标签
-    // 【P1-21·阶段9】params.* 来自用户导入的预设文件，原直接 innerHTML 插值（XSS 风险），统一 escapeHtml
+
     var tags = [];
     if (params.temperature != null) tags.push('<span style="background:#8b5cf6;color:#fff;">Temp:' + escapeHtml(params.temperature) + '</span>');
     if (params.top_p != null) tags.push('<span style="background:#6366f1;color:#fff;">TopP:' + escapeHtml(params.top_p) + '</span>');
@@ -489,7 +489,7 @@ var PresetManager = {
     // 解析酒馆预设格式
     parsePreset: function(data, fileName) {
         // 辅助函数：安全取值，避免 0 被 falsy 吞掉
-        // 【P3-16修复】统一为 rest 参数签名：safeNum(...candidates, defaultValue)
+
         // 取第一个非 null/undefined 的候选值，全为空则返回 defaultValue。
         // 原实现用 arguments.length 重载（3参/4参两种语义），易误用。
         function safeNum() {
@@ -566,10 +566,10 @@ var PresetManager = {
             // 需要同时支持两种匹配方式
             var promptEnabledMap = {};
             var promptNameMap = {};
-            // 【修复排序】记录 prompt_order 中的位置索引，用于保留用户的拖拽排列顺序
+
             var promptOrderIndex = {};  // identifier/name -> 在 orderArr 中的位置
             if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
-                // 【P2-14修复】使用抽取的 _findPromptOrderGroup 替代内联重复 find
+
                 var orderGroup = _findPromptOrderGroup(data);
                 var orderArr = orderGroup && orderGroup.order;
                 if (orderArr && Array.isArray(orderArr)) {
@@ -611,7 +611,7 @@ var PresetManager = {
     // 跳过酒馆内置标记位
     // 注意：enhanceDefinitions 是一个有效的提示词，保留其内容
     // 来源：SillyTavern PromptManager.js - enhanceDefinitions 会增强角色定义
-    // 【修复】不再跳过内置标记位，保留它们用于注入
+
     // 这些标记位（personaDescription, charDescription等）在预设中标记了注入位置
     // 保留它们可以让 _applyPromptsToSystemPrompt 正确处理
     var builtinMarkers = ['chatHistory', 'worldInfoBefore', 'worldInfoAfter'];
@@ -629,7 +629,7 @@ var PresetManager = {
     // jailbreak: 越狱提示词（放在聊天历史之后）
     // main: 主系统提示词（标记为系统提示词）
     // nsfw: NSFW提示词（标记为越狱提示词）
-    // 【修复】如果prompt同时标记了 system_prompt=true，尊重该标记，不强制归为越狱
+
     // Free-Script原生预设中nsfw可能是身份定义而非越狱
     if ((p.identifier === 'jailbreak' || p.identifier === 'nsfw') && p.system_prompt !== true) {
         importedPrompts.push({
@@ -639,7 +639,7 @@ var PresetManager = {
             content: p.content,
             injection_position: p.injection_position || 0,
             injection_depth: p.injection_depth || 4,
-            // 【修复排序】优先使用 prompt 自身设置的 injection_order；未定义时才用 prompt_order 索引
+
                     injection_order: (p.injection_order != null)
                     ? p.injection_order
                     : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
@@ -660,7 +660,7 @@ var PresetManager = {
         content: p.content,
         injection_position: p.injection_position || 0,
         injection_depth: p.injection_depth || 4,
-        // 【修复排序】优先使用 prompt 自身设置的 injection_order；未定义时才用 prompt_order 索引
+
                     injection_order: (p.injection_order != null)
                     ? p.injection_order
                     : (promptOrderIndex[p.identifier] != null ? promptOrderIndex[p.identifier] : (promptOrderIndex[p.name] != null ? promptOrderIndex[p.name] : 100)),
@@ -672,11 +672,11 @@ var PresetManager = {
         });
     });
 
-    // 【修复排序】按 prompt_order 的顺序重排 importedPrompts
+
     // 酒馆中 data.prompts 的数组顺序不等于用户拖拽的排列顺序
     // 真正的排序由 prompt_order 决定，必须以此为准
     if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
-        // 【P2-14修复】使用抽取的 _findPromptOrderGroup 替代内联重复 find
+
         var orderGroup = _findPromptOrderGroup(data);
         var orderArr = orderGroup && orderGroup.order;
         if (orderArr && Array.isArray(orderArr) && orderArr.length > 0) {
@@ -734,29 +734,29 @@ var PresetManager = {
 
     // 保存 tavern_helper 脚本信息（酒馆助手扩展的JS脚本）
     var tavernHelperScripts = [];
-    var tavernHelperPresetConfig = null; // 【修复P0-1】提取酒馆助手预设配置
+    var tavernHelperPresetConfig = null;
     if (data.extensions && data.extensions.tavern_helper && data.extensions.tavern_helper.scripts) {
         tavernHelperScripts = data.extensions.tavern_helper.scripts;
     }
-    // 【修复P0-1】从 tavern_helper.data.presets.default 提取核心配置（字数、段落、视角等）
+
     if (data.extensions && data.extensions.tavern_helper && data.extensions.tavern_helper.data
     && data.extensions.tavern_helper.data.presets && data.extensions.tavern_helper.data.presets.default) {
         tavernHelperPresetConfig = data.extensions.tavern_helper.data.presets.default;
     }
 
-    // 【修复】提取 entryGrouping（条目分组信息）
+
     var entryGrouping = null;
     if (data.extensions && data.extensions.entryGrouping && Array.isArray(data.extensions.entryGrouping) && data.extensions.entryGrouping.length > 0) {
         entryGrouping = data.extensions.entryGrouping;
     }
 
-    // 【修复】提取 entryStates（条目状态，月读/象牙塔预设使用）
+
     var entryStates = null;
     if (data.extensions && data.extensions.entryStates) {
         entryStates = data.extensions.entryStates;
     }
 
-    // 【修复】提取 regexBindings（象牙塔预设使用的正则绑定）
+
     var regexBindings = null;
     if (data.extensions && data.extensions.regexBindings) {
         regexBindings = data.extensions.regexBindings;
@@ -782,13 +782,13 @@ var PresetManager = {
     // 保存 SPreset 配置（预设绑定的扩展配置）
     var spresetConfig = data.extensions && data.extensions.SPreset ? data.extensions.SPreset : null;
 
-    // 【修复】从 SPreset.button 提取快捷回复（果实预设使用）
+
     var spresetButtons = null;
     if (data.extensions && data.extensions.SPreset && data.extensions.SPreset.button && data.extensions.SPreset.button.buttons) {
         spresetButtons = data.extensions.SPreset.button.buttons;
     }
 
-    // 【新增】提取更多预设功能
+
     // 提取小剧场配置（月读预设等）
     var theaterConfig = null;
     if (data.extensions && data.extensions.theater) {
@@ -831,7 +831,7 @@ var PresetManager = {
         apiExtensions = data.extensions.api;
     }
 
-    // 【修复P0-1】从酒馆助手预设配置中构建 wordCountConfig
+
     var wordCountConfig = null;
     if (tavernHelperPresetConfig) {
         wordCountConfig = {
@@ -864,7 +864,7 @@ var PresetManager = {
         entryGrouping: entryGrouping,
         entryStates: entryStates,
         regexBindings: regexBindings,
-        // 【新增】更多预设功能
+
         theaterConfig: theaterConfig,
         worldInfoConfig: worldInfoConfig,
         characterConfig: characterConfig,
@@ -872,7 +872,7 @@ var PresetManager = {
         customVariables: customVariables,
         triggers: triggers,
         apiExtensions: apiExtensions,
-        // 【修复P0-1】字数控制配置（从酒馆助手预设中提取）
+
         wordCountConfig: wordCountConfig,
         // 酒馆兼容：用户人设提示词
         impersonation_prompt: data.impersonation_prompt || '',
@@ -881,7 +881,7 @@ var PresetManager = {
         // 酒馆兼容：工具推理模式
         tool_reasoning_mode: data.tool_reasoning_mode || 'disabled',
         imported: true,
-        time: Date.now()  // 【P2-3修复】持久化存时间戳
+        time: Date.now()
         };
     },
 
@@ -892,7 +892,7 @@ var PresetManager = {
             name: name,
             params: Object.assign({}, this.currentParams),
             imported: false,
-            time: Date.now()  // 【P2-3修复】持久化存时间戳
+            time: Date.now()
             };
 
         // 检查是否已存在同名预设
@@ -943,7 +943,7 @@ var PresetManager = {
         if (params.presence_penalty != null && params.presence_penalty !== 0) paramParts.push('Pres Pen: ' + params.presence_penalty);
         if (params.max_tokens) paramParts.push('Max Tokens: ' + params.max_tokens);
         if (params.max_context) paramParts.push('Max Context: ' + params.max_context);
-        // 【P1-21·阶段9】params.* 来自用户预设，统一 escapeHtml 防止 XSS
+
         paramsEl.innerHTML = '<div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">' + escapeHtml(paramParts.join(' &nbsp;|&nbsp; ')) + '</div>';
 
         // 渲染提示词条目列表
@@ -989,7 +989,7 @@ var PresetManager = {
         // injection_position 标签
         var ipLabels = { 0: '聊天前', 1: '聊天后' };
 
-        // 【修复】构建 entryGrouping 分组映射
+
         var groupMap = {}; // identifier -> group name
         var groupOrder = []; // 保持分组顺序
         if (preset.entryGrouping && Array.isArray(preset.entryGrouping)) {
@@ -1032,7 +1032,7 @@ var PresetManager = {
     var html = '';
 
     if (groupOrder.length > 0) {
-        // 【修复】有分组信息时，按分组渲染（可折叠）
+
         // 先收集未分组的 prompt
         var grouped = {}; // group name -> [indices]
         var ungrouped = [];
@@ -1091,7 +1091,7 @@ var PresetManager = {
 
     container.innerHTML = html;
 
-    // 【修复】分组折叠事件
+
     container.querySelectorAll('.preset-group-header').forEach(function(header) {
         header.addEventListener('click', function(e) {
             if (e.target.closest('[data-prompt-view]') || e.target.closest('.preset-prompt-toggle')) return;
@@ -1345,7 +1345,7 @@ var PresetManager = {
     }
     },
 
-    // 【新增】加载 entryStates 预设版本快照（象牙塔/月读预设使用）
+
     _loadEntryStates: function(preset) {
         if (!preset || !preset.entryStates) return;
         var states = preset.entryStates;
@@ -1364,7 +1364,7 @@ var PresetManager = {
         // 存储到预设对象中供 UI 使用
         preset._entryStateVersions = versions;
         preset._activeEntryState = versions[0].name;
-        // 【修复P1-2】自动应用第一个版本的 enabled 状态到 prompts
+
         var firstVersion = versions[0];
         if (firstVersion.entries && Array.isArray(firstVersion.entries)) {
             firstVersion.entries.forEach(function(entry) {
@@ -1380,7 +1380,6 @@ var PresetManager = {
     console.log('[预设] 已加载 ' + versions.length + ' 个预设版本快照:', versions.map(function(v) { return v.name; }).join(', '));
     },
 
-    // 【P2清理】删除 switchEntryState（仅 backup/index.html 引用，全项目零调用）
 
     _applyPromptsToSystemPrompt: function(preset) {
         // 【关键】有预设时只取游戏上下文（玩家设定/记忆/私聊），不包含默认格式规则
@@ -1458,7 +1457,7 @@ var PresetManager = {
             var role = p.role || 'system';
 
             // 越狱提示词
-            // 【修复】如果prompt标记了system_prompt=true，不强制归为越狱
+
             // Free-Script原生预设中nsfw可能是身份定义，应走system_prompt路径
             if ((p.identifier === 'jailbreak' || p.identifier === 'nsfw' || p.isJailbreak) && p.system_prompt !== true) {
                 jailbreakPrompts.push(p);
@@ -1530,7 +1529,7 @@ var PresetManager = {
     gameState._assistantPrompt = asstParts.join('\n\n');
 
     // 合并世界书depth prompts和预设depth prompts
-    // 【阶段4统一】写入前先清除上一轮的 preset 条目，避免切换预设时旧条目累积
+
     if (!gameState._depthPrompts) gameState._depthPrompts = {};
     Object.keys(gameState._depthPrompts).forEach(function(d) {
         gameState._depthPrompts[d] = (gameState._depthPrompts[d] || []).filter(function(e) {
@@ -1639,9 +1638,9 @@ var PresetManager = {
 
             // 同步参数到 gameState（解决滑块更新但 gameState 未变的 bug）
             // syncParamsToUI() 只更新了 DOM，但没有自动更新 gameState
-            // 【修复P0-1】不再同步 gameState.temperature——temperature 统一由 PresetManager.currentParams 管理
+
             // buildAIRequestBody 直接从 PresetManager 读取，gameState.temperature 已废弃
-            // 【修复P1-2】统一调用 _syncMaxTokens 同步 max_tokens 到 gameState 和 UI
+
             if (typeof _syncMaxTokens === 'function') {
                 _syncMaxTokens(this.currentParams.max_tokens);
             } else if (typeof gameState !== 'undefined') {
@@ -1668,7 +1667,6 @@ var PresetManager = {
             }
         });
 
-        // 【修复P3】移除重复的 presetMaxTokens 同步——上方 _syncMaxTokens() 已同步到 UI（含 presetMaxTokens）和 gameState
 
     // 同步 context length（如果有的话）
     var ctxLenEl = document.getElementById('presetContextLength');
@@ -1748,7 +1746,7 @@ var PresetManager = {
         }
     }
 
-    // 【修复】从 spresetButtons 加载快捷回复（果实预设）
+
     if (preset.spresetButtons && preset.spresetButtons.length > 0) {
         console.log('[Preset] 检测到 SPreset 快捷回复按钮:', preset.spresetButtons.length, '个');
         if (typeof TavernHelperCompat !== 'undefined') {
@@ -1767,7 +1765,7 @@ var PresetManager = {
         _syncPresetWordCountToUI(preset.wordCountConfig);
     }
 
-    // 【新增】应用更多预设功能
+
     // 应用小剧场配置
     if (preset.theaterConfig) {
         console.log('[Preset] 检测到小剧场配置');
@@ -1820,7 +1818,7 @@ var PresetManager = {
 
     // 更新世界创建页面的预设显示
     this.updateSetupPresetDisplay();
-    // 【新增】加载 entryStates 预设版本快照
+
     this._loadEntryStates(preset);
 
     // 加载后自动关闭弹窗，让用户看到更新后的预设名称
@@ -2003,5 +2001,5 @@ var PresetManager = {
     // 从 PresetEngine 合并的方法
     // ========================================
 
-    // 【P2清理】删除 buildBaseGameRules（全项目零调用）
+
 };

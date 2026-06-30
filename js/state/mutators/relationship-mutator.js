@@ -1,7 +1,7 @@
 // ========================================
 // 关系变更器 - RelationshipMutator
 // ========================================
-// 【P0-2.9 阶段3-3】关系数据 3 套归 1：
+
 //   - 旧：gameState.relationships（UI 读）
 //   - 旧：gm.tables.relationships（EnhancedMemory 存储）
 //   - 新：StateManager.get('entities.relationships')

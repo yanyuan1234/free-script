@@ -192,7 +192,7 @@ var RegexManager = {
         saveBtn.addEventListener('click', function() { self.saveScript(); });
     }
 
-    // 【P0-2修复】测试按钮：保存前验证正则语法 + 试运行示例文本
+
     var testBtn = document.getElementById('btnRegexTest');
     if (testBtn) {
         testBtn.addEventListener('click', function() { self.testScript(); });
@@ -420,7 +420,7 @@ scripts.forEach(function(script, idx) {
     if (script.markdownOnly) tags.push('<span style="background:#8b5cf6;color:#fff;">仅MD</span>');
     if (script.promptOnly) tags.push('<span style="background:#6366f1;color:#fff;">仅Prompt</span>');
     if (script.runOnEdit) tags.push('<span style="background:#f59e0b;color:#fff;">编辑时</span>');
-    // 【P0-2修复】错误状态可视化：脚本执行出错时显示错误标签，便于用户排查
+
     if (script._lastError) {
         tags.push('<span style="background:#ef4444;color:#fff;" title="' + escapeHtml(script._lastError) + '">错误</span>');
     }
@@ -429,7 +429,7 @@ scripts.forEach(function(script, idx) {
 
     var displayName = script.name || script.scriptName || '未命名';
 
-    // 【P0-2修复】有未解决错误时左侧条变橙，正常启用绿、禁用红、出错橙
+
     var borderColor = script._lastError ? '#f59e0b' : (isEnabled ? 'var(--success)' : 'var(--danger)');
     html += '<div class="pearl-card" style="padding:8px 10px;opacity:' + (isEnabled ? '1' : '0.5') + ';border-left:3px solid ' + borderColor + ';">' +
     // 错误详情行（仅在有错误时显示）
@@ -622,7 +622,7 @@ else if (typeof data.placement === 'number') {
 }
 }
 
-// 【修复关键逻辑】
+
 // 只有在没有明确 placement 且不是导入的情况下，才默认应用（兼容旧格式/新建正则）
 // 从酒馆导入的正则，如果没有 placement 设置，应该不自动应用
 else if (!hasExplicitPlacement && !isImport) {
@@ -796,7 +796,7 @@ this.renderScriptList();
 UI.toast('正则脚本已保存');
 },
 
-// 【P0-2修复】测试当前编辑中的正则：验证语法 + 应用到示例文本
+
 // 用户在保存前可发现语法错误，避免保存后在运行时才暴露
 testScript: function() {
     var findPattern = document.getElementById('regexFindPattern').value.trim();
@@ -870,8 +870,6 @@ testScript: function() {
     UI.createModal({ html: html });
 },
 
-
-// 【P2清理】删除 toggleScript / quickDeleteScript（全项目零调用）
 
 // 删除脚本（编辑弹窗内）
 deleteScript: async function() {
@@ -994,7 +992,7 @@ if (messageIndex != null) {
 try {
     result = self.applySingleScript(result, script);
 } catch(e) {
-    // 【P0-2修复】外层兜底也记录错误状态，与 applySingleScript 内部 try-catch 一致
+
     // 捕获 applySingleScript 未覆盖的异常（如 MacroEngine.process、trimStrings 等）
     if (script) {
         script._lastError = '执行异常: ' + (e && e.message ? e.message : String(e));
@@ -1014,7 +1012,7 @@ applySingleScript: function(text, script) {
     var pattern = script.findPattern;
     var replacement = script.replaceString || '';
 
-    // 【修复9】处理 substituteRegex 字段
+
     // substituteRegex: 0=NONE, 1=RAW, 2=ESCAPED
     // 在应用正则之前，先处理 findPattern 和 replaceString 中的宏变量
     if (script.substituteRegex && script.substituteRegex > 0) {
@@ -1081,7 +1079,7 @@ if (isDangerous) {
     return text;
 }
 
-// 【P0-2修复】正则构造加 try-catch：单个脚本语法错误不影响其他脚本执行
+
 // 旧实现直接 new RegExp(regexBody, flags)，语法错误抛 SyntaxError 冒泡到 apply 的 try-catch
 // 虽然外层会捕获，但仅 console.warn 不记录错误状态，下次调用又重新抛错，且 UI 无错误提示
 var regex;
@@ -1105,7 +1103,7 @@ try {
 // {{match}} 替换为 $&（整个匹配）
 replacement = replacement.replace(/{{match}}/g, '$&');
 
-// 【P0-2修复】replace 调用加 try-catch：replacement 中 $ 特殊字符格式错误（如 $1 但无捕获组）也会抛错
+
 var result;
 try {
     result = text.replace(regex, replacement);

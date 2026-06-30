@@ -1,8 +1,8 @@
-// 【P1-阶段5-去重】永久事实类型双向映射常量
+
 // 旧代码：5 处重复定义同样的 typeMap（3 处反向 oldType→newKey、2 处正向 newKey→oldType）
 // 现统一为两个常量，所有调用点引用，消除键名/键值拼写不一致隐患
 // 反向：旧 worldAnchor.type（snake_case）→ permanentFacts 的 newKey（camelCase）
-// 【P3-4.2·阶段10】Object.freeze 防止运行时意外 mutate 映射表
+
 var _FACT_OLDTYPE_TO_NEWKEY = Object.freeze({
     pc_identity: 'pcIdentity',
     setting: 'settings',
@@ -27,9 +27,9 @@ var TavernHelperCompat = {
     _scripts: [],
     _quickReplies: [],
     _eventListeners: {},
-    // 【P1修复P1-L】删除 _presetConfig 字段：仅由 _loadPresetConfigs 写入、由 getPresetConfig
+
     // 读取，但 getPresetConfig 全项目零外部调用，构成死字段。
-    // 【修复B P2-1】控制流命令收集模式
+
     _collectingMode: null,  // null | 'while' | 'foreach'
     
     // 初始化
@@ -40,7 +40,7 @@ var TavernHelperCompat = {
     
     // 1. getContext() 兼容层
     // 返回与SillyTavern一致的数据格式
-    // 【P1-mem修复】缓存加入版本校验，state 变化时自动失效
+
     _context: null,
     _contextVersion: '',
     getContext: function() {
@@ -181,7 +181,7 @@ triggerSlash: function(commandStr) {
 _executeSingleCommand: function(cmdStr) {
     if (!cmdStr) return Promise.resolve(this._pipeValue);
 
-    // 【修复B P2-1】收集模式：当处于 while/foreach 收集阶段时，将命令收集到数组中
+
     if (this._collectingMode === 'while') {
         this._whileCommands.push(cmdStr);
         return Promise.resolve('');
@@ -277,14 +277,14 @@ _executeSingleCommand: function(cmdStr) {
             this._ifCondition = null;
             this._ifExecuted = false;
             result=''; break;
-        // 【修复B P2-1】新增：while命令（循环）- 进入收集模式
+
         case 'while':
             this._whileCondition = argsStr;
             this._whileCommands = [];
-            this._collectingMode = 'while';  // 【修复B P2-1】开始收集循环体命令
+            this._collectingMode = 'while';
             result=''; break;
         case 'endwhile':
-            // 【修复B P2-1】退出收集模式，执行循环
+
             this._collectingMode = null;
             if(this._whileCondition&&this._whileCommands.length>0){
                 var _maxWhileIter = 1000;
@@ -298,7 +298,7 @@ _executeSingleCommand: function(cmdStr) {
             this._whileCondition=null;
             this._whileCommands=[];
             result=''; break;
-        // 【修复B P2-1】新增：foreach命令（遍历）- 进入收集模式
+
         case 'foreach':
             var m=argsStr.match(/(\S+)\s+of\s+(.+)/);
             if(m){
@@ -315,11 +315,11 @@ _executeSingleCommand: function(cmdStr) {
                 this._foreachVar=varName;
                 this._foreachIndex=0;
                 this._foreachCommands=[];
-                this._collectingMode = 'foreach';  // 【修复B P2-1】开始收集循环体命令
+                this._collectingMode = 'foreach';
             }
             result=''; break;
         case 'endforeach':
-            // 【修复B P2-1】退出收集模式，执行遍历
+
             this._collectingMode = null;
             if(this._foreachList&&this._foreachCommands.length>0){
                 var self=this;
@@ -367,7 +367,7 @@ _executeSingleCommand: function(cmdStr) {
             if(typeof sendAIRequest==='function') TimerManager.setTimeout('swipeAI', function(){sendAIRequest('请重新生成');},100);
             result=''; break;
         case 'continue':
-            // 【修复】使用预设的 continue_nudge_prompt
+
             (function() {
                 var continuePrompt = '[Continue your last message...]';
                 try {
@@ -391,7 +391,7 @@ _executeSingleCommand: function(cmdStr) {
             }
             result=''; break;
         case 'persona':
-            // 【P0-9修复】persona 走 StateManager 权威源：entities.player.personality
+
             // 旧实现仅写 gameState.playerPersonality（SillyTavern 兼容字段，本项目从不读取），
             // 而 _applyPlayer (ai-response-mutator.js:211) 读的是 entities.player.personality，
             // 导致 persona 命令设置的性格对 AI 注入无效。
@@ -427,7 +427,7 @@ _executeSingleCommand: function(cmdStr) {
             }
             result=''; break;
         case 'clear':
-            // 【P0-9修复】清空对话历史走 StateManager 权威源：
+
             // _syncLegacyMirror 自动同步 gameState.conversationHistory。
             // 旧实现直写 gameState.conversationHistory = []，导致
             // StateManager.get('progress.conversationHistory') 仍返回旧值（陈旧），
@@ -439,13 +439,13 @@ _executeSingleCommand: function(cmdStr) {
             }
             result=''; break;
         case 'save':
-            // 【修复8 P1-1】使用存在的 saveToSlot 函数代替不存在的 saveGame
+
             if(typeof saveToSlot === 'function') {
                 saveToSlot(1);
             }
             result=''; break;
         case 'load':
-            // 【修复8 P1-1】使用存在的 loadFromSlot 函数代替不存在的 loadGame
+
             if(typeof loadFromSlot === 'function') {
                 loadFromSlot(parseInt(argsStr.trim()) || 1);
             }
@@ -510,7 +510,7 @@ _evaluateCondition: function(condition) {
 },
 
 // 4. 事件系统
-// 【性能优化】on() 自动去重，相同函数引用不会重复注册
+
 on: function(event, cb) {
     if(!this._eventListeners[event]) this._eventListeners[event] = [];
     if(this._eventListeners[event].indexOf(cb) === -1) {
@@ -573,13 +573,13 @@ _renderQuickReplyButtons: function() {
         button.className = 'action-bar-btn';
         button.style.cssText = 'flex-shrink:0;font-size:12px;padding:6px 12px;white-space:nowrap;border-radius:var(--radius-icon);';
         
-        // 【修复】支持 emphasized 字段（强调样式）
+
         var isEmphasized = btn.emphasized === true;
         if (isEmphasized) {
             button.classList.add('emphasized');
         }
         
-        // 【新增】支持 secondary 字段（次要样式）
+
         if (btn.secondary === true || btn.style === 'secondary') {
             button.classList.add('secondary');
         }
@@ -587,7 +587,7 @@ _renderQuickReplyButtons: function() {
         button.onclick = function() {
                 self.emit('QUICK_REPLY_CLICKED', { button: btn, index: i });
 
-                // 【修复】支持 setVariable 字段
+
                 if (btn.setVariable && typeof btn.setVariable === 'object') {
                     Object.keys(btn.setVariable).forEach(function(varName) {
                         var varValue = btn.setVariable[varName];
@@ -598,7 +598,7 @@ _renderQuickReplyButtons: function() {
                             });
                         }
                         // 设置为全局变量
-                        // 【优化】移除 gameState._globalVars 死字段写入——MacroEngine._globalVars 已迁移到 VariableStore
+
                         // 旧代码的 else 分支写入 gameState._globalVars，但该字段从未被任何读取逻辑使用
                         if (typeof setGlobalVar === 'function') setGlobalVar(varName, varValue);
                         else if (typeof MacroEngine !== 'undefined' && MacroEngine.setGlobalVar) MacroEngine.setGlobalVar(varName, varValue);
@@ -621,7 +621,7 @@ _renderQuickReplyButtons: function() {
                         promptText = btn.prompt;
                     }
                     if (promptText && promptText.trim()) {
-                        // 【P2清理】删除 gameState._quickReplyLog 写入（写入后从不读取，全项目零消费）
+
                         // 发送消息
                         var inputEl = document.getElementById('userInput') || document.getElementById('customAction');
                         if (inputEl) {
@@ -660,7 +660,7 @@ loadScripts: function(data) {
     this._scripts = data.scripts;
     data.scripts.forEach(function(script){
         if(script.enabled===false) return;
-        // 【优化】使用统一的 _executeScriptCode 方法
+
         self._executeScriptCode(script.content, script.name || '未命名');
     });
 },
@@ -672,17 +672,17 @@ _createSandbox: function() {
         triggerSlash: function(cmd){return self.triggerSlash(cmd);},
         toastr: window.toastr||{info:function(m){console.log('[toastr] '+m);},success:function(m){console.log('[toastr] '+m);},warning:function(m){console.log('[toastr] '+m);},error:function(m){console.log('[toastr] '+m);}},
         eventSource: {on:function(e,cb){self.on(e,cb);},emit:function(e,d){self.emit(e,d);},once:function(e,cb){var w=function(d){self._removeListener(e,w);cb(d);};self.on(e,w);},removeListener:function(e,cb){self._removeListener(e,cb);}},
-        // 【修复】暴露 SillyTavern 引用，让脚本中的 window.SillyTavern 可用
+
         SillyTavern: window.SillyTavern
     };
 },
 
-// 【修复7 P0-3】executeScript 方法 - 复用 _executeScriptCode 内部方法
+
 executeScript: function(scriptContent) {
     return this._executeScriptCode(scriptContent, 'executeScript');
 },
 
-// 【新增】内部通用脚本执行方法
+
 // 安全说明：此处使用 Function 构造函数是必要的，用于执行预设文件中的自定义脚本。
 // 安全措施：
 // 1. 脚本来源仅限预设文件，不接受用户直接输入
@@ -699,7 +699,7 @@ _executeScriptCode: function(code, sourceName) {
         console.warn('[TavernHelper] ' + (sourceName || '脚本') + ' 错误: 代码长度超过限制 (100KB)');
         return '';
     }
-    // 【P0修复】加强危险模式检测：覆盖更多绕过手法
+
     var dangerousPatterns = [
         /\beval\s*\(/,
         /\bFunction\s*\(/,
@@ -718,15 +718,15 @@ _executeScriptCode: function(code, sourceName) {
         // 字符串形式的定时器调用
         /\bsetTimeout\s*\(\s*['"]/,
         /\bsetInterval\s*\(\s*['"]/,
-        // 【新增】constructor/prototype 绕过
+
         /\bconstructor\s*\[\s*['"]constructor['"]\s*\]/,
         /\b__proto__\b/,
-        // 【新增】window.Function / globalThis.Function 间接调用
+
         /\bwindow\s*\.\s*Function\b/,
         /\bglobalThis\s*\.\s*Function\b/,
-        // 【新增】document.cookie / localStorage 直接访问
+
         /\bdocument\s*\.\s*cookie\b/,
-        // 【新增】XMLHttpRequest 直接构造
+
         /\bnew\s+XMLHttpRequest\b/
     ];
     for (let i = 0; i < dangerousPatterns.length; i++) {
@@ -739,7 +739,7 @@ _executeScriptCode: function(code, sourceName) {
         var sandbox = this._createSandbox();
         code = code.replace(/^import\s+\{[^}]*\}\s+from\s+['"][^'"]+['"];?\s*$/gm, '// [import 已被兼容层替换]');
         code = code.replace(/window\.SillyTavern/g, 'window.TavernHelperCompat');
-        // 【P0修复】添加 'use strict' 阻止 this 指向 window
+
         // 移除 fetch 注入（沙箱不应有任意网络请求能力）
         // this 绑定为 null（严格模式下不会回退到 window）
         var preamble = "'use strict';\nvar getContext=arguments[0],triggerSlash=arguments[1],toastr=arguments[2],eventSource=arguments[3];\n";
@@ -763,16 +763,16 @@ loadFromPreset: function(presetData) {
         if(th.button) this.parseQuickReplies(th);
         if(th.data&&th.data.presets) this._loadPresetConfigs(th.data.presets);
     }
-    // 【修复】从 SPreset 扩展中提取快捷回复（兼容果实预设）
+
     var sp = presetData.SPreset || presetData.extensions_SPreset || null;
     if (sp && sp.button && sp.button.buttons) {
         this.parseQuickReplies({ button: sp.button });
     }
-    // 【修复】从预设的 spresetButtons 字段加载快捷回复（果实预设）
+
     if (presetData.spresetButtons && presetData.spresetButtons.length > 0) {
         this.parseQuickReplies({ button: { buttons: presetData.spresetButtons } });
     }
-    // 【修复】触发 APP_READY 事件（酒馆助手脚本可能依赖此事件）
+
     if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) {
         TimerManager.setTimeout('appReady', function() {
             TavernHelperCompat.emit('APP_READY', {});
@@ -789,7 +789,7 @@ loadFromPreset: function(presetData) {
 
 _loadPresetConfigs: function(presets) {
     if(!presets||!presets.default) return;
-    // 【P1修复P1-L】删除 this._presetConfig = presets.default 赋值：死字段（无外部读取点）
+
     if(presets.default.commands){
         var self=this;
         Object.keys(presets.default.commands).forEach(function(cmdName){
@@ -800,7 +800,7 @@ _loadPresetConfigs: function(presets) {
             });
         });
     }
-    // 【修复P0-1补充】将酒馆助手预设配置同步到当前预设的 wordCountConfig
+
     // 这样 injectPresetGlobalVars 就能读取到正确的字数/视角等配置
     if (typeof PresetManager !== 'undefined' && PresetManager.currentPresetIndex >= 0) {
         var currentPreset = PresetManager.presets[PresetManager.currentPresetIndex];
@@ -829,14 +829,14 @@ _loadPresetConfigs: function(presets) {
 }
 };
 
-// 【P1修复P1-L】删除 getPresetConfig 方法：返回 _presetConfig，但 _presetConfig 已删除
+
 // （死字段清理的连锁：_presetConfig 无写入点后，getPresetConfig 也无意义）
 
 // 全局暴露（酒馆脚本需要）
 window.getContext = function(){return TavernHelperCompat.getContext();};
 window.triggerSlash = function(cmd){return TavernHelperCompat.triggerSlash(cmd);};
 
-// 【修复】补全 SillyTavern API，让酒馆助手脚本能正常运行
+
 window.SillyTavern = {
 getContext: function(){return TavernHelperCompat.getContext();},
 chat: [],
@@ -880,7 +880,7 @@ eventSource: {
 }
 };
 
-// 【修复】添加 _removeListener 方法到 TavernHelperCompat
+
 if(!TavernHelperCompat._removeListener){
 TavernHelperCompat._removeListener = function(event, cb){
     var l = this._eventListeners[event];
@@ -907,28 +907,28 @@ TavernHelperCompat.init();
 
 var GameMemory = {
 
-    // 【P1修复P1-M】版本升至 v4：quests 条目 content 字段重命名为 title，
+
     // 与 QuestMutator schema 对齐，消除 core.js 内 title↔content 别名映射
     version: 4,
     currentTurn: 0,
-    // 【P0修复】longTermMemory getter 缓存：原 getter 每次访问都重建 worldAnchors 数组
+
     // （遍历 permanentFacts 全量映射）+ defineProperty(masterSummary)，单次 _parseStructuredSummary
     // 可触发 35+ 次 getter 调用。现按 dirty 标志缓存，permanentFacts 变更时置 dirty。
     _ltmCache: null,
     _ltmDirty: true,
-    // 【P2-40·阶段7】_updateDormantStatus 内 isMentioned 短名称正则缓存
+
     // 旧代码：每次 _updateDormantStatus 调用重建 isMentioned 闭包，闭包内短名称分支每次 new RegExp
     // 现：实例级缓存，同一 name 的正则只构造一次，跨多轮 AI 叙事复用
     _dormantNameRegexCache: {},
-    // 【P2-29修复】LTM 脏标志统一入口：所有写入点调用此方法置脏，
+
     // 替代散落各处的 `XXX._ltmDirty = true`。新增写入点一律调用 _markLtmDirty()，
     // 避免遗漏（如 P0-7 的 MemoryManagerUI 各 save* 函数曾漏置脏导致缓存陈旧）。
     _markLtmDirty: function() { this._ltmDirty = true; },
-    // 【P2-20修复】permanentFacts 各 list 数量上限
+
     // 原问题：6 个 list 无上限，AI 持续 push 导致 token 预算被永久事实区独占
     // 对比：worldAnchors 有 30 条上限，importantEvents 有 60/40 预算，timeline 有 50 条上限
     _PERMANENT_FACTS_LIMITS: { pcIdentity: 5, worldRules: 20, settings: 20, npcProfiles: 30, promises: 20, worldPlaces: 20 },
-    // 【P2-20修复】统一 push 入口：push 后超限则淘汰最旧的非 locked 项，全 locked 则淘汰最旧项
+
     _pushPermanentFact: function(listName, item) {
         var list = this.permanentFacts[listName];
         if (!Array.isArray(list)) {
@@ -961,7 +961,7 @@ var GameMemory = {
     events: [],
     timeline: [],
     quests: [],
-    // 【优化】移除 nearSummary/midSummary/farSummary 死字段——注入路径从不读取，_summaryLayers 已统一处理
+
     workingMemory: { recentMessages: [], currentTopic: null, turns: [], messages: [] },
     // 变化驱动注入快照（Horae风格：无变化零Token）
     _injectionSnapshots: {},
@@ -978,7 +978,7 @@ var GameMemory = {
     stats: { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 },
     _changeLog: [],
     summaryHistory: [],
-    // 【P2清理】删除 currentSummaryIndex（仅初始化与 reset，全项目零读取；summaryHistory 保留供 phone-ui.js 压缩统计显示）
+
     _saving: false,
     _pendingSave: false,
 
@@ -1017,7 +1017,7 @@ var GameMemory = {
         if (!this._summaryLayers) this._summaryLayers = { near: [], mid: [], far: [] };
         if (!this._setupLayers) this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         if (!this._setupLayers.setupKeywords) this._setupLayers.setupKeywords = [];
-        // 【修复 P2】移除 nearSummary/midSummary/farSummary 死字段初始化——这些字段已废弃，无人读取
+
         // if (!this.workingMemory.nearSummary) this.workingMemory.nearSummary = '';
         // if (!this.workingMemory.midSummary) this.workingMemory.midSummary = '';
         // if (!this.workingMemory.farSummary) this.workingMemory.farSummary = '';
@@ -1093,7 +1093,7 @@ var GameMemory = {
         }
         var ltm = old.longTermMemory || {};
         if (ltm.worldAnchors && ltm.worldAnchors.length > 0) {
-            var typeMap = _FACT_OLDTYPE_TO_NEWKEY;  // 【P1-阶段5-去重】引用顶部常量
+            var typeMap = _FACT_OLDTYPE_TO_NEWKEY;
             ltm.worldAnchors.forEach(function(a) {
                 var key = typeMap[a.type] || 'settings';
                 if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
@@ -1145,7 +1145,7 @@ var GameMemory = {
             self.timeline = ltm.timeline.map(function(t) { return { turn: t.turn || 0, gameTime: t.relativeTime || '', summary: t.title || '' }; });
         }
         if (ltm.activeQuests && ltm.activeQuests.length > 0) {
-            // 【P1修复P1-M】写入 title 字段（与 QuestMutator schema 对齐），兼容旧数据 content
+
             self.quests = ltm.activeQuests.map(function(q) { return { title: q.content || q.title || '', type: q.type || 'promise', status: q.status || 'pending', createdTurn: q.createdTurn || 0, resolvedTurn: q.resolvedAt ? turn : 0, stale: q.stale || false }; });
         }
         if (ltm.worldSetting) self.plot.worldSetting = ltm.worldSetting;
@@ -1153,7 +1153,7 @@ var GameMemory = {
         if (old.compressionConfig) { self.compressionConfig.triggerThreshold = old.compressionConfig.triggerThreshold || 0.75; self.compressionConfig.incrementalUpdate = old.compressionConfig.incrementalUpdate !== false; }
         self.saveToStorage();
         console.log('[GameMemory] 旧版数据迁移完成');
-        // 【P0修复】permanentFacts 已从旧版数据迁移恢复，失效 longTermMemory 缓存
+
         self._markLtmDirty();
         return true;
     },
@@ -1185,11 +1185,11 @@ var GameMemory = {
             self._updateAccessCounts(message);
             // 逐层摘要：更新摘要层级（Qvink风格）
             self._updateSummaryLayers();
-            // 【优化】移除 compressSetupIfNeeded() 调用——函数体为空（仅有注释），是无用调用
+
             // 【AI叙事驱动】更新所有角色/物品/任务的休眠状态
             self._updateDormantStatus(message);
         } catch (e) {
-            // 【P2清理】删除 self.stats.lastError 写入（写入后从不读取，全项目零消费）
+
             console.error('[GameMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
         }
     },
@@ -1227,7 +1227,7 @@ var GameMemory = {
             var edit = { type: type, attrs: attrs, raw: full };
             if (type === 'character' && attrs.name) {
                 var charName = attrs.name;
-                // 【P1-mem修复】防止原型污染：charName 和 field 都不能是危险 key
+
                 if (!self._isSafeKey(charName) || !self._isSafeKey(attrs.field)) {
                     edit.skipped = true; edit.reason = 'unsafe_key';
                     edits.push(edit); return '';
@@ -1252,7 +1252,7 @@ var GameMemory = {
                 }
             } else if (type === 'item' && attrs.name) {
                 var itemName = attrs.name;
-                // 【P1-mem修复】防止原型污染
+
                 if (!self._isSafeKey(itemName)) {
                     edit.skipped = true; edit.reason = 'unsafe_key';
                     edits.push(edit); return '';
@@ -1267,7 +1267,7 @@ var GameMemory = {
                 else if (action === 'change' && item) { var oldQty3 = item.qty; item.qty = qty; item.lastChangedTurn = self.currentTurn; if (!item.history) item.history = []; item.history.push({ turn: self.currentTurn, from: oldQty3, to: qty }); if (item.history.length > 10) item.history = item.history.slice(-10); self._changeLog.push({ turn: self.currentTurn, type: 'item', key: itemName, field: 'qty', oldValue: oldQty3, newValue: qty }); }
             } else if (type === 'location' && attrs.name) {
                 var locName = attrs.name;
-                // 【P1-mem修复】防止原型污染
+
                 if (!self._isSafeKey(locName) || !self._isSafeKey(attrs.field)) {
                     edit.skipped = true; edit.reason = 'unsafe_key';
                     edits.push(edit); return '';
@@ -1287,9 +1287,9 @@ var GameMemory = {
         if (edits.length > 0 && typeof _ensureDataLinkage === 'function') {
             try { _ensureDataLinkage(); } catch (e) { console.warn('[mem解析] 数据联通同步失败:', e); }
         }
-        // 【P2-43修复】AI 修改记忆后失效 LTM 缓存，避免 AI 本轮继续用旧记忆
+
         if (edits.length > 0) { self._markLtmDirty(); }
-        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
+
         return { cleanedText: cleanedText, edits: edits };
     },
 
@@ -1298,7 +1298,7 @@ var GameMemory = {
         if (!attrsStr) return attrs;
         var re = /(\w+)\s*=\s*(?:"([^"]*?)"|'([^']*?)')/g;
         var m;
-        // 【P1-mem修复】过滤危险 key，防止原型污染
+
         var DANGEROUS = { '__proto__': 1, 'constructor': 1, 'prototype': 1 };
         while ((m = re.exec(attrsStr)) !== null) {
             var key = m[1];
@@ -1308,7 +1308,7 @@ var GameMemory = {
         return attrs;
     },
 
-    // 【P1-mem修复】检查 key 是否安全（防止原型污染）
+
     _isSafeKey: function(key) {
         if (!key || typeof key !== 'string') return false;
         return key !== '__proto__' && key !== 'constructor' && key !== 'prototype';
@@ -1442,7 +1442,7 @@ var GameMemory = {
 
         // 辅助：检查内容中是否精确提到某个名称（避免子串误匹配）
         // 例如 "小明" 不会匹配 "小明王"，但会匹配 "小明说"、"叫小明"
-        // 【P2-40·阶段7】短名称正则改用实例级 _dormantNameRegexCache 缓存
+
         // 旧代码：每次调用 new RegExp；现：同 name 只构造一次，跨多轮 AI 叙事复用
         if (!self._dormantNameRegexCache) self._dormantNameRegexCache = {};
         function isMentioned(name) {
@@ -1541,7 +1541,7 @@ var GameMemory = {
         });
 
         // 更新伏笔休眠计数
-        // 【P1-mem修复】同时淘汰过期的已触发/低优先级伏笔，防止无限增长
+
         var MAX_FORESHADOWINGS = 100;
         var FORESHADOW_EXPIRE_TURNS = 50;
         var fsKeys = Object.keys(self._dormantTracking.foreshadowings || {});
@@ -1631,7 +1631,7 @@ var GameMemory = {
         var turns = self.workingMemory.turns || [];
         var totalTurns = turns.length;
 
-        // 【阶段4修复重复注入】原 near 层注入最近3轮完整原文（玩家:xxx | AI:xxx），
+
         // 但 conversationHistory 也会把最近 N 轮原文作为 messages 发送给 API，
         // 导致同一份内容在 system prompt 和 messages 数组中重复出现，浪费大量 token。
         // 改为：near 层置空，最近3轮由 conversationHistory 唯一承载。
@@ -1664,7 +1664,7 @@ var GameMemory = {
             }).filter(function(s) { return s && s.length > 0; });
         }
 
-        // 【优化】移除 workingMemory.nearSummary/midSummary/farSummary 赋值——这 3 个字段是死字段，注入路径从不读取
+
     },
 
     // 变化驱动：检测某模块是否有变化（Horae风格）
@@ -1714,7 +1714,7 @@ var GameMemory = {
 
     // 开局设定智能分层（Lorebook风格：核心常驻+按需加载）
     processSetupPrompt: function(fullSetup) {
-        // 【修复BUG-15】原 100 字符阈值过高，简短世界描述会被判定为"未初始化"
+
         // 只要是非空字符串（≥5 字符）就保存基础设定分层状态
         if (!fullSetup || fullSetup.length < 5) return;
         var self = this;
@@ -1844,7 +1844,7 @@ var GameMemory = {
             self.permanentFacts.worldRules = self.permanentFacts.worldRules || [];
             parsed.coreRules.forEach(function(rule) {
                 if (!self.permanentFacts.worldRules.some(function(a) { return a && a.content === rule; })) {
-                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+
                     self._pushPermanentFact('worldRules', { content: rule, locked: true });
                 }
             });
@@ -1855,7 +1855,7 @@ var GameMemory = {
             self.permanentFacts.promises = self.permanentFacts.promises || [];
             parsed.promises.forEach(function(p) {
                 if (!self.permanentFacts.promises.some(function(a) { return a && a.content === p; })) {
-                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+
                     self._pushPermanentFact('promises', { content: p, locked: true });
                 }
             });
@@ -1871,7 +1871,7 @@ var GameMemory = {
                     profile = char.name + '【' + char.keywords.join(',') + '】：' + (char.summary || char.identity || '');
                 }
                 if (!self.permanentFacts.npcProfiles.some(function(a) { return a && a.content && a.content.split('【')[0] === char.name; })) {
-                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+
                     self._pushPermanentFact('npcProfiles', { content: profile, locked: true, keywords: char.keywords || [] });
                 }
                 // 角色表
@@ -1908,7 +1908,7 @@ var GameMemory = {
                 var desc = arch.type + '：动机-' + (arch.motivation || '未知') + '，关系模式-' + (arch.relationPattern || '未知');
                 if (arch.example) desc += '（例：' + arch.example + '）';
                 if (!self.permanentFacts.npcProfiles.some(function(a) { return a && a.content && a.content.indexOf(arch.type) === 0; })) {
-                    // 【P2-20修复】使用 _pushPermanentFact 统一入口，受数量上限约束
+
                     self._pushPermanentFact('npcProfiles', { content: desc, locked: true, keywords: [arch.type, arch.motivation || ''] });
                 }
             });
@@ -1930,10 +1930,10 @@ var GameMemory = {
             }
         }
 
-        // 【P0修复】permanentFacts 已变更（pcIdentity/worldRules/promises/npcProfiles/settings），
+
         // 失效 longTermMemory 缓存（覆盖本方法所有 permanentFacts 写入点）
         self._markLtmDirty();
-        // 【P1修复BUG-2.2】移除 GameLinker 通知：死代码空操作，UI 刷新由调用方主动触发
+
     },
 
     // 获取当前应该注入的设定文本（渐进式压缩策略）
@@ -1947,9 +1947,9 @@ var GameMemory = {
 
         var result = '';
 
-        // 【阶段4修复】增强记忆已注入核心规则和角色档案时，设定只保留叙述性内容
+
         // 避免同一条规则在【设定】和【当前状态与记忆】中重复出现
-        // 【修复】原 hasMemoryInjection 只检查 worldRules/npcProfiles，漏了 settings/pcIdentity/promises，
+
         // 导致 permanentFacts 已有 settings 数据时仍走 else 分支注入【完整设定】造成重复
         var hasMemoryInjection = (self.permanentFacts &&
             ((self.permanentFacts.worldRules && self.permanentFacts.worldRules.length > 0) ||
@@ -1974,7 +1974,7 @@ var GameMemory = {
                 result += '【核心规则】\n' + layers.coreRules + '\n\n';
             }
 
-            // 【P2-1修复】统一调用 getContextSize()
+
             var ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
             if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
             var setupTokens = estimateTokensUtil(layers.fullSetup);
@@ -1990,14 +1990,13 @@ var GameMemory = {
         return result;
     },
 
-    // 【P2清理】删除 _extractSectionIndex（全项目零调用）
-    // 【优化】移除 compressSetupIfNeeded 空函数——函数体只有注释，processMessage 已不再调用
+
     // 保留此注释说明：渐进式压缩由 getSetupInjection 根据轮次自动处理，无需手动标记
 
     buildInjection: function() {
         var self = this;
         // 同轮次缓存：同一轮内多次调用直接返回缓存结果
-        // 【优化】加入数据版本号：如果本轮数据有变化（如AI编辑了记忆），缓存失效
+
         var cacheVersion = self._getCacheVersion();
         if (self._cachedInjectionTurn === self.currentTurn && self._cachedInjection && self._cachedInjectionVersion === cacheVersion) {
             return self._cachedInjection;
@@ -2171,7 +2170,7 @@ var GameMemory = {
     buildSmartInjection: function() { return this.buildInjection(); },
 
     // 智能精简模块文本：不截断，用选择+结构化精简代替
-    // 【优化】与三层架构配合：已经分层的模块（characters/items/quests）精简策略更激进
+
     // 核心原则：剧情游戏靠文字发展，截断会导致剧情断层
     // 策略：1.保留完整语义 2.去掉冗余修饰 3.内容太多时选择最重要的
     _smartCompressModule: function(text, moduleKey) {
@@ -2241,15 +2240,11 @@ var GameMemory = {
     _buildPermanentFactsSection: function() {
         var lines = [];
         var pf = this.permanentFacts;
-        // 【P1修复BUG-010】新增 worldPlaces 类目，确保 AI 在后续回合能看到已确定的地名
+
         var typeLabels = { pcIdentity: '主角身份', worldRules: '世界规则', settings: '世界设定', npcProfiles: '关键角色', promises: '玩家承诺', worldPlaces: '关键地点' };
         var topic = this.detectCurrentTopic();
         var topicKeywords = (topic && topic.keywords) ? topic.keywords : [];
         var topicChars = (topic && topic.characters) ? topic.characters : [];
-
-        // 【Token优化】角色近况已注入时，核心设定中的角色档案精简为索引
-        // 避免同一条角色信息在【核心设定】和【角色近况】中重复出现
-        var hasCharSection = Object.keys(this.tables.characters).length > 0;
 
         ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises', 'worldPlaces'].forEach(function(t) {
             var list = pf[t];
@@ -2269,18 +2264,7 @@ var GameMemory = {
                         kB.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreB += 10; });
                         return scoreB - scoreA;
                     });
-                    if (hasCharSection) {
-                        // 【动态化】移除"只保留第一句/40字"截断——AI 需要完整角色档案来保持一致性
-                        // 旧代码只保留角色名和第一句描述（最多40字），AI 看不到完整角色设定
-                        // 新策略：保留完整角色内容，由 token 预算系统自然控制
-                        sorted.forEach(function(a) {
-                            if (a && a.content) {
-                                lines.push('• ' + a.content);
-                            }
-                        });
-                    } else {
-                        sorted.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
-                    }
+                    sorted.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
                 } else {
                     list.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
                 }
@@ -2354,7 +2338,7 @@ var GameMemory = {
         var self = this;
         if (this.plot.worldSetting) lines.push('【世界观】' + this.plot.worldSetting);
         var chs = this.plot.chapters;
-        // 【修复BUG-07】注入去重：前 3 回合 worldSetting 与 chapters[0].summary 来自同一 storySummary，
+
         // 同一段文本若同时出现在【世界观】和【章节标题】段落会浪费 token 且语义重复
         var seen = {};
         if (this.plot.worldSetting) seen[this.plot.worldSetting] = true;
@@ -2527,7 +2511,7 @@ var GameMemory = {
         // 按次计费：不硬限制事件数，让预算系统通过智能压缩自然控制
         self.events.slice().sort(function(a, b) { return (b && b.decayScore || 0) - (a && a.decayScore || 0); }).forEach(function(e) {
             if (!e) return;
-            // 【修复BUG-02】防御 content 为对象/非字符串：拼接前强制转字符串
+
             var content = e.content;
             if (content && typeof content === 'object') {
                 content = String(content.title || content.name || content.content || content.event || content.desc || '');
@@ -2614,7 +2598,7 @@ var GameMemory = {
     },
 
     // 编剧提醒系统：检测休眠过久的角色/物品/任务/伏笔，给AI剧情引导提示
-    // 【优化】加入上次出场状态上下文 + 场景关联提醒
+
     _buildStorytellingReminders: function() {
         var lines = [];
         var self = this;
@@ -2632,7 +2616,7 @@ var GameMemory = {
             if (track && track.status === 'dormant' && track.dormantRounds >= cfg.dormantWarningThreshold) {
                 var char = self.tables.characters[name];
                 if (char) {
-                    // 【优化】计算场景关联度
+
                     var sceneRelevance = self._calcSceneRelevance(char, currentScene);
                     dormantChars.push({
                         name: name,
@@ -2890,7 +2874,7 @@ var GameMemory = {
         if (Array.isArray(gameData.characters)) gameData.characters.forEach(function(char) { if (char) info.characters.push({ name: char.name, title: char.title, relation: char.relation, favorability: char.favorability, desc: char.desc }); });
         if (Array.isArray(gameData.bag)) gameData.bag.forEach(function(item) { if (item) info.items.push({ name: item.name, count: item.count, desc: item.desc, rarity: item.rarity }); });
         if (gameData.keyEvents && gameData.keyEvents.length > 0) { gameData.keyEvents.forEach(function(ev) {
-            // 【修复BUG-02】防御事件为对象的情况：normalize 后可能仍残留对象，统一转字符串
+
             var content = ev;
             if (ev && typeof ev === 'object') {
                 content = String(ev.title || ev.name || ev.content || ev.event || ev.desc || ev.description || '');
@@ -2918,11 +2902,11 @@ var GameMemory = {
                 var existing = self.tables.characters[key];
                 var isNew = !existing;
                 self.tables.characters[key] = { name: char.name, title: char.title || (existing ? existing.title : ''), relation: char.relation || (existing ? existing.relation : ''), mood: (existing ? existing.mood : ''), location: (existing ? existing.location : ''), outfit: (existing ? existing.outfit : ''), favorability: (typeof char.favorability === 'number') ? char.favorability : (existing ? existing.favorability : 50), status: (existing ? existing.status : ''), history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, changes: char.desc || '' }]).slice(-10) : [{ turn: turn, changes: char.desc || '' }], lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, locked: existing ? existing.locked : false };
-                // 【P0-2.1 阶段1】任何对 self.tables.characters 的修改都必须失效 longTermMemory 缓存
+
                 // 旧实现只在 NPC profile 进 permanentFacts 时置 dirty（行 2839），导致 characters/item/location/relationship
                 // 修改后的 longTermMemory 缓存返回 stale data，记忆面板看不到新事实。
                 self._markLtmDirty();
-                // 【修复】新角色首次出现时加入永久事实-关键角色，确保记忆面板及时更新
+
                 if (isNew || (typeof char.favorability === 'number' && char.favorability > 0)) {
                     self.permanentFacts.npcProfiles = self.permanentFacts.npcProfiles || [];
                     var profileContent = char.name + '：' + (char.desc || char.title || char.relation || '新遇见的角色');
@@ -2932,7 +2916,7 @@ var GameMemory = {
                     if (!alreadyExists) {
                         self.permanentFacts.npcProfiles.push({ content: profileContent, locked: false, source: 'runtime', createdTurn: turn });
                         console.log('[记忆系统] 新角色加入永久事实:', char.name);
-                        // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
+
                         self._markLtmDirty();
                     }
                 }
@@ -2946,22 +2930,22 @@ var GameMemory = {
                 var oldQty = existing ? existing.qty : 0;
                 var newQty = item.count || 1;
                 self.tables.items[key] = { name: item.name, qty: newQty, unit: existing ? existing.unit : '个', rarity: item.rarity || (existing ? existing.rarity : '普通'), desc: item.desc || (existing ? existing.desc : ''), obtainedTurn: existing ? existing.obtainedTurn : turn, lastChangedTurn: turn, gameTime: self.getGameTimeStr(), accessCount: existing ? (existing.accessCount || 0) : 0, history: existing && Array.isArray(existing.history) ? existing.history.concat([{ turn: turn, from: oldQty, to: newQty }]).slice(-10) : [{ turn: turn, from: 0, to: newQty }] };
-                // 【P0-2.1 阶段1】任何对 self.tables.items 的修改都必须失效 longTermMemory 缓存
+
                 self._markLtmDirty();
             });
         }
         if (gameData.story) { self._extractLocations(gameData.story).forEach(function(loc) { if (!self.tables.locations[loc]) self.tables.locations[loc] = { name: loc, desc: '', features: '', charactersPresent: '', lastChangedTurn: turn, locked: false }; else self.tables.locations[loc].lastChangedTurn = turn; }); }
-        // 【P0-2.1 阶段1】locations 修改后失效 longTermMemory 缓存
+
         if (gameData.story) self._markLtmDirty();
         if (gameData.relationships && Array.isArray(gameData.relationships)) gameData.relationships.forEach(function(rel) { if (rel && rel.from && rel.to) self.tables.relationships[rel.from + '->' + rel.to] = { from: rel.from, to: rel.to, type: rel.type, desc: rel.desc, lastChangedTurn: turn }; });
-        // 【P0-2.1 阶段1】relationships 修改后失效 longTermMemory 缓存
+
         if (gameData.relationships && Array.isArray(gameData.relationships) && gameData.relationships.length > 0) self._markLtmDirty();
     },
 
     _extractLocations: function(story) {
         var locations = [];
         if (!story) return locations;
-        // 【修复BUG-12】扩展地点提取正则，覆盖常见句式
+
         // 注意：捕获组只取强地点上下文，避免“停下脚步”等被误判
         var patterns = [
             /在([^，。！？\s]{2,10})(?:里|内|中|旁|边|外|前|后|间|室|房|厅|楼|层)/g,
@@ -3014,7 +2998,7 @@ var GameMemory = {
                 var loc = match[1].trim();
                 // 基本长度过滤
                 if (!loc || loc.length < 2 || loc.length >= 15) continue;
-                // 【修复乱码】含"的"字大概率不是地点名（如"你的面"、"昏暗的林"）
+
                 if (loc.indexOf('的') !== -1) continue;
                 // 黑名单过滤
                 if (blacklist[loc]) continue;
@@ -3073,7 +3057,7 @@ var GameMemory = {
             });
             self._recalcEventDecayScores(currentTurn);
             self._pruneImportantEvents(50);
-            // 【阶段1-A2】统一同步：gm.events → StateManager.entities.events + gameState.keyEvents
+
             if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         }
     },
@@ -3101,10 +3085,10 @@ var GameMemory = {
         return gameTime;
     },
 
-    // 【P2清理】删除 getRelativeTime（全项目零调用）
+
     addWorldAnchor: function(type, content, source, createdTurn) {
         var self = this;
-        var typeMap = _FACT_OLDTYPE_TO_NEWKEY;  // 【P1-阶段5-去重】引用顶部常量
+        var typeMap = _FACT_OLDTYPE_TO_NEWKEY;
         var key = typeMap[type] || type;
         if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
         if (self.permanentFacts[key].some(function(a) { return a && a.content === content; })) return null;
@@ -3123,15 +3107,15 @@ var GameMemory = {
                 }
             }
         }
-        // 【P1优化】根据类型分配重要性权重
+
         // 核心设定(pc/世界规则/角色) = 1.0, 次要(设定/承诺) = 0.5
         var _importance = (type === 'pc_identity' || type === 'world_rule' || type === 'npc_profile') ? 1.0 : 0.5;
-        // 【P1-12 阶段四】自动提取的事实不锁定，允许淘汰算法清理；手动添加的锁定保留
+
         var _isManual = (source === 'manual');
         var anchor = { content: content, source: source || 'auto', locked: _isManual, importance: _importance, createdTurn: createdTurn || self.currentTurn };
         self.permanentFacts[key].push(anchor);
         var total = 0; Object.keys(self.permanentFacts).forEach(function(k) { total += self.permanentFacts[k].length; });
-        // 【P1优化】超过30条时按重要性权重淘汰（保留locked和高权重）
+
         // 避免100轮后token堆积膨胀
         if (total > 30) {
             Object.keys(self.permanentFacts).forEach(function(k) {
@@ -3153,7 +3137,7 @@ var GameMemory = {
                 }
             });
         }
-        // 【P0修复】permanentFacts 已变更，失效 longTermMemory 缓存
+
         self._markLtmDirty();
         return anchor;
     },
@@ -3162,7 +3146,7 @@ var GameMemory = {
         var self = this; var removed = 0;
         Object.keys(self.permanentFacts).forEach(function(key) { var before = self.permanentFacts[key].length; self.permanentFacts[key] = self.permanentFacts[key].filter(function(a) { return !(a && a.source && a.source.indexOf(sourcePrefix) === 0); }); removed += before - self.permanentFacts[key].length; });
         if (removed > 0) try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] removeWorldAnchorsBySource 保存失败:', e); }
-        // 【P0修复】permanentFacts 可能已变更，失效 longTermMemory 缓存
+
         if (removed > 0) self._markLtmDirty();
         return removed;
     },
@@ -3189,7 +3173,7 @@ var GameMemory = {
         return created;
     },
 
-    // 【P1修复P1-M】任务 schema 统一为 QuestMutator 版本：以 title 为身份字段
+
     // （原 content 字段已废弃，旧存档由 _migrateDataToV3 重命名）
     addQuest: function(quest) {
         if (!quest || !quest.title) return null;
@@ -3201,7 +3185,7 @@ var GameMemory = {
         return quest;
     },
 
-    // 【P2清理】删除 addActiveQuest（全项目零调用）
+
     resolveQuest: function(contentFragment, newStatus) {
         var self = this; var count = 0;
         self.quests.forEach(function(q) { if (q.status === 'pending' && q.title.indexOf(contentFragment) >= 0) { q.status = newStatus || 'resolved'; q.resolvedTurn = self.currentTurn; count++; } });
@@ -3263,7 +3247,7 @@ var GameMemory = {
                 });
             }
         }
-        // 【优化】移除 customStyle 注入——customStyle 是死字段（无 UI 输入框），文风由 writingStyle 统一管理
+
     },
 
     scoreEventImportance: function(text) {
@@ -3285,13 +3269,13 @@ var GameMemory = {
         if (this.events.some(function(e) { return e.content === evt.content; })) return false;
         this.events.push({ content: evt.content, turn: this.currentTurn, gameTime: this.getGameTimeStr(), importance: evt.importance || 5, decayScore: evt.importance || 5, accessCount: 0 });
         this._pruneImportantEvents(50);
-        // 【阶段1-A2】统一同步：gm.events → StateManager.entities.events（对象数组）+ gameState.keyEvents（字符串数组）
+
         if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         try { this.saveToStorage(); } catch(e) { console.warn('[GameMemory] addImportantEvent 保存失败:', e); }
         return true;
     },
 
-    // 【阶段1-A2】批量添加事件（供 AIResponseMutator._applyKeyEvents 调用）
+
     // 避免 N 次 addImportantEvent = N 次 _syncEventsToKeyEvents + N 次 saveToStorage
     addImportantEvents: function(eventList) {
         if (!this.events) this.events = [];
@@ -3338,7 +3322,7 @@ var GameMemory = {
         epic.sort(function(a, b) { return b.decayScore - a.decayScore; });
         normal.sort(function(a, b) { return b.decayScore - a.decayScore; });
 
-        // 【P0-3修复】恢复 epic 上限，按比例分配预算：
+
         // - 旧代码 var keptEpic = epic（无上限）导致 epic.length > maxCount 时
         //   normal.slice(0, max(0, maxCount - epic.length)) = []，等价于无任何裁剪
         //   长游戏（200 回合）后 events 膨胀到 200-400 条，buildSmartInjection 与
@@ -3395,10 +3379,10 @@ var GameMemory = {
     },
 
     _adaptBudget: function() {
-        // 【P2-1修复】统一调用 getContextSize()
+
         var ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
         if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
-        // 【修复】为AI生成保留至少30%的上下文空间，防止输入挤占导致输出为空
+
         // 原逻辑只留15%，在max_tokens较小时容易导致AI无输出空间
         // 字符/token比约1.7，所以 maxChars ≈ ctxSize * 0.70 * 1.7
         var base = Math.floor(ctxSize * 0.70 * 1.7);
@@ -3408,7 +3392,7 @@ var GameMemory = {
         this.budget.maxChars = base;
         // 按次计费：各模块理想预算也按比例放大
         var scale = base / 4000; // 以4000为基准缩放
-        // 【优化】限制缩放倍数，避免大上下文模型在低优先级模块塞入过多内容
+
         if (scale > 15) scale = 15;
         var minB = this.budget.minBudget;
         var idealB = this.budget.idealBudget;
@@ -3439,7 +3423,7 @@ var GameMemory = {
     shouldTriggerCompression: function(currentTokenCount, maxTokens) {
         var config = this.compressionConfig;
         var messageCount = (typeof gameState !== 'undefined' && gameState.conversationHistory) ? gameState.conversationHistory.length : 0;
-        // 【P0修复】冷却检查使用 compressionConfig.lastCompressionTurn（回合维度）
+
         // 该字段由 recordCompression() 在压缩完成后更新（成功=完整冷却，失败=1回合短冷却）
         var currentTurn = (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
         var lastCompressTurn = config.lastCompressionTurn || 0;
@@ -3452,7 +3436,7 @@ var GameMemory = {
         return { shouldCompress: false, reason: '暂不需要压缩' };
     },
 
-    // 【P0修复】记录压缩完成，更新 lastCompressionTurn 回合基准
+
     // success: true=压缩成功（设完整冷却 cooldownMinutes 回合），false=压缩失败（设 1 回合短冷却）
     // 原 BUG：lastCompressionTurn 初始化为 0 后从未更新，导致 turnsSinceLastCompress 永远 = currentTurn，
     // 15 回合后事件触发冷却形同虚设（turnsSinceLastCompress >= cooldownMinutes 恒为 true）
@@ -3461,7 +3445,7 @@ var GameMemory = {
         var cd = (this.compressionConfig && this.compressionConfig.cooldownMinutes) || 15;
         if (success) {
             this.compressionConfig.lastCompressionTurn = currentTurn;
-            // 【P2-6修复】成功压缩时记录到 summaryHistory，供 phone-ui.js 压缩统计显示
+
             // 旧代码：summaryHistory 只在初始化与 reset 时被引用，recordCompression 不 push，统计恒为 0
             if (!this.summaryHistory) this.summaryHistory = [];
             this.summaryHistory.push({
@@ -3488,7 +3472,7 @@ var GameMemory = {
     },
 
     getStats: function() {
-        // 【P1-8修复】JSON.stringify(this) 在循环引用时抛 TypeError，导致 renderOverview 面板空白
+
         // 修复：try/catch 包裹，失败时用白名单字段估算大小
         var memorySize = 0;
         try {
@@ -3523,7 +3507,7 @@ var GameMemory = {
     },
 
     _handleSaveFailure: function(result, originalData) {
-        // 【P1-TC1 阶段4】失败重试次数上限 + UI 提示
+
         // 旧逻辑：catch 静默吞错，finally 块调度 50ms 后无限重试，
         // 若降级保存持续失败（如 storage 满）会进入死循环。
         // 新逻辑：累计重试 ≥3 次后停止并 toast 告知用户，避免静默耗电/性能。
@@ -3555,9 +3539,9 @@ var GameMemory = {
     loadFromStorage: function() {
         var self = this; var data = null;
         try { data = Storage.getJSON(Storage.KEYS.MEMORY, null); } catch(e) { data = null; }
-        // 【修复 P0-6】链式迁移：支持 v1/v2/v3/v4 → 当前 v4，旧版本不再静默丢弃
+
         // 旧代码 `if (!data || data.version !== 3) return false;` 会让 v2 数据被静默丢弃
-        // 【P1修复P1-M】版本升至 v4：quests 条目 content 字段重命名为 title
+
         if (!data) return false;
         if (data.version !== 4) {
             console.warn('[GameMemory] 检测到旧版本数据 v' + data.version + '，开始迁移到 v4');
@@ -3594,7 +3578,7 @@ var GameMemory = {
         if (!self._setupLayers.setupKeywords) self._setupLayers.setupKeywords = [];
         // 加载后初始化休眠追踪（兼容旧存档）
         self._initDormantTracking();
-        // 【P0修复】permanentFacts 已从存档恢复，失效 longTermMemory 缓存
+
         self._markLtmDirty();
         // 迁移成功后异步保存
         if (this._migratedData) {
@@ -3605,9 +3589,9 @@ var GameMemory = {
         return true;
     },
 
-    // 【修复 P0-6】将旧版本数据结构迁移到当前版本
+
     // 支持 v1（无 version 字段）、v2（旧 EnhancedMemory 格式）、v3 → v4
-    // 【P1修复P1-M】v3→v4：任务 schema 统一为 QuestMutator 版本，quests 条目
+
     // 的 content 字段重命名为 title（与 QuestMutator.normalizeQuest 输出对齐），
     // 消除 core.js 内 title↔content 别名映射。
     _migrateDataToV3: function(data) {
@@ -3617,7 +3601,7 @@ var GameMemory = {
             var migrated = StateSchema.deepClone(data);
             // 补全 v3 新增字段
             if (!migrated.permanentFacts) migrated.permanentFacts = { pcIdentity: [], worldRules: [], settings: [], npcProfiles: [], promises: [], worldPlaces: [] };
-            // 【P1修复BUG-010】补全 worldPlaces 字段（旧存档升级）
+
             if (!migrated.permanentFacts.worldPlaces) migrated.permanentFacts.worldPlaces = [];
             if (!migrated.tables) migrated.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
             if (!migrated.plot) migrated.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
@@ -3631,7 +3615,7 @@ var GameMemory = {
             if (!migrated._worldNotes) migrated._worldNotes = [];
             if (!migrated._summaryLayers) migrated._summaryLayers = { near: [], mid: [], far: [] };
             if (!migrated._setupLayers) migrated._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
-            // 【P1修复P1-M】v3→v4：quests 条目 content 字段重命名为 title
+
             // （与 QuestMutator schema 对齐，消除 title↔content 别名映射）
             // 注：_dormantTracking.quests 的 key 是任务标识字符串本身（非字段名），无需迁移
             if (Array.isArray(migrated.quests)) {
@@ -3659,30 +3643,26 @@ var GameMemory = {
         this.tables = { characters: {}, items: {}, locations: {}, relationships: {} };
         this.plot = { worldSetting: '', chapters: [], currentChapter: '', pendingMysteries: [] };
         this.events = []; this.timeline = []; this.quests = [];
-        // 【阶段1-A2】clear 后同步清空 StateManager.entities.events
+
         if (typeof StateManager !== 'undefined' && StateManager.set) {
             StateManager.set('entities.events', [], { silent: true });
         }
         this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
-        this._changeLog = []; this.summaryHistory = []; // 【P2清理】删除 currentSummaryIndex 重置
+        this._changeLog = []; this.summaryHistory = [];
         this._injectionSnapshots = {};
         this._summaryLayers = { near: [], mid: [], far: [] };
         this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         this._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };
         this._storytellingConfig = { dormantWarningThreshold: 20, dormantUrgentThreshold: 30, foreshadowWarningThreshold: 15, maxForeshadowings: 20, aiGuidanceEnabled: true };
         Storage.remove(Storage.KEYS.MEMORY); Storage.remove(Storage.KEYS.ENHANCED_MEMORY);
-        // 【P1-8修复】清空后重置所有缓存，避免新局看到旧局记忆
+
         this._cachedInjection = null;
         this._cachedInjectionTurn = -1;
         this._markLtmDirty();
     },
 
-    // 【P2清理】删除 getCharacterInfo（全项目零调用）
-    // 【P2清理】删除 getItemHistory（全项目零调用）
-    // 【P2清理】删除 getTimeline（全项目零调用）
-    // 【P2清理】删除 getRelationshipNetwork（全项目零调用）
-    // 【P1修复BUG-011-longTermMemory只读快照】配套写入 API
+
     // longTermMemory getter 已改为只读快照，旧代码直接 `longTermMemory.characterTable[name] = {...}`
     // 等写入方式不再生效（写入的是快照副本，不影响源 tables.characters）。现提供以下 API 替代。
     recordCharacterChange: function(name, changeDesc) {
@@ -3730,7 +3710,7 @@ var GameMemory = {
         self._markLtmDirty();
     },
 
-    // 【P0-8修复】worldNotes 写入 API
+
     // 替代 phone-ui.js:903 直接 EnhancedMemory.longTermMemory.worldNotes.push({...}) 的旧实现。
     // 旧实现绕过 GameMemory API，依赖 longTermMemory getter 返回 _worldNotes 引用才能生效
     // （见 tavern-compat.js:3742 `worldNotes: self._worldNotes`）。
@@ -3752,7 +3732,7 @@ var GameMemory = {
         self._markLtmDirty();
     },
 
-    // 【P1修复BUG-011-permanentFacts责任越界】公共 API：upsert 单条 permanentFact
+
     // 替代 AIResponseMutator._applyPermanentFacts 内部直接操纵 self.permanentFacts[category] 的旧实现。
     // category ∈ ['worldPlaces','npcProfiles','pcIdentity','settings','worldRules','promises']
     // fact = { content, locked, source, createdTurn, keywords? }
@@ -3764,7 +3744,7 @@ var GameMemory = {
         if (!Array.isArray(self.permanentFacts[category])) self.permanentFacts[category] = [];
         var list = self.permanentFacts[category];
 
-        // 【P0-1修复】统一支持中英文冒号切分，并 trim 去除空格
+
         // 旧实现 split('：') 仅识别中文全角冒号，AI 输出英文冒号时同一实体被作为新条目重复入库
         var _splitByColon = function(text) { return String(text).split(/[:：]/).map(function(s) { return s.trim(); }); };
         // 保留原 content 的冒号风格，避免合并后冒号不一致
@@ -3819,7 +3799,7 @@ var GameMemory = {
         return changed ? 'updated' : 'noop';
     },
 
-    // 【P1修复BUG-011】替换式写入：用单条 fact 替换整个 category 数组。
+
     // 适用场景：pcIdentity（主角身份）——语义为"最新值覆盖"，不像 worldPlaces/npcProfiles 需要累积合并。
     // 调用方：AIResponseMutator._applyPermanentFacts 第 3 段（pcIdentity）
     setPermanentFact: function(category, fact) {
@@ -3849,7 +3829,7 @@ window.EnhancedMemory = GameMemory;
 GlobalCleanup.registerListener(document, 'DOMContentLoaded', function() { GameMemory.init(); });
 
 // 向后兼容 getter
-// 【P0修复】缓存 longTermMemory 结果：worldAnchors 是 permanentFacts 的只读快照（需遍历重建），
+
 // 其余字段均为实时引用（characterTable/itemTable/importantEvents 等）。
 // 缓存后高频调用（如 _parseStructuredSummary 单次 35+ 次访问）只重建 1 次，
 // permanentFacts 变更时由各写入点置 _ltmDirty=true 触发下次重建。
@@ -3861,9 +3841,9 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         }
         // worldAnchors: 从 permanentFacts 映射（只读快照）
         var worldAnchors = [];
-        var typeMap = _FACT_NEWKEY_TO_OLDTYPE;  // 【P1-阶段5-去重】引用顶部常量
+        var typeMap = _FACT_NEWKEY_TO_OLDTYPE;
         Object.keys(self.permanentFacts).forEach(function(key) { var oldType = typeMap[key] || key; var list = self.permanentFacts[key]; if (Array.isArray(list)) list.forEach(function(a) { if (a) worldAnchors.push({ type: oldType, content: a.content, source: a.source, locked: a.locked, createdTurn: a.createdTurn }); }); });
-        // 【P1修复BUG-011-longTermMemory只读快照】characterTable/itemTable/locationTable/relationships
+
         // 改为深拷贝快照，禁止外部通过引用直接写入 tables.characters/items/locations/relationships。
         // 旧实现返回实时引用，game.js:2487-2561 多处直接 `longTermMemory.characterTable[name] = {...}`
         // 写入会改到 tables.characters，与 longTermMemory.worldAnchors.push（无效）语义不一致。
@@ -3904,7 +3884,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         var self = this;
         // 恢复永久事实
         if (val.worldAnchors && Array.isArray(val.worldAnchors)) {
-            var typeMap = _FACT_OLDTYPE_TO_NEWKEY;  // 【P1-阶段5-去重】引用顶部常量
+            var typeMap = _FACT_OLDTYPE_TO_NEWKEY;
             val.worldAnchors.forEach(function(a) {
                 if (!a) return;
                 var key = typeMap[a.type] || 'settings';
@@ -3945,7 +3925,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         // 恢复事件
         if (val.importantEvents && Array.isArray(val.importantEvents)) {
             self.events = val.importantEvents;
-            // 【阶段1-A2】反序列化后同步到 StateManager.entities.events + gameState.keyEvents
+
             if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         }
         // 恢复时间线
@@ -3960,7 +3940,7 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         if (val.activeQuests && Array.isArray(val.activeQuests)) {
             self.quests = val.activeQuests;
         }
-        // 【P0修复】permanentFacts 已通过 setter 恢复，失效 longTermMemory 缓存
+
         self._markLtmDirty();
     }, configurable: true
 });
@@ -3982,10 +3962,9 @@ Object.defineProperty(GameMemory, 'shortTermMemory', {
     configurable: true
 });
 
-// 【P2清理】删除 injectionBudget getter/setter（全项目零引用）
 
 Object.defineProperty(GameMemory, 'workingMemory', {
-    // 【优化】移除 nearSummary/midSummary/farSummary 死字段
+
     get: function() { return this._workingMemory || { messages: [], turns: [], recentMessages: [], currentTopic: null }; },
     set: function(val) { this._workingMemory = val; },
     configurable: true
@@ -3998,7 +3977,7 @@ Object.defineProperty(GameMemory, 'workingMemory', {
  */
 
 var MemoryManagerUI = {
-    // 【P1修复BUG-7.17】UI 层与业务逻辑耦合说明
+
     // -----------------------------------------------------------------------------
     // 本对象是 UI 层，但 saveCharacter/saveItem 等方法内同时执行：
     //   1. 直接写 GameMemory.tables.<entity>[name]（业务同步路径之一）
@@ -4128,7 +4107,7 @@ var MemoryManagerUI = {
 
     saveMemoryEdits: function() {
         var summaryEl = document.getElementById('memorySummaryEdit');
-        // 【P0-9修复】rollingSummary 走 StateManager 权威源：progress.rollingSummary
+
         // 旧实现直写 gameState.rollingSummary，StateManager.get 返回陈旧值，
         // AI 注入的剧情摘要仍是编辑前的内容。
         if (summaryEl) {
@@ -4141,7 +4120,7 @@ var MemoryManagerUI = {
         }
         var worldEdit = document.getElementById('memoryWorldEdit');
         // 【I修复】用户手编 JSON 非法时不再静默吞掉，提示用户
-        // 【P0-9修复】worldSnapshot 走 StateManager 权威源：ui.worldSnapshot
+
         if (worldEdit) {
             try {
                 var _parsedWorld = JSON.parse(worldEdit.value);
@@ -4400,7 +4379,7 @@ var MemoryManagerUI = {
         var type = document.getElementById('newFactType').value;
         var content = (document.getElementById('newFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
-        var oldTypeMap = _FACT_NEWKEY_TO_OLDTYPE;  // 【P1-阶段5-去重】引用顶部常量
+        var oldTypeMap = _FACT_NEWKEY_TO_OLDTYPE;
         var result = gm.addWorldAnchor(oldTypeMap[type] || type, content, 'manual', gm.currentTurn);
         if (result) {
             gm.saveToStorage(); UI.toast && UI.toast('已添加');
@@ -4428,14 +4407,14 @@ var MemoryManagerUI = {
         //   编辑后 cacheVersion 不变、currentTurn 不变 → buildInjection 命中缓存返回旧文本，
         //   AI 本轮仍看到旧设定，用户以为编辑没保存
         gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
-        // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
+
         gm._markLtmDirty();
         UI.afterMemoryChange('permanentFacts', '_memory', '已保存');
     },
 
     deletePermanentFact: function(type, idx) {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
-        // 【P1-TC2 阶段4】先校验 idx 范围，避免 splice 静默失败 / 越界删除
+
         if (typeof idx !== 'number' || idx < 0 || idx >= gm.permanentFacts[type].length) {
             console.warn('[MemoryManager] deletePermanentFact 索引越界:', type, idx);
             return;
@@ -4450,7 +4429,7 @@ var MemoryManagerUI = {
             }
             // 【v3审查修复】同 savePermanentFact，失效注入缓存
             gm._cachedInjection = null; gm._cachedInjectionTurn = -1;
-            // 【P0修复】失效 longTermMemory 缓存（worldAnchors 是 permanentFacts 的只读快照）
+
             gm._markLtmDirty();
             UI.afterMemoryChange('permanentFacts', '_memory', '已删除');
         });
@@ -4490,7 +4469,7 @@ var MemoryManagerUI = {
         var char = gm.tables.characters[oldName] || {};
         var _newCharData = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
 
-        // 【P0-4修复】单一写入入口 + 事务性回滚：
+
         // 旧实现先改 gm.tables 再调 Mutator，若 Mutator 失败 gm 已被污染（gm.tables[oldName] 已删除、
         // gm.tables[newName] 已写入新数据），状态不一致；后续 buildSmartInjection 读到错乱状态
         // 新策略：先走 Mutator（写 StateManager.entities.characters），成功后再同步 gm.tables 运行时字段
@@ -4541,7 +4520,7 @@ var MemoryManagerUI = {
     deleteCharacter: function(name) {
         var gm = window.GameMemory; if (!gm || !gm.tables.characters[name]) return;
         delete gm.tables.characters[name];
-        // 【阶段1统一】删除角色委托 CharacterMutator.removeCharacter（替代直接 delete allCharacters）
+
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
             CharacterMutator.removeCharacter(name);
         } else if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) {
@@ -4583,7 +4562,7 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { UI.toast && UI.toast('请输入角色名称'); return; }
         var _newCharData = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
 
-        // 【P0-4修复】先走 Mutator，成功后再写 gm.tables 运行时字段（与 saveCharacter 同模式）
+
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
             var mutatorOk = false;
             try {
@@ -4650,7 +4629,7 @@ var MemoryManagerUI = {
         var item = gm.tables.items[oldName] || {};
         var _newItemData = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
 
-        // 【P0-4修复】单一写入入口 + 事务性回滚（与 saveCharacter 同模式）：
+
         // 旧实现先改 gm.tables.items 再调 _syncItemsToBag，若同步失败 gm 已被污染
         // 新策略：先走 BagMutator（写 StateManager.entities.bag），成功后再同步 gm.tables.items 运行时字段
         // 注意：BagMutator 无 replaceItem，故用 setItems 全量重写 + 处理 rename
@@ -4730,7 +4709,7 @@ var MemoryManagerUI = {
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
             // 兜底：_syncItemsToBag 不可用时直接改视图
-            // 【P0-9修复】构建新 bag 数组后写 StateManager 权威源（entities.bag），
+
             // _syncLegacyMirror 自动同步 gameState.currentBag。
             // 用 slice/filter/Object.assign 创建新数组与新对象，避免原地 mutate 污染引用。
             if (oldName !== newName) delete gm.tables.items[oldName];
@@ -4766,7 +4745,7 @@ var MemoryManagerUI = {
         if (typeof _syncItemsToBag === 'function') {
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined' && gameState.currentBag) {
-            // 【P0-9修复】兜底路径也走 StateManager 权威源：entities.bag
+
             var _bagAfterDelete = gameState.currentBag.filter(function(b) { return b.name !== name; });
             if (typeof StateManager !== 'undefined' && StateManager.set) {
                 StateManager.set('entities.bag', _bagAfterDelete, { silent: true });
@@ -4795,7 +4774,7 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { UI.toast && UI.toast('请输入物品名称'); return; }
         var _newItemData = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
 
-        // 【P0-4修复】先走 BagMutator，成功后再写 gm.tables.items 运行时字段
+
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
             var mutatorOk = false;
             try {
@@ -4837,7 +4816,7 @@ var MemoryManagerUI = {
             _syncItemsToBag();
         } else if (typeof gameState !== 'undefined') {
             // 兜底：_syncItemsToBag 不可用时直接改视图
-            // 【P0-9修复】构建新 bag 数组后写 StateManager 权威源：entities.bag
+
             gm.tables.items[name] = _newItemData;
             var _currentBag = (gameState.currentBag || []).slice();
             var exists = _currentBag.some(function(b) { return b.name === name; });
@@ -4884,7 +4863,7 @@ var MemoryManagerUI = {
         var loc = gm.tables.locations[oldName]; if (!loc) return;
         var _newLocData = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
 
-        // 【P0-4修复】单一写入入口 + 事务性回滚：
+
         // 旧实现只改 gm.tables.locations 不同步 StateManager，导致用户编辑对 StateManager.entities.locations
         // 不可见——后续 AI 写入新 locations 时 StateManager.set('entities.locations') 会覆盖，
         // 但 gm.tables 中用户编辑的 entry 因适配器 MERGE 语义被保留（孤儿条目），
@@ -4942,7 +4921,7 @@ var MemoryManagerUI = {
     deleteLocation: function(name) {
         var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return;
         delete gm.tables.locations[name];
-        // 【P1-10修复】删除地点后同步 StateManager
+
         if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
             var rawLocs = StateManager.get('entities.locations') || [];
             var smLocs = rawLocs.filter(function(l) { return l && l.name !== name; });
@@ -4966,7 +4945,7 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; var name = document.getElementById('addLocName').value.trim(); if (!name) { UI.toast && UI.toast('请输入地点名称'); return; }
         var _newLocData = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
 
-        // 【P0-4修复】先写 StateManager.entities.locations（无 LocMutator，直接操作数组）
+
         if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
             var rawLocs = StateManager.get('entities.locations') || [];
             var smLocs = rawLocs.filter(function(l) { return l && l.name; }).map(function(l) {
@@ -5038,7 +5017,7 @@ var MemoryManagerUI = {
 
     savePlot: function() {
         var gm = window.GameMemory; gm.plot.worldSetting = document.getElementById('editPlotWorld').value.trim(); gm.plot.currentChapter = document.getElementById('editPlotCurrent').value.trim();
-        // 【P0-9修复】rollingSummary 走 StateManager 权威源：progress.rollingSummary
+
         // 旧实现直写 gameState.rollingSummary，StateManager.get 返回陈旧值，
         // AI 注入的剧情摘要仍是编辑前的世界设定/章节。
         var _plotSummary = (gm.plot.worldSetting || '') + '\n' + (gm.plot.currentChapter || '');
@@ -5076,7 +5055,7 @@ var MemoryManagerUI = {
     saveNewEvent: function() {
         var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { UI.toast && UI.toast('请输入事件内容'); return; }
         var importance = parseInt(document.getElementById('addEventImportance').value) || 5;
-        // 【阶段1-A2】统一通过 gm.addImportantEvent 写入（含去重 + 修剪 + 同步 + 持久化）
+
         // 旧代码直接 gm.events.push + 手动 slice(-50) + _syncEventsToKeyEvents，绕过去重逻辑
         var added = gm.addImportantEvent({ content: content, importance: importance });
         if (!added) { UI.toast && UI.toast('该事件已存在'); return; }
@@ -5086,7 +5065,7 @@ var MemoryManagerUI = {
     deleteEvent: function(index) {
         var gm = window.GameMemory; if (!gm || !gm.events[index]) return;
         gm.events.splice(index, 1);
-        // 【阶段1-A2】统一通过 _syncEventsToKeyEvents 同步 + saveToStorage 持久化
+
         // _syncEventsToKeyEvents 是 core.js 的函数声明（hoisted），始终可用
         if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
         try { gm.saveToStorage(); } catch(e) { console.warn('[MemoryManagerUI] deleteEvent 保存失败:', e); }
@@ -5256,7 +5235,7 @@ window.MemoryManagerUI = MemoryManagerUI;
             this.global.forEach((v, k) => d[k] = v);
             Storage.setJSON(Storage.KEYS.GLOBAL_VARS, d);
             } catch (e) {
-                // 【优化】记录错误日志，便于调试存档失败问题
+
                 console.warn('[VariableStore] 全局变量持久化失败:', e && e.message);
             }
         },
@@ -5265,7 +5244,7 @@ window.MemoryManagerUI = MemoryManagerUI;
             const d = Storage.getJSON(Storage.KEYS.GLOBAL_VARS, {});
             Object.entries(d).forEach(([k, v]) => this.global.set(k, v));
             } catch (e) {
-                // 【优化】记录错误日志，便于调试存档读取失败问题
+
                 console.warn('[VariableStore] 全局变量加载失败:', e && e.message);
             }
         },
@@ -5484,7 +5463,7 @@ if (/\|\|/.test(condition)) {
 }
 
 // 比较运算
-// 【修复】使用正则精确匹配运算符，避免 !== / === 被错误截断
+
 const opPatterns = [
     [/(!==)/, (a, b) => a !== b],
     [/(!=)/, (a, b) => a !== b],
@@ -6133,7 +6112,7 @@ if (!global.stscriptEngine) {
             });
     },
 
-    // 【P2清理】删除 buildEnhancedPrompt（全项目零调用）
+
     // ── 处理AI回复（收到回复后调用） ──
     processResponse(response) {
         if (!response || !this.currentPreset) return response;
@@ -6169,17 +6148,10 @@ if (!global.stscriptEngine) {
             });
     },
 
-    // 【P2清理】删除 processMarkdown（全项目零调用）
-    // 【P2清理】删除 addToHistory（全项目零调用）
-    // 【P2清理】删除 clearHistory（全项目零调用）
-    // 【P2清理】删除 _buildDefaultPrompt（全项目零调用）
-    // 【P2清理】删除 getVariable（全项目零调用）
-    // 【P2清理】删除 setVariable（全项目零调用）
+
     parse(text) { return this.engine.parser.parse(text, { context: this.engine.templates.context }); },
 
-    // 【P2清理】删除 getQuickSwitchProfiles（全项目零调用）
-    // 【P2清理】删除 getCommands（全项目零调用）
-    // 【P2清理】删除 applyQuickSwitchProfile（全项目零调用）
+
     };
 
     // ============================================================================
@@ -6216,7 +6188,7 @@ init();
     // ============================================================================
     // 通用预设管理器
     // ============================================================================
-    // 【P1修复P1-L】删除 MoonReadPresetConfig / FruitPresetConfig / GomorrahPresetConfig
+
     // 三个对象及其字段（requiredRegex / recommendedRegex / beautyRegex / requiredPrompts /
     // perspectives / userPronouns / pacing / recommendedParams）—— 这些"详细字段"从未被
     // 任何代码读取，对应 UI 入口（视角选择 / 节奏选择 / 推荐参数应用）从未实现。

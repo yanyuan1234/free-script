@@ -2,7 +2,7 @@
 // 任务系统 - Quest System
 // ========================================
 var QuestSystem = {
-    // 【P2-阶段3-20】常量改引用 QuestMutator（权威 schema 源），避免重复定义
+
     // QuestMutator 在 systems.js 之前加载（见 index.html），故可安全引用；
     // typeof 守卫仅在 QuestMutator 缺失的边缘场景（如 legacy 单元测试）下回退到字面量
     STATUS: (typeof QuestMutator !== 'undefined') ? QuestMutator.STATUS : {
@@ -11,9 +11,9 @@ var QuestSystem = {
     TYPE: (typeof QuestMutator !== 'undefined') ? QuestMutator.TYPE : {
         MAIN: '主线', SIDE: '支线', HIDDEN: '隐藏'
     },
-    // 【P2清理】删除动态类型注册系统（registerType / registerStatus / getAllTypes / getAllStatuses）—— 全项目零调用，动态类型从未被注册
+
     getAllQuests() {
-        // 【P2-33修复】条件写反：原 `StateManager ? StateManager.get(...) : fallback`
+
         // 当 StateManager 存在但 entities.quests 未初始化时，get 返回 undefined，
         // 后续 quests.filter 抛 TypeError。fallback || [] 只在 StateManager 为 falsy 时生效。
         // 修正为 `(StateManager.get(...) || fallback)` 让 fallback 在 get 返回 falsy 时也生效。
@@ -22,7 +22,7 @@ var QuestSystem = {
         if (quests.filter(function(q) {
             return q.status === QuestSystem.STATUS.ACTIVE;
             }).length === 0 && (gameState.conversationHistory || []).length > 0) {
-            // 【P2-34修复】缓存的引导任务完成后 status 变 COMPLETED，下次仍判定"无 ACTIVE"→
+
             // 再次 push 同一个已完成对象，玩家一直看到"继续探索 - 已完成"。
             // 修复：push 前检查缓存对象 status，已完成则置 null 让下轮重新创建。
             if (QuestSystem._cachedGuidanceQuest && QuestSystem._cachedGuidanceQuest.status !== QuestSystem.STATUS.ACTIVE) {
@@ -38,7 +38,7 @@ var QuestSystem = {
     // 动态计算引导任务奖励：基于玩家等级、回合进度和 AI 最近返回的任务奖励
     _computeGuidanceReward: function() {
         var base = 10;
-        // 【阶段1修复】统一走 StateManager 读取玩家等级与回合数
+
         var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
         var level = (player && player.level) || 1;
         var turns = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.turn') || 1) : 1;
@@ -80,8 +80,8 @@ var QuestSystem = {
             priority: 999
             };
     },
-    // 【修复BUG-11】更新引导任务进度：玩家每进行一次有效行动，进度+1
-    // 【P1修复BUG-4.8】与 QuestMutator.autoAdvanceByStory 职责分离说明：
+
+
     // 本方法仅推进 _cachedGuidanceQuest（transient 引导任务"继续探索"）的进度，
     // 不操作 StateManager 中的持久化任务。autoAdvanceByStory 负责 AI 返回任务的关键词匹配。
     // 两者操作不同数据，不会冲突。autoAdvanceByStory 已通过 id 前缀 'guidance_' 跳过引导任务。
@@ -101,7 +101,7 @@ var QuestSystem = {
             }
         }
     },
-    // 【P2清理】删除 filterByType（类型筛选从未被启用，全项目零调用）
+
     filterByStatus(quests, status) {
         if (status === 'all') return quests;
         if (status === 'active') return quests.filter(function(q) {
@@ -113,7 +113,7 @@ var QuestSystem = {
         if (status === 'failed') return quests.filter(function(q) {
             return q.status === QuestSystem.STATUS.FAILED;
             });
-        // 【P3-9说明】abandoned 分支保留为状态机完整性预留：
+
         // ABANDONED 状态在 QuestMutator/QuestSystem.STATUS 中有定义，AI 可能返回此状态。
         // 当前 UI（renderQuestPage）未启用"已放弃"筛选按钮，但 filterByStatus/bindFilterEvents
         // 已支持，未来启用只需在 renderQuestPage 补按钮即可。
@@ -134,7 +134,7 @@ var QuestSystem = {
         }
     return 0;
     },
-    // 【P2清理】删除 getTypeIcon（恒返回空字符串，全项目零调用）
+
     renderQuestPage(container) {
         var quests = this.getAllQuests();
         var ac = quests.filter(function(q) {
@@ -154,7 +154,7 @@ var QuestSystem = {
         cc +
         '</div><div class="quest-stat-label">已完成</div></div><div class="quest-stat-item"><div class="quest-stat-num">' +
         fc + '</div><div class="quest-stat-label">已失败</div></div></div>';
-        // 【修复BUG-M4】使用与统计对应的状态标签页：全部 / 进行中 / 已完成 / 已失败
+
         var filterBtns = '<button class="quest-filter-btn active" data-quest-filter="all">全部</button>';
         filterBtns += '<button class="quest-filter-btn" data-quest-filter="active">进行中 ' + ac + '</button>';
         filterBtns += '<button class="quest-filter-btn" data-quest-filter="completed">已完成 ' + cc + '</button>';
@@ -173,9 +173,9 @@ var QuestSystem = {
     },
     renderQuestList(quests) {
         const self = this;
-        // 【优化】主线 → 支线 → 隐藏，进行中 → 已完成 → 已失败
+
         var typeOrder = { '主线': 0, '支线': 1, '隐藏': 2 };
-        // 【P2-10修复】删除 _customTypes/_customStatuses 的 for-in 循环
+
         // 动态类型注册系统（registerType/registerStatus）已在 systems.js:14 删除，
         // _customTypes/_customStatuses 从未定义，for-in 循环遍历 undefined 无效果且易误导
         var statusOrder = { '进行中': 0, '已完成': 1, '已失败': 2, '已放弃': 3 };
@@ -213,10 +213,10 @@ var QuestSystem = {
     var hh = (q.hint && !isC && !isF) ?
     '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;padding:8px;background:var(--bg);border-radius:var(--radius-sm);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2v1"/><path d="M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10z"/></svg>' +
     escapeHtml(q.hint) + '</div>' : '';
-    // 【优化】截止时间显示
+
     var dh = '';
     if (q.deadline && !isC && !isF) {
-        // 【P1-SY1 阶段3-4】截止时间警告色用 CSS 变量
+
         dh = '<div style="font-size:12px;color:var(--deadline-warn);margin-top:6px;display:flex;align-items:center;gap:4px;"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>截止：' + escapeHtml(q.deadline) + '</div>';
     }
     return '<div class="quest-item-card ' + tc + (isC ? ' completed' : '') + (isF ?
@@ -241,7 +241,7 @@ var QuestSystem = {
                 var f = this.dataset.questFilter;
                 var quests = self.getAllQuests();
                 var filtered = quests;
-                // 【修复BUG-M4】标签页统一按状态过滤，确保统计数字与列表一致
+
                 if (f === 'active' || f === 'completed' || f === 'failed' || f === 'abandoned') {
                     filtered = self.filterByStatus(quests, f);
                 }
@@ -254,12 +254,12 @@ var QuestSystem = {
         });
     });
     }
-    // 【P2清理】删除 renderTracker / toggleTracker（仅 backup/index.html 引用，全项目零调用）
+
 };
 // ========================================
 // 成就系统 - Achievement System
 // ========================================
-// 【P1-SY1 阶段3-4】成就品质色：硬编码色值替换为 CSS 变量
+
 // fallback 字符串保留，仅在 DOM 未就绪时使用
 function _cssVar(name, fallback) {
     try {
@@ -270,7 +270,7 @@ function _cssVar(name, fallback) {
     } catch (e) {}
     return fallback;
 }
-// 【P1-6/P1-7修复】ach.rarity/category 安全归一化
+
 // 旧代码问题：① ach.rarity.toUpperCase() 对非字符串（数字/null）抛 TypeError 中断成就检测；
 //             ② 636/691/693 行 ach.rarity 直接拼 class 属性未 escapeHtml，AI 返回恶意串可 XSS
 // 修复：统一用本工具归一化为大写字符串并校验白名单，非字符串或非法值回落 COMMON
@@ -279,7 +279,7 @@ function _normalizeRarity(r) {
     var s = String(r == null ? 'common' : r).toUpperCase();
     return _ACHIEVEMENT_RARITY_WHITELIST[s] ? s : 'COMMON';
 }
-// 【P1-7修复】ach.category 同样可能为非字符串，归一化为大写字符串避免 toUpperCase 抛错
+
 function _normalizeCategory(c) {
     return String(c == null ? 'general' : c).toUpperCase();
 }
@@ -295,7 +295,7 @@ function _achTextColor(rarity) {
     var fbMap = { common: '#616161', rare: '#1565c0', epic: '#7b1fa2', legendary: '#e65100' };
     return _cssVar(map[rarity] || '--ach-common-text', fbMap[rarity] || '#616161');
 }
-// 【P2-18修复】预编译成就条件正则 + 解析结果缓存
+
 // 原实现每回合 checkAchievements 对每个成就都 cond.match(regex)，
 // 成就条件是静态的（getDefaultAchievements 返回固定定义），重复解析浪费 CPU。
 var _ACH_COND_REGEX = /^(\w+)\s*(>=|<=|>|<|==|!=)\s*(\d+)$/;
@@ -443,7 +443,7 @@ var AchievementSystem = {
             // 动态解析条件表达式，如 "storyCount >= 1"
             var cond = ach.condition || 'true';
             try {
-                // 【P2-18修复】使用模块级预编译正则 _ACH_COND_REGEX + 解析结果缓存
+
                 // 成就条件是静态的，同一 cond 字符串只需解析一次
                 var match = _achCondCache[cond];
                 if (match === undefined) {
@@ -540,7 +540,7 @@ var AchievementSystem = {
             if (cat[c]) cat[c].push(a);
             });
         var html = '<div class="achieve-page">';
-        // 【修复BUG-L1】没有成就数据时显示占位提示，避免 0/0 白屏/空屏
+
         if (all.length === 0) {
             html += '<div class="empty-state" style="padding:40px 20px;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><p>成就系统即将开放</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">随着剧情推进，AI 将自动生成可解锁的成就</p></div></div>';
             container.innerHTML = html;
@@ -564,7 +564,7 @@ var AchievementSystem = {
         html +=
         '<div class="achieve-filter-bar"><button class="quest-filter-btn active" data-achieve-filter="all">全部</button><button class="quest-filter-btn" data-achieve-filter="unlocked">已解锁</button><button class="quest-filter-btn" data-achieve-filter="locked">未解锁</button></div>';
         // 分类 tab
-        // 【P1-SY1 阶段3-4】背景/边框/文字色统一走 CSS 变量
+
         var tabHtml = '<div class="achieve-cat-tabs" style="display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:var(--bg-secondary);border-bottom:1px solid var(--border);">';
         var totalUc = 0, totalTc = 0;
         Object.keys(this.CATEGORY).forEach(function(ck) {
@@ -599,7 +599,7 @@ var AchievementSystem = {
         container.innerHTML = html;
         this.bindAchieveFilter(container);
         // 绑定分类 tab
-        // 【P1-SY1 阶段3-4】active/inactive 颜色统一走 CSS 变量
+
         container.querySelectorAll('.achieve-cat-tab').forEach(function(tab) {
             tab.addEventListener('click', function() {
                 container.querySelectorAll('.achieve-cat-tab').forEach(function(t) {
@@ -706,7 +706,7 @@ var AchievementSystem = {
         '" style="margin:0 auto 16px;width:80px;height:80px;font-size:40px;">' + escapeHtml(String(ach.icon || '')) +
         '<div class="achieve-rarity-badge ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) + '"></div></div>' +
         '<div style="font-size:20px;font-weight:700;margin-bottom:8px;">' + escapeHtml(String(ach.name || '')) + '</div>' +
-        // 【P1-SY1 阶段3-4】成就稀有度徽章背景/文字色统一走 CSS 变量
+
         // 通过 inline style 绑定 var(--ach-*) 即可，暗色模式自动适配
         '<div style="margin-bottom:16px;"><span style="padding:4px 12px;border-radius:12px;font-size:12px;font-weight:600;background:' +
         _achBgColor(_normalizeRarity(ach.rarity).toLowerCase()) + ';color:' + _achTextColor(_normalizeRarity(ach.rarity).toLowerCase()) +
@@ -732,7 +732,7 @@ var AchievementSystem = {
 
 function mergeQuests(newQuests) {
     if (!newQuests || !Array.isArray(newQuests)) return;
-    // 【P2-31修复】删除 legacy 分支：QuestMutator 不可用时直接抛错，
+
     // 避免 legacy 路径直接操纵 gameState.currentQuests 绕过 StateManager 导致双写。
     // 与 P1-PU7 阶段4 saveNpcEdit "强制走 Mutator" 架构一致。
     // 原 legacy 分支含 statusMap/typeMap 标准化与 QuestMutator 内部 normalize 重复实现，
@@ -840,7 +840,7 @@ function renderQuests() {
 
 function mergeRelationships(newRels) {
     if (!newRels || !Array.isArray(newRels)) return;
-    // 【阶段1修复】playerName 统一走 StateManager，避免直接读 gameState.playerData
+
     var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
     var playerName = (player && player.name) || (gameState && gameState.playerName) || '主角';
     // 标准化输入：把 {name, delta} 格式转为关系图谱条目
@@ -861,12 +861,12 @@ function mergeRelationships(newRels) {
         }
         return nr;
     }).filter(Boolean);
-    // 【P0-2.9 阶段3-3】统一走 RelationshipMutator → entities.relationships，
+
     // StateManager._syncLegacyMirror 自动同步 gameState.relationships 旧字段
     if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
         RelationshipMutator.mergeRelationships(normalized);
     } else {
-        // 【P0-2.9】RelationshipMutator 不可用时直接抛错，不再静默双写
+
         throw new Error('[mergeRelationships] RelationshipMutator 未加载，无法同步关系');
     }
     // 兼容旧流程：仍触发 _pushRelationshipsToGM 让 gm.tables.relationships 同步
@@ -874,9 +874,9 @@ function mergeRelationships(newRels) {
     if (typeof _pushRelationshipsToGM === 'function') _pushRelationshipsToGM();
 }
 
-// 【修复】AI 没返回 relationships 时，根据已有角色自动补一条基础关系网
+
 function _inferRelationshipsFromCharacters() {
-    // 【阶段1修复】统一走 StateManager 读取玩家与角色，避免直接读 gameState
+
     var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
     var playerName = (player && player.name) || '主角';
     var chars = {};
@@ -936,7 +936,7 @@ function getRelationTagClass(type) {
     var t = type.toLowerCase();
 
     // 爱情/暧昧类关键词
-    // 【P3-8修复】去掉 sweetheart 前多余空格，改为 \s* 兼容前后空白
+
     if (/爱|恋|心动|暧昧|暗恋|喜欢|钟情|倾心|爱慕|迷恋|痴迷|\s*sweetheart|crush|beloved/.test(t)) {
         return 'relation-tag-love';
     }

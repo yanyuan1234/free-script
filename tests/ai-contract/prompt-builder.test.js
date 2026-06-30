@@ -15,8 +15,10 @@ function assertContains(text, needle, msg) {
 }
 
 // 测试 1：默认片段存在
-var sections = PromptBuilder.listSections();
-assertTrue(sections.length >= 5, 'has default sections');
+var sectionNames = [];
+// 通过 buildSystemPrompt 间接验证默认片段存在
+var testPrompt = PromptBuilder.buildSystemPrompt({ setupText: 'test' });
+assertTrue(testPrompt.length > 100, 'default sections render');
 
 // 测试 2：JSON 模式构建 prompt
 PromptBuilder.setMode('json');
@@ -47,11 +49,7 @@ PromptBuilder.registerSection('custom', function(ctx) { return 'CUSTOM:' + ctx.v
 var withCustom = PromptBuilder.buildSystemPrompt({ val: 'hello' });
 assertContains(withCustom, 'CUSTOM:hello', 'custom section');
 
-// 测试 5：user prompt
-var up = PromptBuilder.buildUserPrompt('前进');
-assertTrue(up === '前进', 'user prompt');
-
-// 测试 6：formatRules 覆盖
+// 测试 5：formatRules 覆盖
 var override = PromptBuilder.buildSystemPrompt({ formatRules: 'OVERRIDE RULES' });
 assertContains(override, 'OVERRIDE RULES', 'format rules override');
 

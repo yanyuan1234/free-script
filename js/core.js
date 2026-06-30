@@ -6,7 +6,7 @@
 // 自由剧本 - 完整游戏逻辑
 // ========================================
 //
-// 【P1修复BUG-5.9 / P1-7.1】core.js 上帝文件与循环依赖
+
 // -----------------------------------------------
 // 本文件 5500+ 行混合 13 个职责域：
 //   1.  数据同步（_sync*/_push*）
@@ -22,7 +22,7 @@
 //   11. 错误翻译/HTML 净化（translateError/_cleanUnrecognizedTags）
 //   12. AI 请求构建（callAI/sendAIRequest）
 //
-// 【P1-4/8 阶段3】循环依赖已通过 RuntimeBridge 打破：
+
 //   - core.js 不再直接调用 game.js 函数，统一走 RuntimeBridge.xxx()
 //   - game.js 在文件末尾将自身函数注册到 RuntimeBridge，供 core.js 使用
 //   - core.js → game.js 的原依赖：formatStory / mergeCharacters / renderChoices /
@@ -33,7 +33,7 @@
 // 长期：core.js 按职责拆为 core/{data-sync,ui,api,save,theme,state-factory,
 //       typewriter,time,parser,error,ai-request}.js，每个模块可独立测试
 
-// 【P1修复BUG-2.2】删除 GameLinker 整套联动系统：
+
 // 原实现 _refreshers 永远为空对象（register 全代码库零调用），
 // 但 25+ 处仍调 refreshByDataChange/refreshAll，每次触发无意义的 rAF + 空对象遍历。
 // 数据变更后的 UI 刷新已由各具体调用方主动触发（如 renderNpcList/renderQuests 等），
@@ -49,7 +49,7 @@
 // ========================================
 
 // ========================================
-// 【P1-CO1 阶段2-5】数据同步公共 helper
+
 // 原代码 8 个函数（4 sync + 4 push）各自手写：
 //   - null check gameState + window.GameMemory
 //   - 取数据源（keyed object 或 array）
@@ -85,7 +85,7 @@ function _mirrorToState(stateKey, smPath, value) {
 }
 
 // ========================================
-// 【阶段1批6】通用同步工具：抽离 8 个 _sync* / _push* 函数的重复模式
+
 // ========================================
 //
 // 旧实现：8 个函数各自处理 (keyed object ↔ array) 转换，字段映射表重复 4-5 处
@@ -256,25 +256,25 @@ function _pushTableToGM(tableName, stateKey, gmField, mapper) {
 }
 
 // 物品同步：gm.tables.items (keyed) → gameState.currentBag (array) + StateManager
-// 【阶段1批6】委托 _syncTable 通用函数，消除 4 个 _sync* 函数重复
+
 function _syncItemsToBag() {
     _syncTable('items', 'currentBag', 'entities.bag', _TABLE_MAPPERS.items);
 }
 
 // 任务同步：gm.quests (array) → gameState.currentQuests (array, 旧格式) + StateManager
-// 【阶段1批6】委托 _syncTable 通用函数
+
 function _syncQuestsToGameState() {
     _syncTable('quests', 'currentQuests', 'entities.quests', _TABLE_MAPPERS.quests);
 }
 
 // 关系同步：gm.tables.relationships (keyed) → gameState.relationships (array) + StateManager
-// 【阶段1批6】委托 _syncTable 通用函数（relationships 是 keyed by from→to）
+
 function _syncRelationshipsToGameState() {
     _syncTable('relationships', 'relationships', 'entities.relationships', null);
 }
 
 // 事件同步：gm.events (对象数组) → gameState.keyEvents (字符串数组) + StateManager.entities.events (对象数组)
-// 【阶段1批6】events 单独处理:gm.events 是 array,需转为字符串数组到 gameState
+
 function _syncEventsToKeyEvents() {
     var gm = _safeGM();
     if (!gm || !Array.isArray(gm.events)) return;
@@ -307,25 +307,25 @@ function _ensureDataLinkage() {
 }
 
 // 把 gameState.currentBag 反向推送到 gm.tables.items（让权威源更新）
-// 【阶段1批6】委托 _pushTableToGM 通用函数
+
 function _pushCurrentBagToGM() {
     _pushTableToGM('items', 'currentBag', 'items', _TABLE_MAPPERS.items);
 }
 
 // 把 gameState.currentQuests 反向推送到 gm.quests
-// 【阶段1批6】委托 _pushTableToGM 通用函数
+
 function _pushCurrentQuestsToGM() {
     _pushTableToGM('quests', 'currentQuests', 'quests', _TABLE_MAPPERS.quests);
 }
 
 // 把 gameState.relationships 反向推送到 gm.tables.relationships
-// 【阶段1批6】委托 _pushTableToGM 通用函数（relationships 是 keyed by from→to）
+
 function _pushRelationshipsToGM() {
     _pushTableToGM('relationships', 'relationships', 'relationships', null);
 }
 
 // 把 gameState.keyEvents 反向推送到 gm.events
-// 【阶段1批6】委托 _pushTableToGM 通用函数（events 是 array,不是 keyed object）
+
 function _pushKeyEventsToGM() {
     _pushTableToGM('events', 'keyEvents', 'events', null);
     // 推送后立即 sync 回去，让 StateManager 与 gameState 同步
@@ -335,7 +335,7 @@ function _pushKeyEventsToGM() {
 }
 
 // 拦截 gm.saveToStorage：保存后自动同步 + 通知 UI
-// 【P1-CO3 阶段2-6】原版每 200ms 轮询 setInterval + 裸 setTimeout
+
 // + 绕开 TimerManager。现在改为：直接在 GameMemory 加载后一次性 wrap
 // （模块加载顺序已固定：core.js 必在 tavern-compat.js 之后；GameMemory 在
 // tavern-compat.js 末尾 `var GameMemory = {...}` 定义）。
@@ -413,7 +413,7 @@ var UI = {
         var t = document.createElement('div');
         t.className = 'toast';
         t.textContent = msg;
-        // 【阶段三】屏幕阅读器播报
+
         t.setAttribute('role', 'status');
         t.setAttribute('aria-live', 'polite');
         t.setAttribute('aria-atomic', 'true');
@@ -439,11 +439,11 @@ var UI = {
             pages[pi].classList.remove('active');
         }
         if (el) el.classList.add('active');
-        // 【修复BUG-M3】离开日志页时自动关闭子页面，防止子页面覆盖到其他页面
+
         if (fromPage && fromPage.id === 'logPage' && id !== 'logPage' && typeof closeLogSubPage === 'function') {
             try { closeLogSubPage(); } catch (e) {}
         }
-        // 【P0-6修复】el 为 null（页面 id 不存在 DOM）时后续 scrollTop/querySelector 会抛 TypeError，提前返回
+
         if (!el) return;
         el.scrollTop = 0;
         var body = el.querySelector('.page-body');
@@ -456,7 +456,7 @@ var UI = {
     _modalStack: [],
     _lastFocusBeforeModal: null,
     _modalKeydownBound: false,
-    // 【阶段三】可聚焦元素选择器（用于焦点陷阱）
+
     _focusableSelector: 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
     showModal: function(id) {
         var el = document.getElementById(id);
@@ -480,7 +480,7 @@ var UI = {
             if (el.classList.contains('modal-overlay')) {
                 el.style.display = 'flex';
             }
-            // 【阶段三】ARIA 属性：标记为模态对话框
+
             if (!el.getAttribute('role')) el.setAttribute('role', 'dialog');
             el.setAttribute('aria-modal', 'true');
             // 尝试关联标题
@@ -489,9 +489,9 @@ var UI = {
                 if (!titleEl.id) titleEl.id = id + '_title';
                 el.setAttribute('aria-labelledby', titleEl.id);
             }
-            // 【阶段三】焦点管理：移到第一个可聚焦元素，或弹窗本身
+
             this._focusModal(el);
-            // 【阶段三】绑定全局键盘事件（仅一次）
+
             this._bindModalKeyboard();
             // 点击遮罩区域关闭模态框
             if (!el._maskClickBound) {
@@ -522,7 +522,7 @@ var UI = {
             }
         }
     },
-    // 【阶段三】将焦点移入弹窗
+
     _focusModal: function(el) {
         var focusable = el.querySelectorAll(this._focusableSelector);
         var target = null;
@@ -542,7 +542,7 @@ var UI = {
             try { el.focus(); } catch(e) {}
         }
     },
-    // 【阶段三】绑定全局弹窗键盘事件（Escape 关闭、Tab 焦点陷阱）
+
     _bindModalKeyboard: function() {
         if (this._modalKeydownBound) return;
         this._modalKeydownBound = true;
@@ -610,7 +610,7 @@ var UI = {
         if (opts.onClose) overlay._onClose = opts.onClose;
         overlay._persistent = !!opts.persistent;
         overlay._isDynamic = true; // 标记为动态创建的弹窗
-        // 【阶段三】动态弹窗内容基础 ARIA 增强
+
         var newBtns = overlay.querySelectorAll('button:not([type])');
         for (let b = 0; b < newBtns.length; b++) newBtns[b].setAttribute('type', 'button');
         var newSvgs = overlay.querySelectorAll('svg');
@@ -644,7 +644,7 @@ var UI = {
             if (el._isDynamic && !el._persistent) {
                 el.remove();
             }
-            // 【阶段三】恢复焦点到打开弹窗前的元素（当所有弹窗都关闭时）
+
             if (this._modalStack.length === 0 && this._lastFocusBeforeModal) {
                 try { this._lastFocusBeforeModal.focus(); } catch(e) {}
                 this._lastFocusBeforeModal = null;
@@ -667,7 +667,7 @@ var UI = {
         resolve(false);
         return;
     }
-    // 【性能优化】用 _hasBound 标记代替 cloneNode，避免每次创建新元素
+
     if (!yesBtn._confirmHandler) {
         yesBtn._confirmHandler = function() {
             UI.hideModal('confirmModal');
@@ -676,7 +676,7 @@ var UI = {
         };
         yesBtn.addEventListener('click', yesBtn._confirmHandler);
     }
-    // 【P2-29修复】覆盖前先 resolve(false) 给上一个未完成的 Promise，避免悬挂
+
     if (yesBtn._confirmResolve) {
         yesBtn._confirmResolve(false);
     }
@@ -717,7 +717,7 @@ var UI = {
         resolve(null);
         return;
     }
-    // 【性能优化】用 _hasBound 标记代替 cloneNode
+
     if (!okBtn._promptHandler) {
         okBtn._promptHandler = function() {
             UI.hideModal('promptModal');
@@ -810,7 +810,7 @@ var UI = {
     afterMemoryChange: function(tab, dataKey, toastMsg) {
         try {
             if (window.GameMemory) {
-                // 【P0-7修复】失效 longTermMemory 缓存（_ltmCache）。
+
                 // _ltmCache 包含 tables.characters/items/locations/relationships 的深拷贝、
                 // quests、events、plot、permanentFacts→worldAnchors（见 tavern-compat.js:3710-3754 getter）。
                 // 全部 16 处 save*/delete* 调用 afterMemoryChange 时都修改了上述数据之一，
@@ -824,7 +824,7 @@ var UI = {
                 GameMemory.saveToStorage();
             }
         } catch (e) { console.warn('[afterMemoryChange] saveToStorage:', e); }
-        // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
+
         if (toastMsg) UI.toast(toastMsg);
         if (tab && typeof MemoryManagerUI !== 'undefined' && MemoryManagerUI.switchTab) {
             MemoryManagerUI.switchTab(tab);
@@ -1027,7 +1027,7 @@ var LocalGameAPI = {
     this.save();
     },
     getCurrentConfig() {
-        // 【优化 #10】返回浅拷贝，外部修改不会污染内部状态
+
         var cfg = this._configs[this._currentSlot] || this._configs[0];
         return cfg ? Object.assign({}, cfg) : null;
     },
@@ -1050,7 +1050,7 @@ var LocalGameAPI = {
         // 网络错误重试配置
         const MAX_RETRIES = 3; // 每个配置最多重试3次
         const RETRY_DELAY_BASE = 1000; // 基础延迟1秒
-        // 【优化 #16】本轮调用的起始时间，用于埋点每个 slot 的耗时
+
         var startTs = Date.now();
 
         async function retryRequest(slotIdx, attempt) {
@@ -1058,7 +1058,7 @@ var LocalGameAPI = {
                 const result = await requestFn(slotIdx);
                 return result;
                 } catch (e) {
-                // 【优化 #8】网络错误判定改用原生字段，不再依赖翻译后的字符串匹配
+
                 // translateError 之后文案是中文的，一旦未来改 i18n 这里就漏判
                 var isRetryable =
                     (e && e.name === 'AbortError') ||
@@ -1095,7 +1095,7 @@ var LocalGameAPI = {
     for (let i = 0; i < totalSlots; i++) {
         orderedSlots.push((this._currentSlot + i) % totalSlots);
     }
-    // 【修复P0-1】聚合各配置失败原因，让最终错误信息透明
+
     var failReasons = [];
     for (let attempt = 0; attempt < totalSlots; attempt++) {
         const slotIdx = orderedSlots[attempt];
@@ -1105,7 +1105,7 @@ var LocalGameAPI = {
             console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 不完整，跳过');
             continue;
         }
-        // 【优化】跳过近期因超时失败的配置，避免连续超时浪费用户时间
+
         if (this.isSlotTimeoutRecent(slotIdx)) {
             console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 近期超时，跳过');
             continue;
@@ -1127,7 +1127,7 @@ var LocalGameAPI = {
         // 失败标记记录原因，超时模型会在短期内被跳过
         this._markModelFailed(slotIdx, errMsg);
         console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
-        // 【修复P0-1】记录失败原因，用于最终错误聚合
+
         failReasons.push('配置' + (slotIdx + 1) + '(' + (cfg.model || '?') + '): ' + errMsg);
         // 超时错误给出明确提示
         if (/timeout|timed out|超时/i.test(errMsg)) {
@@ -1141,7 +1141,7 @@ var LocalGameAPI = {
     if (attemptedCount === 0) {
         throw new Error('没有可用的API配置，请检查API设置（URL和Key是否完整）');
     }
-    // 【修复P0-1】最终错误附带各配置失败原因，让用户知道真正失败原因
+
     // 只保留前 3 条原因避免过长，每条截断到 100 字符
     throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + (failReasons.length > 0
         ? '\n失败原因：\n' + failReasons.slice(0, 3).map(function(r) {
@@ -1176,10 +1176,10 @@ var LocalGameAPI = {
     _markModelFailed(slot, reason) {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return;
-        // 【优化 #14】key 改为 slot+model 组合
+
         // 之前用 model 名，两个 slot 用同模型时一个挂会误标记另一个
         var key = slot + '|' + cfg.model;
-        // 【优化】记录失败原因，便于超时时跳过近期失败的配置
+
         this._failedModels[key] = { time: Date.now(), reason: reason || 'unknown' };
         // 复用延迟保存机制，避免重试循环中频繁写 localStorage
         if (!this._savePending) {
@@ -1191,7 +1191,7 @@ var LocalGameAPI = {
             }, 2000);
         }
     },
-    // 【优化 #14】按 slot 判断是否被标记为失败（与 _markModelFailed 的 key 对应）
+
     isModelFailedForSlot(slot) {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return false;
@@ -1240,7 +1240,7 @@ var LocalGameAPI = {
         }
         return true;
     },
-    // 【优化】检查某个 slot 是否在近期因超时失败
+
     isSlotTimeoutRecent(slot, withinMs) {
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return false;
@@ -1255,7 +1255,7 @@ var LocalGameAPI = {
     getFailedModels() {
         var result = [];
         for (let m in this._failedModels) {
-            // 【优化 #14】key 可能是 "slot|model" 形式，UI 显示时拆出 model
+
             var modelName = m.indexOf('|') >= 0 ? m.split('|').slice(1).join('|') : m;
             var record = this._failedModels[m];
             result.push({
@@ -1475,7 +1475,7 @@ var SaveDB = {
     async set(slot, data) {
         await this.init();
         var backupSlot = this._getBackupSlot(slot);
-        // 【阶段二】写前备份：保留旧数据到备份槽，防止写入崩溃导致旧档丢失
+
         if (backupSlot !== null && data !== null && data !== undefined) {
             try {
                 var oldData = await this.get(slot);
@@ -1949,14 +1949,14 @@ presetArchetype: 'free'      // conservative / natural / passionate / delicate /
 
 var gameState = createDefaultGameState();
 
-// 【P1修复BUG-5.8】运行时状态单例 RuntimeState
+
 // 原问题：core.js 顶层用 var/let/const 声明大量全局（streamBuffer/isWaiting/isCompressing/
 // npcEditingName/npcChatState/MAX_HISTORY），由 game.js/phone-ui.js 直接读写，无模块边界，
 // 重构时极易遗漏。现统一封装到 RuntimeState 单例，通过 getter/setter 访问。
 // 注意：
 // - gameState 仍是顶层全局（StateManager 已封装其读写，且跨文件引用极广），暂不纳入
 // - RuntimeState.npcChatState 为对象引用，嵌套修改（.npcName/.chatHistory 等）直接操作底层对象
-// 【P0-3修复】_streamMode/_streamModeLocked 原声明在 game.js 顶层（var），由 core.js/phone-ui.js
+
 // 跨文件直接赋值重置。该模式依赖全局 var 提升跨脚本可见，strict mode 下会 ReferenceError，
 // 且散落 3 处重置点（sendAIRequest/resetRuntimeState/取消按钮）+ 4 处读写点（onStreamChunk），
 // 重构易遗漏。现纳入 RuntimeState 与 streamBuffer 同域管理（两者本就协同控制流式解析）。
@@ -1997,7 +1997,7 @@ const RuntimeState = {
     }
 };
 
-// 【修复P1-3】统一状态重置入口——此前 startNewGame/loadFromSlot/handleImportFile 三处各自重置不同字段子集，
+
 // 极易字段遗漏。现在统一为 ensureGameStateFields() 和 resetRuntimeState(scope) 两个函数。
 // ensureGameStateFields：补全缺失字段（用于 loadFromSlot 和 handleImportFile）
 function ensureGameStateFields(gs) {
@@ -2017,7 +2017,7 @@ function ensureGameStateFields(gs) {
     if (gs._stats) {
         gs._stats.startTime = Date.now();
     }
-    // 【优化·playerName 同步】gameState.playerName 此前从未被赋值，所有读取都走 || '玩家' 兜底
+
     // 从 protagonistSetup.mcName 或 playerData.name 同步，确保 playerName 始终有值
     if (!gs.playerName) {
         if (gs.protagonistSetup && gs.protagonistSetup.mcName) {
@@ -2032,7 +2032,7 @@ function ensureGameStateFields(gs) {
     gs._afterChatPrompts = [];
     gs._wiCachedResult = null;
     // 重置世界书轮次追踪器
-    // 【P0-阶段1-2.10】删除 WorldInfo._currentTurn = 0（字段已废弃，统一从 gameState._stats.totalTurns 读取）
+
     if (typeof WorldInfo !== 'undefined') {
         WorldInfo._turnTracker = {};
     }
@@ -2047,10 +2047,9 @@ function resetRuntimeState(scope) {
     RuntimeState.isCompressing = false;
     // 压缩冷却实际使用 window.lastCompressTime（见 game.js）
     window.lastCompressTime = 0;
-    // 【P0-3修复】_streamMode/_streamModeLocked 改走 RuntimeState
+
     RuntimeState.streamModeLocked = false;
     RuntimeState.streamMode = null;
-    if (typeof _streamFullText !== 'undefined') _streamFullText = '';
     // 清空增强记忆系统（防止旧记忆污染新游戏）
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.clear) {
         EnhancedMemory.clear();
@@ -2067,7 +2066,7 @@ function resetRuntimeState(scope) {
     // full 模式：整体替换 gameState
     if (scope === 'full') {
         gameState = createDefaultGameState();
-        // 【修复BUG-14】clear() 重建 tables 后，gameState.allCharacters 等别名断裂
+
         // 重新建立 gameState 与 GameMemory tables 之间的引用别名
         if (typeof _ensureDataLinkage === 'function') {
             try { _ensureDataLinkage(); } catch (e) { console.warn('[resetRuntimeState] 数据联动失败:', e); }
@@ -2075,7 +2074,7 @@ function resetRuntimeState(scope) {
     }
 }
 
-// 【P1修复BUG-5.8】streamBuffer / isWaiting / isCompressing / npcEditingName /
+
 // npcChatState 改由 RuntimeState 单例承载。此处保留顶层引用以兼容现有调用点
 // （game.js / phone-ui.js 仍按旧名读写）；通过 Object.defineProperty 转发到 RuntimeState，
 // 确保所有读写都集中在单一真相源。后续 P2/P3 可逐步删除这些兼容别名。
@@ -2111,11 +2110,11 @@ Object.defineProperty(window, 'MAX_HISTORY', {
 // 优化：段落级渲染节流、标点智能停顿、统一光标、脏检查
 var TypewriterBuffer = {
     queue: '',
-    _queueIdx: 0,  // 【P3-4.3·阶段7】queue 读取指针，替代 substring(1) 逐字拷贝（O(n²)→O(n)）
+    _queueIdx: 0,
     displayed: '',
     isTyping: false,
     timer: null,
-    // 【性能优化】baseSpeed 从 25ms 改为 50ms，肉眼几乎无差（20字/秒）但 CPU 减半
+
     // 进一步通过 textContent 增量更新当前段落避免每 tick 整个 innerHTML 重建
     baseSpeed: 50,
     onComplete: null,
@@ -2124,7 +2123,7 @@ var TypewriterBuffer = {
     _currentParaChars: '',
     _lastRendered: '',
     _rafPending: false,
-    // 【性能优化】缓存已完成段落的格式化HTML，避免每tick重新formatStory
+
     _cachedCompletedHtml: '',
     _cachedCompletedKey: '',
     // 标点停顿映射（字符 → 额外等待ms）
@@ -2141,9 +2140,9 @@ var TypewriterBuffer = {
         // 确保 queue 和 displayed 已初始化，防止 undefined 错误
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        // 【修复BUG-04】newText 是完整文本（displayed + queue + 新增），不是增量
+
         var newSuffix = newText.substring(this.displayed.length);
-        // 【P3-4.3·阶段7】_queueIdx 表示已消费的前缀长度，剩余待消费 = queue.slice(_queueIdx)
+
         var remaining = this._queueIdx >= this.queue.length ? '' : this.queue.substring(this._queueIdx);
         if (newSuffix.indexOf(remaining) === 0) {
             // 原 remaining 是 newSuffix 前缀，只追加差异（最优路径）
@@ -2189,7 +2188,7 @@ var TypewriterBuffer = {
         }
     return;
     }
-    var ch = self.queue[self._queueIdx++];  // 【P3-4.3·阶段7】指针前移，避免 substring(1) 拷贝
+    var ch = self.queue[self._queueIdx++];
     self.displayed += ch;
 
     // 段落分割：遇到换行且当前段落有内容时，完成当前段落
@@ -2230,7 +2229,7 @@ var TypewriterBuffer = {
             if (document.hidden && self.isTyping) {
                 self.pause();
             } else if (!document.hidden && !self.isTyping && self._queueIdx < self.queue.length) {
-                // 【修复X15】页面重新可见时自动恢复打字
+
                 // 旧代码只 pause 不 resume，切回标签页后打字机永久停滞
                 self.start();
             }
@@ -2246,14 +2245,14 @@ var TypewriterBuffer = {
         if (this._pauseTimer) { TimerManager.clearTimeout('typewriterPause'); this._pauseTimer = null; }
         this.pause();
         this.queue = '';
-        this._queueIdx = 0;  // 【P3-4.3·阶段7】同步重置指针
+        this._queueIdx = 0;
         this.displayed = '';
         this._lastRendered = '';
         this.onComplete = null;
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';
         this._currentParaEl = null;
-        // 【修复BUG-05】异常路径强制清理光标，防止解析失败时光标 ▌ 残留
+
         // stop() 会在 catch 块、renderStory 等多处被调用，统一在此清理覆盖所有路径
         try { this.cleanCursor(); } catch (e) { /* ignore */ }
     },
@@ -2270,10 +2269,10 @@ var TypewriterBuffer = {
         // 确保 queue 和 displayed 已初始化
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
-        // 【P3-4.3·阶段7】只追加未消费部分（_queueIdx 之后），而非整个 queue
+
         this.displayed += this._queueIdx >= this.queue.length ? '' : this.queue.substring(this._queueIdx);
         this.queue = '';
-        this._queueIdx = 0;  // 【P3-4.3·阶段7】同步重置指针
+        this._queueIdx = 0;
         this.pause();
         this.render();
         if (this.onComplete) {
@@ -2300,7 +2299,7 @@ var TypewriterBuffer = {
         if (allText === this._lastRendered) return;
         this._lastRendered = allText;
 
-        // 【性能优化】当前段落用 textContent 增量更新，避免每 tick 整个 innerHTML 重建
+
         // 旧逻辑：每 50ms 都执行 storyEl.innerHTML = completedHtml + currentHtml
         //         → 浏览器必须重新解析"已完成段落"那部分 HTML（已经渲染过 N 次）
         // 新逻辑：已完成段落变更时（罕见，段尾换行时）才全量重渲染
@@ -2330,7 +2329,7 @@ var TypewriterBuffer = {
                 this._currentParaEl.className = 'story-typing-para';
                 storyEl.appendChild(this._currentParaEl);
             }
-            // 【修复BUG-M6】生成过程中添加闪烁光标，提示文本尚未完成，避免玩家误以为截断
+
             var cursorHtml = (this.isTyping || this._queueIdx < this.queue.length) ? '<span class="typing-cursor">▌</span>' : '';
             // currentText 已经过标签清理，innerHTML 安全
             this._currentParaEl.innerHTML = escapeHtml(currentText) + cursorHtml;
@@ -2338,7 +2337,7 @@ var TypewriterBuffer = {
             // 当前段落清空：清掉元素引用，下一次会创建新的
             this._currentParaEl = null;
         }
-        // 【修复】非打字状态时清理残留光标
+
         if (!this.isTyping && this._queueIdx >= this.queue.length) {
             this.cleanCursor();
         }
@@ -2352,8 +2351,8 @@ var TypewriterBuffer = {
         // 之前用 rAF + 80ms 节流反而让文本以 3 字/80ms 的节奏跳动，用户感觉"卡"
         this.render();
     },
-    // 【修复】渲染前清理打字光标，防止生成结束后"▌"残留
-    // 【P2修复BUG-012】增强清理：除了移除 .typing-cursor span 外，
+
+
     // 还会兜底移除 storyText 末尾残留的 ▌ 字符（防止 cursor 被序列化进文本后无法用 DOM 选择器移除）
     cleanCursor() {
         if (typeof document === 'undefined') return;
@@ -2380,7 +2379,7 @@ var TypewriterBuffer = {
         }
     }
 };
-// 【P1修复BUG-5.8】MAX_HISTORY / isCompressing / npcChatState / npcEditingName
+
 // 原顶层 const/let 声明已删除，全部通过 RuntimeState 单例承载。
 // 上方 window 兼容别名（defineProperty）转发到 RuntimeState，旧调用点无需改动。
 
@@ -2446,7 +2445,7 @@ var GameTimeSystem = {
     },
 
     // 从AI回复的JSON中解析时间字段并更新gameTime
-    // 【P0修复BUG-006】时间写入唯一入口：原实现与 AIResponseMutator._applyGameTime 重复调用
+
     // TimeMutator.setTime（同一份数据写入两次），且直接修改 gameState.gameTime 绕过 _syncLegacyMirror。
     // 现统一由本方法解析时间（data.gameTime → story 兜底 → 默认时间），调用 setTime 仅一次，
     // _syncLegacyMirror 自动将 StateManager.time 镜像到 gameState.gameTime，无需手动赋值。
@@ -2485,7 +2484,7 @@ var GameTimeSystem = {
                 if (extracted.period) resolved.period = extracted.period;
             }
         }
-        // 【修复X10】data 为 null 时也要给默认时间，避免 UI 显示 "--"
+
         // 最终兜底：游戏开局给一个默认时间，避免UI显示"--"
         if (!resolved.date && !resolved.time && !resolved.period) {
             resolved.date = '游戏开始';
@@ -2493,7 +2492,7 @@ var GameTimeSystem = {
         }
         // 【状态层同步】单一写入点：通过 TimeMutator.setTime 写入 StateManager.time
         // _syncLegacyMirror 自动同步到 gameState.gameTime（无需手动赋值）
-        // 【P1修复P1-I】删除直接写 gameState.gameTime 的兜底分支：该分支绕过
+
         // TimeMutator 的单调性校验（time 不允许倒退），与 5.7 时间单调性契约冲突。
         // StateManager/TimeMutator 是必加载的状态层，不可用时应抛错而非静默写入。
         if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
@@ -2562,7 +2561,7 @@ function _findMatching(str, startChar, endChar, startIdx) {
     }
 return -1;
 }
-// 【阶段1-A1】safeJSONParse 已删除：与 ResponseParser._tryDirectJSON + _tryRobustJSON 完全重复
+
 // 原 safeJSONParse 内部第一行就调 ResponseParser._tryDirectJSON，剩余逻辑又重写代码块剥离+状态机，
 // 与 ResponseParser Level 1/2 高度重叠，且在 parseAIResponse 中形成循环调用。
 //
@@ -2615,7 +2614,7 @@ function extractCharaData(arrayBuffer) {
                     base64 += String.fromCharCode(textData[j]);
                 }
             var decoded = atob(base64);
-            // 【修复 P0-3】用 TextDecoder 正确解码 UTF-8，支持中文角色卡
+
             // 旧代码逐字节 String.fromCharCode 会把 UTF-8 多字节中文拆散为 Latin-1 字符
             var bytes = new Uint8Array(decoded.length);
             for (let k = 0; k < decoded.length; k++) {
@@ -2640,7 +2639,7 @@ return null;
 function escapeRegExp(str) {
     return String(str).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
-// 【P2-6 阶段2】正则缓存，避免热路径重复 new RegExp
+
 var _regexCache = new Map();
 function _getCachedRegExp(pattern, flags) {
     var key = pattern + (flags || '');
@@ -2652,7 +2651,7 @@ function _getCachedRegExp(pattern, flags) {
     return re;
 }
 function extractStr(text, field) {
-    // 【P2-6修复】接入 _getCachedRegExp 缓存，避免热路径重复 new RegExp
+
     const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*"`));
     if (!m) return null;
     let r = '',
@@ -2682,7 +2681,7 @@ return r.length > 0 ? r : null;
 }
 // 状态机提取数组
 function extractArr(text, field) {
-    // 【P2-6修复】接入 _getCachedRegExp 缓存
+
     const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         let i = m.index + m[0].length,
@@ -2733,7 +2732,7 @@ return items.length > 0 ? items : null;
 }
 // 状态机提取对象数组
 function extractObjArr(text, field) {
-    // 【P2-6修复】接入 _getCachedRegExp 缓存
+
     const m = text.match(_getCachedRegExp(`"${escapeRegExp(field)}"\\s*:\\s*\\[`));
         if (!m) return null;
         const result = [];
@@ -2752,11 +2751,11 @@ function extractObjArr(text, field) {
 }
 return result.length > 0 ? result : null;
 }
-// 【阶段1-A1】robustParse 已删除：与 ResponseParser._tryRobustJSON 完全重复
+
 // 字段级状态机提取已由 ResponseParser Level 2（_tryRobustJSON + _repairTruncatedJSON）覆盖
 // extractStr/extractArr/extractObjArr 保留：仍被 game.js 多处用于从纯文本提取字段
-// 【P2-2修复】extractObj 已删除：全项目零调用（仅 backup/index.html 旧版使用）
-// 【阶段1-A1】_parseMemTags 已删除：与 ResponseParser._tryMemTags 完全重复
+
+
 // <mem> 标签解析统一由 ResponseParser.parse 的 Level 3 处理
 
 // 将<mem>解析结果应用到gameState，自动维护结构化数据
@@ -2767,8 +2766,8 @@ function _applyMemsToGameState(mems) {
             switch (mem.type) {
                 case 'event':
                     if (mem.action === 'add' && mem._content) {
-                        // 【阶段1-A2】统一通过 gm.addImportantEvent 写入事件
-                        // 【P1修复BUG-011-legacy兜底】删除 gm 不可用时直接写 keyEvents 的兜底分支：
+
+
                         // GameMemory 在 tavern-compat.js 顶部初始化（window.GameMemory = new EnhancedMemory(...)），
                         // defer 加载后必然可用。如真不可用应抛错暴露问题而非静默写入数据孤岛。
                         var _gm = (typeof window !== 'undefined') ? window.GameMemory : null;
@@ -2783,7 +2782,7 @@ function _applyMemsToGameState(mems) {
                     // 【C1修复】委托 BagMutator，不再直接操作 gameState.bag（数据孤岛）
                     // 旧代码写 gameState.bag（不在 _legacyToPath 映射中），_syncLegacyMirror 不镜像，
                     // UI 读 gameState.currentBag 看不到 <mem> 添加的物品
-                    // 【P1修复BUG-7.4】删除 else 兜底分支（直接写 gameState.currentBag），
+
                     // mutator 始终加载，缺失即抛错（与 event/character/time 分支一致）
                     if (typeof BagMutator === 'undefined') {
                         throw new Error('[<mem> item] BagMutator 未加载，无法写入物品');
@@ -2805,8 +2804,8 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'character':
-                    // 【阶段1统一】<mem> 标签角色变更委托 CharacterMutator
-                    // 【P1修复BUG-011-legacy兜底】删除 CharacterMutator 不可用时回退旧逻辑的兜底分支：
+
+
                     // CharacterMutator 在 js/state/mutators/character-mutator.js 中定义，defer 加载后必然可用。
                     // 旧兜底直接写 gameState.allCharacters 会绕过 _syncLegacyMirror，导致 StateManager.entities.characters
                     // 与 gameState.allCharacters 不一致（数据断层）。现统一委托 CharacterMutator，缺失即抛错。
@@ -2838,7 +2837,7 @@ function _applyMemsToGameState(mems) {
                     // 【C1修复】委托 QuestMutator，不再直接操作 gameState.quests（数据孤岛）
                     // 旧代码写 gameState.quests（不在 _legacyToPath 映射中），与 currentQuests 平行存在，
                     // 下游 mergeQuests 只读 currentQuests，导致 <mem> 添加的任务丢失
-                    // 【P1修复BUG-7.4】删除 else 兜底分支（直接写 gameState.currentQuests），
+
                     // mutator 始终加载，缺失即抛错（与 event/character/time 分支一致）
                     if (typeof QuestMutator === 'undefined') {
                         throw new Error('[<mem> quest] QuestMutator 未加载，无法写入任务');
@@ -2856,10 +2855,10 @@ function _applyMemsToGameState(mems) {
                     }
                     break;
                 case 'time':
-                    // 【修复 P1】写入 gameTime.date（StateSchema 标准字段），而非 gameTime.day（非标准，UI 读不到）
-                    // 【P1修复BUG-011-时间】改为通过 TimeMutator.setTime 写入，由 _syncLegacyMirror 同步到 gameTime，
+
+
                     // 避免直接改 gameState.gameTime 绕过时间单调性校验（详见 5.7 时间单调性校验被绕过）。
-                    // 【P1修复P1-I】删除 else 分支直接写 gameState.gameTime：该分支绕过单调性校验，
+
                     // 与 P1-I 时间契约冲突。TimeMutator 是必加载层，不可用时抛错。
                     if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
                         var _timeMem = {};
@@ -2874,7 +2873,7 @@ function _applyMemsToGameState(mems) {
                 case 'location':
                     // 【C1修复】直接写 StateManager.entities.locations，不再操作 gameState.world（数据孤岛）
                     // 旧代码写 gameState.world（schema 与 entities.locations 不同，且无任何读取点，是完全孤立的死字段）
-                    // 【阶段1】进一步抽到 LocationMutator.addLocation，与其他 mutator 架构对齐
+
                     // 任何地点变更都应经 LocationMutator，禁止再直写 StateManager.set('entities.locations', ...)
                     if (mem.action === 'add' && mem.name) {
                         if (typeof LocationMutator === 'undefined') {
@@ -2901,7 +2900,7 @@ function parseAIResponse(reply) {
     let mems = [];
     let parsedByContract = null;
 
-    // 【阶段1-A1】单一解析入口：ResponseParser.parse 已是 5 层完整兜底
+
     // （direct JSON → code block → robust + 状态机 → <mem> tags → plain text）
     // 旧实现在此之后又调 safeJSONParse/robustParse/_parseMemTags 三套重复解析器，
     // 形成循环调用（safeJSONParse 内部又调 ResponseParser._tryDirectJSON）。
@@ -2935,7 +2934,7 @@ function parseAIResponse(reply) {
         if (cleanedReply) storyText = cleanedReply;
     }
 
-    // 【修复X8/BUG-01/NEW-BUG-5】裸文本思维链泄漏检测
+
     // 复用 game.js 全局 _isThinkingContent 函数（阶段2-B1 统一），避免正则数组重复定义
     if (storyText && typeof RuntimeBridge !== 'undefined' && RuntimeBridge._isThinkingContent && RuntimeBridge._isThinkingContent(storyText)) {
         console.warn('[parseAIResponse] 检测到 AI 思维链泄漏到剧情，已拦截');
@@ -2943,7 +2942,7 @@ function parseAIResponse(reply) {
         if (typeof gameState !== 'undefined' && gameState) gameState._lastLeakBlocked = true;
     }
 
-// 【修复P2-2】移除 _squelchPostProcess 调用块——该函数是 no-op（直接 return story），
+
 // 调用它是纯开销（字符串比较 + try/catch），无任何效果。文风指导应在 prompt 中正面引导。
 
 // 【小剧场融合】提取小剧场内容
@@ -2976,7 +2975,7 @@ if (Object.keys(theaterContent).length > 0) {
 
  // 检测JSON是否被截断（不完整）
     var _truncated = false;
-    // 【修复NEW-BUG-6】仅在 data 解析失败时才检测截断，避免 ResponseParser 已通过
+
     // _repairTruncatedJSON 修复成功后仍打印"检测到JSON被截断：{=44, }=43"误导日志
     if (reply && typeof reply === 'string' && !data) {
         var openBraces = (reply.match(/\{/g) || []).length;
@@ -3001,14 +3000,14 @@ if (Object.keys(theaterContent).length > 0) {
         storyText,
         mems: mems,
         truncated: _truncated,
-        // 【阶段2修复P0-1】添加 success 字段，激活 AIResponseMutator 状态层
+
         // 原 parseAIResponse 不返回 success，导致 game.js:1712 的 parseResult.success 永远 undefined，
         // AIResponseMutator.apply 从不执行（状态层是死代码）。
         success: !!(data || storyText)
     };
 }
 
-// 【优化】校验 AI 返回的 JSON 字段完整性
+
 // 返回 { valid: Boolean, missing: Array, storyField: String }
 function validateAIResponse(data) {
     if (!isObject(data)) {
@@ -3159,7 +3158,7 @@ case '报告之愿':
 targetModule = { type: 'text', title: theater.title || key, content: theater.content };
 break;
 
-// 【新增】手机功能 -> 手机模块
+
 case '角色手机':
 case '手机':
 case 'phone':
@@ -3181,7 +3180,7 @@ targetModule.summary = theater.data.summary;
 _bridgeSummaryToMemory(theater);
 break;
 
-// 【新增】选项分支 -> 选项模块
+
 case 'branches':
 case '选项分支':
 case '分支':
@@ -3195,7 +3194,7 @@ if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.renderChoices) {
 }
 break;
 
-// 【新增】物品 -> 物品模块
+
 case 'echo':
 case '物品':
 case 'items':
@@ -3205,7 +3204,7 @@ targetModule.items = theater.data.items;
 }
 break;
 
-// 【新增】文字剧场 -> 剧场模块
+
 case 'ccd':
 case '文字剧场':
 case '剧场':
@@ -3219,7 +3218,7 @@ targetModule.text = theater.data.text;
 }
 break;
 
-// 【新增】象牙塔预设 - 塔类小剧场映射
+
 case '恋爱之塔':
 case '恋爱小剧场':
 case '恋爱之愿':
@@ -3301,7 +3300,7 @@ case '盲盒之塔':
 targetModule = { type: 'cards', title: '盲盒物品', items: parseItemsContent(theater.html || theater.content) };
 break;
 
-// 【新增】其他标签类型映射
+
 case 'ice':
 targetModule = { type: 'text', title: 'ice', content: theater.html || theater.content };
 break;
@@ -3353,7 +3352,7 @@ default:
 if (theater.type === 'snow') {
 targetModule = { type: 'text', title: theater.title || key, content: theater.content };
 } else if (theater.type === 'gossip') {
-targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: Date.now() }] };  // 【P2-3修复】持久化存时间戳，显示时用 formatDateTime
+targetModule = { type: 'comments', title: theater.title || '论坛', items: theater.data?.posts || [{ author: '小剧场', content: theater.content, time: Date.now() }] };
 } else if (theater.type === 'phone') {
 targetModule = { type: 'phone', title: '手机', content: theater.html || theater.content, apps: theater.data?.apps || [] };
 } else if (theater.type === 'status') {
@@ -3457,7 +3456,7 @@ if (options.length > 0) {
 }
 
 // 【深度融合】将预设<meow_FM>摘要桥接到游戏EnhancedMemory系统
-// 【优化】旧代码写入 shortTermMemory.summaries（注入路径从不读取，是死字段）
+
 // 新代码写入 _summaryLayers.near，确保摘要能被 buildInjection 第9层注入给 AI
 function _bridgeSummaryToMemory(theaterData) {
     if (!theaterData) return;
@@ -3471,7 +3470,7 @@ summaryText = theaterData.html.replace(/<[^>]+>/g, '').trim();
 }
 if (!summaryText || summaryText.length < 10) return;
 
-// 【优化】注入到 EnhancedMemory._summaryLayers.near（会被 buildInjection 第9层读取）
+
 if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._summaryLayers) {
     var summaryEntry = '[预设摘要] ' + summaryText.substring(0, 500);
     // 避免重复
@@ -3610,7 +3609,7 @@ if (relations.length === 0) {
 }
 
 // 将提取的关系注入到游戏系统
-// 【阶段1统一】角色关系子字段写入委托 CharacterMutator
+
 if (relations.length > 0 && gameState.allCharacters) {
         relations.forEach(function(rel) {
             // 更新"from"角色的关系描述
@@ -3644,7 +3643,7 @@ if (relations.length > 0 && gameState.allCharacters) {
 }
 
 // 【小剧场融合】解析论坛内容
-// 【阶段1】委托 utils.parseTheaterItems，消除 60+ 行手写正则
+
 function parseForumContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'post',
@@ -3662,7 +3661,7 @@ function parseForumContent(html) {
 }
 
 // 【小剧场融合】解析聊天内容
-// 【阶段1】委托 utils.parseTheaterItems
+
 function parseChatContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'message',
@@ -3681,18 +3680,18 @@ function injectToChatLog(npcName, theater) {
     gameState._chatLogs[npcName].push({
         role: 'npc',
         text: (theater.content || '').substring(0, 100) + (theater.content.length > 100 ? '...' : ''),
-        time: Date.now(),  // 【P2-3修复】持久化存时间戳，显示时用 formatTime
+        time: Date.now(),
         isTheater: true,
         theaterType: theater.type
     });
-// 【修复】限制每个NPC聊天记录上限，防止无限增长导致存档膨胀
+
 if (gameState._chatLogs[npcName].length > 50) {
     gameState._chatLogs[npcName] = gameState._chatLogs[npcName].slice(-50);
 }
 }
 
 // 【小剧场融合】解析日程内容
-// 【阶段1】保留：calendar 是 Event:| 分隔格式,与 parseTheaterItems 的 div class 抓取模式不同
+
 // 旧逻辑保留但加一致性:8 个 parse*Content 中 7 个委托通用函数,1 个保留独立实现
 function parseCalendarContent(html) {
     var events = [];
@@ -3719,7 +3718,7 @@ function parseCalendarContent(html) {
 }
 
 // 【小剧场融合】解析邮件内容
-// 【阶段1】委托 utils.parseTheaterItems
+
 function parseMailContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'mail',
@@ -3749,7 +3748,7 @@ function parseMailContent(html) {
 }
 
 // 【小剧场融合】解析商店内容
-// 【阶段1】委托 utils.parseTheaterItems
+
 function parseShopContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'item',
@@ -3764,7 +3763,7 @@ function parseShopContent(html) {
 }
 
 // 【小剧场融合】解析朋友圈内容
-// 【阶段1】委托 utils.parseTheaterItems
+
 function parseMomentsContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'moment',
@@ -3782,7 +3781,7 @@ function parseMomentsContent(html) {
 }
 
 // 【小剧场融合】解析物品内容
-// 【阶段1】委托 utils.parseTheaterItems
+
 function parseItemsContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'item',
@@ -3796,7 +3795,7 @@ function parseItemsContent(html) {
 }
 
 // 【小剧场融合】解析日记内容
-// 【阶段1】委托 utils.parseTheaterItems
+
 function parseDiaryContent(html) {
     return parseTheaterItems(html, {
         itemClass: 'entry',
@@ -3810,7 +3809,7 @@ function parseDiaryContent(html) {
     });
 }
 
-// 【P0-阶段1-2.1】错误翻译映射统一表（单一权威源）
+
 // 原 translateError 内有三套重复映射：
 //   - HTTP_STATUS_MAP（行 3732，定义后从未被引用——死常量）
 //   - httpMap（行 3895，inline 短版）
@@ -3886,7 +3885,7 @@ function translateError(msg) {
         'SyntaxError': '数据格式错误 → API返回了无法识别的内容，请检查API配置',
 
         // ═══ HTTP 状态码 ═══
-        // 【P2-阶段3-8】完整格式（'400 Bad Request' 等）与短格式（'401' 等）已移除
+
         // 统一改用 HTTP_STATUS_MAP，由下方三处匹配路径覆盖（HTTP前缀/Error前缀/裸码兜底）
 
         // ═══ OpenAI/兼容API 特定错误 ═══
@@ -3987,7 +3986,7 @@ function _getTranslateErrorSortedKeys(map) {
     }
     return _translateErrorSortedKeys;
 }
-// 【修复】如果翻译后的结果与原文不同，在末尾附加原始错误信息
+
 // 这样用户既能看到中文解释，也能看到原始英文错误用于排查
 // 【v3审查修复】HTTP 状态码优先匹配：原实现先做子串匹配，message="HTTP 429" 会命中
 // map 中的裸数字 '429'（3字符），导致 httpMap 块沦为死代码，且两份翻译文案不一致。
@@ -3995,7 +3994,7 @@ function _getTranslateErrorSortedKeys(map) {
 var httpMatch = m.match(/HTTP\s*(\d{3})/);
 if (httpMatch) {
     var code = httpMatch[1];
-    // 【P0-阶段1-2.1】从统一表 _ERROR_MAPS.HTTP_STATUS 取值（替代原内联 httpMap）
+
     if (_ERROR_MAPS.HTTP_STATUS[code]) return _ERROR_MAPS.HTTP_STATUS[code];
 }
 var translated = null;
@@ -4016,7 +4015,7 @@ if (translated && translated !== m) {
 var apiCodeMatch = m.match(/(?:Error|错误)[:\s]*(\d{3})/);
 if (apiCodeMatch) {
     var apiCode = apiCodeMatch[1];
-    // 【P0-阶段1-2.1】从统一表 _ERROR_MAPS.API_CODE 取值（替代原内联 apiCodeMap）
+
     if (_ERROR_MAPS.API_CODE[apiCode]) return _ERROR_MAPS.API_CODE[apiCode];
 }
 // 都没匹配到，返回友好提示（截断过长消息）
@@ -4050,7 +4049,7 @@ function escapeAttr(str) {
 }
 
 // ========================================
-// 【P0修复】白名单 HTML 净化（替代黑名单正则方案）
+
 // 基于 DOMParser 解析 + 白名单标签/属性过滤
 // 安全保证：不在白名单的标签被移除（保留内容），所有事件属性和危险协议被清除
 // ========================================
@@ -4171,7 +4170,6 @@ function applyFontSize() {
 }
 
 
-
 // ========================================
 // 第2层: UI基础
 // ========================================
@@ -4190,7 +4188,7 @@ const _navBarClickHandler = function(e) {
         navContainer.querySelectorAll('.nav-item').forEach(function(b) { b.classList.remove('active'); });
         btn.classList.add('active');
     }
-    // 【修复BUG-M3】切页前关闭日志子页面，避免子页面覆盖在新页面上
+
     if (typeof closeLogSubPage === 'function') {
         try { closeLogSubPage(); } catch (e) { console.warn('[导航] 关闭日志子页面失败:', e); }
     }
@@ -4215,7 +4213,7 @@ function renderNavBar(containerId, tabs, activeIndex) {
         container.addEventListener('click', _navBarClickHandler);
         container._hasEventDelegate = true;
     }
-    // 【性能优化】tabs 结构未变时，只切 active 类，避免每次重建 6 个按钮
+
     var tabsKey = tabs.map(function(t) { return t.page + '|' + t.icon + '|' + t.label; }).join('||');
     if (container._tabsKey === tabsKey) {
         var items = container.querySelectorAll('.nav-item');
@@ -4312,7 +4310,7 @@ function showError(msg, errObj) {
     if (low.indexOf('api key') !== -1 || low.indexOf('认证') !== -1 || low.indexOf('401') !== -1) {
         action = '<button onclick="UI.hideModal(\'settingsModal\');" data-close="settingsModal" style="margin-top:6px;padding:4px 10px;background:#856404;color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:12px;">前往设置</button>';
     }
-    // 【修复】不要清空剧情区，避免覆盖流式已渲染的内容
+
     // 仅在没有内容时覆盖；否则在底部追加错误提示条
     var hasContent = el && el.innerHTML && el.innerHTML.trim() && el.innerHTML.indexOf('loading-dot') === -1;
     var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:var(--accent-soft);border:1px solid var(--border);border-radius:6px;padding:12px;margin:12px 0;color:var(--text);font-size:13px;transition:opacity 0.5s;">' +
@@ -4361,12 +4359,12 @@ function updateSceneTitle(title) {
     if (titleEl && title) {
         titleEl.textContent = title;
     }
-    // 【P1修复BUG-007】每次更新场景标题时同步刷新回合数标签
+
     // 旧实现把回合数塞进 sceneTitle 的 fallback，AI 一旦返回 title 就会覆盖回合数显示
     if (typeof updateTurnLabel === 'function') updateTurnLabel();
 }
 
-// 【P1修复BUG-007】独立的回合数标签更新函数
+
 // 把回合数显示在 storySceneLabel（原"AI实时生成"占位），与 sceneTitle 解耦：
 // - storySceneTitle：显示 AI 返回的标题（如"午夜的低语"），无标题时回退到"第 N 回合"
 // - storySceneLabel：永远显示"第 N 回合"，无论 AI 是否返回标题
@@ -4383,7 +4381,7 @@ function updateTurnLabel() {
     labelEl.textContent = '第 ' + turn + ' 回合';
 }
 var _autoSaveTimer = null;
-// 【阶段二】增强版全局存档写入锁
+
 // 所有写路径（autoSave / saveToSlot / loadFromSlot / import / export / restore）串行化，
 // 防止并发写入导致存档损坏；同时增加超时保险，避免一次死锁永久卡死。
 var _saveLock = Promise.resolve();
@@ -4432,7 +4430,7 @@ function withSaveLock(fn, label) {
     );
 
     // 超时保险：如果该锁持有超过 5 分钟仍未释放，强制重置
-    // 【优化】旧代码直接 _saveLock = Promise.resolve() 会丢失 pending 操作链
+
     // 新代码：保留 pending 链，只重置状态计数器，让 pending 操作自然完成
     var timeoutLabel = 'saveLockTimeout_' + label + '_' + Date.now();
     TimerManager.setTimeout(timeoutLabel, function() {
@@ -4471,11 +4469,11 @@ async function autoSave() {
                 dot.style.animation = 'pulse 0.9s ease-in-out infinite';
             }
             if (typeof SaveDB !== 'undefined') {
-                // 【P1-1修复】buildSaveData 不可用时传 null 会被 SaveDB._setRaw 解释为删除 slot 0（自动存档丢失）
+
                 // 修复：data 为 null 时跳过本次写入，保留上一次的有效自动存档
                 var _autoSaveData = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('', true) : null;
                 if (_autoSaveData !== null && _autoSaveData !== undefined) {
-                    // 【阶段四】autoSave 明确开启序列化缓存，手动保存保持默认不重缓存
+
                     await SaveDB.set(0, _autoSaveData);
                 }
             }
@@ -4511,12 +4509,12 @@ var _setWaitingCache = {
 function setWaiting(w) {
     // 状态未变化时直接返回
     if (typeof isWaiting !== 'undefined' && isWaiting === w) return;
-    // 【P0-阶段1-2.3】显式走 RuntimeState 通道（而非依赖 window.isWaiting setter 隐式转发）
+
     // 便于将来挂通知/订阅机制时只需要在 RuntimeState 上加 _notify('isWaiting')
     // 同时与同文件 resetRuntimeState() 内 `RuntimeState.isWaiting = false` 风格一致
     RuntimeState.isWaiting = w;
 
-    // 【性能】延迟初始化元素引用：第一次调用时查询并缓存
+
     if (!_setWaitingCache.initialized) {
         _setWaitingCache.input = document.getElementById('customAction');
         _setWaitingCache.sendBtn = document.getElementById('btnSendAction');
@@ -4528,14 +4526,14 @@ function setWaiting(w) {
     var sendBtn = _setWaitingCache.sendBtn;
     if (input) input.disabled = w;
     if (sendBtn) sendBtn.disabled = w;
-    // 【修复BUG-006】AI 响应完成（w=false）时清空输入框残留文本，
+
     // 确保用户不会看到上一轮未清空的输入。提交时的清空（input.value=''）
     // 理论上已生效，此处作为防御性兜底，避免极端时序下文本残留导致误重复提交。
     if (!w && input && input.value) {
         input.value = '';
     }
 
-    // 【性能】不遍历所有 .option-btn 设内联样式——改为在 body 上加/去 .is-waiting
+
     // CSS 用 .is-waiting .option-btn { pointer-events: none; opacity: .5; } 接管
     // 这样避免每 tick 扫描整个 DOM
     if (w) document.body.classList.add('is-waiting');
@@ -4560,7 +4558,7 @@ function setWaiting(w) {
 // AI调用函数（替代 GameAPI.call）
 // ========================================
 
-// 【优化 #13】参数默认值表——值等于表中默认值的字段会被过滤掉，避免某些 API 后端报错
+
 // 同时作为 truthy 判定参考（频率/存在惩罚是 OpenAI 标准参数，按非零决定是否发送）
 var SKIP_DEFAULTS = {
     top_k: 0, min_p: 0, top_a: 0,
@@ -4570,10 +4568,10 @@ var SKIP_DEFAULTS = {
     tool_reasoning_mode: 'disabled'
 };
 
-// 【优化 #18】合法的 reasoning_effort 值白名单，避免中转站收到乱写值后报错
+
 var VALID_REASONING_EFFORT = ['low', 'medium', 'high', 'auto'];
 
-// 【优化 #4】从 API 错误对象中提取并本地化错误信息
+
 // 显式判断字段，避免 translateError 对 undefined 返回 undefined 时链式调用炸掉
 function extractErrorMessage(errObj, fallback) {
     if (!errObj) return fallback;
@@ -4598,7 +4596,7 @@ function extractErrorMessage(errObj, fallback) {
 
 // 把 PresetManager 当前预设里的"高级采样参数"合并到 presetParams
 // 这些参数是 PresetManager.getParams() 没暴露的，需要手动取
-// 【P2-25 修复】抽取通用字段合并函数，消除 12+ 行手写 if
+
 function _mergePresetField(target, source, key, type, defaultVal, check) {
     var sv = source[key];
     if (sv == null) return;
@@ -4636,7 +4634,7 @@ function mergeAdvancedPresetParams(presetParams) {
     _mergePresetField(presetParams, _pp, 'max_tokens', 'number', 0, 'positive');
 }
 
-// 【优化 #13 + #18】过滤请求参数：去掉 null/undefined/默认值/非法 reasoning_effort
+
 function filterRequestParams(params) {
     var filtered = {};
     for (let key in params) {
@@ -4647,7 +4645,7 @@ function filterRequestParams(params) {
         if (Object.prototype.hasOwnProperty.call(SKIP_DEFAULTS, key) && val === SKIP_DEFAULTS[key]) continue;
         filtered[key] = val;
     }
-    // 【优化 #18】reasoning_effort 白名单——只过滤明显是误填的值（如 "undefined"、空串、纯数字），
+
     //              不要把预设里的非标值（"default" / "minimal" / "thinking_mode" 等）当非法值删掉
     //              否则中转站收不到这个参数，会回退到默认的"高思考"模式导致生成变慢
     if (filtered.reasoning_effort) {
@@ -4661,7 +4659,7 @@ function filterRequestParams(params) {
     return filtered;
 }
 
-// 【优化 #15】构建单次 AI 请求的 body
+
 // 兼容模式（compatibleMode）只发 OpenAI 标准 4 大参数 + 可选 freq/presence
 // 正常模式发完整高级采样参数（中转站自己挑能用哪些）
 function buildAIRequestBody(messages, options, config) {
@@ -4715,7 +4713,7 @@ function buildAIRequestBody(messages, options, config) {
         params.tool_reasoning_mode = presetParams.tool_reasoning_mode || 'disabled';
         params.reasoning_effort = presetParams.reasoning_effort || null;
     } else {
-        // 【优化 #5】兼容模式：frequency/presence 是 OpenAI 标准参数，保留
+
         // 其他中转站可能拒绝的高级采样参数统统不发
         if (presetParams.frequency_penalty && presetParams.frequency_penalty !== 0) {
             params.frequency_penalty = presetParams.frequency_penalty;
@@ -4730,7 +4728,7 @@ function buildAIRequestBody(messages, options, config) {
     }
 
     // options 中的采样参数覆盖预设
-    // 【修复P0-1】移除 options.temperature 覆盖——temperature 统一从 PresetManager.currentParams 读取
+
     // 此前 options.temperature 来自 gameState.temperature，会覆盖 PresetManager 的值，导致预设温度不生效
     if (options.max_tokens != null) params.max_tokens = options.max_tokens;
     if (options.top_p != null) params.top_p = options.top_p;
@@ -4741,7 +4739,7 @@ function buildAIRequestBody(messages, options, config) {
 
     var filtered = filterRequestParams(params);
     if (options.stream) filtered.stream = true;
-    // 【修复P1-1】temperature 防御性清理：NaN/负数/非数字修正为模型默认（不传）
+
     // 注意：不硬钳制到 1.0——OpenAI 官方支持 0-2，部分模型（如 Gemini/DeepSeek）支持更高
     // 真正的越界报错由 API 自己返回 400，调用方会通过 tryWithFallback 切换配置重试
     if (filtered.temperature != null) {
@@ -4751,7 +4749,7 @@ function buildAIRequestBody(messages, options, config) {
             delete filtered.temperature;
         }
     }
-    // 【修复 P0-2 + 动态化】移除 max_tokens 4096 硬上限——这是 API 游戏，AI 能理解输出长度
+
     // 硬编码 4096 会让长篇叙事预设（如 30000 token 的 Gemini 预设）全部失效
     // 现在只做"防止明显错误"的兜底：负数、0、非数字修正为模型默认（不传 max_tokens）
     // 上限交给 contextSize 动态约束（在 buildAIRequestBody 调用方处理），不在这里硬编码
@@ -4763,13 +4761,13 @@ function buildAIRequestBody(messages, options, config) {
             delete filtered.max_tokens;
         }
     }
-    // 【修复P1-2】max_tokens 上限动态约束：与 contextSize 联动
+
     // 不硬编码上限——某些模型支持输出 >50% 上下文长度（如 Gemini 2.0 Flash 输出 8192 / 输入 1M）
     // 只在 contextSize 已知且 max_tokens 明显超出时（>contextSize）才裁剪，避免必然的 400 错误
     if (filtered.max_tokens != null) {
         var ctxSize = 0;
         try {
-            // 【P2-1修复】统一调用 getContextSize()
+
             if (typeof getContextSize === 'function') {
                 ctxSize = getContextSize();
             } else if (typeof gameState !== 'undefined' && gameState && gameState.contextSize) {
@@ -4788,9 +4786,9 @@ function buildAIRequestBody(messages, options, config) {
     return filtered;
 }
 
-// 【优化 #6 + #7】解析一条 SSE 事件文本，把内容累加到 ctx
+
 // 统一前缀处理：兼容 "data:" 和 "data: " 两种格式
-// 【修复 #19】部分推理模型的思考链走 reasoning_content 字段，
+
 //              剧情正文走 content 字段。两者必须分离——只把 content 给用户看，
 //              否则推理阶段 reason chain 会被当成剧情渲染出来。
 function parseSSEEventText(eventText, ctx) {
@@ -4811,7 +4809,7 @@ function parseSSEEventText(eventText, ctx) {
         }
         if (!json.choices || !json.choices[0]) continue;
         var delta = json.choices[0].delta || {};
-        // 【修复 #19 + #20】兼容 Cloudflare Workers AI 封装的 Kimi 模型：
+
         // 该模型把正文放在 reasoning_content 中，content 为 null。
         // 策略：优先取 content；content 为空时回退到 reasoning_content。
         var content = (typeof delta.content === 'string') ? delta.content : '';
@@ -4825,7 +4823,7 @@ function parseSSEEventText(eventText, ctx) {
             ctx.reasoningText += reasoningChunk;
         }
         ctx.fullText += content;
-        // 【优化】content为空时跳过回调，避免反复推送空字符串到打字机
+
         if (ctx.onChunk && content) {
             try { ctx.onChunk(content, ctx.fullText); }
             catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
@@ -4833,12 +4831,12 @@ function parseSSEEventText(eventText, ctx) {
     }
 }
 
-// 【优化 #15】SSE 解析为空时的兜底解析（兼容推理模型、异常格式）
+
 // 1) 尝试整体 JSON 解析（部分 API 不走 SSE，直接返回 JSON）
 // 2) 如果整体不是 JSON，从 rawBody 中找首条 data 行提取
 // 3) 都失败时**回退到 rawBody 原文**——与原版 [backup/index.html L11882-11903] 一致：
 //    原版注释明确说"如果也不是 JSON，直接用原始文本"，避免对未知格式显示空白
-// 【修复X18】兜底路径也回退到 reasoning_content（与 executeAINormal 保持一致）
+
 function parseAIResponseFallback(rawBody) {
     if (!rawBody) return '';
     // 1) 整体 JSON
@@ -4853,7 +4851,7 @@ function parseAIResponseFallback(rawBody) {
             var _reasoning = (typeof _msg.reasoning_content === 'string') ? _msg.reasoning_content
                            : (typeof _msg.reasoning === 'string') ? _msg.reasoning : '';
             if (_content) return _content;
-            // 【修复X18】content 为空时回退到 reasoning_content（与 executeAINormal 一致）
+
             if (_reasoning) {
                 console.warn('[parseAIResponseFallback] content 为空，回退 reasoning_content（' + _reasoning.length + ' 字符）');
                 return _reasoning;
@@ -4885,10 +4883,10 @@ function parseAIResponseFallback(rawBody) {
     return rawBody;
 }
 
-// 【P3-4.3·阶段7】SSE 事件分隔符预编译常量（原 while 循环内字面量正则每次求值）
+
 var _SSE_SEP = /\r?\n\r?\n/;
 
-// 【优化 #15】执行流式 AI 请求
+
 async function executeAIStream(url, body, apiKey, signal, onChunk) {
     var res = await fetch(url, {
         method: 'POST',
@@ -4900,7 +4898,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         signal: signal
     });
     if (!res.ok) {
-        // 【P1修复BUG-001】保留 HTTP 状态码，确保 translateError 的 httpMap 能精确匹配
+
         // 旧实现用 extractErrorMessage 提取 errData.error.message 后会丢弃 "API错误: 429"，
         // 导致 429 在 translateError 中只能命中通用 'rate_limit' 关键字（甚至完全不匹配），
         // 最终显示"请检查API地址和密钥"等无关错误。
@@ -4916,10 +4914,10 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
     var reader = res.body.getReader();
     var decoder = new TextDecoder();
-    // 【修复 #19】reasoningText 用于统计思考链长度，便于排查"只回了思考链没回正文"的情况
+
     var ctx = { fullText: '', reasoningText: '', streamError: null, onChunk: onChunk };
     var sseBuffer = '';
-    // 【P0修复BUG-004】rawBody 滚动保留最近 256KB
+
     // 原值 64KB 在推理模型场景下会截断 JSON 末尾（思考过程+JSON 输出可达 50-150KB）
     // 提高到 256KB 可覆盖 99% 推理模型输出，避免 JSON 花括号不匹配
     var rawBody = '';
@@ -4935,7 +4933,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
             break;
         }
         var chunk = decoder.decode(readResult.value, { stream: true });
-        // 【P0修复BUG-004】滚动保留最近 256KB，SSE 兜底通常依赖末尾内容
+
         rawBody += chunk;
             if (rawBody.length > RAW_BODY_MAX) {
                 rawBody = rawBody.slice(-RAW_BODY_MAX);
@@ -4945,7 +4943,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
                 }
             }
         sseBuffer += chunk;
-        var events = sseBuffer.split(_SSE_SEP);  // 【P3-4.3·阶段7】引用预编译常量
+        var events = sseBuffer.split(_SSE_SEP);
         sseBuffer = events.pop() || '';
         for (let i = 0; i < events.length; i++) {
             parseSSEEventText(events[i], ctx);
@@ -4957,13 +4955,13 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         throw new Error(ctx.streamError);
     } else if (ctx.streamError && ctx.fullText) {
         console.warn('[callAI] 流中有错误但已收到内容，忽略错误继续:', ctx.streamError);
-        // 【优化 #11】UI 软提示
+
         if (typeof UI !== 'undefined' && UI.toast) {
             UI.toast('响应可能不完整：' + ctx.streamError);
         }
     }
 
-    // 【修复 #19】流结束但剧情正文为空 + 有思考链时打警告，提示排查
+
     if (!ctx.fullText && ctx.reasoningText) {
         console.warn('[callAI] 推理模型仅返回思考链（' + ctx.reasoningText.length + ' 字符）未返回剧情正文，可能是 max_tokens 过小被思考链吃光');
     }
@@ -4972,7 +4970,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     if (!ctx.fullText && rawBody) {
         return parseAIResponseFallback(rawBody);
     }
-    // 【修复X11】HTTP 200 但 SSE 解析为空 + 无 streamError 时，不应抛 openai_error
+
     // 旧逻辑：流式空回会返回空字符串，上游 parseAIResponse 兜底显示原文，但若 rawBody 也空则报错
     // 新逻辑：明确区分"HTTP 错误"（res.ok=false，已抛错）和"解析为空"（HTTP 200 但内容空）
     // 后者给出更具体的错误信息，避免误判为 openai_error
@@ -4983,7 +4981,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     return ctx.fullText;
 }
 
-// 【优化 #15】执行非流式 AI 请求
+
 async function executeAINormal(url, body, apiKey, signal) {
     var res = await fetch(url, {
         method: 'POST',
@@ -4995,7 +4993,7 @@ async function executeAINormal(url, body, apiKey, signal) {
         signal: signal
     });
     if (!res.ok) {
-        // 【P1修复BUG-001】保留 HTTP 状态码，确保 translateError 的 httpMap 能精确匹配（同 executeAIStream）
+
         var errMsg = 'HTTP ' + res.status;
         try {
             var errData = await res.json().catch(function() { return {}; });
@@ -5005,7 +5003,7 @@ async function executeAINormal(url, body, apiKey, signal) {
         throw new Error(errMsg);
     }
     var data = await res.json();
-    // 【修复X18】非流式模式回退到 reasoning_content（与流式模式行为一致）
+
     // 旧代码（修复 #19）明确拒绝回退，导致部分模型返回 200 但 content 为空时报"配置失败"
     // 流式模式（parseSSEEventText）已实现了回退，非流式应保持一致
     // 安全措施：打 _reasoningAsContent 标记，让 parseAIResponse 的思维链泄漏检测（X8）能拦截真正的推理内容
@@ -5015,12 +5013,12 @@ async function executeAINormal(url, body, apiKey, signal) {
         var _reasoning = (typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content
                        : (typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning : '';
         if (_content) return _content;
-        // 【修复X18】content 为空时回退到 reasoning_content（与 executeAIStream 一致）
+
         if (_reasoning) {
             console.warn('[executeAINormal] content 为空，回退使用 reasoning_content（' + _reasoning.length + ' 字符）');
             return _reasoning;
         }
-        // 【修复X19】content 和 reasoning 都为空 → 抛明确错误，而非返回空串让上游困惑
+
         // 旧代码返回 ''，上游 parseAIResponse 兜底显示"AI未返回剧情内容"，用户不知道是模型问题
         // 新错误信息明确告知是模型兼容性问题，引导用户更换模型（不硬编码具体模型名）
         console.warn('[executeAINormal] 模型返回 200 但 content 和 reasoning_content 均为空，可能是不兼容的模型');
@@ -5031,18 +5029,16 @@ async function executeAINormal(url, body, apiKey, signal) {
 }
 
 // AI 调用主入口
-// 【优化 #2 + #3 + #17】每次调用自带 5 分钟超时（按次，不是按流块）
-// 【优化 #3】每次调用创建独立的 AbortController，串联外部 signal，支持 safeAbort 兼容
-// 【优化 #17】入口只读一次配置
+
+
 async function callAI(messages, options = {}) {
-    // 【优化 #17】入口只读一次配置
+
     var initialCfg = LocalGameAPI.getCurrentConfig();
     if (!initialCfg || !initialCfg.baseUrl || !initialCfg.apiKey) {
         throw new Error('请先配置API（设置 → API配置）');
     }
 
-    // 【优化 #2 + #3】每次调用创建独立的 AbortController
-    // 【修复X12】超时时间从 5 分钟延长到 10 分钟，并支持用户自定义
+
     // 旧代码 5 分钟超时对部分推理模型不够，导致正常请求被误杀
     // 优先级：gameState.aiTimeoutMs（用户自定义）> 默认 10 分钟
     var _timeoutMs = 10 * 60 * 1000;
@@ -5090,7 +5086,7 @@ async function callAI(messages, options = {}) {
 // ========================================
 // Context Size 自动检测（动态，不硬编码模型列表）
 // ========================================
-// 【P1修复BUG-002】已知模型上下文大小硬编码表
+
 // 用于 detectContextSize 优先级 3 的快速 fallback，避免 /models API 因 429 等限速失败后
 // 回退到过低的 8192（远低于实际模型上下文如 128K），导致上下文预算被严重压缩、过早裁剪历史。
 // 仅收录常见模型的保守下限，宁可小不可大（避免上下文超限报错）。
@@ -5131,7 +5127,7 @@ var _KNOWN_MODEL_CONTEXT = {
     'moonshot-v1-128k': 128000
 };
 
-// 【P1修复BUG-002】带重试和指数退避的 fetch（网络错误/超时/429/5xx 重试，401/403 不重试）
+
 async function _fetchWithContextRetry(url, options, maxRetries) {
     var lastErr = null;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
@@ -5394,7 +5390,7 @@ async function extractSetupToMemory() {
                 // 写入 permanentFacts.npcProfiles
                 var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
                 gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
-                // 【P0-2.4 阶段3-2】删除 gameState.allCharacters 旧字段 fallback：
+
                 // 统一走 CharacterMutator.mergeCharacters → entities.characters，
                 // 由 StateManager._syncLegacyMirror 自动同步 allCharacters 旧字段
                 if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
@@ -5406,7 +5402,7 @@ async function extractSetupToMemory() {
                         desc: c.desc || ''
                     }]);
                 } else {
-                    // 【P0-2.4】CharacterMutator 不可用时直接抛错，不再静默双写
+
                     throw new Error('[extractSetupToMemory] CharacterMutator 未加载，无法同步角色');
                 }
             });
@@ -5424,7 +5420,7 @@ async function extractSetupToMemory() {
                     lastChangedTurn: 0
                 };
             });
-            // 【阶段5统一】删除原直接 push 到 gameState.relationships 的重复逻辑
+
             // 由 _syncRelationshipsToGameState 作为唯一同步点统一更新 gameState + StateManager
             if (typeof _syncRelationshipsToGameState === 'function') {
                 _syncRelationshipsToGameState();
@@ -5448,7 +5444,7 @@ async function extractSetupToMemory() {
                     history: [{ turn: 0, from: 0, to: item.count || 1 }]
                 };
             });
-            // 【P0-2.4 阶段3-2】删除 gameState.currentBag 旧字段直写：
+
             // 统一走 BagMutator.mergeItems → entities.bag，
             // 由 StateManager._syncLegacyMirror 自动同步 currentBag 旧字段
             if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
@@ -5461,14 +5457,14 @@ async function extractSetupToMemory() {
                     };
                 }).filter(Boolean));
             } else {
-                // 【P0-2.4】BagMutator 不可用时直接抛错
+
                 throw new Error('[extractSetupToMemory] BagMutator 未加载，无法同步物品');
             }
         }
 
         // 保存记忆数据
         gm.saveToStorage();
-        // 【P1修复BUG-2.2】移除 GameLinker.refreshAll()：死代码空操作
+
         console.log('[设定提取] 完成：' +
             (parsed.characters ? parsed.characters.length : 0) + '个角色, ' +
             (parsed.relationships ? parsed.relationships.length : 0) + '条关系, ' +
@@ -5553,7 +5549,7 @@ async function initializeGame() {
         await detectContextSize();
 
         // 收集主角设定
-        // 【修复BUG-002】startNewGame 已将主角设定写入 gameState.protagonistSetup（字段名 mcName 等），
+
         // 此前这里用 gameState.protagonistSetup = {} 重置后再从 DOM 元素 id="mcName" 读取——
         // 但 HTML 中输入框 id 是 "setupPlayerName"（非 "mcName"），导致重置后读取永远为空，
         // 主角名丢失，个人页显示"未命名"。改为：仅在未预填时才从 DOM 收集，并同步 playerName。
@@ -5567,7 +5563,7 @@ async function initializeGame() {
                 if (el && el.value.trim()) gameState.protagonistSetup[id] = el.value.trim();
             });
         }
-        // 【修复BUG-002】同步 playerName，确保全项目读取一致
+
         // 此前新游戏流程从不设置 gameState.playerName，只有读档时（loadGameState）才同步，
         // 导致新游戏个人页始终显示"未命名"
         var _smPlayer = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.player') || {}) : (gameState.playerData || {});
@@ -5583,7 +5579,7 @@ async function initializeGame() {
         if (typeof StateManager !== 'undefined' && StateManager.set) {
             StateManager.set('progress.conversationHistory', [{ role: 'system', content: _systemPrompt }], { silent: true });
         }
-// 【优化】移除 customStyle 注入——customStyle 是死字段（无 UI 输入框），文风由 writingStyle 统一管理
+
 // 旧代码在此注入【写作风格要求】对话，与文风选择（writingStyle）语义重复，可能互相矛盾
 // 初始化游戏时间显示
 if (typeof GameTimeSystem !== 'undefined') {

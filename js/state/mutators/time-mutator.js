@@ -3,10 +3,10 @@
 // ========================================
 const TimeMutator = {
     // 设置完整时间
-    // 【P0修复BUG-006】保留 weather/era 字段：原实现仅保留 date/time/period，
+
     // 导致 GameTimeSystem.parseFromAI 通过 setTime 写入的 weather/era 被丢弃，
     // gameState.gameTime 镜像后 weather/era 为空，UI 显示缺失天气/纪元信息。
-    // 【P1修复BUG-5.7】options.skipMonotonicCheck: 跳过单调性校验，仅用于读档/撤销场景
+
     // （切换到不同时间线是合理的，不应被拦截）。AI 响应解析路径绝不可传此选项。
     setTime(time, options) {
             options = options || {};
@@ -19,10 +19,10 @@ const TimeMutator = {
                     weather: String(time.weather || '').trim(),
                     era: String(time.era || '').trim()
                 };
-            // 【修复BUG-06】时间单调性校验：若新时间早于当前时间，拒绝更新
+
             // 防止 AI 返回不一致时间导致剧情时间倒流（如 R5 09:30→08:45）
             // 仅当当前状态存在且新时间更早时拦截；同时间或更晚时间正常更新
-            // 【P1修复BUG-5.7】读档/撤销路径通过 options.skipMonotonicCheck 跳过校验
+
             if (!options.skipMonotonicCheck) {
                 try {
                     if (typeof StateManager !== 'undefined' && StateManager.get) {
@@ -39,7 +39,7 @@ const TimeMutator = {
             return StateManager.set('time', normalized, options);
         },
 
-        // 【修复BUG-06】比较时间先后：a 严格早于 b 返回 true
+
         // 支持的格式：
         //   date: "第N日" / "YYYY-MM-DD" / "YYYY年M月D日"
         //   time: "HH:MM"
@@ -68,7 +68,7 @@ const TimeMutator = {
         },
 
         // "HH:MM" → 分钟数；无法解析返回 null
-        // 【P3-18修复】正则字符类 [::] 冗余（等价于 [:]），改为 [::] 兼容全角冒号
+
         _timeToMinutes(t) {
             if (!t || typeof t !== 'string') return null;
             var m = t.match(/(\d{1,2})[:：](\d{2})/);

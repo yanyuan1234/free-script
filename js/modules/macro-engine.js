@@ -5,7 +5,7 @@
  * 依赖：regex-manager.js（间接，通过 PresetManager 注入）
  * 被依赖：preset-manager.js（prompt 渲染时调用 process）
  */
-// 【P2-11修复】timestamp 宏预编译正则 Map
+
 // 原实现 timestamp 函数每次调用都在 keys.forEach 内执行 new RegExp(k, 'g')，
 // 对 12 个格式占位符各编译一次正则。{{timestamp:FORMAT}} 宏每条消息渲染都可能触发。
 // 现预编译到模块级常量，仅编译一次。
@@ -31,14 +31,13 @@ var MacroEngine = {
     _globalVars: {},
 
     init: function() {
-        // 【优化】变量系统已迁移到 VariableStore
+
         // 保留此方法用于向后兼容
         if (typeof VariableStore !== 'undefined') {
             VariableStore.loadGlobal();
         }
     },
 
-    // 【P2清理】删除 saveLocalVars / saveGlobalVars / resetLocalVars（空壳代理，VariableStore 已自动处理持久化，全项目零调用）
 
     // 设置局部变量
     setLocalVar: function(name, value) {
@@ -187,7 +186,7 @@ var MacroEngine = {
             // 通用
             '剧场COT': this.getLocalVar('剧场COT'),
 
-            // 【新增】酒馆预设标签识别
+
             // <gossip> → 论坛
             'gossip': this.getLocalVar('gossip'),
             '八卦': this.getLocalVar('八卦'),
@@ -224,7 +223,7 @@ var MacroEngine = {
             '文字剧场': this.getLocalVar('文字剧场'),
             '剧场': this.getLocalVar('剧场'),
 
-            // 【新增】象牙塔预设 - 更多小剧场类型
+
             '恋爱之愿': this.getLocalVar('恋爱之愿'),
             '同人之愿': this.getLocalVar('同人之愿'),
             '回忆之愿': this.getLocalVar('回忆之愿'),
@@ -331,7 +330,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <gossip> 标签（论坛/八卦）
+
     var gossipMatch = content.match(/<gossip>([\s\S]*?)<\/gossip>/i);
     if (gossipMatch) {
         result.type = 'gossip';
@@ -344,16 +343,16 @@ var MacroEngine = {
             var author = (post.match(/author=["']([^"']+)["']/i) || [])[1] || '匿名';
             var title = (post.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || '';
             var body = (post.match(/<body>([\s\S]*?)<\/body>/i) || [])[1] || post.replace(/<[^>]+>/g, '');
-            posts.push({ author: author, title: title, content: body, time: Date.now() });  // 【P2-3修复】持久化存时间戳
+            posts.push({ author: author, title: title, content: body, time: Date.now() });
             });
         if (posts.length === 0) {
-            posts.push({ author: '小剧场', content: result.html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });  // 【P2-3修复】持久化存时间戳
+            posts.push({ author: '小剧场', content: result.html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });
         }
     result.data = { posts: posts };
     return result;
     }
 
-    // 【新增】检测 <角色手机> 标签（手机功能）
+
     var phoneMatch = content.match(/<角色手机>([\s\S]*?)<\/角色手机>/i);
     if (phoneMatch) {
         result.type = 'phone';
@@ -372,7 +371,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <通用状态> 标签（状态面板）
+
     var generalStatusMatch = content.match(/<通用状态>([\s\S]*?)<\/通用状态>/i);
     if (generalStatusMatch) {
         result.type = 'status';
@@ -391,7 +390,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <古风状态> 标签（古风状态面板）
+
     var ancientStatusMatch = content.match(/<古风状态>([\s\S]*?)<\/古风状态>/i);
     if (ancientStatusMatch) {
         result.type = 'status';
@@ -410,7 +409,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <meow_FM> 标签（摘要）
+
     var meowFMMatch = content.match(/<meow_FM>([\s\S]*?)<\/meow_FM>/i);
     if (meowFMMatch) {
         result.type = 'summary';
@@ -422,7 +421,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <branches> 标签（选项分支）
+
     var branchesMatch = content.match(/<branches>([\s\S]*?)<\/branches>/i);
     if (branchesMatch) {
         result.type = 'branches';
@@ -447,7 +446,7 @@ var MacroEngine = {
     return result;
     }
 
-    // 【新增】检测 <echo> 标签（物品）
+
     var echoMatch = content.match(/<echo>([\s\S]*?)<\/echo>/i);
     if (echoMatch) {
         result.type = 'echo';
@@ -470,7 +469,7 @@ var MacroEngine = {
     return result;
     }
 
-    // 【新增】检测 <ccd> 标签（文字剧场）
+
     var ccdMatch = content.match(/<ccd>([\s\S]*?)<\/ccd>/i);
     if (ccdMatch) {
         result.type = 'ccd';
@@ -492,7 +491,7 @@ var MacroEngine = {
     return result;
     }
 
-    // 【新增】检测 <live> 标签（直播内容）
+
     var liveMatch = content.match(/<live>\s*([\s\S]*?)\s*<\/live>/i);
     if (liveMatch) {
         result.type = 'live';
@@ -501,7 +500,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <danmu> 标签（弹幕）
+
     var danmuMatch = content.match(/<danmu>([\s\S]*?)<\/danmu>/i);
     if (danmuMatch) {
         result.type = 'danmu';
@@ -510,7 +509,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <ice> 标签
+
     var iceMatch = content.match(/<ice>([\s\S]*?)<\/ice>/i);
     if (iceMatch) {
         result.type = 'ice';
@@ -518,7 +517,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <enigma> 标签
+
     var enigmaMatch = content.match(/<enigma>([\s\S]*?)<\/enigma>/i);
     if (enigmaMatch) {
         result.type = 'enigma';
@@ -527,7 +526,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <podcast> 标签（文字标题）
+
     var podcastMatch = content.match(/<podcast>([\s\S]*?)<\/podcast>/i);
     if (podcastMatch) {
         result.type = 'podcast';
@@ -536,7 +535,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <novel_header> 标签（小说标题头）
+
     var novelHeaderMatch = content.match(/<novel_header>([\s\S]*?)<\/novel_header>/i);
     if (novelHeaderMatch) {
         result.type = 'novel_header';
@@ -545,7 +544,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <profile> 标签（角色关系表格）
+
     var profileMatch = content.match(/<profile>([\s\S]*?)<\/profile>/i);
     if (profileMatch) {
         result.type = 'profile';
@@ -554,7 +553,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <giggle> 标签（角色心声）
+
     var giggleMatch = content.match(/<giggle>([\s\S]*?)<\/giggle>/i);
     if (giggleMatch) {
         result.type = 'giggle';
@@ -564,7 +563,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <horae> / <horaeevent> 标签（记忆插件）
+
     var horaeMatch = content.match(/<horaeevent>([\s\S]*?)<\/horaeevent>/i) || content.match(/<horae>([\s\S]*?)<\/horae>/i);
     if (horaeMatch) {
         result.type = 'horae';
@@ -573,7 +572,7 @@ var MacroEngine = {
         return result;
     }
 
-    // 【新增】检测 <tableEdit> / <table_Edit> 标签
+
     var tableEditMatch = content.match(/<tableEdit>([\s\S]*?)<\/tableEdit>/i) || content.match(/<table_Edit>([\s\S]*?)<\/table_Edit>/i);
     if (tableEditMatch) {
         result.type = 'table';
@@ -603,7 +602,7 @@ var MacroEngine = {
             's': d.getSeconds()
     };
             var result = format;
-            // 【P2-11修复】使用模块级预编译正则 _TIMESTAMP_REGEX_MAP，避免每次 new RegExp
+
             // 按长度降序替换（先替换长的再替换短的，避免冲突）
             _TIMESTAMP_SORTED_KEYS.forEach(function(k) {
                 result = result.replace(_TIMESTAMP_REGEX_MAP[k], map[k]);
@@ -1278,7 +1277,6 @@ var MacroEngine = {
         return true;
         },
 
-    // 【P2清理】删除 _dedent（全项目零调用）
 
     /**
     * 处理变量简写

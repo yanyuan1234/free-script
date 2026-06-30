@@ -19,7 +19,7 @@ const ResponseParser = {
             return result;
         }
 
-        // 【P0修复BUG-003】剥离推理模型思考过程（thinking tokens）
+
         // 推理模型（如 DeepSeek-R1、auto）在正式输出 JSON 前会输出大量思考块，
         // 形如 <think>...</think>、<reasoning>...</reasoning>、<thought>...</thought>、
         // 或 ◀thinking▶...◀/thinking▶ 等标记。若不剥离，思考块内的 { 会被 _tryRobustJSON
@@ -92,7 +92,7 @@ const ResponseParser = {
         return result;
     },
 
-    // 【修复 BUG-A】JSON 成功解析后，从 storyText 中提取 <mem> 标签并清理
+
     // 背景：AI 会把 <mem> 标签嵌入 JSON story 字段值内（合法的字符串内容）。
     // Level 0/1/2 成功后直接返回，导致 mem 标签原文泄漏到 storyText，且结构化记忆丢失。
     // 本方法在返回前统一后处理：提取 mems，从 storyText 和 data.story 中剥离标签原文。
@@ -110,7 +110,7 @@ const ResponseParser = {
         }
     },
 
-    // 【P0修复BUG-003】剥离推理模型思考过程
+
     // 支持的思考标记格式（大小写不敏感）：
     //          DeepSeek-R1 系
     //   <reasoning>...</reasoning>  通用
@@ -122,7 +122,7 @@ const ResponseParser = {
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;
-        // 【P1-13修复】引用 output-sanitizer.js 的 THINKING_TAGS 常量（7 标签超集）
+
         // 旧代码：本地 tags 数组仅 5 标签，fallback/Step2/Step4 用此数组会漏处理 ECoT/💭
         // 现统一引用常量，fallback 与截断检测都覆盖全部 7 标签
         var tags = (typeof THINKING_TAGS !== 'undefined') ? THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
@@ -252,7 +252,7 @@ const ResponseParser = {
             return null;
         }
 
-        // 【P2优化】快速路径：尝试 first{ ... last} 的最大切片（覆盖 99% 场景）
+
         let candidate = raw.slice(firstBrace, lastBrace + 1);
         let r = this._tryDirectJSON(candidate);
         if (r) return r;
@@ -265,7 +265,7 @@ const ResponseParser = {
             if (r) return r;
         }
 
-        // 【修复 BUG-B】回退1失败后，优先尝试截断修复（保留 story/choices 等顶层字段）
+
         // 必须在回退2之前执行：否则回退2会从 JSON 中间提取完整子对象（如 choices[0]），
         // 其 .text 被误当作 storyText 返回，丢失真正的 story 内容
         const repaired = this._repairTruncatedJSON(raw, firstBrace);
@@ -291,7 +291,7 @@ const ResponseParser = {
         return null;
     },
 
-    // 【新增】修复被截断的 JSON：补全缺失的闭合符号 } ] 和字符串引号
+
     // 当 AI 输出因 max_tokens 不足被截断时，JSON 缺少闭合的 } 和 ]
     // 本方法通过状态机扫描，统计未闭合的层级，在末尾补全
     _repairTruncatedJSON(raw, startIdx) {
@@ -303,7 +303,7 @@ const ResponseParser = {
         let bracketDepth = 0;    // [] 层级
         let inString = false;
         let escape = false;
-        // 【修复 BUG-B】记录顶层字段分隔逗号（depth===1 且 bracketDepth===0），
+
         // 用于截断时回退到保留最多顶层字段（story/choices 等）的完整前缀
         const topLevelCommas = [];
 
@@ -373,7 +373,7 @@ const ResponseParser = {
         if (!raw || typeof raw !== 'string') return null;
         const mems = [];
         const story = raw.replace(/<mem\b[^>]*?(?:>([\s\S]*?)<\/mem>|\/>)/gi, function(tag, inner) {
-            // 【修复 P2】提取全部属性，而非仅 type/action/name/qty/content
+
             // prompt 指示 AI 使用 field/value/day/period 等属性，旧代码全部丢弃
             const attrs = {};
             const attrRegex = /(\w+)\s*=\s*"([^"]*)"/g;
@@ -439,7 +439,7 @@ const ResponseParser = {
         return { storyText: cleaned };
     },
 
-    // 【P2修复】字符串感知的括号匹配，避免 JSON 字符串内的大括号干扰
+
     _findMatching(str, open, close, start) {
         let depth = 0;
         let inString = false;

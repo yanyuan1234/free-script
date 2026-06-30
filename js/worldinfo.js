@@ -10,9 +10,9 @@ var WorldInfo = {
         tokenBudgetCap: 0,  // token预算硬上限（0=无限制）
         recursive: true
     },
-    // 【P2-7 阶段2】正则缓存，避免 scan 时重复 new RegExp
+
     _regexCache: {},
-    // 【P1-5修复】统一条目禁用判断：enabled=false / disable=true / disabled=true 三字段任一为真即禁用
+
     // 旧代码各读取点判断不一致（有的漏读 enabled===false），导致禁用后 UI 仍显示为启用
     isEntryDisabled: function(entry) {
         return !!(entry && (entry.enabled === false || entry.disable === true || entry.disabled === true));
@@ -140,7 +140,7 @@ var WorldInfo = {
             books: this.books,
             settings: this.settings
         });
-        // 【优化】同时重置 _wiCachedTurn——旧代码只重置 _wiCachedResult 不重置 _wiCachedTurn
+
         // 导致缓存可能命中过期数据（game.js 的缓存逻辑会检查 _wiCachedTurn === currentTurn）
         if (typeof gameState !== 'undefined' && gameState) {
             gameState._wiCachedResult = null;
@@ -630,7 +630,6 @@ var WorldInfo = {
         UI.toast('已创建新世界书');
     },
 
-    // 【P2清理】删除 toggleBook / toggleEntry（全项目零调用）
 
     // 快速删除条目（从列表直接删除）
     quickDeleteEntry: async function(uid) {
@@ -1328,7 +1327,7 @@ var WorldInfo = {
 
     // 轮次追踪器（用于delay/cooldown/sticky）
     _turnTracker: {},
-    // 【P0-阶段1-2.10】统一从 gameState._stats.totalTurns 读取轮次
+
     // 原 _currentTurn 字段与 gameState._stats.totalTurns 永远不等（前者是 scan 调用次数，
     // 后者是实际回合数），导致 game.js 的 _wiCachedTurn 命中率 0%。
     // 全部走 gameState._stats.totalTurns 后，缓存键与 cooldown 计时都基于真实回合。
@@ -1337,7 +1336,7 @@ var WorldInfo = {
         return (typeof gameState !== 'undefined' && gameState._stats) ? (gameState._stats.totalTurns || 0) : 0;
     },
 
-    // 【修复12】获取角色卡字段内容用于 WI 匹配
+
     _getCharacterCardFields: function() {
         var fields = {
             persona: '',
@@ -1399,7 +1398,7 @@ var WorldInfo = {
         }
         var scanDepth = this.settings.scanDepth;
 
-        // 【P0-阶段1-2.10】缓存键改用 gameState._stats.totalTurns
+
         // 旧逻辑：scan 自增 _currentTurn，与 gameState._stats.totalTurns 永远不等
         // 同一回合内多次 scan 现在可以命中缓存（之前永远 miss）
         var _turn = self._getCurrentTurn();
@@ -1415,7 +1414,7 @@ var WorldInfo = {
             this._settingsCache = { turn: _turn };
         }
 
-        // 【修复4】构建扫描文本（最近N条消息）
+
         // 添加角色名前缀（使用 \x01 分隔，与酒馆兼容）
         // 这样可以支持用正则匹配特定角色的发言，如 /^User:/ 或 /^Assistant:/
         var recentMessages = chatMessages.slice(-scanDepth);
@@ -1449,7 +1448,7 @@ var WorldInfo = {
                 return;
             }
 
-        // 【修复8】使用条目级别的 scan_depth 覆盖
+
         // 如果条目指定了 scan_depth，使用条目级别的值
         var entryScanDepth = (entry.scanDepth != null) ? entry.scanDepth : scanDepth;
 
@@ -1478,7 +1477,7 @@ var WorldInfo = {
         if (Math.random() * 100 > entry.probability) return;
     }
 
-    // 【修复8】使用条目级别的扫描文本
+
     // 如果条目指定了 scan_depth，只扫描最近 entryScanDepth 条消息
     var entryScanText, entryPlainText;
     if (entry.scanDepth != null) {
@@ -1497,7 +1496,7 @@ var WorldInfo = {
         entryPlainText = plainText;
     }
 
-    // 【修复12】将角色卡字段纳入 WI 匹配范围
+
     // 检查条目是否设置了匹配角色卡字段
     var charCardFields = '';
     if (entry.matchPersonaDescription || entry.matchCharacterDescription ||
@@ -1530,7 +1529,7 @@ var WorldInfo = {
         primaryMatch = self.matchKeys(entryPlainText, entry.key, entry);
     }
 
-    // 【修复12】如果主关键词匹配失败，但启用了角色卡字段匹配
+
     // 则检查角色卡字段是否匹配
     if (!primaryMatch && charCardFields) {
         if (entry.matchPersonaDescription && self.matchKeys(charCardFields.persona, entry.key, entry)) {
@@ -1589,11 +1588,11 @@ var WorldInfo = {
 
     // 递归扫描
     if (this.settings.recursive) {
-        // 【P2-12修复】传入已构建的 allEntries，避免 recursiveScan 每步重新全量构建
+
         activated = this.recursiveScan(activated, plainText, scanText, 3, allEntries);
     }
 
-    // 【修复6】包含组（Inclusion Group）逻辑
+
     // 同组条目同时触发时只选一个，按 group_weight 随机选择
     activated = this.applyInclusionGroups(activated);
 
@@ -1601,9 +1600,9 @@ var WorldInfo = {
     activated.sort(function(a, b) { return (a.order || 100) - (b.order || 100); });
 
     // Token预算控制（传入实际上下文长度）
-    // 【修复 P0-1】用 contextSize（输入上下文窗口）而非 maxTokens（输出上限）
+
     // maxTokens 通常只有 4096，而 contextSize 可达 128000，用错会导致世界书预算被严重低估
-    // 【P2-1修复】统一调用 getContextSize()，消除 contextSize 多读取路径
+
     var contextLen = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
     activated = this.applyBudget(activated, contextLen);
 
@@ -1630,9 +1629,9 @@ var WorldInfo = {
             if (keys[i]) escapedKeys.push(keys[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
         }
         if (escapedKeys.length === 0) return false;
-        // 【P2-13修复】matchKeys 全词匹配路径也使用 _regexCache，与 matchKeysAll 缓存策略一致
+
         // 旧实现每次 new RegExp，scan/recursiveScan 热路径重复编译
-        // 【P2-13 补丁】_regexCache 是 plain object（line 14 初始化为 {}），不是 Map，
+
         // 用 .get/.set 会抛 TypeError。改用 bracket notation，与 matchKeysAll（line 1697）一致。
         var _cacheKey = '(?:^|\\W)(?:' + escapedKeys.join('|') + ')(?:$|\\W)' + (caseSensitive ? '|cs' : '|ci');
         var self = this;
@@ -1683,7 +1682,7 @@ var WorldInfo = {
                 return false;
             }
 
-        // 【P2-43·阶段7】复用 _regexCache，避免 some 循环内每次 new RegExp
+
         // 缓存键：pattern + '|' + flags（与 matchKeys 缓存键风格一致）
         var _cacheKey = pattern + '|' + flags;
         var regex = self._regexCache[_cacheKey];
@@ -1714,7 +1713,7 @@ var WorldInfo = {
             if (!key) return true;
             var k = caseSensitive ? key : key.toLowerCase();
             if (matchWholeWords) {
-                // 【P2-7 阶段2】使用实例级正则缓存，避免每次 scan 重复 new RegExp
+
                 var cacheKey = k + '|' + caseSensitive + '|' + matchWholeWords;
                 var regex = self._regexCache[cacheKey];
                 if (!regex) {
@@ -1747,7 +1746,7 @@ var WorldInfo = {
             bufferWithPrefix = bufferWithPrefix + '\nSystem\x01' + newContent;
             var newActivated = [];
 
-            // 【P2-12修复】使用调用方传入的 allEntries，避免每步重新全量构建
+
             // scan() 入口已构建一次，递归 3 步原先会重复构建 3 次
             allEntries = allEntries || self.getAllEnabledEntries();
 
@@ -1798,7 +1797,7 @@ var WorldInfo = {
     return allActivated;
     },
 
-    // 【修复6】包含组（Inclusion Group）逻辑
+
     // 同组条目同时触发时只选一个，按 group_weight 随机选择
     applyInclusionGroups: function(activated) {
         const self = this;
@@ -1822,10 +1821,6 @@ var WorldInfo = {
             var totalWeight = 0;
             groupEntries.forEach(function(e) {
                 var weight = e.groupWeight || 100;
-                // 如果启用了 use_group_scoring，权重基于匹配数量
-                if (e.useGroupScoring && e._matchCount) {
-                    weight = weight * e._matchCount;
-                }
             totalWeight += weight;
             });
 
@@ -1836,9 +1831,6 @@ var WorldInfo = {
 
         for (var i = 0; i < groupEntries.length; i++) {
             var weight = groupEntries[i].groupWeight || 100;
-            if (groupEntries[i].useGroupScoring && groupEntries[i]._matchCount) {
-                weight = weight * groupEntries[i]._matchCount;
-            }
         currentWeight += weight;
         if (rand <= currentWeight) {
             selectedEntry = groupEntries[i];
@@ -1910,7 +1902,7 @@ var WorldInfo = {
         }
     }
 
-    // 【优化】如果有预算剩余，尝试添加低优先级条目
+
     // 但需要重新检查优先级顺序
     if (deferred.length > 0) {
         deferred.sort(function(a, b) {
@@ -1921,7 +1913,7 @@ var WorldInfo = {
 
         for (var j = 0; j < deferred.length; j++) {
             var deferredEntry = deferred[j];
-            // 【修复 P1-1】统一 token 估算系数为 1.7
+
             var deferredTokens = estimateTokensUtil(deferredEntry.content);
             if (totalTokens + deferredTokens <= budget) {
                 totalTokens += deferredTokens;
@@ -1937,33 +1929,13 @@ var WorldInfo = {
 
     // ===== 注入引擎 =====
 
-    // position枚举（与SillyTavern完全一致）
-    // 来源：SillyTavern public/scripts/world-info.js
-    POSITION: {
-        BEFORE_CHAR: 0,           // 角色定义之前
-        AFTER_CHAR: 1,            // 角色定义之后
-        EM_TOP: 2,                // 示例消息之前 (before_example_messages)
-        EM_BOTTOM: 3,             // 示例消息之后 (after_example_messages)
-        AN_TOP: 4,                // 作者备注顶部 (top_of_author_note) - 修正：原来是2
-        AN_BOTTOM: 5,             // 作者备注底部 (bottom_of_author_note) - 修正：原来是3
-        AT_DEPTH: 6,              // 在指定深度注入 - 修正：原来是4
-        OUTLET: 7                 // 出口（自定义位置）
-    },
-
-    // role枚举
-    ROLE: {
-        SYSTEM: 0,
-        USER: 1,
-        ASSISTANT: 2
-    },
-
     // 生成注入文本，按position分组返回
     // 返回: { beforeChar, afterChar, anTop, anBottom, atDepth, emTop, emBottom, outlet }
     buildInjectionGrouped: function(chatMessages) {
         var activated = this.scan(chatMessages);
         if (activated.length === 0) return null;
 
-        // 【优化·世界书双重注入去重】跳过已被收割到 permanentFacts 的条目
+
         // 旧代码：同一条世界书条目会同时出现在【世界知识库】和【核心设定】中
         // 新代码：检测条目是否已被 syncWorldInfoEntry 收割，若是则跳过
         var _harvestedContents = {};
@@ -1997,7 +1969,7 @@ var WorldInfo = {
             };
 
         activated.forEach(function(entry) {
-            // 【优化·去重】检查条目是否已被收割到 permanentFacts
+
             var entryContent = (entry.content || '').trim();
             var entryLabel = entry.comment || '';
             var labeledContent = entryLabel ? ('【' + entryLabel + '】 ' + entryContent) : entryContent;
@@ -2060,7 +2032,7 @@ var WorldInfo = {
             });
 
         // atDepth条目存储到 gameState._depthPrompts
-        // 【阶段4统一】写入前先清除上一轮的 worldInfo 条目，避免跨轮累积
+
         if (groups.atDepth && groups.atDepth.length > 0) {
             // 添加 gameState 未定义检查
             if (typeof gameState !== 'undefined' && gameState) {
@@ -2125,5 +2097,5 @@ var WorldInfo = {
         positionTexts: positionTexts
         };
     }
-    // 【P2清理】删除 getInjectionByRole（全项目零调用）
+
 };

@@ -32,7 +32,7 @@ const AIResponseMutator = {
     },
 
     // 统一写入所有字段
-    // 【P1修复BUG-011-transaction回滚】删除 per-step try-catch (best-effort)，让异常向上抛
+
     // 触发 apply() 外层 StateManager.transaction 的快照回滚。
     //
     // 设计权衡：
@@ -53,7 +53,7 @@ const AIResponseMutator = {
             { name: 'bag',              fn: () => this._applyBag(data) },
             { name: 'currency',         fn: () => this._applyCurrency(data) },
             { name: 'quests',           fn: () => this._applyQuests(data) },
-            // 【P0修复BUG-006】移除 gameTime 步骤：原 _applyGameTime 调用 TimeMutator.setTime，
+
             // 而 game.js:1930 的 GameTimeSystem.parseFromAI 也会调用 setTime，导致同一份数据写入两次。
             // 现统一由 GameTimeSystem.parseFromAI 作为时间写入的唯一入口（含 story 兜底提取 + 默认时间），
             // 该方法在 AIResponseMutator.apply 之后执行，覆盖 data.gameTime 与纯文本两种场景。
@@ -62,7 +62,7 @@ const AIResponseMutator = {
             { name: 'relationships',    fn: () => this._applyRelationships(data) },
             { name: 'hud',              fn: () => this._applyHUD(data) },
             { name: 'contextSummary',   fn: () => this._applyContextSummary(data) },
-            // 【P1修复BUG-010/011】在所有 mutator 后收割关键信息到 permanentFacts
+
             // 解决"学院名变化"和"角色描述矛盾"问题：AI 看不到上轮已确定的世界观，重新编造导致不一致
             { name: 'permanentFacts',   fn: () => this._applyPermanentFacts(data) }
         ];
@@ -71,7 +71,7 @@ const AIResponseMutator = {
         for (let i = 0; i < steps.length; i++) {
             steps[i].fn();
         }
-        // 【P2修复BUG-008】数据持久化校验：每回合结束后验证关键数据完整性
+
         // 解决问题：BUG-006 全量回滚后所有结构化数据丢失，UI 显示"0角色/0物品/0任务"
         // 策略：检测关键字段为零或缺失时发出控制台警告，便于排查链式故障
         try {
@@ -82,7 +82,7 @@ const AIResponseMutator = {
         result.changes = this._collectChanges();
     },
 
-    // 【P2修复BUG-008】数据持久化校验
+
     // 每回合结束后检查关键数据完整性，缺失时发出控制台警告
     // 校验项：主角身份/属性、角色列表、货币/物品、任务列表
     // 仅警告，不强制修复（修复由各 mutator 的 best-effort 处理）
@@ -146,7 +146,7 @@ const AIResponseMutator = {
         const story = OutputSanitizer ? OutputSanitizer.sanitizeStory(data.story || '') : (data.story || '');
         const title = String(data.title || data.sceneTitle || data.chapterTitle || '').trim();
         if (story && title) {
-            // 【P0-2.7 阶段3-3】场景标题 3 套归 1：拆分语义
+
             //   - progress.sceneTitle  = 当前场景（GameMemory context / UI 显示）
             //   - progress.lastSceneTitle = 上一场景（AI 防回退时读的"上次标题"）
             // 新标题来时：把旧的 sceneTitle 移到 lastSceneTitle，再写新的 sceneTitle
@@ -162,7 +162,7 @@ const AIResponseMutator = {
     },
 
     // 回合数推进
-    // 【阶段2修复双倍递增】原 _applyTurn 会 +1，但 game.js:2099 的 legacy 路径也会 +1，
+
     // 激活 AIResponseMutator 后会导致每轮 +2。现移除 _applyTurn 的递增逻辑，
     // 回合数统一由 game.js legacy 路径（line 2099）唯一推进。
     _applyTurn(data) {
@@ -174,7 +174,7 @@ const AIResponseMutator = {
     // 主角信息
     _applyPlayer(data) {
         const player = data.player || data.protagonist || data.hero;
-        // 【修复BUG-003】AI 返回纯文本时，AIOutputSchema.normalize 会填充默认 player
+
         // { name: '', identity: '', stats: [] }，此处若不拦截会用空 stats 覆盖已有属性，
         // 导致个人页属性消失。判定为"空 player"（无 name 且无 identity 且 stats 为空数组）时直接跳过。
         const _isEmptyPlayer = function(p) {
@@ -201,17 +201,17 @@ const AIResponseMutator = {
         const normalized = {
             name: lockedName || aiName || '主角',
             identity: String(player.identity || current.identity || '').trim(),
-            // 【修复BUG-003】仅在 AI 返回了非空 stats 数组时才覆盖，否则保留上一轮属性，
+
             // 避免 AI 返回空 stats（或默认空数组）清空已生成的属性
             stats: (Array.isArray(player.stats) && player.stats.length > 0) ? player.stats : (current.stats || []),
-            // 【修复 P1】保留 current 上的 level/exp/title/personality，避免被 AI 返回的 3 字段覆盖丢失
+
             level: player.level !== undefined ? player.level : current.level,
             exp: player.exp !== undefined ? player.exp : current.exp,
             title: player.title !== undefined ? player.title : current.title,
             personality: player.personality !== undefined ? player.personality : current.personality
         };
         StateManager.set('entities.player', normalized, { silent: true });
-        // 【P0修复BUG-011】移除冗余 setLegacy('playerData')：set('entities.player') 已触发
+
         // _syncLegacyMirror 自动同步到 gameState.playerData，无需二次写入。
         // 同步到 playerName，确保全项目读取一致
         if (typeof gameState !== 'undefined') {
@@ -220,13 +220,13 @@ const AIResponseMutator = {
     },
 
     // NPC / 角色
-    // 【P0-6修复】补齐主角过滤逻辑，使 _applyCharacters 成为 legacy mergeCharacters 的完整替代
+
     // 原 legacy mergeCharacters (game.js:3361) 会过滤主角（按名匹配，避免 AI 误返回主角时将其作为 NPC 加入），
     // _applyCharacters 缺失此过滤，导致 _aiMutatorApplied=true 跳过 legacy 时主角可能被误加入 entities.characters
     _applyCharacters(data) {
         const characters = data.characters || data.npcs;
         if (!characters || !Array.isArray(characters) || characters.length === 0) return;
-        // 【P2-5修复】主角过滤统一委托 CharacterMutator.filterOutPlayer，消除与
+
         // game.js mergeCharacters 的重复实现（原 filter 逻辑完全一致）
         var filtered = (typeof CharacterMutator !== 'undefined' && CharacterMutator.filterOutPlayer)
             ? CharacterMutator.filterOutPlayer(characters)
@@ -235,7 +235,7 @@ const AIResponseMutator = {
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
             CharacterMutator.mergeCharacters(filtered, { silent: true });
         } else {
-            // 【P0修复BUG-011】移除冗余 setLegacy('allCharacters')：set('entities.characters')
+
             // 已触发 _syncLegacyMirror（含数组→对象转换）同步到 gameState.allCharacters
             StateManager.set('entities.characters', filtered, { silent: true });
         }
@@ -248,7 +248,7 @@ const AIResponseMutator = {
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
             BagMutator.mergeItems(bag, { silent: true });
         } else {
-            // 【P0修复BUG-011】移除冗余 setLegacy('currentBag')：set('entities.bag') 已触发镜像
+
             StateManager.set('entities.bag', bag, { silent: true });
         }
     },
@@ -263,7 +263,7 @@ const AIResponseMutator = {
         if (data.currencyName) {
             StateManager.set('entities.currencyName', String(data.currencyName), { silent: true });
         }
-        // 【P0修复BUG-011】移除冗余手动写 gameState.currency/currencyName：
+
         // set('entities.currency'/'entities.currencyName') 已触发 _syncLegacyMirror 同步
     },
 
@@ -274,11 +274,11 @@ const AIResponseMutator = {
             if (typeof QuestMutator !== 'undefined' && QuestMutator.setQuests) {
                 QuestMutator.setQuests(quests, { silent: true });
             } else {
-                // 【P0修复BUG-011】移除冗余 setLegacy('currentQuests')：set('entities.quests') 已触发镜像
+
                 StateManager.set('entities.quests', quests, { silent: true });
             }
         }
-        // 【修复任务进度】根据剧情文本自动推进任务进度
+
         const story = data.story || '';
         if (story && typeof QuestMutator !== 'undefined' && QuestMutator.autoAdvanceByStory) {
             QuestMutator.autoAdvanceByStory(story, { silent: true });
@@ -286,13 +286,13 @@ const AIResponseMutator = {
     },
 
     // 游戏时间
-    // 【P0修复BUG-006】_applyGameTime 已删除：与 GameTimeSystem.parseFromAI 重复调用 setTime。
+
     // 时间写入统一收敛到 GameTimeSystem.parseFromAI（game.js:1930），该方法包含完整的
     // 解析链路：data.gameTime → story 兜底提取 → 默认时间，调用 setTime 仅一次。
     // _syncLegacyMirror 自动将 StateManager.time 镜像到 gameState.gameTime，无需此处重复写入。
 
     // 地点
-    // 【P0-6修复】合并两个来源的地名，使 _applyLocations 成为 legacy 文本提取路径的完整替代
+
     // 原实现仅处理 data.locations（AI 显式返回），文本提取（_extractLocations）在 game.js legacy
     // 路径（line 1858-1863）单独写入且用 REPLACE 语义覆盖 _applyLocations 的结果，导致：
     //   1. AI 显式返回的地名可能被文本提取的覆盖（数据丢失）
@@ -300,7 +300,7 @@ const AIResponseMutator = {
     // 现统一在 _applyLocations 内合并两个来源（MERGE 语义：按 name 匹配，存在则更新 desc，新名追加），
     // legacy 路径在 _aiMutatorApplied=true 时跳过文本提取，避免双写。
     _applyLocations(data) {
-        // 【P1-12修复】收敛到 LocationMutator.mergeLocations，移除内联重复实现
+
         if (typeof LocationMutator === 'undefined' || typeof LocationMutator.mergeLocations !== 'function') return;
         const aiLocations = data.locations || data.places;
         // 来源 1：AI 显式返回
@@ -329,7 +329,7 @@ const AIResponseMutator = {
         LocationMutator.mergeLocations(normalized, { silent: true });
     },
 
-    // 【P1修复BUG-010/011】收割关键世界观/角色信息到 permanentFacts
+
     // 解决问题：
     //   - BUG-010 学院名变化（"奥术学院" → "圣罗兰魔法学院"）：地名未持久化，AI 后续回合重新编造
     //   - BUG-011 角色描述矛盾（苏菲身份）：npcProfiles 收割时 alreadyExists 检查会跳过更新，
@@ -338,7 +338,7 @@ const AIResponseMutator = {
     //   1. 把 entities.locations 中所有地名收割到 permanentFacts.worldPlaces（合并语义：新信息追加）
     //   2. 把 entities.characters 中所有角色收割到 permanentFacts.npcProfiles（合并语义：新信息追加）
     //   3. 主角身份同步到 permanentFacts.pcIdentity（替换语义：最新值覆盖）
-    // 【P1修复P1-H】不再直接读写 EnhancedMemory.permanentFacts，统一走公共 API：
+
     //   - worldPlaces/npcProfiles → EnhancedMemory.upsertPermanentFact(category, fact)
     //   - pcIdentity              → EnhancedMemory.setPermanentFact(category, fact)
     // 公共 API 内部统一处理：去重、合并、字段标准化、_ltmDirty 缓存失效。
@@ -419,7 +419,7 @@ const AIResponseMutator = {
     },
 
     // 关键事件
-    // 【阶段1-A2】事件统一入口：通过 gm.addImportantEvents 批量写入
+
     // gm.events 是单一权威源，addImportantEvents 内部处理：
     //   1. 去重（同 content 不重复添加）
     //   2. 修剪（_pruneImportantEvents 保留 50 条）
@@ -461,7 +461,7 @@ const AIResponseMutator = {
 
         if (normalized.length === 0) return;
 
-        // 【阶段1-A2】统一通过 gm.addImportantEvents 写入（去重 + 修剪 + 同步 + 持久化）
+
         var gm = (typeof window !== 'undefined') ? window.GameMemory : null;
         if (gm && typeof gm.addImportantEvents === 'function') {
             gm.addImportantEvents(normalized);
@@ -485,7 +485,7 @@ const AIResponseMutator = {
     },
 
     // 关系变化：统一处理图谱格式 {from,to,type,desc} 与好感度格式 {name,delta}
-    // 【P0-6修复】原 _applyRelationships 仅处理 {name,delta}（好感度），
+
     // {from,to,type,desc}（图谱）由 systems.js mergeRelationships 在 legacy 路径处理。
     // 这导致 legacy 路径必须保留 mergeRelationships 调用，造成：
     //   1. 与 AIResponseMutator 事务边界分离（mergeRelationships 不在 transaction 内，无法回滚）
@@ -543,7 +543,7 @@ const AIResponseMutator = {
         });
 
         // 2. 应用好感度更新（CharacterMutator，transaction-safe，可回滚）
-        // 【P1修复BUG-4.7】好感度更新的唯一入口，避免 mergeRelationships 重复叠加 delta
+
         favorabilityUpdates.forEach(function(upd) {
             if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
                 CharacterMutator.updateRelationship(upd.name, upd.delta, { silent: true });
@@ -564,7 +564,7 @@ const AIResponseMutator = {
         });
 
         // 3. 合并图谱条目到 StateManager.entities.relationships（max 10）
-        // 【P2-4修复】改调 RelationshipMutator.mergeRelationships，消除手写"双向匹配+上限10条"重复逻辑。
+
         // 原代码 line 593-611 与 RelationshipMutator.mergeRelationships (relationship-mutator.js:18-37) 完全重复。
         // 现统一委托，_syncLegacyMirror 自动同步到 gameState.relationships。
         if (graphEntries.length > 0) {
@@ -617,7 +617,7 @@ const AIResponseMutator = {
         }
     },
 
-    // 【P0-6修复】从已有角色推断基础关系网（替代 systems.js _inferRelationshipsFromCharacters）
+
     // 当 AI 没返回 relationships 但返回了角色时，自动生成 玩家→NPC 的基础关系条目
     // 原 systems.js:893 在 legacy 路径调用（写状态），现收敛到 mutator 层（事务内）
     _inferRelationshipsFromCharacters() {
@@ -650,7 +650,7 @@ const AIResponseMutator = {
     _applyHUD(data) {
         const hud = data.hud || data.status || {};
         if (!hud || typeof hud !== 'object') return;
-        // 【P0修复BUG-011】移除冗余 setLegacy('_lastHUD')：set('ui.lastHUD') 已触发镜像
+
         StateManager.set('ui.lastHUD', hud, { silent: true });
     },
 
@@ -658,7 +658,7 @@ const AIResponseMutator = {
     _applyContextSummary(data) {
         const summary = data.contextSummary || data.summary || '';
         if (!summary) return;
-        // 【P0修复BUG-011】移除冗余 setLegacy('rollingSummary')：set('progress.rollingSummary') 已触发镜像
+
         StateManager.set('progress.rollingSummary', summary, { silent: true });
     },
 
@@ -676,7 +676,7 @@ const AIResponseMutator = {
             'time',
             'entities.locations',
             'entities.events',
-            // 【P0-6修复】_applyRelationships 现统一处理图谱 + 好感度格式，写入 entities.relationships
+
             'entities.relationships',
             'ui.lastHUD',
             'progress.rollingSummary'
