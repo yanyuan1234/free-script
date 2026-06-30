@@ -672,11 +672,13 @@ var MacroEngine = {
 
     // 获取用户名
     getUser: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '玩家';
         return gameState.playerName || '玩家';
         },
 
     // 获取角色名（取当前场景中的第一个NPC名或玩家指定名）
     getChar: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '角色';
         // 尝试从当前NPC列表获取
         if (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) {
             return gameState.worldSnapshot.characters[0].name || '角色';
@@ -686,6 +688,7 @@ var MacroEngine = {
 
     // 新增：获取角色描述
     getCharDescription: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '';
         if (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) {
             return gameState.worldSnapshot.characters[0].desc || '';
         }
@@ -694,6 +697,7 @@ var MacroEngine = {
 
     // 新增：获取角色性格
     getCharPersonality: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '';
         if (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) {
             return gameState.worldSnapshot.characters[0].personality || '';
         }
@@ -702,6 +706,7 @@ var MacroEngine = {
 
     // 新增：获取场景描述
     getScenario: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '';
         if (gameState.worldSnapshot && gameState.worldSnapshot.scenario) {
             return gameState.worldSnapshot.scenario;
         }
@@ -710,6 +715,7 @@ var MacroEngine = {
 
     // 获取最后一条用户消息
     getLastUserMessage: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '';
         var history = gameState.conversationHistory || [];
         for (var i = history.length - 1; i >= 0; i--) {
             if (history[i].role === 'user') return history[i].content || '';
@@ -719,6 +725,7 @@ var MacroEngine = {
 
     // 获取最后一条AI消息
     getLastCharMessage: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '';
         var history = gameState.conversationHistory || [];
         for (var i = history.length - 1; i >= 0; i--) {
             if (history[i].role === 'assistant') return history[i].content || '';
@@ -728,6 +735,7 @@ var MacroEngine = {
 
     // 获取最后一条消息
     getLastMessage: function() {
+        if (typeof gameState === 'undefined' || !gameState) return '';
         var history = gameState.conversationHistory || [];
         if (history.length > 0) return history[history.length - 1].content || '';
         return '';

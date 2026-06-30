@@ -142,8 +142,10 @@ var WorldInfo = {
         });
         // 【优化】同时重置 _wiCachedTurn——旧代码只重置 _wiCachedResult 不重置 _wiCachedTurn
         // 导致缓存可能命中过期数据（game.js 的缓存逻辑会检查 _wiCachedTurn === currentTurn）
-        gameState._wiCachedResult = null;
-        if (gameState) gameState._wiCachedTurn = null;
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState._wiCachedResult = null;
+            gameState._wiCachedTurn = null;
+        }
         },
 
     // 绑定事件

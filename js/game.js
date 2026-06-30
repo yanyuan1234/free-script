@@ -4326,7 +4326,7 @@ if (typeof window.RuntimeBridge === 'undefined') window.RuntimeBridge = {};
 window.RuntimeBridge.formatStory = formatStory;
 window.RuntimeBridge.mergeCharacters = mergeCharacters;
 window.RuntimeBridge.renderChoices = renderChoices;
-window.RuntimeBridge.renderNpcList = renderNpcList;
+// renderNpcList 定义在 phone-ui.js 中，由 phone-ui.js 负责注册到 RuntimeBridge
 window.RuntimeBridge.buildSystemPrompt = buildSystemPrompt;
 window.RuntimeBridge.buildSaveData = buildSaveData;
 window.RuntimeBridge.sendAIRequest = sendAIRequest;

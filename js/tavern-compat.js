@@ -3113,8 +3113,9 @@ var GameMemory = {
                 for (let i = 0; i < self.permanentFacts[key].length; i++) {
                     var entry = self.permanentFacts[key][i];
                     if (entry && entry.content && entry.content.indexOf(name) === 0) {
-                        if (entry.source === 'manual') return null;
+                        if (entry.source === 'manual') { self._markLtmDirty(); return null; }
                         self.permanentFacts[key][i] = { content: content, source: source || 'auto', locked: true, importance: 1.0, createdTurn: createdTurn || self.currentTurn };
+                        self._markLtmDirty();
                         return self.permanentFacts[key][i];
                     }
                 }
@@ -4413,7 +4414,7 @@ var MemoryManagerUI = {
     },
 
     savePermanentFact: function(type, idx) {
-        var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type]) return;
+        var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type] || !gm.permanentFacts[type][idx]) return;
         var content = (document.getElementById('editFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
         gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual';

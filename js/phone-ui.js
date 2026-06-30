@@ -5390,6 +5390,7 @@ function renderAPISettings() {
     }
 }
 function showApiDetail(slot) {
+    var newCancelBtn = document.getElementById('btnCancelTestApi');
     var cfg = LocalGameAPI._configs[slot];
     if (!cfg) return;
     document.getElementById('apiDetailName').textContent = cfg.name || 'API ' + (slot + 1);
@@ -5567,7 +5568,7 @@ function showApiDetail(slot) {
     // 修复：controller 挂到 newTestBtn._testAbortCtrl，cancel 按钮读 DOM 节点属性，跨闭包可见
     bindFresh('btnTestApiDetail', 'click', async function() {
         var newTestBtn = this;  // bindFresh 内部 this 指向元素
-        var newCancelBtn = document.getElementById('btnCancelTestApi');
+        newCancelBtn = document.getElementById('btnCancelTestApi');
         newTestBtn.textContent = '测试中...';
         newTestBtn.disabled = true;
         if (newCancelBtn) newCancelBtn.style.display = '';
@@ -7239,6 +7240,7 @@ function addNpcChatBubble(role, text, skipPush) {
 }
 function openEditNpcModal(name) {
     UI.hideModal('npcDetailModal');
+    if (!gameState || !gameState.allCharacters) return;
     npcEditingName = name;
     var c = gameState.allCharacters[name];
     if (!c) return;
@@ -7559,3 +7561,7 @@ function openNpcDetail(name) {
         deleteBtn.addEventListener('click', deleteBtn._onDeleteClick);
     }
 }
+
+// RuntimeBridge 注册：将 phone-ui.js 中定义的函数注入桥接对象
+if (typeof window.RuntimeBridge === 'undefined') window.RuntimeBridge = {};
+window.RuntimeBridge.renderNpcList = renderNpcList;
