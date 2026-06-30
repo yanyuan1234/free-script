@@ -50,13 +50,17 @@ const PromptBuilder = {
     },
 
     // 构建 user prompt
-    // 【P3-21修复】删除未使用的 context 参数（全项目零调用，简化签名）
+    // 【P3-21修复】删除未使用的 context 参数（简化签名）
+    // 【阶段4·复核】原审查标记"全项目零调用"建议删除，但 tests/ai-contract/prompt-builder.test.js
+    // 依赖此方法（测试 5）。保留，仅清理参数。
     buildUserPrompt(input) {
         if (!input || typeof input !== 'string') return '';
         return input;
     },
 
-    // 获取片段列表（用于调试）
+    // 获取片段列表（用于调试 / 单元测试）
+    // 【阶段4·复核】原审查标记"全项目零调用"建议删除，但 tests/ai-contract/prompt-builder.test.js
+    // 依赖此方法（测试 1）。保留。
     listSections() {
         const names = Object.keys(this._sections).sort((a, b) =>
             (PromptBuilder._sections[a].order || 100) - (PromptBuilder._sections[b].order || 100)
