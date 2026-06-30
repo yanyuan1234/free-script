@@ -40,6 +40,40 @@ var MAX_FORUM_POSTS = 8;
 function hideModalByName(name) {
     if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal(name);
 }
+// 【阶段2·CSP】toggle-thought-bubble 包装：原 onclick 内联 event.stopPropagation + classList.toggle
+// 委托器调用时 this 即为 actEl（绑定 data-action 的元素），等价于原 this 语义
+function toggleThoughtBubble() {
+    // 由 _globalA11yDelegate 在 click 时调用，event 已在 document 层处理；
+    // 这里仅切换 expanded 类，stopPropagation 由调用方在 needed 时处理
+    if (this && this.classList) this.classList.toggle('expanded');
+}
+// 【阶段2·CSP】论坛评论输入框回车发送：原为内联 onkeydown（违反 CSP），
+// 改为 document 层 keydown 委托，匹配 data-keydown-action="sendForumComment"
+// 仅在 Enter 且无 Shift 时触发（与原逻辑一致）；用 data-keydown-action 而非 data-action
+// 避免被 click 委托器误匹配（click 委托器会查 window[fnName] 并 warn）
+if (typeof document !== 'undefined' && typeof GlobalCleanup !== 'undefined') {
+    GlobalCleanup.registerListener(document, 'keydown', function(e) {
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        var t = e.target;
+        if (!t || t.nodeType !== 1) return;
+        var el = t.closest && t.closest('[data-keydown-action]');
+        if (!el) return;
+        e.preventDefault();
+        var fnName = el.getAttribute('data-keydown-action');
+        var fn = window[fnName];
+        if (typeof fn !== 'function') return;
+        var argsAttr = el.getAttribute('data-args');
+        try {
+            if (argsAttr == null || argsAttr === '') {
+                fn.call(el);
+            } else {
+                var parsed = JSON.parse(argsAttr);
+                if (!Array.isArray(parsed)) parsed = [parsed];
+                fn.apply(el, parsed);
+            }
+        } catch (err) { console.error('[keydown-delegate] ' + fnName + ' 执行失败:', err); }
+    });
+}
 function triggerImportFile() {
     var el = document.getElementById('importFileInput');
     if (el) el.click();
@@ -421,8 +455,8 @@ function appendForumReply(postIdx, comment) {
         '<div class="forum-reply-main"><div class="forum-reply-name">' + escapeHtml(comment.name || '匿名') + '</div>' +
         '<div class="forum-reply-content">' + replyPrefix + escapeHtml(comment.text || '') + '</div>' +
         '<div class="forum-reply-meta">' + escapeHtml(_formatLogTime(comment.time, 'time') || '刚刚') +
-        '　<span style="cursor:pointer" onclick="replyToForumComment(' + postIdx + ',' + ((detail
-            .querySelectorAll('.forum-reply-item').length)) + ')">回复</span></div></div>';
+        '　<span style="cursor:pointer" role="button" tabindex="0" data-action="replyToForumComment" data-args=\'[' + postIdx + ',' + (detail
+            .querySelectorAll('.forum-reply-item').length) + ']">回复</span></div></div>';
     list.appendChild(item);
     requestAnimationFrame(function() {
         item.style.opacity = '1';
@@ -714,13 +748,14 @@ function openDiaryDatePicker() {
     // 【缺陷修复】改用 UI.createModal 走统一弹窗管理，避免 z-index:999999 与 modal 栈冲突
     var listHtml = '<div style="background:var(--bg);border-radius:12px;width:280px;max-height:60vh;overflow-y:auto;box-shadow:0 4px 20px rgba(0,0,0,0.2);">' +
         '<div style="padding:12px 16px;border-bottom:1px solid #f0f0f0;font-weight:600;font-size:15px;display:flex;justify-content:space-between;align-items:center;">' +
-        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" onclick="UI.hideModal(\'diaryDatePicker\')">×</span></div>' +
+        '<span>选择日期</span><span style="cursor:pointer;color:var(--text-secondary);font-size:20px;" role="button" tabindex="0" data-action="hideModalByName" data-args=\'["diaryDatePicker"]\'>×</span></div>' +
         dateList.map(function(d) {
             // 【优化·XSS 修复】旧代码只转义单引号，不防 XSS；新代码先 escapeHtml 再转义单引号
             // d 来自 AI 返回的日记数据，可能含恶意字符
             // 【J修复】统一用 escapeAttr（转义 \ ' " < > \n \r），替代 escapeHtml+手动单引号转义
+            // 【阶段2·CSP】onclick → data-action 委托；日期串用 JSON.stringify 保证 JS 字符串安全嵌入 data-args
             var safeD = escapeAttr(d);
-            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" onclick="UI.hideModal(\'diaryDatePicker\');diaryJumpToDate(\'' + safeD + '\')">' + escapeHtml(d) + '</div>';
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" role="button" tabindex="0" data-action="diaryJumpToDate" data-args=\'' + JSON.stringify([d]) + '\'>' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div>';
     UI.createModal({ id: 'diaryDatePicker', html: listHtml, persistent: false });
@@ -772,7 +807,7 @@ function openMailDetail(index) {
     body = sanitizeHtml(body);
     var detailHtml =
         '<div style="display:flex;flex-direction:column;flex:1;background:var(--bg);overflow:hidden;">' +
-        '<div class="mail-detail-nav"><div class="mail-detail-back" onclick="backToMailList()">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" onclick="deleteMail(' + index + ')"></div></div></div>' +
+        '<div class="mail-detail-nav"><div class="mail-detail-back" role="button" tabindex="0" data-action="backToMailList">←</div><div class="mail-detail-actions"><div class="mail-detail-action-btn" role="button" tabindex="0" data-action="deleteMail" data-args=\'[' + index + ']\'></div></div></div>' +
         '<div class="mail-detail-scroll">' +
         '<div class="mail-detail-subject">' + escapeHtml(subject) + '</div>' +
         '<div class="mail-detail-meta"><div class="mail-detail-avatar">' + escapeHtml(avatar) +
@@ -2210,16 +2245,16 @@ function renderForumPage() {
                 '</div>' +
                 '<div class="forum-reply-meta"><span>' + timeLabels[(idx + ci) % timeLabels
                     .length] +
-                '</span><span style="cursor:pointer" onclick="replyToForumComment(' + idx +
-                ',' + ci + ')">回复</span></div>' +
+                '</span><span style="cursor:pointer" role="button" tabindex="0" data-action="replyToForumComment" data-args=\'[' + idx +
+                ',' + ci + ']\'">回复</span></div>' +
                 '</div></div>';
         }).join('');
 
         return '<div class="forum-post-detail" id="forumPostDetail' + idx +
             '" style="display:none;flex-direction:column;">' +
-            '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="closeForumPost(' +
+            '<div class="forum-nav-bar"><div class="forum-nav-back" role="button" tabindex="0" data-action="closeForumPost" data-args=\'[' +
             idx +
-            ')">←</div><div class="forum-nav-title">帖子详情</div><div class="forum-nav-right">↻</div></div>' +
+            ']\'">←</div><div class="forum-nav-title">帖子详情</div><div class="forum-nav-right">↻</div></div>' +
             '<div class="forum-post-scroll">' +
             '<div class="forum-post-main"><div class="forum-post-title">' + (mod.title || '帖子') +
             '</div><div class="forum-post-sub">1分钟前　回复</div></div>' +
@@ -2230,9 +2265,8 @@ function renderForumPage() {
             '<div class="forum-my-avatar" style="background:#333;">' + playerName.charAt(0) +
             '</div>' +
             '<div class="forum-comment-input" contenteditable="true" data-post-idx="' + idx +
-            '" onkeydown="if(event.key===\'Enter\'&&!event.shiftKey){event.preventDefault();sendForumComment(' +
-            idx + ')}"></div>' +
-            '<div class="forum-send-btn" onclick="sendForumComment(' + idx + ')">></div>' +
+            '" data-keydown-action="sendForumComment" data-args=\'[' + idx + ']\'></div>' +
+            '<div class="forum-send-btn" role="button" tabindex="0" data-action="sendForumComment" data-args=\'[' + idx + ']\'>></div>' +
             '</div>' +
             '</div>';
     }).join('');
@@ -2247,11 +2281,11 @@ function renderForumPage() {
         '</div>' +
         '</div>' +
         '<div id="forumTopicView" style="display:none;">' +
-        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" role="button" tabindex="0" data-action="showForumHot">←</div><div class="forum-nav-title" id="forumTopicTitle">话题</div><div class="forum-nav-right"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></div></div>' +
         '<div class="forum-topic-body">' + feedItems + '</div>' +
         '</div>' +
         '<div id="forumMineView" style="display:none;">' +
-        '<div class="forum-nav-bar"><div class="forum-nav-back" onclick="showForumHot()">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
+        '<div class="forum-nav-bar"><div class="forum-nav-back" role="button" tabindex="0" data-action="showForumHot">←</div><div class="forum-nav-title">我评论过的</div><div class="forum-nav-right"></div></div>' +
         '<div class="forum-mine-body">' + (function() {
             var mineHtml = '';
             var myCommented = [];
@@ -2269,7 +2303,7 @@ function renderForumPage() {
                 return '<div style="padding:60px 20px;text-align:center;color:var(--text-secondary);">还没发表过评论<br><span style="font-size:12px;">去点击话题发表你的观点吧</span></div>';
             }
             return myCommented.map(function(item) {
-                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" onclick="openForumPost(' + item.idx + ')">' +
+                return '<div class="forum-mine-item" style="display:flex;align-items:center;gap:12px;padding:14px 16px;background:var(--bg);border-bottom:1px solid #f0f0f0;cursor:pointer;" role="button" tabindex="0" data-action="openForumPost" data-args=\'[' + item.idx + ']\'>' +
                     '<div style="width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,#1a73e8 0%,#4285f4 100%);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;">◇</div>' +
                     '<div style="flex:1;min-width:0;">' +
                     '<div style="font-size:14px;color:var(--text);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(item.title) + '</div>' +
@@ -2541,8 +2575,7 @@ function renderDiaryPage() {
                 }
                 var mentionTag = mentionCount > 0 ?
                     '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
-                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" onclick="viewNpcDiary(\'' +
-                    escapeAttr(npcName) + '\')">' +
+                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" role="button" tabindex="0" data-action="viewNpcDiary" data-args=\'' + JSON.stringify([npcName]) + '\'>' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
                     '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
@@ -2639,10 +2672,10 @@ function renderDiaryPage() {
     }
 
     return '<div class="diary-page">' +
-        '<div style="display:flex;align-items:center;gap:8px;padding:8px 15px;flex-shrink:0;"><div class="diary-nav-btn" onclick="diaryBackToList()" style="font-size:20px;">←</div></div>' +
-        '<div class="diary-date-nav"><div class="diary-nav-btn" onclick="diaryChangeDate(-1)" title="上一条"><</div><div class="diary-nav-date" onclick="openDiaryDatePicker()" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;">📅</span>' +
+        '<div style="display:flex;align-items:center;gap:8px;padding:8px 15px;flex-shrink:0;"><div class="diary-nav-btn" role="button" tabindex="0" data-action="diaryBackToList" style="font-size:20px;">←</div></div>' +
+        '<div class="diary-date-nav"><div class="diary-nav-btn" role="button" tabindex="0" data-action="diaryChangeDate" data-args=\'[-1]\' title="上一条"><</div><div class="diary-nav-date" role="button" tabindex="0" data-action="openDiaryDatePicker" style="cursor:pointer;display:flex;align-items:center;gap:4px;justify-content:center;" title="点击选择日期"><span style="font-size:13px;">📅</span>' +
         dateStr +
-        '</div><div class="diary-nav-btn" onclick="diaryChangeDate(1)" title="下一条">></div><div class="diary-nav-btn" onclick="diaryResetDate()" title="返回最近">»</div></div>' +
+        '</div><div class="diary-nav-btn" role="button" tabindex="0" data-action="diaryChangeDate" data-args=\'[1]\' title="下一条">></div><div class="diary-nav-btn" role="button" tabindex="0" data-action="diaryResetDate" title="返回最近">»</div></div>' +
         '<div class="diary-user-bar"><div class="diary-user-avatar" style="background:' + avatarColor +
         ';color:#fff;font-size:14px;">' + currentDiaryNpc.charAt(0) +
         '</div><div class="diary-user-name">' + currentDiaryNpc + (npcChar.title ? ' · ' + npcChar.title :
@@ -2777,7 +2810,7 @@ function renderShopPage() {
                 '<span style="font-size:11px;padding:2px 8px;background:#ccc;color:#fff;border-radius:10px;cursor:not-allowed;white-space:nowrap;">已售稀</span>' :
                 '<span style="font-size:11px;padding:2px 8px;background:var(--accent,#333);color:#fff;border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span>';
             var itemStyle = isSoldOut ? 'opacity:0.6;cursor:not-allowed;' : 'cursor:pointer;';
-            var itemClick = isSoldOut ? '' : ' onclick="buyShopItem(' + gi + ')"';
+            var itemClick = isSoldOut ? '' : ' role="button" tabindex="0" data-action="buyShopItem" data-args=\'[' + gi + ']\'';
             return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemClick + '><div class="shop-goods-icon">' + escapeHtml(icon) +
                 '</div><div class="shop-goods-info"><div class="shop-goods-name">' + escapeHtml(name) +
                 '</div><div class="shop-goods-desc">' + escapeHtml(desc) + '</div>' +
@@ -3568,7 +3601,7 @@ function renderRecapPage() {
             var summary = (s.text || '').substring(0, 80);
             var cardTitle = s.title || ('第' + (i + 1) + '段');
             return '<div class="timeline-item ' + (isCurrent ? 'current' : '') +
-                '" onclick="showRecapDetail(' + i + ')">' +
+                '" role="button" tabindex="0" data-action="showRecapDetail" data-args=\'[' + i + ']\'>' +
                 '<div class="timeline-item-head"><span class="timeline-item-title">' +
                 escapeHtml(cardTitle) + '</span></div>' +
                 '<div class="timeline-item-summary">' + escapeHtml(summary) + '...</div></div>';
@@ -5297,7 +5330,7 @@ function renderAPISettings() {
 
         return '<div class="pearl-card api-card" role="button" tabindex="0" style="padding:14px;margin-bottom:10px;cursor:pointer;' +
             (isCurrent ? 'border-color:var(--text);' : '') + (isFailed ? 'border-color:#ff3b30;' :
-                '') + '" onclick="showApiDetail(' + i + ')" data-api-index="' + i + '">' +
+                '') + '" data-action="showApiDetail" data-args=\'[' + i + ']\' data-api-index="' + i + '">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;">' +
             '<div><div style="font-size:14px;font-weight:500;display:flex;align-items:center;">' +
             escapeHtml(apiName) + errorIcon + '</div>' +
@@ -7365,8 +7398,7 @@ function renderNpcPage() {
             tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
 
             var firstChar = (c.name && typeof c.name === 'string') ? c.name.charAt(0) : '?';
-            return '<div class="character-card pearl-card" onclick="openNpcDetail(\'' + sn +
-                '\')">' +
+            return '<div class="character-card pearl-card" role="button" tabindex="0" data-action="openNpcDetail" data-args=\'' + JSON.stringify([sn]) + '\'>' +
                 '<div class="avatar avatar-md"><span>' + escapeHtml(firstChar) + '</span></div>' +
                 '<div class="char-info">' +
                 '<div class="char-name">' + escapeHtml(c.name) + '</div>' +
@@ -7379,7 +7411,7 @@ function renderNpcPage() {
                 favToWidth(fav) + '%;background:' + favColor + ';"></div></div><span class="char-stat-value">' + fav + '</span></div>' +
                 '</div>' +
                 (c.desc ?
-                    '<div class="npc-thought-bubble" onclick="event.stopPropagation();this.classList.toggle(\'expanded\')"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
+                    '<div class="npc-thought-bubble" role="button" tabindex="0" data-action="toggle-thought-bubble"><div class="npc-thought-label">状态</div><div class="thought-content"><div class="npc-thought-text">' +
                     escapeHtml(c.desc) + '</div></div></div>' : '') +
                 '</div></div>';
         }).join('');

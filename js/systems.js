@@ -717,7 +717,7 @@ var AchievementSystem = {
         (isU ? '<div style="color:var(--text-secondary);font-size:13px;">✓ 已获得</div>' :
         '<div style="color:var(--text-tertiary);font-size:13px;">锁 未解锁 · 进度: ' + (pd.progress[
         id] || 0) + '/' + (ach.maxProgress || 1) + '</div>') +
-        '<button class="crystal-btn" style="margin-top:16px;width:100%;" onclick="UI.hideModal(\'achieveDetailModal\')">关闭</button></div>';
+        '<button class="crystal-btn" type="button" style="margin-top:16px;width:100%;" data-action="hideModalByName" data-args=\'["achieveDetailModal"]\'>关闭</button></div>';
         // 使用统一弹窗管理器
         if (typeof UI !== 'undefined' && UI.createModal) {
             UI.createModal({ id: 'achieveDetailModal', html: html });
