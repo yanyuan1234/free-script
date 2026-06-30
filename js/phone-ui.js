@@ -101,6 +101,22 @@ function _getConversationHistory() {
     }
     return (typeof gameState !== 'undefined' && gameState && gameState.conversationHistory) || [];
 }
+// 【P1-4·阶段8】conversationHistory 快照 helper —— 返回深拷贝
+// 用于撤销快照、retryStory 重渲染等需要"不被后续 mutate 污染"的场景
+// 旧代码：phone-ui.js 7 处直读 gameState.conversationHistory 旧镜像
+//   - 5196 saveUndoState 传数组引用给 UndoMutator（最高风险：快照被污染）
+//   - 4882/5155 反向遍历找 lastAI（时序敏感）
+//   - 991/3148/6333/6334 仅读 length/content（低风险但仍应统一）
+// 现：统一走权威源 StateManager，且需深拷贝时返回新数组
+function getConversationHistorySnapshot() {
+    var hist = _getConversationHistory();
+    // 深拷贝：防止快照引用被后续 mutate 污染（saveUndoState 场景关键）
+    if (typeof StateSchema !== 'undefined' && StateSchema.deepClone) {
+        return StateSchema.deepClone(hist);
+    }
+    // fallback：JSON 深拷贝（消息对象为纯数据，无函数/循环引用）
+    try { return JSON.parse(JSON.stringify(hist)); } catch (e) { return hist.slice(); }
+}
 function _updateConversationHistory(newHist) {
     if (typeof StateManager !== 'undefined' && StateManager.set) {
         StateManager.set('progress.conversationHistory', newHist, { silent: true });
@@ -1008,7 +1024,8 @@ function _autoExtractWorldNotes(modules) {
 // 旧实现直接返回 m.content，回顾页显示为原始 JSON 字符串，玩家无法阅读
 // 现解析 JSON 提取 title/story，并标记思考内容为隐藏（与 BUG-04 拦截呼应）
 function getStoryList() {
-    var list = (gameState.conversationHistory || [])
+    // 【P1-4·阶段8】走 _getConversationHistory() 统一入口，StateManager 为权威源
+    var list = _getConversationHistory()
         .filter(function(m) { return m.role === 'assistant'; })
         .map(function(m, idx) {
             var raw = m.content || '';
@@ -3172,7 +3189,8 @@ function renderPlayerPage() {
             lv: pd.level, exp: pd.exp,
             favs: (gameState.relationships || []).length,
             inv: (gameState.currentBag || []).length,
-            r: (gameState.conversationHistory || []).length
+            // 【P1-4·阶段8】走 _getConversationHistory() 统一入口
+            r: _getConversationHistory().length
         });
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderPlayerPage', cacheKey)) return;
         if (typeof RenderCache !== 'undefined') RenderCache.mark('renderPlayerPage', cacheKey);
@@ -4905,10 +4923,12 @@ function restoreGame() {
 function _restoreGameRender() {
     try {
         // 恢复最后一条AI回复的剧情和选项
+        // 【P1-4·阶段8】走 _getConversationHistory() 统一入口，避免直读旧镜像
         var lastAI = null;
-        for (var i = gameState.conversationHistory.length - 1; i >= 0; i--) {
-            if (gameState.conversationHistory[i].role === 'assistant') {
-                lastAI = gameState.conversationHistory[i];
+        var _hist = _getConversationHistory();
+        for (var i = _hist.length - 1; i >= 0; i--) {
+            if (_hist[i].role === 'assistant') {
+                lastAI = _hist[i];
                 break;
             }
         }
@@ -5179,7 +5199,8 @@ function deleteLastTurn() {
         }
 
         // 重新渲染
-        var lastAI = [...gameState.conversationHistory].reverse().find(m => m.role === 'assistant');
+        // 【P1-4·阶段8】走快照深拷贝，避免 spread 浅拷贝在后续解析中被污染
+        var lastAI = getConversationHistorySnapshot().reverse().find(m => m.role === 'assistant');
         if (lastAI) {
             var parsed = parseAIResponse(lastAI.content);
             if (parsed.storyText) renderStory(parsed.storyText);
@@ -5220,7 +5241,9 @@ function saveUndoState() {
         throw new Error('[saveUndoState] UndoMutator 未加载，无法保存撤销历史');
     }
     UndoMutator.pushSnapshot({
-        conversationHistory: (typeof gameState !== 'undefined' && gameState) ? gameState.conversationHistory : [],
+        // 【P1-4·阶段8】走快照深拷贝——saveUndoState 场景关键：
+        // 旧实现直接传引用，UndoMutator 后续 mutate 会污染当前 conversationHistory
+        conversationHistory: getConversationHistorySnapshot(),
         allCharacters: (typeof gameState !== 'undefined' && gameState) ? (gameState.allCharacters || {}) : {},
         worldSnapshot: (typeof gameState !== 'undefined' && gameState) ? (gameState.worldSnapshot || {}) : {},
         keyEvents: (typeof gameState !== 'undefined' && gameState) ? (gameState.keyEvents || []) : [],
@@ -6359,8 +6382,10 @@ function _syncSettingsToUI(d) {
 
 function openSettingsModal() {
     // 更新上下文信息
-    var msgCount = gameState.conversationHistory ? gameState.conversationHistory.length : 0;
-    var estimated = estimateTokensForMessagesUtil(gameState.conversationHistory);
+    // 【P1-4·阶段8】走 _getConversationHistory() 统一入口，避免 2 处直读旧镜像
+    var _hist = _getConversationHistory();
+    var msgCount = _hist.length;
+    var estimated = estimateTokensForMessagesUtil(_hist);
     var contextInfo = document.getElementById('contextInfo');
     if (contextInfo) contextInfo.textContent = '上下文: ' + msgCount + ' 条 | 约 ' + (estimated > 1000 ? (
         estimated / 1000).toFixed(1) + 'k' : estimated) + ' token';
