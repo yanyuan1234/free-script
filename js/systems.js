@@ -420,8 +420,9 @@ var AchievementSystem = {
                 });
         }
     var rels = gameState.relationships || [];
+    var pn = gameState.playerName || '主角';
     rels.forEach(function(r) {
-        if (r.from === '主角' || r.to === '主角') {
+        if (r.from === pn || r.to === pn) {
             if (r.type === '友好' || r.type === '盟友' || r.type === '师徒') stats.friendlyNpc++;
             if (r.type === '暧昧' || r.type === '恋人') stats.romanceNpc++;
             if (r.type === '盟友') stats.allyNpc++;
@@ -779,18 +780,17 @@ function renderQuests() {
     container.style.display = 'block';
     // 排序：进行中在前，已完成/失败在后
     var sorted = quests.slice().sort(function(a, b) {
-        var order = {
-            '进行中': 0,
-            '失败': 1,
-            '已完成': 2
-        };
+        var order = {};
+        order[QuestSystem.STATUS.ACTIVE] = 0;
+        order[QuestSystem.STATUS.FAILED] = 1;
+        order[QuestSystem.STATUS.COMPLETED] = 2;
         return (order[a.status] || 0) - (order[b.status] || 0);
     });
     var html =
         '<div class="module-header" data-action="toggleQuestList" style="cursor:pointer"><span class="module-header-text">当前任务</span><span id="questToggleArrow" style="font-size:14px;color:var(--task-highlight);transition:transform .2s">▼</span></div>';
     html += '<div class="quest-list" id="questListInner">';
     sorted.forEach(function(q) {
-        var isDone = q.status === '已完成' || q.status === '失败';
+        var isDone = q.status === QuestSystem.STATUS.COMPLETED || q.status === QuestSystem.STATUS.FAILED;
         var itemClass = isDone ? 'quest-item quest-done' : 'quest-item';
         // 类型标签
         var typeClass = 'quest-type ';
@@ -799,8 +799,8 @@ function renderQuests() {
         else typeClass += 'quest-type-side';
         // 状态标签
         var statusClass = 'quest-status ';
-        if (q.status === '已完成') statusClass += 'quest-status-done';
-        else if (q.status === '失败') statusClass += 'quest-status-failed';
+        if (q.status === QuestSystem.STATUS.COMPLETED) statusClass += 'quest-status-done';
+        else if (q.status === QuestSystem.STATUS.FAILED) statusClass += 'quest-status-failed';
         else statusClass += 'quest-status-active';
         html += '<div class="' + itemClass + '">';
         html += '<div class="quest-header">';

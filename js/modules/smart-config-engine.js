@@ -236,9 +236,9 @@ var SmartConfigEngine = {
     },
 
     /**
-    * 应用配置到游戏
+    * 解析并记录配置信息（仅用于展示推荐项，不自动修改游戏设置）
     */
-    applyConfig: function(config, presetName) {
+    logConfig: function(config, presetName) {
         if (!config) return;
 
         var applied = [];
@@ -285,14 +285,19 @@ var SmartConfigEngine = {
 
     // 输出日志
     if (applied.length > 0) {
-        console.log('[智能配置] 预设「' + presetName + '」已自动配置:');
+        console.log('[智能配置] 预设「' + presetName + '」推荐配置:');
         applied.forEach(function(item) {
             console.log('  ✓ ' + item);
             });
-        UI.toast('已智能配置 ' + applied.length + ' 项设置');
+        UI.toast('检测到 ' + applied.length + ' 项推荐配置（手动设置生效）');
     }
 
     this.currentConfig = config;
+    },
+
+    // 兼容别名：保留 applyConfig 作为 logConfig 的别名，避免外部调用处报错
+    applyConfig: function(config, presetName) {
+        return this.logConfig(config, presetName);
     },
 
     /**

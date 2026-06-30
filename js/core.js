@@ -1210,15 +1210,31 @@ var LocalGameAPI = {
         return '';
     },
     isModelFailed(modelName) {
-        if (!modelName || !this._failedModels[modelName]) return false;
+        if (!modelName) return false;
+        var record = null;
+        var matchedKey = null;
+        // 精确匹配：支持复合 key "slot|model"（isModelFailedForSlot 会传这种格式）
+        if (this._failedModels[modelName]) {
+            record = this._failedModels[modelName];
+            matchedKey = modelName;
+        } else {
+            // 模糊匹配：传入裸模型名时，遍历所有 slot 的复合 key 做后缀匹配
+            // 只要任一 slot 下该模型失败，就认为是失败状态（UI 提醒用）
+            for (let k in this._failedModels) {
+                var sepIdx = k.indexOf('|');
+                var mName = sepIdx >= 0 ? k.substring(sepIdx + 1) : k;
+                if (mName === modelName) { matchedKey = k; record = this._failedModels[k]; break; }
+            }
+            if (!matchedKey) return false;
+        }
         // 24小时过期机制，与注释描述一致
         // 之前是永久生效，导致所有模型一旦失败过一次就永远被跳过
-        var failedAt = this._getFailedTime(this._failedModels[modelName]);
+        var failedAt = this._getFailedTime(record);
         var now = Date.now();
         var TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
         if (now - failedAt > TWENTY_FOUR_HOURS) {
             // 已过期，清除失败标记
-            delete this._failedModels[modelName];
+            delete this._failedModels[matchedKey];
             this.save();
             return false;
         }

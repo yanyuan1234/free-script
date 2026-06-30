@@ -42,7 +42,7 @@ var PresetManager = {
             var data = Storage.getJSON(Storage.KEYS.API_PRESETS, []);
             var arr = Array.isArray(data) ? data : [];
             // 【已移除】清理旧版本残留的内置预设（月读/果实/蛾摩拉），避免继续显示在列表中
-            this.presets = arr.filter(function(p) { return !p || !p._isBuiltin; });
+            this.presets = arr.filter(function(p) { return p && !p._isBuiltin; });
             if (this.presets.length !== arr.length) {
                 this.save();
             }

@@ -118,7 +118,7 @@ var WorldInfo = {
             }
             if (data.settings) {
                 // scanDepth 默认值统一为 2（与酒馆一致）
-                this.settings.scanDepth = data.settings.scanDepth || 2;
+                this.settings.scanDepth = data.settings.scanDepth != null ? data.settings.scanDepth : 2;
                 // tokenBudget 处理：如果值 > 100，认为是旧格式的绝对值，转换为百分比
                 var budget = data.settings.tokenBudget;
                 if (budget > 100) {
@@ -930,7 +930,7 @@ var WorldInfo = {
         var selEl = document.getElementById('wiEntrySelective'); if (selEl) selEl.checked = !!entry.selective;
         var enEl = document.getElementById('wiEntryEnabled'); if (enEl) enEl.checked = entry.enabled !== false;
         var orderEl = document.getElementById('wiEntryOrder'); if (orderEl) orderEl.value = entry.order || 100;
-        var probEl = document.getElementById('wiEntryProbability'); if (probEl) probEl.value = entry.probability || 100;
+        var probEl = document.getElementById('wiEntryProbability'); if (probEl) probEl.value = entry.probability != null ? entry.probability : 100;
 
         // 同步下拉框
         var posEl = document.getElementById('wiEditPosition');
@@ -947,7 +947,7 @@ var WorldInfo = {
         if (depthVal) depthVal.textContent = entry.depth || 4;
         var scanDepthEl = document.getElementById('wiEditScanDepth');
         // 如果条目没有设置scanDepth，显示全局设置的值（默认2，与酒馆一致）
-        var globalScanDepth = this.settings.scanDepth || 2;
+        var globalScanDepth = this.settings.scanDepth != null ? this.settings.scanDepth : 2;
         if (scanDepthEl) scanDepthEl.value = (entry.scanDepth != null ? entry.scanDepth : globalScanDepth);
         var scanDepthVal = document.getElementById('wiEditScanDepthVal');
         if (scanDepthVal) scanDepthVal.textContent = (entry.scanDepth != null ? entry.scanDepth : globalScanDepth);
@@ -997,7 +997,7 @@ var WorldInfo = {
         var orderVal = document.getElementById('wiEntryOrderVal');
         if (orderVal) orderVal.textContent = entry.order || 100;
         var probVal = document.getElementById('wiEntryProbabilityVal');
-        if (probVal) probVal.textContent = entry.probability || 100;
+        if (probVal) probVal.textContent = entry.probability != null ? entry.probability : 100;
 
         // 存储当前编辑的UID
         this._editingUid = uid;
@@ -1032,7 +1032,8 @@ var WorldInfo = {
         delete entry.disable;
         delete entry.disabled;
         entry.order = parseInt(document.getElementById('wiEntryOrder').value) || 100;
-        entry.probability = parseInt(document.getElementById('wiEntryProbability').value) || 100;
+        entry.probability = parseInt(document.getElementById('wiEntryProbability').value);
+        if (isNaN(entry.probability) || entry.probability == null) entry.probability = 100;
 
         // 下拉框
         var posEl = document.getElementById('wiEditPosition');
@@ -1863,7 +1864,7 @@ var WorldInfo = {
     // 3. 支持 priority 字段，低优先级的条目在预算耗尽时先被丢弃
     applyBudget: function(activated, contextLength) {
         // 计算实际token预算
-        var budgetPercent = this.settings.tokenBudget || 25;
+        var budgetPercent = this.settings.tokenBudget != null ? this.settings.tokenBudget : 25;
         var budgetCap = this.settings.tokenBudgetCap || 0;
         // 估算总上下文token数（如果没有提供，默认8000）
         var estimatedContextTokens = contextLength || 8000;

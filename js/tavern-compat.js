@@ -1287,6 +1287,8 @@ var GameMemory = {
         if (edits.length > 0 && typeof _ensureDataLinkage === 'function') {
             try { _ensureDataLinkage(); } catch (e) { console.warn('[mem解析] 数据联通同步失败:', e); }
         }
+        // 【P2-43修复】AI 修改记忆后失效 LTM 缓存，避免 AI 本轮继续用旧记忆
+        if (edits.length > 0) { self._markLtmDirty(); }
         // 【P1修复BUG-2.2】移除 GameLinker.refreshByDataChange：死代码空操作
         return { cleanedText: cleanedText, edits: edits };
     },
@@ -3670,6 +3672,10 @@ var GameMemory = {
         this._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };
         this._storytellingConfig = { dormantWarningThreshold: 20, dormantUrgentThreshold: 30, foreshadowWarningThreshold: 15, maxForeshadowings: 20, aiGuidanceEnabled: true };
         Storage.remove(Storage.KEYS.MEMORY); Storage.remove(Storage.KEYS.ENHANCED_MEMORY);
+        // 【P1-8修复】清空后重置所有缓存，避免新局看到旧局记忆
+        this._cachedInjection = null;
+        this._cachedInjectionTurn = -1;
+        this._markLtmDirty();
     },
 
     // 【P2清理】删除 getCharacterInfo（全项目零调用）
@@ -4936,6 +4942,12 @@ var MemoryManagerUI = {
     deleteLocation: function(name) {
         var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return;
         delete gm.tables.locations[name];
+        // 【P1-10修复】删除地点后同步 StateManager
+        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+            var rawLocs = StateManager.get('entities.locations') || [];
+            var smLocs = rawLocs.filter(function(l) { return l && l.name !== name; });
+            StateManager.set('entities.locations', smLocs, { silent: true });
+        }
         UI.afterMemoryChange('locations', 'worldSnapshot', '地点已删除');
     },
 

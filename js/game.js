@@ -3972,7 +3972,7 @@ async function requestNpcReply(playerText) {
                         // 【修复X5·阶段2-CSP】NPC聊天选项：原 onclick 内联（违反 CSP）+ escapeAttr 手动转义
                         // 改为 data-action 委托；参数用 JSON.stringify 安全嵌入 data-args，无需手动 escapeAttr
                         var choicesHtml = choices.map(function(ch) {
-                            return '<button class="npc-chat-choice" type="button" data-action="selectNpcChatChoice" data-args=\'' + JSON.stringify([ch]) + '\'>' + escapeHtml(ch) + '</button>';
+                            return '<button class="npc-chat-choice" type="button" data-action="selectNpcChatChoice" data-args="' + escapeHtml(JSON.stringify([ch])) + '">' + escapeHtml(ch) + '</button>';
                         }).join('');
                         document.getElementById('npcChatChoices').innerHTML =
                             choicesHtml;

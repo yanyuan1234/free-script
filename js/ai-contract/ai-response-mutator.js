@@ -300,6 +300,8 @@ const AIResponseMutator = {
     // 现统一在 _applyLocations 内合并两个来源（MERGE 语义：按 name 匹配，存在则更新 desc，新名追加），
     // legacy 路径在 _aiMutatorApplied=true 时跳过文本提取，避免双写。
     _applyLocations(data) {
+        // 【P1-12修复】收敛到 LocationMutator.mergeLocations，移除内联重复实现
+        if (typeof LocationMutator === 'undefined' || typeof LocationMutator.mergeLocations !== 'function') return;
         const aiLocations = data.locations || data.places;
         // 来源 1：AI 显式返回
         const fromAI = (Array.isArray(aiLocations) && aiLocations.length > 0) ? aiLocations : [];
@@ -324,31 +326,7 @@ const AIResponseMutator = {
             };
         }).filter(loc => loc.name && loc.name.length > 1 && !/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(loc.name));
         if (normalized.length === 0) return;
-        // 合并到现有列表（MERGE 语义：按 name 匹配，存在则更新 desc，新名追加）
-        var existing = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.locations') : null;
-        if (!Array.isArray(existing)) existing = [];
-        var nameToIdx = {};
-        existing.forEach(function(l, i) { if (l && l.name) nameToIdx[l.name] = i; });
-        var changed = false;
-        normalized.forEach(function(loc) {
-            if (nameToIdx.hasOwnProperty(loc.name)) {
-                // 更新现有：新 desc 优先，新 desc 为空则保留旧 desc
-                var idx = nameToIdx[loc.name];
-                var old = existing[idx];
-                var newDesc = loc.desc || old.desc || '';
-                if (old.desc !== newDesc || old.name !== loc.name) {
-                    existing[idx] = { name: loc.name, desc: newDesc };
-                    changed = true;
-                }
-            } else {
-                existing.push(loc);
-                nameToIdx[loc.name] = existing.length - 1;
-                changed = true;
-            }
-        });
-        if (changed) {
-            StateManager.set('entities.locations', existing, { silent: true });
-        }
+        LocationMutator.mergeLocations(normalized, { silent: true });
     },
 
     // 【P1修复BUG-010/011】收割关键世界观/角色信息到 permanentFacts
