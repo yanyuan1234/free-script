@@ -1419,10 +1419,13 @@ var PresetManager = {
             if (!lastCharMsg && history[i].role === 'assistant') lastCharMsg = history[i].content || '';
             if (lastUserMsg && lastCharMsg) break;
         }
+        var _origForPreset =
+            (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
+            (gameState && gameState._lastOriginalContent) || '';
         var macroEnv = {
             user: gameState.playerName || '玩家',
             char: firstChar ? (firstChar.name || '角色') : '角色',
-            original: gameState._lastOriginalContent || '',
+            original: _origForPreset,
             input: lastUserMsg,
             lastUserMessage: lastUserMsg,
             lastCharMessage: lastCharMsg,

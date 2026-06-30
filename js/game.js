@@ -841,7 +841,9 @@ function injectPresetGlobalVars() {
     // 注入其他常用的酒馆宏变量
     if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', (gameState && gameState.playerName) || '玩家');
     if (!MacroEngine.getGlobalVar('char')) MacroEngine.setGlobalVar('char', (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色');
-    MacroEngine.setGlobalVar('original', (gameState && gameState._lastOriginalContent) || '');
+    MacroEngine.setGlobalVar('original',
+        (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
+        (gameState && gameState._lastOriginalContent) || '');
     
     // === 象牙塔预设需要的额外变量 ===
     // user_input: 用户最新输入内容
@@ -1240,10 +1242,13 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 深度注入提示词 (depth >= 6) - 从聊天历史末尾计算位置（与酒馆一致）
             if (gameState && gameState._depthPrompts && Object.keys(gameState._depthPrompts).length > 0) {
+                var _origForDepth =
+                    (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
+                    (gameState && gameState._lastOriginalContent) || '';
                 var macroEnvForDepth = {
                     user: (gameState && gameState.playerName) || '玩家',
                     char: (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
-                    original: (gameState && gameState._lastOriginalContent) || ''
+                    original: _origForDepth
                 };
 
                 // 按depth从大到小排序，先插入大depth（靠近末尾），避免位置偏移
@@ -1332,10 +1337,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 对所有消息内容进行宏处理（兼容酒馆预设中的宏）
         // 传入 env 参数，使 {{original}} 等环境宏可用
+        var _origForMacro =
+            (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
+            (gameState && gameState._lastOriginalContent) || '';
         var macroEnv = {
             user: gameState.playerName || '玩家',
             char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
-            original: gameState._lastOriginalContent || ''
+            original: _origForMacro
         };
         messages.forEach(function(msg) {
             if (msg.content && typeof msg.content === 'string') {

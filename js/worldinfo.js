@@ -13,9 +13,10 @@ var WorldInfo = {
 
     _regexCache: {},
 
-    // 旧代码各读取点判断不一致（有的漏读 enabled===false），导致禁用后 UI 仍显示为启用
+    // 唯一真相源：仅通过 enabled 字段判断禁用状态
+    // convertEntry 已将所有旧格式(disable/disabled)统一转换为 enabled
     isEntryDisabled: function(entry) {
-        return !!(entry && (entry.enabled === false || entry.disable === true || entry.disabled === true));
+        return !!(entry && entry.enabled === false);
     },
     // 公共辅助函数：获取编辑面板中所有自定义checkbox元素
     _getEditCheckboxes: function() {
@@ -364,7 +365,7 @@ var WorldInfo = {
             var keys = Object.keys(book.entries || {});
             for (var i = 0; i < keys.length; i++) {
                 var e = book.entries[keys[i]];
-                if (!e.disable && !e.disabled && e.enabled !== false) enabledEntryCount++;
+                if (e && e.enabled !== false) enabledEntryCount++;
             }
 
         html += '<div class="pearl-card" style="padding:12px;cursor:pointer;opacity:' + (book.enabled ? '1' : '0.5') + ';border-left:3px solid ' + (book.enabled ? 'var(--success)' : 'var(--danger)') + ';" data-wi-book-id="' + book.id + '">' +
@@ -506,7 +507,7 @@ var WorldInfo = {
     }
 
     if (bookStats) {
-        var enabled = keys.filter(function(k) { return !entries[k].disable && !entries[k].disabled; }).length;
+        var enabled = keys.filter(function(k) { return entries[k] && entries[k].enabled !== false; }).length;
         var disabled = keys.length - enabled;
         var filterText = filter === 'enabled' ? '（已启用）' : (filter === 'disabled' ? '（已禁用）' : '');
         bookStats.textContent = '共 ' + keys.length + ' 条' + filterText + '，已启用 ' + enabled + ' / 已禁用 ' + disabled;
@@ -857,9 +858,10 @@ var WorldInfo = {
         constant: !!raw.constant,
         selective: !!raw.selective,
         order: raw.order || raw.insertion_order || 100,
-        // 统一使用enabled字段，不再同时维护disable
+        // 统一使用enabled字段，不再同时维护disable/disabled
         // enabled=true表示启用，enabled=false表示禁用
-        enabled: raw.enabled !== false && raw.disable !== true,
+        // 兼容三种输入格式：raw.enabled / raw.disable / raw.disabled
+        enabled: raw.enabled !== false && raw.disable !== true && raw.disabled !== true,
         position: position,
         group: raw.group || ext.group || '',
         groupOverride: !!raw.groupOverride || !!raw.group_override || !!ext.group_override,

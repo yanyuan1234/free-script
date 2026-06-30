@@ -5,8 +5,9 @@
 
 // 旧代码：output-sanitizer 用 7 标签（硬编码在 7 个 replace 里），response-parser 用 5 标签数组
 // 现统一为常量，两处引用，消除标签集不一致隐患
-const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT'];
+const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
 const OutputSanitizer = {
+    THINKING_TAGS: THINKING_TAGS,
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
         let s = text;

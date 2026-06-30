@@ -7,7 +7,7 @@ const ResponseParser = {
         options = options || {};
         const result = {
             success: false,
-            data: AIOutputSchema ? AIOutputSchema.getDefaultOutput() : {},
+            data: (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.getDefaultOutput() : {},
             storyText: '',
             mems: [],
             warnings: [],
@@ -35,7 +35,7 @@ const ResponseParser = {
         let data = this._tryDirectJSON(effectiveReply);
         if (data) {
             result.success = true;
-            result.data = AIOutputSchema ? AIOutputSchema.normalize(data) : data;
+            result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(data) : data;
             result.fallbackLevel = 0;
             result.storyText = result.data.story;
             this._postExtractMems(result);
@@ -46,7 +46,7 @@ const ResponseParser = {
         data = this._tryCodeBlockJSON(effectiveReply);
         if (data) {
             result.success = true;
-            result.data = AIOutputSchema ? AIOutputSchema.normalize(data) : data;
+            result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(data) : data;
             result.fallbackLevel = 1;
             result.storyText = result.data.story;
             result.warnings.push('parsed from code block');
@@ -55,14 +55,14 @@ const ResponseParser = {
         }
 
         // Level 2: 清理后 JSON + 状态机兜底
-        const sanitized = OutputSanitizer ? OutputSanitizer.sanitizeJSON(effectiveReply) : effectiveReply;
+        const sanitized = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer) ? OutputSanitizer.sanitizeJSON(effectiveReply) : effectiveReply;
         data = this._tryDirectJSON(sanitized);
         if (!data) {
             data = this._tryRobustJSON(sanitized);
         }
         if (data) {
             result.success = true;
-            result.data = AIOutputSchema ? AIOutputSchema.normalize(data) : data;
+            result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(data) : data;
             result.fallbackLevel = 2;
             result.storyText = result.data.story;
             result.warnings.push('parsed via robust JSON extraction');
@@ -74,7 +74,7 @@ const ResponseParser = {
         const memResult = this._tryMemTags(effectiveReply);
         if (memResult && memResult.storyText) {
             result.success = true;
-            result.data = AIOutputSchema ? AIOutputSchema.normalize(memResult) : memResult;
+            result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(memResult) : memResult;
             result.fallbackLevel = 3;
             result.storyText = memResult.storyText;
             result.mems = memResult.mems || [];
@@ -85,7 +85,7 @@ const ResponseParser = {
         // Level 4: plain text fallback
         const plain = this._tryPlainText(effectiveReply);
         result.success = !!plain.storyText;
-        result.data = AIOutputSchema ? AIOutputSchema.normalize(plain) : plain;
+        result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(plain) : plain;
         result.fallbackLevel = 4;
         result.storyText = plain.storyText;
         result.warnings.push('parsed as plain text');
@@ -122,10 +122,7 @@ const ResponseParser = {
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;
-
-        // 旧代码：本地 tags 数组仅 5 标签，fallback/Step2/Step4 用此数组会漏处理 ECoT/💭
-        // 现统一引用常量，fallback 与截断检测都覆盖全部 7 标签
-        var tags = (typeof THINKING_TAGS !== 'undefined') ? THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis'];
+        var tags = OutputSanitizer && OutputSanitizer.THINKING_TAGS ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking) {
             s = OutputSanitizer.stripThinking(s);
         } else {
@@ -402,7 +399,7 @@ const ResponseParser = {
 
     _tryPlainText(raw) {
         if (!raw || typeof raw !== 'string') return { storyText: '' };
-        const cleaned = OutputSanitizer ? OutputSanitizer.sanitizeStory(raw) : raw;
+        const cleaned = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer) ? OutputSanitizer.sanitizeStory(raw) : raw;
         const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
         let data = null;
         if (jsonMatch) {
@@ -430,7 +427,7 @@ const ResponseParser = {
                 const jsonEnd = cleaned.lastIndexOf('}');
                 if (jsonStart !== -1) {
                     story = (cleaned.slice(0, jsonStart) + cleaned.slice(jsonEnd + 1)).trim();
-                    story = OutputSanitizer ? OutputSanitizer.sanitizeStory(story) : story;
+                    story = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer) ? OutputSanitizer.sanitizeStory(story) : story;
                 }
             }
             data.story = story || '';

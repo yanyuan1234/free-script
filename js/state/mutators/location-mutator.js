@@ -4,6 +4,13 @@
 // 任何地点变更必须经由此 Mutator，与 Character/Bag/Quest 等变更有同等架构地位
 // ========================================
 const LocationMutator = {
+    _STOP_WORDS: ['阳光', '依靠触觉', '空气', '风', '雨', '雪', '味道', '声音', '感觉', '情绪'],
+
+    _isStopWord(name) {
+        if (!name) return false;
+        return LocationMutator._STOP_WORDS.indexOf(name) !== -1;
+    },
+
     // 设置完整地点列表
     setLocations(locations, options) {
         const arr = Array.isArray(locations) ? locations : (locations ? [locations] : []);

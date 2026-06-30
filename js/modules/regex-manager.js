@@ -17,6 +17,11 @@ var RegexManager = {
     // 首次加载含正则的预设时弹窗确认，确认后记录在此，后续不再弹窗
     _presetAllowedRegex: {},
 
+    isScriptEnabled: function(script) {
+        if (!script) return false;
+        return script.enabled !== false && script.disabled !== true;
+    },
+
     // 初始化
     init: function() {
         this.load();
@@ -307,7 +312,7 @@ renderGroupList: function() {
 
     // 全局正则分组
     var globalEnabled = 0;
-    this.scripts.forEach(function(s) { if (s.enabled !== false) globalEnabled++; });
+    this.scripts.forEach(function(s) { if (self.isScriptEnabled(s)) globalEnabled++; });
     groups.push({
         type: 'global',
         name: '全局正则',
@@ -321,7 +326,7 @@ if (PresetManager && PresetManager.presets) {
     PresetManager.presets.forEach(function(preset, idx) {
         if (preset.regexScripts && preset.regexScripts.length > 0) {
             var enabled = 0;
-            preset.regexScripts.forEach(function(s) { if (s.disabled !== true && s.enabled !== false) enabled++; });
+            preset.regexScripts.forEach(function(s) { if (self.isScriptEnabled(s)) enabled++; });
             var isActive = idx === PresetManager.currentPresetIndex;
             groups.push({
                 type: 'preset',
@@ -401,15 +406,15 @@ renderDetailList: function() {
     }
 
 var enabledCount = 0;
+const self = this;
 scripts.forEach(function(s) {
-    if (s.enabled !== false && s.disabled !== true) enabledCount++;
+    if (self.isScriptEnabled(s)) enabledCount++;
 });
 if (statsEl) statsEl.textContent = enabledCount + '/' + scripts.length + ' 已启用';
 
 var html = '';
-const self = this;
 scripts.forEach(function(script, idx) {
-    var isEnabled = script.enabled !== false && script.disabled !== true;
+    var isEnabled = self.isScriptEnabled(script);
     var placementText = [];
     if (script.applyInput) placementText.push('输入');
     if (script.applyOutput) placementText.push('输出');
@@ -925,7 +930,7 @@ apply: function(text, placement, messageIndex) {
     // 使用 getAllScripts() 获取全局正则 + 当前预设正则
     var allScripts = this.getAllScripts();
     allScripts.forEach(function(script) {
-        if (!script.enabled) return;
+        if (!self.isScriptEnabled(script)) return;
 
         // 检查是否应该应用于当前位置
         // 构建 placement 集合（去重）

@@ -324,7 +324,7 @@ const AIResponseMutator = {
                 name: String(loc.name || loc.title || '').trim(),
                 desc: String(loc.desc || loc.description || '').trim()
             };
-        }).filter(loc => loc.name && loc.name.length > 1 && !/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(loc.name));
+        }).filter(loc => loc.name && loc.name.length > 1 && !(typeof LocationMutator !== 'undefined' && LocationMutator._isStopWord && LocationMutator._isStopWord(loc.name)));
         if (normalized.length === 0) return;
         LocationMutator.mergeLocations(normalized, { silent: true });
     },
@@ -360,8 +360,7 @@ const AIResponseMutator = {
                 const name = String(loc.name).trim();
                 const desc = String(loc.desc || loc.description || '').trim();
                 if (name.length < 2) return;
-                // 跳过明显非地名（情绪/感觉词）
-                if (/^(阳光|依靠触觉|空气|风|雨|雪|味道|声音|感觉|情绪)$/.test(name)) return;
+                if (typeof LocationMutator !== 'undefined' && LocationMutator._isStopWord && LocationMutator._isStopWord(name)) return;
                 const content = desc ? (name + '：' + desc) : name;
                 EnhancedMemory.upsertPermanentFact('worldPlaces', {
                     content: content,
@@ -600,19 +599,8 @@ const AIResponseMutator = {
                 try { _pushRelationshipsToGM(); } catch (e) {
                     console.warn('[AIResponseMutator] _pushRelationshipsToGM 失败:', e && e.message);
                 }
-            } else if (typeof window !== 'undefined' && window.GameMemory && window.GameMemory.tables) {
-                // 兜底：直接推送（与 core.js _pushRelationshipsToGM 逻辑一致）
-                var _existingForGM = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.relationships') || []) : [];
-                if (!window.GameMemory.tables.relationships) window.GameMemory.tables.relationships = {};
-                _existingForGM.forEach(function(r) {
-                    if (!r || !r.from || !r.to) return;
-                    var key = r.from + '->' + r.to;
-                    if (window.GameMemory.tables.relationships[key]) {
-                        Object.assign(window.GameMemory.tables.relationships[key], r);
-                    } else {
-                        window.GameMemory.tables.relationships[key] = Object.assign({}, r);
-                    }
-                });
+            } else {
+                throw new Error('[AIResponseMutator] _pushRelationshipsToGM 未定义，请确保 core.js 已加载');
             }
         }
     },

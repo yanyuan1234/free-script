@@ -35,6 +35,15 @@
 
 var MAX_FORUM_POSTS = 8;
 
+var MAIN_NAV_TABS = [
+    { page: 'storyPage', icon: 'icon-book', label: '剧情' },
+    { page: 'playerPage', icon: 'icon-user', label: '个人' },
+    { page: 'npcPage', icon: 'icon-users', label: '人际' },
+    { page: 'logPage', icon: 'icon-grid', label: '日志' },
+    { page: 'memoryPage', icon: 'icon-sparkles', label: '记忆' },
+    { page: 'recapPage', icon: 'icon-clock', label: '回顾' }
+];
+
 
 // 委托器只支持 window[funcName]，不支持 UI.hideModal 这种对象方法或 DOM 链式调用，故此处包装
 function hideModalByName(name) {
@@ -82,6 +91,12 @@ function triggerImportFile() {
 // 仅抽"纯文字 + 可选 hint"的简单空状态；带 SVG icon 的复杂空状态保留原样（避免参数爆炸）
 function renderEmptyState(msg, hint) {
     var html = '<div class="empty-state"><p>' + escapeHtml(msg || '暂无内容') + '</p>';
+    if (hint) html += '<p style="font-size:12px;margin-top:4px;">' + escapeHtml(hint) + '</p>';
+    return html + '</div>';
+}
+
+function renderSvgEmptyState(iconSvg, title, hint) {
+    var html = '<div class="empty-state"><div class="empty-state-icon">' + (iconSvg || '') + '</div><p>' + escapeHtml(title || '暂无内容') + '</p>';
     if (hint) html += '<p style="font-size:12px;margin-top:4px;">' + escapeHtml(hint) + '</p>';
     return html + '</div>';
 }
@@ -1362,37 +1377,7 @@ function renderLogPage() {
         logSubBackBtn._hasClick = true;
     }
 
-    renderNavBar('logNav', [{
-            page: 'storyPage',
-            icon: 'icon-book',
-            label: '剧情'
-        },
-        {
-            page: 'playerPage',
-            icon: 'icon-user',
-            label: '个人'
-        },
-        {
-            page: 'npcPage',
-            icon: 'icon-users',
-            label: '人际'
-        },
-        {
-            page: 'logPage',
-            icon: 'icon-grid',
-            label: '日志'
-        },
-        {
-            page: 'memoryPage',
-            icon: 'icon-sparkles',
-            label: '记忆'
-        },
-        {
-            page: 'recapPage',
-            icon: 'icon-clock',
-            label: '回顾'
-        }
-    ], 3);
+    renderNavBar('logNav', MAIN_NAV_TABS, 3);
 }
 // 日志子页面渲染函数映射
 // 原代码在这里引用了 renderChatPage 等函数，但它们在下一个 script 块中才定义
@@ -3305,37 +3290,7 @@ function renderPlayerPage() {
 
         var relNetEl = document.getElementById('relationNet');
         if (relNetEl) relNetEl.innerHTML = '<p class="text-soft" style="font-size:13px;">暂无关系记录</p>';
-        renderNavBar('playerNav', [{
-                page: 'storyPage',
-                icon: 'icon-book',
-                label: '剧情'
-            },
-            {
-                page: 'playerPage',
-                icon: 'icon-user',
-                label: '个人'
-            },
-            {
-                page: 'npcPage',
-                icon: 'icon-users',
-                label: '人际'
-            },
-            {
-                page: 'logPage',
-                icon: 'icon-grid',
-                label: '日志'
-            },
-            {
-                page: 'memoryPage',
-                icon: 'icon-sparkles',
-                label: '记忆'
-            },
-            {
-                page: 'recapPage',
-                icon: 'icon-clock',
-                label: '回顾'
-            }
-        ], 1);
+        renderNavBar('playerNav', MAIN_NAV_TABS, 1);
         return;
     }
 
@@ -3425,37 +3380,7 @@ function renderPlayerPage() {
         }
     }
 
-    renderNavBar('playerNav', [{
-            page: 'storyPage',
-            icon: 'icon-book',
-            label: '剧情'
-        },
-        {
-            page: 'playerPage',
-            icon: 'icon-user',
-            label: '个人'
-        },
-        {
-            page: 'npcPage',
-            icon: 'icon-users',
-            label: '人际'
-        },
-        {
-            page: 'logPage',
-            icon: 'icon-grid',
-            label: '日志'
-        },
-        {
-            page: 'memoryPage',
-            icon: 'icon-sparkles',
-            label: '记忆'
-        },
-        {
-            page: 'recapPage',
-            icon: 'icon-clock',
-            label: '回顾'
-        }
-    ], 1);
+    renderNavBar('playerNav', MAIN_NAV_TABS, 1);
 }
 // --- 背包渲染 ---
 function renderBag(items) {
@@ -3605,37 +3530,7 @@ function renderRecapPage() {
                 '<div class="timeline-item-summary">' + escapeHtml(summary) + '...</div></div>';
         }).join('') + '</div>';
     }
-    renderNavBar('recapNav', [{
-            page: 'storyPage',
-            icon: 'icon-book',
-            label: '剧情'
-        },
-        {
-            page: 'playerPage',
-            icon: 'icon-user',
-            label: '个人'
-        },
-        {
-            page: 'npcPage',
-            icon: 'icon-users',
-            label: '人际'
-        },
-        {
-            page: 'logPage',
-            icon: 'icon-grid',
-            label: '日志'
-        },
-        {
-            page: 'memoryPage',
-            icon: 'icon-sparkles',
-            label: '记忆'
-        },
-        {
-            page: 'recapPage',
-            icon: 'icon-clock',
-            label: '回顾'
-        }
-    ], 5);
+    renderNavBar('recapNav', MAIN_NAV_TABS, 5);
 }
 function showRecapDetail(idx) {
     var stories = getStoryList();
@@ -5051,37 +4946,7 @@ function _restoreGameRender() {
         setWaiting(false);
 
         // 渲染导航栏
-        renderNavBar('gameNav', [{
-                page: 'storyPage',
-                icon: 'icon-book',
-                label: '剧情'
-            },
-            {
-                page: 'playerPage',
-                icon: 'icon-user',
-                label: '个人'
-            },
-            {
-                page: 'npcPage',
-                icon: 'icon-users',
-                label: '人际'
-            },
-            {
-                page: 'logPage',
-                icon: 'icon-grid',
-                label: '日志'
-            },
-            {
-                page: 'memoryPage',
-                icon: 'icon-sparkles',
-                label: '记忆'
-            },
-            {
-                page: 'recapPage',
-                icon: 'icon-clock',
-                label: '回顾'
-            }
-        ], 0);
+        renderNavBar('gameNav', MAIN_NAV_TABS, 0);
     } catch (e) {
         console.error('_restoreGameRender 渲染失败:', e);
         UI.toast('存档数据已加载，但界面恢复失败');
@@ -7416,37 +7281,7 @@ function renderNpcPage() {
     // 仅在导航栏未渲染过时才重建
     var npcNav = document.getElementById('npcNav');
     if (npcNav && !npcNav._rendered) {
-        renderNavBar('npcNav', [{
-                page: 'storyPage',
-                icon: 'icon-book',
-                label: '剧情'
-            },
-            {
-                page: 'playerPage',
-                icon: 'icon-user',
-                label: '个人'
-            },
-            {
-                page: 'npcPage',
-                icon: 'icon-users',
-                label: '人际'
-            },
-            {
-                page: 'logPage',
-                icon: 'icon-grid',
-                label: '日志'
-            },
-            {
-                page: 'memoryPage',
-                icon: 'icon-sparkles',
-                label: '记忆'
-            },
-            {
-                page: 'recapPage',
-                icon: 'icon-clock',
-                label: '回顾'
-            }
-        ], 2);
+        renderNavBar('npcNav', MAIN_NAV_TABS, 2);
         npcNav._rendered = true;
     }
 }

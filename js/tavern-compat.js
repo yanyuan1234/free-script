@@ -4002,6 +4002,23 @@ var MemoryManagerUI = {
     isVisible: false,
     currentTab: 'overview',
 
+    _mergeRuntimeFields: function(table, oldName, newName, data, fields) {
+        if (!table || !newName || !data || !Array.isArray(fields)) return;
+        if (oldName && oldName !== newName && table[oldName]) {
+            delete table[oldName];
+        }
+        if (!table[newName]) {
+            table[newName] = { name: newName };
+        }
+        var entry = table[newName];
+        for (var i = 0; i < fields.length; i++) {
+            var f = fields[i];
+            if (data.hasOwnProperty(f)) {
+                entry[f] = data[f];
+            }
+        }
+    },
+
     _escAttr: function(str) { return escapeAttr(str); },
 
     // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline/editOutline/refresh/detail/search/resolve
@@ -4487,22 +4504,8 @@ var MemoryManagerUI = {
             }
             // Mutator 成功 → 适配器已 MERGE 实体字段（name/title/relation/mood/location/outfit/favorability/status）到 gm.tables[newName]
             // 现在补齐运行时字段（locked/history/gameTime/accessCount/lastChangedTurn）并处理 rename
-            if (oldName !== newName && gm.tables.characters[oldName]) {
-                delete gm.tables.characters[oldName];
-            }
-            // 适配器创建的新条目只有基本字段，需补齐运行时字段
-            if (!gm.tables.characters[newName]) {
-                gm.tables.characters[newName] = { name: newName };
-            }
-            var gmEntry = gm.tables.characters[newName];
-            gmEntry.history = _newCharData.history;
-            gmEntry.gameTime = _newCharData.gameTime;
-            gmEntry.accessCount = _newCharData.accessCount;
-            gmEntry.lastChangedTurn = _newCharData.lastChangedTurn;
-            gmEntry.locked = _newCharData.locked;
-            // outfit/status 虽在适配器字段映射中，但用户编辑的值需显式覆盖（保险）
-            gmEntry.outfit = _newCharData.outfit;
-            gmEntry.status = _newCharData.status;
+            self._mergeRuntimeFields(gm.tables.characters, oldName, newName, _newCharData,
+                ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
         } else if (typeof gameState !== 'undefined' && gameState.allCharacters) {
             // legacy 兜底（无 StateManager 环境）
             if (oldName !== newName) delete gm.tables.characters[oldName];
@@ -4576,17 +4579,8 @@ var MemoryManagerUI = {
             }
             // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.characters[name]
             // 补齐运行时字段
-            if (!gm.tables.characters[name]) {
-                gm.tables.characters[name] = { name: name };
-            }
-            var gmNewChar = gm.tables.characters[name];
-            gmNewChar.history = _newCharData.history;
-            gmNewChar.gameTime = _newCharData.gameTime;
-            gmNewChar.accessCount = _newCharData.accessCount;
-            gmNewChar.lastChangedTurn = _newCharData.lastChangedTurn;
-            gmNewChar.locked = _newCharData.locked;
-            gmNewChar.outfit = _newCharData.outfit;
-            gmNewChar.status = _newCharData.status;
+            self._mergeRuntimeFields(gm.tables.characters, null, name, _newCharData,
+                ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
         } else if (typeof gameState !== 'undefined') {
             // legacy 兜底
             gm.tables.characters[name] = _newCharData;
@@ -4686,22 +4680,8 @@ var MemoryManagerUI = {
             }
             // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[newName]
             // 补齐运行时字段（accessCount/gameTime）并处理 rename
-            if (oldName !== newName && gm.tables.items[oldName]) {
-                delete gm.tables.items[oldName];
-            }
-            if (!gm.tables.items[newName]) {
-                gm.tables.items[newName] = { name: newName };
-            }
-            var gmItemEntry = gm.tables.items[newName];
-            gmItemEntry.qty = _newItemData.qty;
-            gmItemEntry.unit = _newItemData.unit;
-            gmItemEntry.rarity = _newItemData.rarity;
-            gmItemEntry.desc = _newItemData.desc;
-            gmItemEntry.obtainedTurn = _newItemData.obtainedTurn;
-            gmItemEntry.lastChangedTurn = _newItemData.lastChangedTurn;
-            gmItemEntry.gameTime = _newItemData.gameTime;
-            gmItemEntry.accessCount = _newItemData.accessCount;
-            gmItemEntry.history = _newItemData.history;
+            self._mergeRuntimeFields(gm.tables.items, oldName, newName, _newItemData,
+                ['qty', 'unit', 'rarity', 'desc', 'obtainedTurn', 'lastChangedTurn', 'gameTime', 'accessCount', 'history']);
         } else if (typeof _syncItemsToBag === 'function') {
             // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
             if (oldName !== newName) delete gm.tables.items[oldName];
@@ -4898,18 +4878,8 @@ var MemoryManagerUI = {
             }
             // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[newName]
             // 补齐运行时字段（locked/lastChangedTurn）并处理 rename
-            if (newName !== oldName && gm.tables.locations[oldName]) {
-                delete gm.tables.locations[oldName];
-            }
-            if (!gm.tables.locations[newName]) {
-                gm.tables.locations[newName] = { name: newName };
-            }
-            var gmLocEntry = gm.tables.locations[newName];
-            gmLocEntry.desc = _newLocData.desc;
-            gmLocEntry.features = _newLocData.features;
-            gmLocEntry.charactersPresent = _newLocData.charactersPresent;
-            gmLocEntry.lastChangedTurn = _newLocData.lastChangedTurn;
-            gmLocEntry.locked = _newLocData.locked;
+            self._mergeRuntimeFields(gm.tables.locations, oldName, newName, _newLocData,
+                ['desc', 'features', 'charactersPresent', 'lastChangedTurn', 'locked']);
         } else {
             // legacy 兜底（无 StateManager 环境）
             if (newName !== oldName) delete gm.tables.locations[oldName];
