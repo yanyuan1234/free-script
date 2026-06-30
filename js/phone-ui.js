@@ -6948,12 +6948,18 @@ function deleteNpcChat() {
 function toggleEmojiPanel() {
     var panel = document.getElementById('emojiPanel');
     if (!panel) return;
+    var trigger = document.getElementById('chatEmojiBtn');
+    // 【P3-4.4·阶段10】同步 aria-expanded/aria-hidden，供屏幕阅读器朗读展开状态
     if (panel.classList.contains('open')) {
         panel.classList.remove('open');
+        panel.setAttribute('aria-hidden', 'true');
+        if (trigger) trigger.setAttribute('aria-expanded', 'false');
         return;
     }
     renderEmojiPanel();
     panel.classList.add('open');
+    panel.setAttribute('aria-hidden', 'false');
+    if (trigger) trigger.setAttribute('aria-expanded', 'true');
 }
 function renderEmojiPanel() {
     var panel = document.getElementById('emojiPanel');

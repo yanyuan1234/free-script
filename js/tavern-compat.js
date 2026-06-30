@@ -2,23 +2,24 @@
 // 旧代码：5 处重复定义同样的 typeMap（3 处反向 oldType→newKey、2 处正向 newKey→oldType）
 // 现统一为两个常量，所有调用点引用，消除键名/键值拼写不一致隐患
 // 反向：旧 worldAnchor.type（snake_case）→ permanentFacts 的 newKey（camelCase）
-var _FACT_OLDTYPE_TO_NEWKEY = {
+// 【P3-4.2·阶段10】Object.freeze 防止运行时意外 mutate 映射表
+var _FACT_OLDTYPE_TO_NEWKEY = Object.freeze({
     pc_identity: 'pcIdentity',
     setting: 'settings',
     world_rule: 'worldRules',
     npc_profile: 'npcProfiles',
     promise: 'promises',
     world_place: 'worldPlaces'
-};
+});
 // 正向：permanentFacts 的 newKey（camelCase）→ 旧 worldAnchor.type（snake_case）
-var _FACT_NEWKEY_TO_OLDTYPE = {
+var _FACT_NEWKEY_TO_OLDTYPE = Object.freeze({
     pcIdentity: 'pc_identity',
     settings: 'setting',
     worldRules: 'world_rule',
     npcProfiles: 'npc_profile',
     promises: 'promise',
     worldPlaces: 'world_place'
-};
+});
 
 var TavernHelperCompat = {
     _slashCommands: {},
