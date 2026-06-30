@@ -372,14 +372,15 @@ var PresetManager = {
         }
 
     // 构建参数标签
+    // 【P1-21·阶段9】params.* 来自用户导入的预设文件，原直接 innerHTML 插值（XSS 风险），统一 escapeHtml
     var tags = [];
-    if (params.temperature != null) tags.push('<span style="background:#8b5cf6;color:#fff;">Temp:' + params.temperature + '</span>');
-    if (params.top_p != null) tags.push('<span style="background:#6366f1;color:#fff;">TopP:' + params.top_p + '</span>');
-    if (params.top_k && params.top_k > 0) tags.push('<span style="background:#f59e0b;color:#fff;">TopK:' + params.top_k + '</span>');
-    if (params.min_p && params.min_p > 0) tags.push('<span style="background:#10b981;color:#fff;">MinP:' + params.min_p + '</span>');
-    if (params.frequency_penalty != null && params.frequency_penalty !== 0) tags.push('<span style="background:var(--danger);color:#fff;">FreqPen:' + params.frequency_penalty + '</span>');
-    if (params.presence_penalty != null && params.presence_penalty !== 0) tags.push('<span style="background:#0ea5e9;color:#fff;">PresPen:' + params.presence_penalty + '</span>');
-    if (params.max_tokens) tags.push('<span style="background:#64748b;color:#fff;">Max:' + params.max_tokens + '</span>');
+    if (params.temperature != null) tags.push('<span style="background:#8b5cf6;color:#fff;">Temp:' + escapeHtml(params.temperature) + '</span>');
+    if (params.top_p != null) tags.push('<span style="background:#6366f1;color:#fff;">TopP:' + escapeHtml(params.top_p) + '</span>');
+    if (params.top_k && params.top_k > 0) tags.push('<span style="background:#f59e0b;color:#fff;">TopK:' + escapeHtml(params.top_k) + '</span>');
+    if (params.min_p && params.min_p > 0) tags.push('<span style="background:#10b981;color:#fff;">MinP:' + escapeHtml(params.min_p) + '</span>');
+    if (params.frequency_penalty != null && params.frequency_penalty !== 0) tags.push('<span style="background:var(--danger);color:#fff;">FreqPen:' + escapeHtml(params.frequency_penalty) + '</span>');
+    if (params.presence_penalty != null && params.presence_penalty !== 0) tags.push('<span style="background:#0ea5e9;color:#fff;">PresPen:' + escapeHtml(params.presence_penalty) + '</span>');
+    if (params.max_tokens) tags.push('<span style="background:#64748b;color:#fff;">Max:' + escapeHtml(params.max_tokens) + '</span>');
     if (promptCount > 0) tags.push('<span style="background:var(--accent);color:#fff;">提示词:' + enabledPromptCount + '/' + promptCount + '</span>');
 
     var tagsHtml = tags.length > 0
@@ -942,7 +943,8 @@ var PresetManager = {
         if (params.presence_penalty != null && params.presence_penalty !== 0) paramParts.push('Pres Pen: ' + params.presence_penalty);
         if (params.max_tokens) paramParts.push('Max Tokens: ' + params.max_tokens);
         if (params.max_context) paramParts.push('Max Context: ' + params.max_context);
-        paramsEl.innerHTML = '<div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">' + paramParts.join(' &nbsp;|&nbsp; ') + '</div>';
+        // 【P1-21·阶段9】params.* 来自用户预设，统一 escapeHtml 防止 XSS
+        paramsEl.innerHTML = '<div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">' + escapeHtml(paramParts.join(' &nbsp;|&nbsp; ')) + '</div>';
 
         // 渲染提示词条目列表
         this._renderPromptList();
@@ -1015,7 +1017,7 @@ var PresetManager = {
         '<div style="flex:1;min-width:0;" data-prompt-view="' + i + '">' +
         '<div style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + escapeHtml(name) + '</div>' +
         '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">' +
-        '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + roleColor + ';color:#fff;">' + roleName + '</span>' +
+        '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:' + roleColor + ';color:#fff;">' + escapeHtml(roleName) + '</span>' +
         '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:var(--bg);color:var(--text-tertiary);border:1px solid var(--border);">' + posLabel + '</span>' +
         (p.marker ? '<span style="font-size:9px;padding:1px 5px;border-radius:3px;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;">标记</span>' : '') +
         '</div>' +

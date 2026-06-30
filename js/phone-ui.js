@@ -3045,8 +3045,10 @@ function renderDefaultPage(type) {
             // 修复：AI 返回的字段全部 escapeHtml，防止 XSS
             switch (mod.type) {
                 case 'text':
-                    inner = '<div style="font-size:14px;line-height:1.7;">' + parseMarkdown(mod
-                        .content || '') + '</div>';
+                    // 【P1-21·阶段9】补 escapeHtml：原注释声称"AI 返回的字段全部 escapeHtml"
+                    // 但实际未 escape，与同文件 1823/1878/3107 处的 sibling 实现不一致（XSS 漏洞）
+                    inner = '<div style="font-size:14px;line-height:1.7;">' + parseMarkdown(escapeHtml(mod
+                        .content || '')) + '</div>';
                     break;
                 case 'list':
                     inner = (mod.items || []).map(function(it) {
