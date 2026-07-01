@@ -2,6 +2,57 @@
 // AI 响应变更器
 // 将 ResponseParser 解析结果写入 StateManager
 // ========================================
+
+// 数据持久化校验规则表：每项 { minTurn, isEmpty, msg }
+// minTurn: 触发该校验的最小回合数；isEmpty(): 返回 true 表示该项数据缺失；msg: 警告文案
+// 驱动 _validatePersistence 的 5 项关键数据完整性检查，收口重复的 if (turn>=N && empty) push(msg) 模式
+const _PERSISTENCE_RULES = [
+    {
+        minTurn: 1,
+        isEmpty: function() {
+            var p = StateManager.get('entities.player') || {};
+            return !String(p.identity || '').trim();
+        },
+        msg: '主角身份为空（identity 缺失），个人页将显示"身份待定"'
+    },
+    {
+        minTurn: 1,
+        isEmpty: function() {
+            var p = StateManager.get('entities.player') || {};
+            var s = Array.isArray(p.stats) ? p.stats : [];
+            return s.length === 0;
+        },
+        msg: '主角属性为空（stats 缺失），个人页将显示"属性将由AI动态生成"'
+    },
+    {
+        minTurn: 2,
+        isEmpty: function() {
+            var c = StateManager.get('entities.characters');
+            return (Array.isArray(c) ? c.length : 0) === 0;
+        },
+        msg: '角色列表为空（0 NPC），人际页将显示"暂无角色"'
+    },
+    {
+        minTurn: 2,
+        isEmpty: function() {
+            var cur = StateManager.get('entities.currency');
+            var bag = StateManager.get('entities.bag');
+            var bagCount = Array.isArray(bag) ? bag.length : 0;
+            var hasCurrency = (cur != null && !isNaN(cur) && cur >= 0);
+            return !hasCurrency && bagCount === 0;
+        },
+        msg: '货币与物品均为空，背包页将显示"背包空空如也"'
+    },
+    {
+        minTurn: 2,
+        isEmpty: function() {
+            var q = StateManager.get('entities.quests');
+            return (Array.isArray(q) ? q.length : 0) === 0;
+        },
+        msg: '任务列表为空（0 quests），任务页仅显示默认任务'
+    }
+];
+
 const AIResponseMutator = {
     // 应用解析结果到状态
     apply(parsed, options) {
@@ -84,7 +135,7 @@ const AIResponseMutator = {
 
 
     // 每回合结束后检查关键数据完整性，缺失时发出控制台警告
-    // 校验项：主角身份/属性、角色列表、货币/物品、任务列表
+    // 校验项由 _PERSISTENCE_RULES 驱动：主角身份/属性、角色列表、货币/物品、任务列表
     // 仅警告，不强制修复（修复由各 mutator 的 best-effort 处理）
     _validatePersistence(data, result) {
         if (typeof StateManager === 'undefined' || !StateManager.get) return;
@@ -93,39 +144,11 @@ const AIResponseMutator = {
         const strictMode = turn >= 1;
         const warnings = [];
 
-        // 1. 主角身份：turn >= 1 时应有 identity
-        const player = StateManager.get('entities.player') || {};
-        const playerIdentity = String(player.identity || '').trim();
-        if (strictMode && !playerIdentity) {
-            warnings.push('主角身份为空（identity 缺失），个人页将显示"身份待定"');
-        }
-        // 2. 主角属性：turn >= 1 时 stats 应非空
-        const playerStats = Array.isArray(player.stats) ? player.stats : [];
-        if (strictMode && playerStats.length === 0) {
-            warnings.push('主角属性为空（stats 缺失），个人页将显示"属性将由AI动态生成"');
-        }
-
-        // 3. 角色列表：turn >= 2 时应至少有 1 个 NPC
-        const characters = StateManager.get('entities.characters');
-        const charCount = Array.isArray(characters) ? characters.length : 0;
-        if (turn >= 2 && charCount === 0) {
-            warnings.push('角色列表为空（0 NPC），人际页将显示"暂无角色"');
-        }
-
-        // 4. 货币与物品：turn >= 2 时应至少有货币或物品
-        const currency = StateManager.get('entities.currency');
-        const bag = StateManager.get('entities.bag');
-        const bagCount = Array.isArray(bag) ? bag.length : 0;
-        const hasCurrency = (currency != null && !isNaN(currency) && currency >= 0);
-        if (turn >= 2 && !hasCurrency && bagCount === 0) {
-            warnings.push('货币与物品均为空，背包页将显示"背包空空如也"');
-        }
-
-        // 5. 任务列表：turn >= 2 时应至少有 1 个任务
-        const quests = StateManager.get('entities.quests');
-        const questCount = Array.isArray(quests) ? quests.length : 0;
-        if (turn >= 2 && questCount === 0) {
-            warnings.push('任务列表为空（0 quests），任务页仅显示默认任务');
+        for (let i = 0; i < _PERSISTENCE_RULES.length; i++) {
+            const rule = _PERSISTENCE_RULES[i];
+            if (turn >= rule.minTurn && rule.isEmpty()) {
+                warnings.push(rule.msg);
+            }
         }
 
         // 输出汇总警告

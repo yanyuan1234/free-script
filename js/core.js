@@ -3655,10 +3655,11 @@ if (relations.length > 0 && gameState.allCharacters) {
     }
 }
 
-// 【小剧场融合】解析论坛内容
-
-function parseForumContent(html) {
-    return parseTheaterItems(html, {
+// 【小剧场融合】小剧场解析 schema 配置表
+// 7 个 parse*Content 委托 parseTheaterItems，仅 schema 不同，统一收敛为配置表驱动。
+// parseCalendarContent 因独立实现（Event: 格式正则），保持不变。
+var _THEATER_SCHEMAS = {
+    forum: {
         itemClass: 'post',
         fields: { author: 'author', content: 'content', time: 'time' },
         defaults: { author: '匿名', content: '', time: '' },
@@ -3670,13 +3671,8 @@ function parseForumContent(html) {
         fallback: function (rawHtml) {
             return { author: '小剧场', content: rawHtml.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now(), likes: 0, replies: 0 };
         }
-    });
-}
-
-// 【小剧场融合】解析聊天内容
-
-function parseChatContent(html) {
-    return parseTheaterItems(html, {
+    },
+    chat: {
         itemClass: 'message',
         fields: { sender: 'sender', text: 'text' },
         defaults: { sender: '未知', text: '' },
@@ -3684,8 +3680,81 @@ function parseChatContent(html) {
         mapResult: function (p) {
             return { sender: p.sender, text: p.text, time: Date.now() };
         }
-    });
-}
+    },
+    mail: {
+        itemClass: 'mail',
+        fields: { from: 'from', subject: 'subject', body: 'body' },
+        defaults: { from: '系统', subject: '无主题', body: '' },
+        multilineFields: ['body'],
+        mapResult: function (p) {
+            return {
+                from: p.from,
+                subject: p.subject,
+                preview: (p.body || '').substring(0, 50),
+                content: p.body,
+                read: false,
+                time: Date.now()
+            };
+        },
+        fallback: function (rawHtml) {
+            return {
+                from: '系统通知',
+                subject: '小剧场',
+                preview: rawHtml.replace(/<[^>]+>/g, '').substring(0, 50),
+                content: rawHtml,
+                read: false
+            };
+        }
+    },
+    shop: {
+        itemClass: 'item',
+        fields: { name: 'name', price: 'price', description: 'description' },
+        defaults: { name: '商品', price: '100', description: '' },
+        multilineFields: ['description'],
+        transformers: { price: 'intOrDef' },
+        mapResult: function (p) {
+            return { name: p.name, price: p.price, description: (p.description || '').replace(/<[^>]+>/g, ''), icon: '📦' };
+        }
+    },
+    moments: {
+        itemClass: 'moment',
+        fields: { author: 'author', content: 'content', likes: 'likes' },
+        defaults: { author: '匿名', content: '', likes: '0' },
+        multilineFields: ['content'],
+        transformers: { likes: 'int' },
+        mapResult: function (p) {
+            return { author: p.author, content: p.content, time: '刚刚', likes: p.likes, comments: [] };
+        },
+        fallback: function (rawHtml) {
+            return { author: '小剧场', content: rawHtml.replace(/<[^>]+>/g, ''), time: '刚刚', likes: 0, comments: [] };
+        }
+    },
+    items: {
+        itemClass: 'item',
+        fields: { name: 'name', count: 'count', rarity: 'rarity' },
+        defaults: { name: '物品', count: '1', rarity: '普通' },
+        transformers: { count: 'intOrDef' },
+        mapResult: function (p) {
+            return { name: p.name, count: p.count, rarity: p.rarity, icon: '🎁' };
+        }
+    },
+    diary: {
+        itemClass: 'entry',
+        fields: { date: 'date', content: 'content' },
+        defaults: { date: '', content: '' },
+        multilineFields: ['content'],
+        transformers: { date: 'dateOrNow' },
+        mapResult: function (p) {
+            return { date: p.date, content: p.content };
+        }
+    }
+};
+
+// 【小剧场融合】解析论坛内容
+function parseForumContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.forum); }
+
+// 【小剧场融合】解析聊天内容
+function parseChatContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.chat); }
 
 function injectToChatLog(npcName, theater) {
     if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
@@ -3703,9 +3772,7 @@ if (gameState._chatLogs[npcName].length > 50) {
 }
 }
 
-// 【小剧场融合】解析日程内容
-
-// 旧逻辑保留但加一致性:8 个 parse*Content 中 7 个委托通用函数,1 个保留独立实现
+// 【小剧场融合】解析日程内容（独立实现，解析 Event: 格式正则，不委托通用函数）
 function parseCalendarContent(html) {
     var events = [];
     // 尝试解析Event格式: Event: type|title|description|time|location
@@ -3731,96 +3798,19 @@ function parseCalendarContent(html) {
 }
 
 // 【小剧场融合】解析邮件内容
-
-function parseMailContent(html) {
-    return parseTheaterItems(html, {
-        itemClass: 'mail',
-        fields: { from: 'from', subject: 'subject', body: 'body' },
-        defaults: { from: '系统', subject: '无主题', body: '' },
-        multilineFields: ['body'],
-        mapResult: function (p) {
-            return {
-                from: p.from,
-                subject: p.subject,
-                preview: (p.body || '').substring(0, 50),
-                content: p.body,
-                read: false,
-                time: Date.now()
-            };
-        },
-        fallback: function (rawHtml) {
-            return {
-                from: '系统通知',
-                subject: '小剧场',
-                preview: rawHtml.replace(/<[^>]+>/g, '').substring(0, 50),
-                content: rawHtml,
-                read: false
-            };
-        }
-    });
-}
+function parseMailContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.mail); }
 
 // 【小剧场融合】解析商店内容
-
-function parseShopContent(html) {
-    return parseTheaterItems(html, {
-        itemClass: 'item',
-        fields: { name: 'name', price: 'price', description: 'description' },
-        defaults: { name: '商品', price: '100', description: '' },
-        multilineFields: ['description'],
-        transformers: { price: 'intOrDef' },
-        mapResult: function (p) {
-            return { name: p.name, price: p.price, description: (p.description || '').replace(/<[^>]+>/g, ''), icon: '📦' };
-        }
-    });
-}
+function parseShopContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.shop); }
 
 // 【小剧场融合】解析朋友圈内容
-
-function parseMomentsContent(html) {
-    return parseTheaterItems(html, {
-        itemClass: 'moment',
-        fields: { author: 'author', content: 'content', likes: 'likes' },
-        defaults: { author: '匿名', content: '', likes: '0' },
-        multilineFields: ['content'],
-        transformers: { likes: 'int' },
-        mapResult: function (p) {
-            return { author: p.author, content: p.content, time: '刚刚', likes: p.likes, comments: [] };
-        },
-        fallback: function (rawHtml) {
-            return { author: '小剧场', content: rawHtml.replace(/<[^>]+>/g, ''), time: '刚刚', likes: 0, comments: [] };
-        }
-    });
-}
+function parseMomentsContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.moments); }
 
 // 【小剧场融合】解析物品内容
-
-function parseItemsContent(html) {
-    return parseTheaterItems(html, {
-        itemClass: 'item',
-        fields: { name: 'name', count: 'count', rarity: 'rarity' },
-        defaults: { name: '物品', count: '1', rarity: '普通' },
-        transformers: { count: 'intOrDef' },
-        mapResult: function (p) {
-            return { name: p.name, count: p.count, rarity: p.rarity, icon: '🎁' };
-        }
-    });
-}
+function parseItemsContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.items); }
 
 // 【小剧场融合】解析日记内容
-
-function parseDiaryContent(html) {
-    return parseTheaterItems(html, {
-        itemClass: 'entry',
-        fields: { date: 'date', content: 'content' },
-        defaults: { date: '', content: '' },
-        multilineFields: ['content'],
-        transformers: { date: 'dateOrNow' },
-        mapResult: function (p) {
-            return { date: p.date, content: p.content };
-        }
-    });
-}
+function parseDiaryContent(html) { return parseTheaterItems(html, _THEATER_SCHEMAS.diary); }
 
 
 // 原 translateError 内有三套重复映射：

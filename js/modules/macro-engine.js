@@ -24,6 +24,49 @@ var _TIMESTAMP_REGEX_MAP = {
 };
 var _TIMESTAMP_SORTED_KEYS = Object.keys(_TIMESTAMP_REGEX_MAP).sort(function(a, b) { return b.length - a.length; });
 
+// 小剧场变量映射表：每项为 [主名, 别名?]
+// 有别名时取 主名 || 别名，无别名时直接取主名。
+// 顺序与原 getTheaterContent 内 theaterVars 字面量保持一致，确保返回对象 key 顺序不变。
+var _THEATER_VAR_KEYS = [
+    // 月读预设 - 之愿系列（主名 || 英文别名）
+    ['盲盒之愿', 'blind_box'], ['每日之愿', 'daily'], ['涩涩之愿', 'nsfw_wish'],
+    ['游戏之愿', 'game_wish'], ['群聊之愿', 'chat_wish'], ['论坛之愿', 'forum_wish'],
+    ['幸福之愿', 'happy_wish'], ['哀伤之愿', 'sad_wish'], ['档案之愿', 'archive_wish'],
+    ['快递之愿', 'delivery_wish'], ['播客之愿', 'podcast_wish'], ['购物之愿', 'shopping_wish'],
+    ['桌面之愿', 'desktop_wish'], ['日程之愿', 'schedule_wish'], ['通知之愿', 'notification_wish'],
+    ['报告之愿', 'report_wish'], ['问卷之愿', 'survey_wish'],
+    // 果实预设
+    ['小剧场规范'], ['snow'], ['emoji_snow'], ['论坛小剧场'], ['日常剧场'], ['后台人生'],
+    // 蛾摩拉预设
+    ['小剧场'], ['蛾摩拉'], ['日程表'], ['小夜单人状态'],
+    // 通用
+    ['剧场COT'],
+    // <gossip> → 论坛
+    ['gossip'], ['八卦'], ['论坛'],
+    // <角色手机> → 手机功能
+    ['角色手机'], ['手机'], ['phone'],
+    // <通用状态> / <古风状态> → 状态面板
+    ['通用状态'], ['古风状态'], ['状态面板'], ['status'],
+    // <meow_FM> → 摘要
+    ['meow_FM'], ['摘要'], ['summary'],
+    // <branches> → 选项分支
+    ['branches'], ['选项分支'], ['分支'],
+    // <echo> → 物品
+    ['echo'], ['物品'], ['items'],
+    // <ccd> → 文字剧场
+    ['ccd'], ['文字剧场'], ['剧场'],
+    // 之愿/小剧场/之塔扩展
+    ['恋爱之愿'], ['同人之愿'], ['回忆之愿'], ['平行之愿'], ['美食之愿'], ['广告之愿'], ['文学之愿'],
+    ['恋爱小剧场'], ['涩涩小剧场'], ['游戏小剧场'],
+    ['恋爱之塔'], ['涩涩之塔'], ['游戏之塔'], ['群聊之塔'], ['论坛之塔'], ['同人之塔'],
+    ['八卦之塔'], ['回忆之塔'], ['平行之塔'], ['美食之塔'], ['广告之塔'], ['报告之塔'],
+    ['每日之塔'], ['文学之塔'], ['哀伤之塔'], ['幸福之塔'], ['盲盒之塔'],
+    // 其余小剧场变量
+    ['ice'], ['live'], ['danmu'], ['enigma'], ['podcast'], ['table_Edit'], ['horae'], ['horaeevent'],
+    ['作者有话说'], ['author_note'], ['giggle'], ['角色心声'], ['snow_rules'], ['gossip_rules'],
+    ['novel_header'], ['profile'], ['角色关系'], ['seeds']
+];
+
 var MacroEngine = {
     // 局部变量存储（当前游戏会话级别）
     _localVars: {},
@@ -147,135 +190,22 @@ var MacroEngine = {
         },
 
     // 【小剧场融合】检测小剧场开关和内容
+    // theaterVars 由 _THEATER_VAR_KEYS 驱动：[主名, 别名?] → 主名 || (别名? 主名 : '')
     getTheaterContent: function(theaterType) {
-        // 检测各种小剧场变量
-        var theaterVars = {
-            // 月读预设 - 之愿系列
-            '盲盒之愿': this.getLocalVar('盲盒之愿') || this.getLocalVar('blind_box'),
-            '每日之愿': this.getLocalVar('每日之愿') || this.getLocalVar('daily'),
-            '涩涩之愿': this.getLocalVar('涩涩之愿') || this.getLocalVar('nsfw_wish'),
-            '游戏之愿': this.getLocalVar('游戏之愿') || this.getLocalVar('game_wish'),
-            '群聊之愿': this.getLocalVar('群聊之愿') || this.getLocalVar('chat_wish'),
-            '论坛之愿': this.getLocalVar('论坛之愿') || this.getLocalVar('forum_wish'),
-            '幸福之愿': this.getLocalVar('幸福之愿') || this.getLocalVar('happy_wish'),
-            '哀伤之愿': this.getLocalVar('哀伤之愿') || this.getLocalVar('sad_wish'),
-            '档案之愿': this.getLocalVar('档案之愿') || this.getLocalVar('archive_wish'),
-            '快递之愿': this.getLocalVar('快递之愿') || this.getLocalVar('delivery_wish'),
-            '播客之愿': this.getLocalVar('播客之愿') || this.getLocalVar('podcast_wish'),
-            '购物之愿': this.getLocalVar('购物之愿') || this.getLocalVar('shopping_wish'),
-            '桌面之愿': this.getLocalVar('桌面之愿') || this.getLocalVar('desktop_wish'),
-            '日程之愿': this.getLocalVar('日程之愿') || this.getLocalVar('schedule_wish'),
-            '通知之愿': this.getLocalVar('通知之愿') || this.getLocalVar('notification_wish'),
-            '报告之愿': this.getLocalVar('报告之愿') || this.getLocalVar('report_wish'),
-            '问卷之愿': this.getLocalVar('问卷之愿') || this.getLocalVar('survey_wish'),
-
-            // 果实预设
-            '小剧场规范': this.getLocalVar('小剧场规范'),
-            'snow': this.getLocalVar('snow'),
-            'emoji_snow': this.getLocalVar('emoji_snow'),
-            '论坛小剧场': this.getLocalVar('论坛小剧场'),
-            '日常剧场': this.getLocalVar('日常剧场'),
-            '后台人生': this.getLocalVar('后台人生'),
-
-            // 蛾摩拉预设
-            '小剧场': this.getLocalVar('小剧场'),
-            '蛾摩拉': this.getLocalVar('蛾摩拉'), // 作者有话说
-            '日程表': this.getLocalVar('日程表'),
-            '小夜单人状态': this.getLocalVar('小夜单人状态'),
-
-            // 通用
-            '剧场COT': this.getLocalVar('剧场COT'),
-
-
-            // <gossip> → 论坛
-            'gossip': this.getLocalVar('gossip'),
-            '八卦': this.getLocalVar('八卦'),
-            '论坛': this.getLocalVar('论坛'),
-
-            // <角色手机> → 手机功能
-            '角色手机': this.getLocalVar('角色手机'),
-            '手机': this.getLocalVar('手机'),
-            'phone': this.getLocalVar('phone'),
-
-            // <通用状态> / <古风状态> → 状态面板
-            '通用状态': this.getLocalVar('通用状态'),
-            '古风状态': this.getLocalVar('古风状态'),
-            '状态面板': this.getLocalVar('状态面板'),
-            'status': this.getLocalVar('status'),
-
-            // <meow_FM> → 摘要
-            'meow_FM': this.getLocalVar('meow_FM'),
-            '摘要': this.getLocalVar('摘要'),
-            'summary': this.getLocalVar('summary'),
-
-            // <branches> → 选项分支
-            'branches': this.getLocalVar('branches'),
-            '选项分支': this.getLocalVar('选项分支'),
-            '分支': this.getLocalVar('分支'),
-
-            // <echo> → 物品
-            'echo': this.getLocalVar('echo'),
-            '物品': this.getLocalVar('物品'),
-            'items': this.getLocalVar('items'),
-
-            // <ccd> → 文字剧场
-            'ccd': this.getLocalVar('ccd'),
-            '文字剧场': this.getLocalVar('文字剧场'),
-            '剧场': this.getLocalVar('剧场'),
-
-
-            '恋爱之愿': this.getLocalVar('恋爱之愿'),
-            '同人之愿': this.getLocalVar('同人之愿'),
-            '回忆之愿': this.getLocalVar('回忆之愿'),
-            '平行之愿': this.getLocalVar('平行之愿'),
-            '美食之愿': this.getLocalVar('美食之愿'),
-            '广告之愿': this.getLocalVar('广告之愿'),
-            '文学之愿': this.getLocalVar('文学之愿'),
-            '恋爱小剧场': this.getLocalVar('恋爱小剧场'),
-            '涩涩小剧场': this.getLocalVar('涩涩小剧场'),
-            '游戏小剧场': this.getLocalVar('游戏小剧场'),
-            '恋爱之塔': this.getLocalVar('恋爱之塔'),
-            '涩涩之塔': this.getLocalVar('涩涩之塔'),
-            '游戏之塔': this.getLocalVar('游戏之塔'),
-            '群聊之塔': this.getLocalVar('群聊之塔'),
-            '论坛之塔': this.getLocalVar('论坛之塔'),
-            '同人之塔': this.getLocalVar('同人之塔'),
-            '八卦之塔': this.getLocalVar('八卦之塔'),
-            '回忆之塔': this.getLocalVar('回忆之塔'),
-            '平行之塔': this.getLocalVar('平行之塔'),
-            '美食之塔': this.getLocalVar('美食之塔'),
-            '广告之塔': this.getLocalVar('广告之塔'),
-            '报告之塔': this.getLocalVar('报告之塔'),
-            '每日之塔': this.getLocalVar('每日之塔'),
-            '文学之塔': this.getLocalVar('文学之塔'),
-            '哀伤之塔': this.getLocalVar('哀伤之塔'),
-            '幸福之塔': this.getLocalVar('幸福之塔'),
-            '盲盒之塔': this.getLocalVar('盲盒之塔'),
-            'ice': this.getLocalVar('ice'),
-            'live': this.getLocalVar('live'),
-            'danmu': this.getLocalVar('danmu'),
-            'enigma': this.getLocalVar('enigma'),
-            'podcast': this.getLocalVar('podcast'),
-            'table_Edit': this.getLocalVar('table_Edit'),
-            'horae': this.getLocalVar('horae'),
-            'horaeevent': this.getLocalVar('horaeevent'),
-            '作者有话说': this.getLocalVar('作者有话说'),
-            'author_note': this.getLocalVar('author_note'),
-            'giggle': this.getLocalVar('giggle'),
-            '角色心声': this.getLocalVar('角色心声'),
-            'snow_rules': this.getLocalVar('snow_rules'),
-            'gossip_rules': this.getLocalVar('gossip_rules'),
-            'novel_header': this.getLocalVar('novel_header'),
-            'profile': this.getLocalVar('profile'),
-            '角色关系': this.getLocalVar('角色关系'),
-            'seeds': this.getLocalVar('seeds')
-    };
-
-            if (theaterType) {
-                return theaterVars[theaterType] || '';
-            }
+        var theaterVars = {};
+        for (var i = 0; i < _THEATER_VAR_KEYS.length; i++) {
+            var entry = _THEATER_VAR_KEYS[i];
+            var key = entry[0];
+            var alias = entry[1];
+            var val = this.getLocalVar(key);
+            if (alias) val = val || this.getLocalVar(alias);
+            theaterVars[key] = val;
+        }
+        if (theaterType) {
+            return theaterVars[theaterType] || '';
+        }
         return theaterVars;
-        },
+    },
 
     // 【小剧场融合】解析小剧场内容标签
     parseTheaterContent: function(content) {

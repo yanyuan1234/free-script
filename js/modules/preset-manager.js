@@ -82,84 +82,59 @@ var PresetManager = {
         Storage.setJSON(Storage.KEYS.CURRENT_PARAMS, this.currentParams);
         },
 
+    // 数值参数配置表：统一驱动 syncParamsToUI / syncParamsFromUI
+    // type: 'float' 用 parseFloat，'int' 用 safeInt；def 为读取失败时的默认值
+    // valId: 可选的数值显示元素 id（无则不更新显示）
+    _PARAM_CONTROLS: [
+        { param: 'temperature',       elId: 'presetTemp',       valId: 'presetTempValue',       type: 'float', def: 0.8 },
+        { param: 'top_p',             elId: 'presetTopP',       valId: 'presetTopPValue',       type: 'float', def: 0.9 },
+        { param: 'frequency_penalty', elId: 'presetFreqPen',    valId: 'presetFreqPenValue',    type: 'float', def: 0 },
+        { param: 'presence_penalty',  elId: 'presetPresPen',    valId: 'presetPresPenValue',    type: 'float', def: 0 },
+        { param: 'max_tokens',        elId: 'presetMaxTokens',                                  type: 'int',   def: 8192 },
+        { param: 'top_k',             elId: 'presetTopK',                                       type: 'int',   def: 0 },
+        { param: 'min_p',             elId: 'presetMinP',       valId: 'presetMinPValue',       type: 'float', def: 0 },
+        { param: 'repeat_penalty',    elId: 'presetRepeatPen',  valId: 'presetRepeatPenValue',  type: 'float', def: 1.1 }
+    ],
+
     // 同步参数到UI
     syncParamsToUI: function() {
-        var tempEl = document.getElementById('presetTemp');
-        var topPEl = document.getElementById('presetTopP');
-        var freqEl = document.getElementById('presetFreqPen');
-        var presEl = document.getElementById('presetPresPen');
-        var maxTokensEl = document.getElementById('presetMaxTokens');
-        var topKEl = document.getElementById('presetTopK');
-
-        if (tempEl) {
-            tempEl.value = this.currentParams.temperature;
-            var tempValueEl = document.getElementById('presetTempValue');
-            if (tempValueEl) tempValueEl.textContent = this.currentParams.temperature;
-        }
-        if (topPEl) {
-            topPEl.value = this.currentParams.top_p;
-            var topPValueEl = document.getElementById('presetTopPValue');
-            if (topPValueEl) topPValueEl.textContent = this.currentParams.top_p;
-        }
-    if (freqEl) {
-        freqEl.value = this.currentParams.frequency_penalty;
-        var freqPenValueEl = document.getElementById('presetFreqPenValue');
-        if (freqPenValueEl) freqPenValueEl.textContent = this.currentParams.frequency_penalty;
-    }
-    if (presEl) {
-        presEl.value = this.currentParams.presence_penalty;
-        var presPenValueEl = document.getElementById('presetPresPenValue');
-        if (presPenValueEl) presPenValueEl.textContent = this.currentParams.presence_penalty;
-    }
-    if (maxTokensEl) maxTokensEl.value = this.currentParams.max_tokens;
-    if (topKEl) topKEl.value = this.currentParams.top_k;
-    // Sync presetMinP
-    var minPEl = document.getElementById('presetMinP');
-    if (minPEl) {
-        minPEl.value = this.currentParams.min_p || 0;
-        var minPValueEl = document.getElementById('presetMinPValue');
-        if (minPValueEl) minPValueEl.textContent = this.currentParams.min_p || 0;
-    }
-    // Sync presetRepeatPen
-    var repeatPenEl = document.getElementById('presetRepeatPen');
-    if (repeatPenEl) {
-        repeatPenEl.value = this.currentParams.repeat_penalty || 1.1;
-        var repeatPenValueEl = document.getElementById('presetRepeatPenValue');
-        if (repeatPenValueEl) repeatPenValueEl.textContent = this.currentParams.repeat_penalty || 1.1;
-    }
-    // Sync presetStreamToggle display state
-    var streamToggle = document.getElementById('presetStreamToggle');
-    if (streamToggle) {
-        if (this.currentParams.stream !== false) {
-            streamToggle.classList.add('checked');
+        var self = this;
+        this._PARAM_CONTROLS.forEach(function(c) {
+            var el = document.getElementById(c.elId);
+            if (!el) return;
+            var v = self.currentParams[c.param];
+            // 保持与原逻辑一致：min_p/repeat_penalty 用 || 兜底默认值，其余直接取值
+            if (v === undefined || v === null) v = c.def;
+            if (c.param === 'min_p' || c.param === 'repeat_penalty') v = v || c.def;
+            el.value = v;
+            if (c.valId) {
+                var valEl = document.getElementById(c.valId);
+                if (valEl) valEl.textContent = v;
+            }
+        });
+        // Sync presetStreamToggle display state
+        var streamToggle = document.getElementById('presetStreamToggle');
+        if (streamToggle) {
+            if (this.currentParams.stream !== false) {
+                streamToggle.classList.add('checked');
             } else {
-            streamToggle.classList.remove('checked');
+                streamToggle.classList.remove('checked');
+            }
         }
-    }
-    // 同步游戏设置的流式开关
-    gameState.useStream = this.currentParams.stream !== false;
-
+        // 同步游戏设置的流式开关
+        gameState.useStream = this.currentParams.stream !== false;
     },
     syncParamsFromUI: function() {
-        var tempEl = document.getElementById('presetTemp');
-        var topPEl = document.getElementById('presetTopP');
-        var freqEl = document.getElementById('presetFreqPen');
-        var presEl = document.getElementById('presetPresPen');
-        var maxTokensEl = document.getElementById('presetMaxTokens');
-        var topKEl = document.getElementById('presetTopK');
-
-        if (tempEl) this.currentParams.temperature = parseFloat(tempEl.value) || 0.8;
-        if (topPEl) this.currentParams.top_p = parseFloat(topPEl.value) || 0.9;
-        if (freqEl) this.currentParams.frequency_penalty = parseFloat(freqEl.value) || 0;
-        if (presEl) this.currentParams.presence_penalty = parseFloat(presEl.value) || 0;
-        if (maxTokensEl) this.currentParams.max_tokens = safeInt(maxTokensEl.value, 8192);
-        if (topKEl) this.currentParams.top_k = safeInt(topKEl.value, 0);
-        // Read presetMinP
-        var minPEl = document.getElementById('presetMinP');
-        if (minPEl) this.currentParams.min_p = parseFloat(minPEl.value) || 0;
-        // Read presetRepeatPen
-        var repeatPenEl = document.getElementById('presetRepeatPen');
-        if (repeatPenEl) this.currentParams.repeat_penalty = parseFloat(repeatPenEl.value) || 1.1;
+        var self = this;
+        this._PARAM_CONTROLS.forEach(function(c) {
+            var el = document.getElementById(c.elId);
+            if (!el) return;
+            if (c.type === 'int') {
+                self.currentParams[c.param] = safeInt(el.value, c.def);
+            } else {
+                self.currentParams[c.param] = parseFloat(el.value) || c.def;
+            }
+        });
         // Read presetStreamToggle state
         var streamToggle = document.getElementById('presetStreamToggle');
         if (streamToggle) {
@@ -168,23 +143,28 @@ var PresetManager = {
         // 同步游戏设置的流式开关
         gameState.useStream = this.currentParams.stream !== false;
 
+        this.saveCurrentParams();
 
-    this.saveCurrentParams();
-
-    // 【同步】预设max_tokens修改后，同步到设置页面的"剧情长度"和gameState
-
-    if (typeof _syncMaxTokens === 'function') {
-        _syncMaxTokens(this.currentParams.max_tokens);
-    } else {
-        // fallback：直接同步
-        var storyLengthEl = document.getElementById('settingStoryLength');
-        if (storyLengthEl) {
-            storyLengthEl.value = this.currentParams.max_tokens || 4096;
+        // 【同步】预设max_tokens修改后，同步到设置页面的"剧情长度"和gameState
+        if (typeof _syncMaxTokens === 'function') {
+            _syncMaxTokens(this.currentParams.max_tokens);
+        } else {
+            // fallback：直接同步
+            var storyLengthEl = document.getElementById('settingStoryLength');
+            if (storyLengthEl) {
+                storyLengthEl.value = this.currentParams.max_tokens || 4096;
+            }
+            if (typeof gameState !== 'undefined') {
+                gameState.maxTokens = this.currentParams.max_tokens || 4096;
+            }
         }
-        if (typeof gameState !== 'undefined') {
-            gameState.maxTokens = this.currentParams.max_tokens || 4096;
-        }
-    }
+    },
+
+    // 绑定单个 click 事件（元素不存在时静默跳过）
+    // 统一收口 var XBtn = document.getElementById('X'); if (XBtn) XBtn.addEventListener('click', ...) 重复模式
+    _bindClick: function(id, handler) {
+        var el = document.getElementById(id);
+        if (el) el.addEventListener('click', handler);
     },
 
     // 绑定事件
@@ -194,131 +174,94 @@ var PresetManager = {
         this._eventsBound = true;
         const self = this;
 
-        // 主页面预设按钮 - 打开预设管理
-        var menuBtn = document.getElementById('btnMenuPresets');
-        if (menuBtn) {
-            menuBtn.addEventListener('click', function() {
-                PresetManager.showModal();
+        // 主页面 / 剧情页按钮 - 打开预设管理
+        this._bindClick('btnMenuPresets', function() { PresetManager.showModal(); });
+        this._bindClick('btnPresetsHeader', function() { self.showModal(); });
+
+        // 导入按钮（需配合 fileInput change 事件）
+        var importBtn = document.getElementById('btnPresetImport');
+        var fileInput = document.getElementById('presetFileInput');
+        if (importBtn && fileInput) {
+            importBtn.addEventListener('click', function() { fileInput.click(); });
+            fileInput.addEventListener('change', function(e) {
+                if (e.target.files[0]) self.importFromFile(e.target.files[0]);
+                fileInput.value = '';
             });
         }
 
-        // 剧情页按钮
-        var headerBtn = document.getElementById('btnPresetsHeader');
-        if (headerBtn) {
-            headerBtn.addEventListener('click', function() { self.showModal(); });
-        }
-
-    // 导入按钮
-    var importBtn = document.getElementById('btnPresetImport');
-    var fileInput = document.getElementById('presetFileInput');
-    if (importBtn && fileInput) {
-        importBtn.addEventListener('click', function() { fileInput.click(); });
-        fileInput.addEventListener('change', function(e) {
-            if (e.target.files[0]) self.importFromFile(e.target.files[0]);
-            fileInput.value = '';
-            });
-    }
-
-    // 导出按钮
-    var exportBtn = document.getElementById('btnPresetExport');
-    if (exportBtn) {
-        exportBtn.addEventListener('click', function() {
+        // 导出按钮
+        this._bindClick('btnPresetExport', function() {
             var idx = PresetManager.currentPresetIndex || 0;
             PresetManager.exportPreset(idx);
-            });
-    }
+        });
 
-    // 保存当前为预设
-    var saveBtn = document.getElementById('btnPresetSaveCurrent');
-    if (saveBtn) {
-        saveBtn.addEventListener('click', function() {
+        // 保存当前为预设
+        this._bindClick('btnPresetSaveCurrent', function() {
             UI.showModal('presetSaveNameModal');
             document.getElementById('presetSaveNameInput').value = '';
             document.getElementById('presetSaveNameInput').focus();
-            });
-    }
+        });
 
-    // 清空全部预设
-    var clearAllBtn = document.getElementById('btnPresetClearAll');
-    if (clearAllBtn) {
-        clearAllBtn.addEventListener('click', function() {
-            self.clearAllPresets();
-            });
-    }
+        // 清空全部预设
+        this._bindClick('btnPresetClearAll', function() { self.clearAllPresets(); });
 
-    // 确认保存
-    var saveConfirmBtn = document.getElementById('btnPresetSaveConfirm');
-    if (saveConfirmBtn) {
-        saveConfirmBtn.addEventListener('click', function() {
+        // 确认保存
+        this._bindClick('btnPresetSaveConfirm', function() {
             var name = document.getElementById('presetSaveNameInput').value.trim();
             if (!name) {
                 UI.toast('请输入预设名称');
                 return;
             }
-        self.saveCurrentAsPreset(name);
-        UI.hideModal('presetSaveNameModal');
+            self.saveCurrentAsPreset(name);
+            UI.hideModal('presetSaveNameModal');
         });
-    }
 
-    // 应用参数按钮
-    var applyBtn = document.getElementById('btnPresetApplyParams');
-    if (applyBtn) {
-        applyBtn.addEventListener('click', function() {
+        // 应用参数按钮
+        this._bindClick('btnPresetApplyParams', function() {
             self.syncParamsFromUI();
             UI.toast('参数已应用');
-            });
-    }
+        });
 
-    // 参数调节区域折叠/展开
-    // 修复：初始状态是 class="hidden"（CSS 隐藏），不是 style.display="none"
-    // 必须同时检查 class，否则点一次就反向关闭
-    var paramsToggle = document.getElementById('presetParamsToggle');
-    var paramsContent = document.getElementById('presetParamsContent');
-    var paramsToggleIcon = document.getElementById('presetParamsToggleIcon');
-    if (paramsToggle && paramsContent && paramsToggleIcon) {
-        paramsToggle.addEventListener('click', function() {
-            var isHidden = paramsContent.classList.contains('hidden')
-                || paramsContent.style.display === 'none';
-            if (isHidden) {
-                paramsContent.classList.remove('hidden');
-                paramsContent.style.display = '';
-                paramsToggleIcon.style.transform = 'rotate(180deg)';
-                paramsToggleIcon.textContent = '▲';
-            } else {
-                paramsContent.classList.add('hidden');
-                paramsContent.style.display = 'none';
-                paramsToggleIcon.style.transform = 'rotate(0deg)';
-                paramsToggleIcon.textContent = '▼';
+        // 参数调节区域折叠/展开
+        // 修复：初始状态是 class="hidden"（CSS 隐藏），不是 style.display="none"
+        // 必须同时检查 class，否则点一次就反向关闭
+        var paramsToggle = document.getElementById('presetParamsToggle');
+        var paramsContent = document.getElementById('presetParamsContent');
+        var paramsToggleIcon = document.getElementById('presetParamsToggleIcon');
+        if (paramsToggle && paramsContent && paramsToggleIcon) {
+            paramsToggle.addEventListener('click', function() {
+                var isHidden = paramsContent.classList.contains('hidden')
+                    || paramsContent.style.display === 'none';
+                if (isHidden) {
+                    paramsContent.classList.remove('hidden');
+                    paramsContent.style.display = '';
+                    paramsToggleIcon.style.transform = 'rotate(180deg)';
+                    paramsToggleIcon.textContent = '▲';
+                } else {
+                    paramsContent.classList.add('hidden');
+                    paramsContent.style.display = 'none';
+                    paramsToggleIcon.style.transform = 'rotate(0deg)';
+                    paramsToggleIcon.textContent = '▼';
+                }
+            });
+        }
+
+        // 滑块实时更新显示值
+        ['presetTemp', 'presetTopP', 'presetFreqPen', 'presetPresPen', 'presetTopK', 'presetMinP', 'presetRepeatPen'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', function() {
+                    var valueEl = document.getElementById(id + 'Value');
+                    if (valueEl) valueEl.textContent = el.value;
+                });
             }
         });
-    }
 
-    // 滑块实时更新显示值
-    ['presetTemp', 'presetTopP', 'presetFreqPen', 'presetPresPen', 'presetTopK', 'presetMinP', 'presetRepeatPen'].forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) {
-            el.addEventListener('input', function() {
-                var valueEl = document.getElementById(id + 'Value');
-                if (valueEl) valueEl.textContent = el.value;
-                });
-        }
-    });
+        // 预设详情返回按钮
+        this._bindClick('btnBackToPresetList', function() { UI.hideModal('presetDetailModal'); });
 
-    // 预设详情返回按钮
-    var backBtn = document.getElementById('btnBackToPresetList');
-    if (backBtn) {
-        backBtn.addEventListener('click', function() {
-            UI.hideModal('presetDetailModal');
-            });
-    }
-
-    // 全部开启/关闭按钮
-    var toggleAllBtn = document.getElementById('presetToggleAll');
-    if (toggleAllBtn) {
-        toggleAllBtn.addEventListener('click', function() {
-            self._toggleAllPrompts();
-            });
-    }
+        // 全部开启/关闭按钮
+        this._bindClick('presetToggleAll', function() { self._toggleAllPrompts(); });
     },
 
     // 显示模态框

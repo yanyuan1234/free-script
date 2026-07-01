@@ -4211,32 +4211,28 @@ var MemoryManagerUI = {
             + '</div></div></div>';
     },
 
+    // 渲染单个摘要层（近/中/远共用结构）：标题(颜色) · N 条 + 列表/空态
+    // itemExtraStyle: 远层需要更淡的文字色，近/中层传空串
+    _renderSummaryLayer: function(items, title, color, emptyText, itemExtraStyle) {
+        var arr = items || [];
+        var html = '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:' + color + ';">' + title + ' · ' + arr.length + ' 条</div>';
+        if (arr.length > 0) {
+            var itemStyle = 'padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;' + (itemExtraStyle || '');
+            arr.forEach(function(s) { html += '<div style="' + itemStyle + '">' + escapeHtml(s) + '</div>'; });
+        } else {
+            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">' + emptyText + '</div>';
+        }
+        html += '</div>';
+        return html;
+    },
+
     renderSummaryLayers: function(gm) {
-        var self = this;
         var layers = gm._summaryLayers || { near: [], mid: [], far: [] };
         var html = '<div class="memory-card"><div class="memory-card-title">逐层摘要</div>';
         html += '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:12px;">近层保留详细对话，中层压缩摘要，远层只保留关键句。越远的记忆越精简，节省Token。</div>';
-        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--accent);">〔最近对话〕详细 · ' + (layers.near || []).length + ' 条</div>';
-        if (layers.near && layers.near.length > 0) {
-            layers.near.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + escapeHtml(s) + '</div>'; });
-        } else {
-            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无近层摘要</div>';
-        }
-        html += '</div>';
-        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#ff9500;">〔近期摘要〕压缩 · ' + (layers.mid || []).length + ' 条</div>';
-        if (layers.mid && layers.mid.length > 0) {
-            layers.mid.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;">' + escapeHtml(s) + '</div>'; });
-        } else {
-            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无中层摘要</div>';
-        }
-        html += '</div>';
-        html += '<div style="margin-bottom:16px;"><div style="font-size:13px;font-weight:600;margin-bottom:8px;color:#999;">〔更早记忆〕关键句 · ' + (layers.far || []).length + ' 条</div>';
-        if (layers.far && layers.far.length > 0) {
-            layers.far.forEach(function(s) { html += '<div style="padding:8px 10px;background:var(--bg);border-radius:6px;margin-bottom:4px;font-size:13px;line-height:1.5;color:var(--text-secondary);">' + escapeHtml(s) + '</div>'; });
-        } else {
-            html += '<div style="padding:12px;text-align:center;color:var(--text-tertiary);font-size:13px;">暂无远层摘要</div>';
-        }
-        html += '</div>';
+        html += this._renderSummaryLayer(layers.near, '〔最近对话〕详细', 'var(--accent)', '暂无近层摘要');
+        html += this._renderSummaryLayer(layers.mid, '〔近期摘要〕压缩', '#ff9500', '暂无中层摘要');
+        html += this._renderSummaryLayer(layers.far, '〔更早记忆〕关键句', '#999', '暂无远层摘要', 'color:var(--text-secondary);');
         html += '</div>';
         return html;
     },
