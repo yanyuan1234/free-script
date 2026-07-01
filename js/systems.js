@@ -419,7 +419,9 @@ var AchievementSystem = {
                 if (i.rarity === '传说') stats.legendaryItems += i.count || 1;
                 });
         }
-    var rels = gameState.relationships || [];
+    var rels = (typeof StateManager !== 'undefined' && StateManager.get)
+        ? (StateManager.get('entities.relationships') || gameState.relationships || [])
+        : (gameState.relationships || []);  // [CP-10] 优先 StateManager 权威源，legacy 兜底
     var pn = gameState.playerName || '主角';
     rels.forEach(function(r) {
         if (r.from === pn || r.to === pn) {

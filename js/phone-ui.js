@@ -5489,18 +5489,21 @@ function showApiDetail(slot) {
         }
     });
     // 绑定取消测试按钮
-    newCancelBtn.addEventListener('click', function() {
-        var newTestBtn = document.getElementById('btnTestApiDetail');
-        if (newTestBtn && newTestBtn._testAbortCtrl) {
-            newTestBtn._testAbortCtrl.abort();
-            newTestBtn._testAbortCtrl = null;
-        }
-        if (newTestBtn) {
-            newTestBtn.textContent = '测试连接';
-            newTestBtn.disabled = false;
-        }
-        newCancelBtn.style.display = 'none';
-    });
+    // [CP-08] 加 null 守卫：旧实现 getElementById('btnCancelTestApi') 返回 null 时直接 addEventListener 抛 TypeError
+    if (newCancelBtn) {
+        newCancelBtn.addEventListener('click', function() {
+            var newTestBtn = document.getElementById('btnTestApiDetail');
+            if (newTestBtn && newTestBtn._testAbortCtrl) {
+                newTestBtn._testAbortCtrl.abort();
+                newTestBtn._testAbortCtrl = null;
+            }
+            if (newTestBtn) {
+                newTestBtn.textContent = '测试连接';
+                newTestBtn.disabled = false;
+            }
+            newCancelBtn.style.display = 'none';
+        });
+    }
 
     // 绑定复制按钮
     var copyBtn = document.getElementById('btnCopyApi');

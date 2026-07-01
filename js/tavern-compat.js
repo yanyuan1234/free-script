@@ -3149,7 +3149,9 @@ var GameMemory = {
                 var evictable = list.filter(function(a) { return a && !a.locked; });
                 if (evictable.length === 0) return;
                 evictable.sort(function(a, b) {
-                    return ((a.importance) || 0) - ((b.importance) || 0);
+                    // [CP-07] 读时归一化：5 入口 3 schema 中部分入口（line 1099/1860/1870/1881/1897/1934/2941/3912）
+                    //         写入时不带 importance 字段。统一默认 1.0，避免 importance=undefined 被当作 0 排到最后。
+                    return ((a.importance) || 1.0) - ((b.importance) || 1.0);
                 });
                 // 保留数量 = 当前key数 × (30/total)，最低5条
                 var keep = Math.max(5, Math.floor(list.length * 30 / total));
@@ -3664,7 +3666,16 @@ var GameMemory = {
         this.events = []; this.timeline = []; this.quests = [];
 
         if (typeof StateManager !== 'undefined' && StateManager.set) {
+            // [CP-05] 旧实现只清 entities.events，导致新游戏开局时 entities.characters/bag/locations/quests/relationships
+            //         残留旧存档数据。GameMemoryAdapter.syncToGameMemory 在 _syncLock=false 时会从 SM 拉数据
+            //         重新 MERGE 到 gm.tables，触发"角色列表看到旧角色/物品/地点/任务/关系"残留 bug。
+            //         修复：clear 时清空 SM 全部实体表，与 self.tables/events/quests 重置对齐。
             StateManager.set('entities.events', [], { silent: true });
+            StateManager.set('entities.characters', [], { silent: true });
+            StateManager.set('entities.bag', [], { silent: true });
+            StateManager.set('entities.locations', [], { silent: true });
+            StateManager.set('entities.quests', [], { silent: true });
+            StateManager.set('entities.relationships', [], { silent: true });
         }
         this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
