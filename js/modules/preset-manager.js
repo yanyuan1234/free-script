@@ -5,13 +5,22 @@
  * 被依赖：regex-manager.js
  */
 
-// 优先取单人聊天（character_id=100000）的 order，找不到则取第一个非空 group
-function _findPromptOrderGroup(data) {
+// [T1-P1-12] 优先取单人聊天（character_id=100000）的 order，找不到则按 currentCharId 匹配分组，
+// 最后取第一个非空 group。这样角色级 prompt_order 排序才能正确匹配
+function _findPromptOrderGroup(data, currentCharId) {
     if (!data || !data.prompt_order || !Array.isArray(data.prompt_order) || data.prompt_order.length === 0) {
         return null;
     }
-    return data.prompt_order.find(function(g) { return g && g.character_id === 100000; })
-        || data.prompt_order.find(function(g) { return g != null; });
+    // 1) 优先按当前角色 ID 匹配（角色级 prompt_order）
+    if (currentCharId != null) {
+        var charMatch = data.prompt_order.find(function(g) { return g && g.character_id === currentCharId; });
+        if (charMatch) return charMatch;
+    }
+    // 2) 单人聊天全局顺序 (character_id === 100000)
+    var globalMatch = data.prompt_order.find(function(g) { return g && g.character_id === 100000; });
+    if (globalMatch) return globalMatch;
+    // 3) 兜底：第一个非空 group
+    return data.prompt_order.find(function(g) { return g != null; });
 }
 
 var PresetManager = {
@@ -432,7 +441,6 @@ var PresetManager = {
     // 解析酒馆预设格式
     parsePreset: function(data, fileName) {
         // 辅助函数：安全取值，避免 0 被 falsy 吞掉
-
         // 取第一个非 null/undefined 的候选值，全为空则返回 defaultValue。
         // 原实现用 arguments.length 重载（3参/4参两种语义），易误用。
         function safeNum() {
@@ -498,11 +506,42 @@ var PresetManager = {
             verbosity: data.verbosity || 'auto'
             };
 
+        // [T1-P1-13] 解析酒馆 V3 顶层 custom_variables / sampler_order / logit_bias
+        if (data.custom_variables && typeof data.custom_variables === 'object' && !Array.isArray(data.custom_variables)) {
+            params.custom_variables = Object.assign({}, data.custom_variables);
+        }
+        if (Array.isArray(data.sampler_order)) {
+            params.sampler_order = data.sampler_order.slice();
+        }
+        if (data.logit_bias && typeof data.logit_bias === 'object' && !Array.isArray(data.logit_bias)) {
+            params.logit_bias = Object.assign({}, data.logit_bias);
+        }
+
         // 预设名称
         var name = data.name || data.preset || (fileName ? fileName.replace(/\.json$/i, '') : ('导入预设 ' + new Date().toLocaleDateString()));
 
         // 提取 prompts 数组（酒馆预设的核心内容）
         var importedPrompts = [];
+        // [T1-P1-10] 解析酒馆 V4 openai_prompts 字段（OpenAI 风格预设）
+        if (data.openai_prompts && Array.isArray(data.openai_prompts)) {
+            data.openai_prompts.forEach(function(p) {
+                if (!p || !p.content) return;
+                importedPrompts.push({
+                    identifier: p.name || '',
+                    name: p.name || '',
+                    role: p.role || 'system',
+                    content: p.content,
+                    injection_position: 0,
+                    injection_depth: 4,
+                    injection_order: p.injection_order != null ? p.injection_order : 100,
+                    system_prompt: (p.name === 'main'),
+                    enabled: p.enabled !== false,
+                    forbid_overrides: !!p.forbid_overrides,
+                    injection_trigger: p.injection_trigger || [],
+                    marker: !!p.marker
+                });
+            });
+        }
         if (data.prompts && Array.isArray(data.prompts)) {
             // 获取 prompt_order 中的启用状态和排列顺序
             // prompt_order 中可能使用 identifier（UUID）或 name 来引用 prompt
@@ -513,7 +552,8 @@ var PresetManager = {
             var promptOrderIndex = {};  // identifier/name -> 在 orderArr 中的位置
             if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
 
-                var orderGroup = _findPromptOrderGroup(data);
+                var _curCharId = (typeof gameState !== 'undefined' && gameState) ? (gameState.currentCharacterId || (gameState.character && gameState.character.id) || (Array.isArray(gameState.characters) && gameState.characters[0] && gameState.characters[0].id) || null) : null;
+                var orderGroup = _findPromptOrderGroup(data, _curCharId);
                 var orderArr = orderGroup && orderGroup.order;
                 if (orderArr && Array.isArray(orderArr)) {
                     orderArr.forEach(function(item, idx) {
@@ -591,7 +631,9 @@ var PresetManager = {
                     enabled: isEnabled,  // 保留原有的启用状态
             // 酒馆V2新增字段
             forbid_overrides: !!p.forbid_overrides,
-            injection_trigger: p.injection_trigger || []
+            injection_trigger: p.injection_trigger || [],
+            // [T1-P1-11] 显式保留 marker 字段（V2 锚点：chatHistory/worldInfoBefore/worldInfoAfter/enhanceDefinitions）
+            marker: !!p.marker
             });
         return;
     }
@@ -611,8 +653,10 @@ var PresetManager = {
                     enabled: isEnabled,  // 保留原有的启用状态
         // 酒馆V2新增字段
         forbid_overrides: !!p.forbid_overrides,
-        injection_trigger: p.injection_trigger || []
-        });
+        injection_trigger: p.injection_trigger || [],
+        // [T1-P1-11] 显式保留 marker 字段
+        marker: !!p.marker
+    });
     });
 
 
@@ -620,7 +664,8 @@ var PresetManager = {
     // 真正的排序由 prompt_order 决定，必须以此为准
     if (data.prompt_order && Array.isArray(data.prompt_order) && data.prompt_order.length > 0) {
 
-        var orderGroup = _findPromptOrderGroup(data);
+        var _curCharId = (typeof gameState !== 'undefined' && gameState) ? (gameState.currentCharacterId || (gameState.character && gameState.character.id) || (Array.isArray(gameState.characters) && gameState.characters[0] && gameState.characters[0].id) || null) : null;
+        var orderGroup = _findPromptOrderGroup(data, _curCharId);
         var orderArr = orderGroup && orderGroup.order;
         if (orderArr && Array.isArray(orderArr) && orderArr.length > 0) {
             // 建立 identifier/name -> 排序索引 的映射
