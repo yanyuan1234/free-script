@@ -35,6 +35,10 @@ _evictIfNeeded() {
 }
 };
 
+// [T2-P1-8] TimerManager 签名（setInterval/setTimeout 第一参数是 id）与浏览器原生 API 不同
+// （原生是 (fn, delay)），这是项目内部设计：id 化管理避免漏 clear。
+// 调用本 TimerManager 时如传错顺序会得到 setInterval(id, fn) 这种错误行为（fn 是 undefined）。
+// 项目代码 grep 'TimerManager\\.set' 即可确认所有调用方都使用本封装
 const TimerManager = {
     _intervals: {}, _timeouts: {},
     setInterval(id, fn, delay) { this.clearInterval(id); this._intervals[id] = setInterval(fn, delay); },
@@ -541,7 +545,11 @@ const Logger = (function() {
     }
     return {
         LEVELS: LEVELS,
-
+        // [T2-P1-1] 补回 debug() 和 info() 方法（之前只有 warn/error）
+        // 默认级别 LEVELS.warn，debug/info 调用会因 currentLevel 过滤而不输出（线上静默）
+        // 用户在控制台执行 localStorage.setItem('free_script_log_level','debug') 即可看全部
+        debug() { if (currentLevel() <= LEVELS.debug) { try { console.debug.apply(console, ['[DBG]'].concat([].slice.call(arguments))); } catch(e) {} } },
+        info()  { if (currentLevel() <= LEVELS.info)  { try { console.info.apply(console,  ['[INF]'].concat([].slice.call(arguments))); } catch(e) {} } },
         warn()  { if (currentLevel() <= LEVELS.warn)  { try { console.warn.apply(console,  ['[WRN]'].concat([].slice.call(arguments))); } catch(e) {} } },
         error() { try { console.error.apply(console, ['[ERR]'].concat([].slice.call(arguments))); } catch(e) {} }
     };
@@ -770,3 +778,94 @@ const RegexSafetyChecker = {
     }
 };
 if (typeof window !== 'undefined') window.RegexSafetyChecker = RegexSafetyChecker;
+
+// ========================================
+// [T2-P1-2] 补 4 个常用工具函数（debounce/throttle/safeExecute/safeGetItem）
+// 项目代码散在各处有内联实现，合并到 utils.js 作为统一入口
+// ========================================
+const Debounce = {
+    /**
+     * 防抖：N 毫秒内多次调用只执行最后一次
+     * @param {Function} fn 实际函数
+     * @param {number} delay 毫秒
+     * @returns {Function}
+     */
+    create: function(fn, delay) {
+        if (typeof fn !== 'function') return function() {};
+        var timer = null;
+        var d = delay || 300;
+        return function() {
+            var args = arguments, ctx = this;
+            if (timer) clearTimeout(timer);
+            timer = setTimeout(function() { fn.apply(ctx, args); timer = null; }, d);
+            };
+        }
+};
+if (typeof window !== 'undefined') window.Debounce = Debounce;
+
+const Throttle = {
+    /**
+     * 节流：N 毫秒内最多执行一次
+     * @param {Function} fn 实际函数
+     * @param {number} interval 毫秒
+     * @returns {Function}
+     */
+    create: function(fn, interval) {
+        if (typeof fn !== 'function') return function() {};
+        var last = 0, timer = null;
+        var gap = interval || 300;
+        return function() {
+            var now = Date.now();
+            var remain = gap - (now - last);
+            var args = arguments, ctx = this;
+            if (remain <= 0) {
+                if (timer) { clearTimeout(timer); timer = null; }
+                last = now;
+                fn.apply(ctx, args);
+            } else if (!timer) {
+                timer = setTimeout(function() {
+                    last = Date.now(); timer = null;
+                    fn.apply(ctx, args);
+                    }, remain);
+            }
+            };
+        }
+};
+if (typeof window !== 'undefined') window.Throttle = Throttle;
+
+/**
+ * 安全执行函数：try-catch 包裹 + 日志 + 不向上抛
+ * @param {Function} fn 要执行的函数
+ * @param {*} fallback 出错时的返回
+ * @param {string} tag 出错时的标签
+ * @returns {*} fn 返回值或 fallback
+ */
+function safeExecute(fn, fallback, tag) {
+    try {
+        var r = (typeof fn === 'function') ? fn() : fallback;
+        return r === undefined ? fallback : r;
+    } catch (e) {
+        if (typeof Logger !== 'undefined' && Logger.error) Logger.error('[' + (tag || 'safeExecute') + '] 异常:', e);
+        else try { console.error('[' + (tag || 'safeExecute') + ']', e); } catch (_) {}
+        return fallback;
+    }
+}
+if (typeof window !== 'undefined') window.safeExecute = safeExecute;
+
+/**
+ * 安全获取 localStorage 键值：JSON 解析失败回退到原始字符串
+ * @param {string} key 键名
+ * @param {*} fallback 取不到时返回值
+ * @returns {*}
+ */
+function safeGetItem(key, fallback) {
+    try {
+        if (typeof localStorage === 'undefined') return fallback;
+        var raw = localStorage.getItem(key);
+        if (raw == null) return fallback;
+        try { return JSON.parse(raw); } catch (e) { return raw; }
+    } catch (e) {
+        return fallback;
+    }
+}
+if (typeof window !== 'undefined') window.safeGetItem = safeGetItem;

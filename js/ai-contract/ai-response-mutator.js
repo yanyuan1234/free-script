@@ -277,17 +277,24 @@ const AIResponseMutator = {
     },
 
     // 货币
+    // [T1-P1-35] 改走 CurrencyMutator.set（统一入口），
+    // 旧实现直接 StateManager.set 绕过了 Mutator 层的金额校验/日志/legacy 同步包装。
+    // CurrencyMutator 内部会通过 StateManager.set 写入，仍触发 _syncLegacyMirror 同步到 gameState.currency。
     _applyCurrency(data) {
         if (data.currency === undefined && data.money === undefined && data.gold === undefined) return;
         const currency = data.currency !== undefined ? data.currency : (data.money !== undefined ? data.money : data.gold);
         const num = parseInt(currency);
         if (isNaN(num)) return;
-        StateManager.set('entities.currency', num, { silent: true });
+        if (typeof CurrencyMutator !== 'undefined' && CurrencyMutator.set) {
+            CurrencyMutator.set(num, { silent: true });
+        } else {
+            // 兜底：CurrencyMutator 未加载时直写 StateManager（保留旧行为，仅作保险）
+            StateManager.set('entities.currency', num, { silent: true });
+        }
         if (data.currencyName) {
+            // 货币名无专用 Mutator，沿用 StateManager.set + _syncLegacyMirror
             StateManager.set('entities.currencyName', String(data.currencyName), { silent: true });
         }
-
-        // set('entities.currency'/'entities.currencyName') 已触发 _syncLegacyMirror 同步
     },
 
     // 任务
@@ -315,13 +322,10 @@ const AIResponseMutator = {
     // _syncLegacyMirror 自动将 StateManager.time 镜像到 gameState.gameTime，无需此处重复写入。
 
     // 地点
-
-    // 原实现仅处理 data.locations（AI 显式返回），文本提取（_extractLocations）在 game.js legacy
-    // 路径（line 1858-1863）单独写入且用 REPLACE 语义覆盖 _applyLocations 的结果，导致：
-    //   1. AI 显式返回的地名可能被文本提取的覆盖（数据丢失）
-    //   2. 两个写入路径都不在 transaction 内（_applyLocations 在 transaction，legacy 不在）
-    // 现统一在 _applyLocations 内合并两个来源（MERGE 语义：按 name 匹配，存在则更新 desc，新名追加），
-    // legacy 路径在 _aiMutatorApplied=true 时跳过文本提取，避免双写。
+    // [T1-P1-34] 删除内联 normalize，统一由 LocationMutator.mergeLocations 内部调用
+    // LocationMutator.normalizeLocation 处理（保留 features/charactersPresent/lastChangedTurn/locked 等字段）。
+    // 旧实现仅产出 {name, desc} 两字段，丢失 6 字段，且双源数据被拍扁后无法反向追溯。
+    // 停用词过滤仍在 mutator 层前保留，避免污染 entities.locations。
     _applyLocations(data) {
 
         if (typeof LocationMutator === 'undefined' || typeof LocationMutator.mergeLocations !== 'function') return;
@@ -338,18 +342,18 @@ const AIResponseMutator = {
                 console.warn('[AIResponseMutator] EnhancedMemory._extractLocations 失败:', e && e.message);
             }
         }
-        // 合并两个来源并归一化
+        // 合并两个来源 + 停用词过滤（只过滤名字长度、停用词等基础校验，字段标准化由 mergeLocations 内部处理）
         var allLocations = fromAI.concat(fromText);
         if (allLocations.length === 0) return;
-        const normalized = allLocations.map(function(loc) {
-            if (typeof loc === 'string') return { name: loc.trim(), desc: '' };
-            return {
-                name: String(loc.name || loc.title || '').trim(),
-                desc: String(loc.desc || loc.description || '').trim()
-            };
-        }).filter(loc => loc.name && loc.name.length > 1 && !(typeof LocationMutator !== 'undefined' && LocationMutator._isStopWord && LocationMutator._isStopWord(loc.name)));
-        if (normalized.length === 0) return;
-        LocationMutator.mergeLocations(normalized, { silent: true });
+        const filtered = allLocations.filter(function(loc) {
+            if (!loc) return false;
+            const name = typeof loc === 'string' ? loc.trim() : String(loc.name || loc.title || '').trim();
+            if (!name || name.length < 2) return false;
+            if (typeof LocationMutator !== 'undefined' && LocationMutator._isStopWord && LocationMutator._isStopWord(name)) return false;
+            return true;
+        });
+        if (filtered.length === 0) return;
+        LocationMutator.mergeLocations(filtered, { silent: true });
     },
 
 
@@ -482,28 +486,14 @@ const AIResponseMutator = {
         }).filter(function(e) { return e !== null; });
 
         if (normalized.length === 0) return;
-
-
+        // [T1-P1-36] gm 不可用时直接抛错（由外层 transaction 回滚），不再走内联 fallback 直写 StateManager。
+        // 旧 fallback 缺少 gm.addImportantEvents 的去重/修剪/sync 步骤，与主路径行为不一致。
+        // gm 加载顺序在 main.js 早于 AIResponseMutator.apply，正常情况下不会触发此处 throw。
         var gm = (typeof window !== 'undefined') ? window.GameMemory : null;
-        if (gm && typeof gm.addImportantEvents === 'function') {
-            gm.addImportantEvents(normalized);
-        } else {
-            // 兜底：gm 不可用时直接写 StateManager（对象数组）
-            var existing = StateManager.get('entities.events') || [];
-            if (!Array.isArray(existing)) existing = [];
-            var existingContents = {};
-            existing.forEach(function(e) {
-                if (e && e.content) existingContents[e.content] = true;
-            });
-            var toAdd = normalized.filter(function(e) { return !existingContents[e.content]; });
-            if (toAdd.length === 0) return;
-            var merged = existing.concat(toAdd);
-            if (merged.length > 50) {
-                merged.sort(function(a, b) { return (b.importance || 5) - (a.importance || 5); });
-                merged = merged.slice(0, 50);
-            }
-            StateManager.set('entities.events', merged, { silent: true });
+        if (!gm || typeof gm.addImportantEvents !== 'function') {
+            throw new Error('[AIResponseMutator] GameMemory.addImportantEvents 不可用，无法应用关键事件');
         }
+        gm.addImportantEvents(normalized);
     },
 
     // 关系变化：统一处理图谱格式 {from,to,type,desc} 与好感度格式 {name,delta}
@@ -565,24 +555,14 @@ const AIResponseMutator = {
         });
 
         // 2. 应用好感度更新（CharacterMutator，transaction-safe，可回滚）
-
+        // [T1-P1-33] 删除内联 fallback（直接修改 entities.characters 的旧实现），
+        // 强制走 CharacterMutator.updateRelationship，状态写契约唯一。
+        // 若 CharacterMutator 不可用则抛错，由外层 transaction 回滚（避免半写入）。
+        if (typeof CharacterMutator === 'undefined' || !CharacterMutator.updateRelationship) {
+            throw new Error('[AIResponseMutator] CharacterMutator.updateRelationship 不可用，无法应用好感度更新');
+        }
         favorabilityUpdates.forEach(function(upd) {
-            if (typeof CharacterMutator !== 'undefined' && CharacterMutator.updateRelationship) {
-                CharacterMutator.updateRelationship(upd.name, upd.delta, { silent: true });
-            } else {
-                // 兜底：直接操作 entities.characters（与原 _applyRelationships 一致）
-                const list = StateManager.get('entities.characters') || [];
-                const updated = list.map(function(c) {
-                    if (c.name !== upd.name) return c;
-                    const clone = StateSchema.deepClone(c);
-                    // 双写 favorability（权威字段）和 favor（兼容镜像），
-                    // 与 CharacterMutator.updateRelationship 保持一致
-                    clone.favorability = (clone.favorability !== undefined ? clone.favorability : (clone.favor || 0)) + upd.delta;
-                    clone.favor = clone.favorability;
-                    return clone;
-                });
-                StateManager.set('entities.characters', updated, { silent: true });
-            }
+            CharacterMutator.updateRelationship(upd.name, upd.delta, { silent: true });
         });
 
         // 3. 合并图谱条目：委托 mergeRelationships（统一路径，消除双实现）

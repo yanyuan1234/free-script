@@ -43,6 +43,14 @@ const StateManager = {
         return StateSchema.deepClone(value);
     },
 
+    // [T1-P1-30] 按路径读取，返回原始引用（不深拷贝）。仅供内部 Mutator/适配器使用，
+    // 调用方**不可修改返回值**（会污染 _state）。外部业务代码请用 get() 走深拷贝。
+    // 性能提升：避免每回合 5-6 次 deepClone 调用（_applyXxx 每项 1 次）
+    peek(path) {
+        if (!path) return this.snapshot();
+        return this._getRaw(path);
+    },
+
     // 兼容旧字段名读取
     getLegacy(name) {
         const path = StateSchema.getPath(name);
@@ -186,11 +194,19 @@ const StateManager = {
 
     // 内部：按路径读取原始值（不拷贝，仅内部使用）
     _getRaw(path) {
+        if (!path || typeof path !== 'string') return undefined;
         const parts = path.split('.');
         let current = this._state;
+        // [T1-P1-31] 危险键防护：拦截 __proto__/constructor/prototype 穿透，
+        // 与 _setRaw 防护保持对称（避免原型链污染/原型链读取）
         for (let i = 0; i < parts.length; i++) {
+            const key = parts[i];
+            if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+                if (typeof Logger !== 'undefined' && Logger.warn) Logger.warn('[StateManager] _getRaw 拒绝危险键:', key);
+                return undefined;
+            }
             if (current === null || current === undefined) return undefined;
-            current = current[parts[i]];
+            current = current[key];
         }
         return current;
     },

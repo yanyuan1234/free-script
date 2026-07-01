@@ -3284,22 +3284,10 @@ var GameMemory = {
         return score;
     },
 
-    addImportantEvent: function(eventOrContent) {
-        if (!this.events) this.events = [];
-        var evt = (typeof eventOrContent === 'string') ? { content: eventOrContent, importance: 5 } : eventOrContent;
-        if (!evt || !evt.content) return false;
-        if (this.events.some(function(e) { return e.content === evt.content; })) return false;
-        this.events.push({ content: evt.content, turn: this.currentTurn, gameTime: this.getGameTimeStr(), importance: evt.importance || 5, decayScore: evt.importance || 5, accessCount: 0 });
-        this._pruneImportantEvents(50);
-
-        if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
-        try { this.saveToStorage(); } catch(e) { console.warn('[GameMemory] addImportantEvent 保存失败:', e); }
-        return true;
-    },
-
-
-    // 避免 N 次 addImportantEvent = N 次 _syncEventsToKeyEvents + N 次 saveToStorage
-    addImportantEvents: function(eventList) {
+    // [T1-P1-24] 合并 addImportantEvent 与 addImportantEvents 为单一 _addImportantEventsInternal，
+    // 旧实现两份代码除批量 push + 单次 _syncEventsToKeyEvents + 单次 saveToStorage 外逻辑 100% 重复。
+    // 单一方法 + alias，schema 永远一致（对齐酒馆 insertMessage 与批量插入同 API 的设计）。
+    _addImportantEventsInternal: function(eventList) {
         if (!this.events) this.events = [];
         if (!Array.isArray(eventList) || eventList.length === 0) return 0;
         var self = this;
@@ -3321,9 +3309,21 @@ var GameMemory = {
             self._pruneImportantEvents(50);
             // 批量同步：仅 1 次 _syncEventsToKeyEvents + 1 次 saveToStorage
             if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
-            try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] addImportantEvents 保存失败:', e); }
+            try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] _addImportantEventsInternal 保存失败:', e); }
         }
         return added;
+    },
+
+    // alias：单条添加（酒馆 API 对齐 insertMessage）
+    addImportantEvent: function(eventOrContent) {
+        var evt = (typeof eventOrContent === 'string') ? { content: eventOrContent, importance: 5 } : eventOrContent;
+        if (!evt || !evt.content) return false;
+        return this._addImportantEventsInternal([evt]) > 0;
+    },
+
+    // 批量添加（避免 N 次 = N 次 _syncEventsToKeyEvents + N 次 saveToStorage）
+    addImportantEvents: function(eventList) {
+        return this._addImportantEventsInternal(eventList);
     },
 
     _recalcEventDecayScores: function(currentTurn) {
@@ -3879,24 +3879,29 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         // 旧实现返回实时引用，game.js:2487-2561 多处直接 `longTermMemory.characterTable[name] = {...}`
         // 写入会改到 tables.characters，与 longTermMemory.worldAnchors.push（无效）语义不一致。
         // 现统一为只读：写入必须通过 GameMemory API（recordCharacterChange / recordItemObtained 等）。
+        // [T1-P1-25] 全部 deepClone（immutable 快照），对齐酒馆 getCharacter / getChat 返回 deepClone 的约定。
+        // 旧实现混合引用：tables.* 是 deepClone（写不进去），但 quests / plot / events / timeline / worldNotes 是实时引用。
+        // 外部 `longTermMemory.characterTable[name] = {...}` 走实时引用能写入，绕过 GameMemory API（不调 _markLtmDirty），
+        // 下次取 deepClone 字段仍是旧数据。
+        // 修复后：所有字段统一 deepClone，写入必须走 GameMemory API。
         var deepClone = (typeof StateSchema !== 'undefined' && StateSchema.deepClone)
             ? StateSchema.deepClone
             : function(o) { return JSON.parse(JSON.stringify(o)); };
-        // worldNotes: 持久化数组（_worldNotes 由各写入点懒初始化 + push，此处返回引用以保留 push 语义）
+        // _worldNotes 懒初始化（API addWorldNote 也会懒初始化，此处仅保证 getter 安全）
         if (!self._worldNotes) self._worldNotes = [];
         var result = {
             worldAnchors: worldAnchors,
-            activeQuests: self.quests,
+            activeQuests: deepClone(self.quests) || [],
             characterTable: deepClone(self.tables.characters) || {},
             itemTable: deepClone(self.tables.items) || {},
             locationTable: deepClone(self.tables.locations) || {},
             relationships: deepClone(self.tables.relationships) || {},
-            mainPlot: self.plot.chapters,
-            currentChapterSummary: self.plot.currentChapter,
-            importantEvents: self.events,
-            timeline: self.timeline,
-            worldSetting: self.plot.worldSetting,
-            worldNotes: self._worldNotes,
+            mainPlot: deepClone(self.plot.chapters) || [],
+            currentChapterSummary: self.plot.currentChapter || '',
+            importantEvents: deepClone(self.events) || [],
+            timeline: deepClone(self.timeline) || [],
+            worldSetting: self.plot.worldSetting || '',
+            worldNotes: deepClone(self._worldNotes) || [],
             masterSummary: self.plot.worldSetting + '\n' + (self.plot.currentChapter || '')
         };
         // masterSummary setter：写入时回写到 plot（保留：摘要写入是合法的 plot 更新入口）
@@ -4803,20 +4808,10 @@ var MemoryManagerUI = {
                 return;
             }
             // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[name]
-            // 补齐运行时字段
-            if (!gm.tables.items[name]) {
-                gm.tables.items[name] = { name: name };
-            }
-            var gmNewItem = gm.tables.items[name];
-            gmNewItem.qty = _newItemData.qty;
-            gmNewItem.unit = _newItemData.unit;
-            gmNewItem.rarity = _newItemData.rarity;
-            gmNewItem.desc = _newItemData.desc;
-            gmNewItem.obtainedTurn = _newItemData.obtainedTurn;
-            gmNewItem.lastChangedTurn = _newItemData.lastChangedTurn;
-            gmNewItem.gameTime = _newItemData.gameTime;
-            gmNewItem.accessCount = _newItemData.accessCount;
-            gmNewItem.history = _newItemData.history;
+            // [T1-P1-38] 补齐运行时字段改走 _mergeRuntimeFields（与 saveItem 一致），
+            // 避免硬编码 9 行（每加一个 runtime 字段要改 6 处）。
+            self._mergeRuntimeFields(gm.tables.items, null, name, _newItemData,
+                ['qty', 'unit', 'rarity', 'desc', 'obtainedTurn', 'lastChangedTurn', 'gameTime', 'accessCount', 'history']);
         } else if (typeof _syncItemsToBag === 'function') {
             // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
             gm.tables.items[name] = _newItemData;
@@ -4963,16 +4958,10 @@ var MemoryManagerUI = {
                 return;
             }
             // 适配器已 MERGE 实体字段到 gm.tables.locations[name]
-            // 补齐运行时字段
-            if (!gm.tables.locations[name]) {
-                gm.tables.locations[name] = { name: name };
-            }
-            var gmNewLoc = gm.tables.locations[name];
-            gmNewLoc.desc = _newLocData.desc;
-            gmNewLoc.features = _newLocData.features;
-            gmNewLoc.charactersPresent = _newLocData.charactersPresent;
-            gmNewLoc.lastChangedTurn = _newLocData.lastChangedTurn;
-            gmNewLoc.locked = _newLocData.locked;
+            // [T1-P1-38] 补齐运行时字段改走 _mergeRuntimeFields（与 saveLocation 一致），
+            // 避免硬编码 7 行（每加一个 runtime 字段要改 6 处）。
+            self._mergeRuntimeFields(gm.tables.locations, null, name, _newLocData,
+                ['desc', 'features', 'charactersPresent', 'lastChangedTurn', 'locked']);
         } else {
             // legacy 兜底
             gm.tables.locations[name] = _newLocData;

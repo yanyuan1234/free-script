@@ -34,26 +34,32 @@ const BagMutator = {
             if (!it) return;
             const key = it.name || it.title || it.id;
             if (!key) return;
+            // [T1-P1-28] 合并白名单扩展到 11 字段（与 normalizeItem 输出一致）
+            // 旧 6 字段（count/desc/rarity/rarityClass/equipped/usable）漏 unit/effect/equippable/slot/history
+            // AI 返回 effect:"回血 30" 旧实现不更新 → 永久丢失
+            const _mergeFields = function(target, source) {
+                if (source.count !== undefined) target.count = source.count;
+                if (source.desc !== undefined) target.desc = source.desc;
+                if (source.rarity !== undefined) target.rarity = source.rarity;
+                if (source.rarityClass !== undefined) target.rarityClass = source.rarityClass;
+                if (source.equipped !== undefined) target.equipped = source.equipped;
+                if (source.usable !== undefined) target.usable = source.usable;
+                if (source.unit !== undefined) target.unit = source.unit;
+                if (source.effect !== undefined) target.effect = source.effect;
+                if (source.equippable !== undefined) target.equippable = source.equippable;
+                if (source.slot !== undefined) target.slot = source.slot;
+                if (Array.isArray(source.history)) target.history = source.history.slice();
+                };
             if (existingMap[key]) {
                 // 精确匹配命中
-                existingMap[key].count = it.count !== undefined ? it.count : (existingMap[key].count || 1);
-                if (it.desc !== undefined) existingMap[key].desc = it.desc;
-                if (it.rarity !== undefined) existingMap[key].rarity = it.rarity;
-                if (it.rarityClass !== undefined) existingMap[key].rarityClass = it.rarityClass;
-                if (it.equipped !== undefined) existingMap[key].equipped = it.equipped;
-                if (it.usable !== undefined) existingMap[key].usable = it.usable;
+                _mergeFields(existingMap[key], it);
             } else {
                 // 精确匹配失败 → 模糊匹配
                 var normKey = BagMutator._normalizeItemName(key);
                 var fuzzyMatchKey = normKey && fuzzyMap[normKey];
                 if (fuzzyMatchKey && existingMap[fuzzyMatchKey]) {
                     // 模糊匹配命中：合并到现有物品
-                    existingMap[fuzzyMatchKey].count = it.count !== undefined ? it.count : (existingMap[fuzzyMatchKey].count || 1);
-                    if (it.desc !== undefined) existingMap[fuzzyMatchKey].desc = it.desc;
-                    if (it.rarity !== undefined) existingMap[fuzzyMatchKey].rarity = it.rarity;
-                    if (it.rarityClass !== undefined) existingMap[fuzzyMatchKey].rarityClass = it.rarityClass;
-                    if (it.equipped !== undefined) existingMap[fuzzyMatchKey].equipped = it.equipped;
-                    if (it.usable !== undefined) existingMap[fuzzyMatchKey].usable = it.usable;
+                    _mergeFields(existingMap[fuzzyMatchKey], it);
                 } else {
                     // 全新物品
                     bag.push(it);

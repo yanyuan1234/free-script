@@ -472,6 +472,110 @@ const ResponseParser = {
             }
         }
         return -1;
+    },
+
+    // [T2-P1-6] JSON 损坏时逐字段状态机恢复（4 个 extract 工具）
+    // 当整体 JSON.parse 失败时（如 choices 数组格式错乱、bag 缺闭合 ]），
+    // 仍可用这 4 个工具从损坏字符串中按 key 抽取字段，补全 result.data。
+    // 状态机不依赖完整 JSON 解析，对单字段容忍度高（被截断/多/少逗号/字符串值含特殊字符）。
+    //
+    // extractStr: 提取字符串字段
+    //   - 匹配 "key": "..." （转义 \\" 处理）
+    //   - 返回字符串值或默认值
+    // extractArr: 提取数组字段
+    //   - 匹配 "key": [ ... ] （用 _findMatching 找配对 ]）
+    //   - 返回数组或默认值
+    // extractObj: 提取对象字段
+    //   - 匹配 "key": { ... } （用 _findMatching 找配对 }）
+    //   - 尝试 JSON.parse 嵌套对象，失败回退到默认值
+    // extractObjArr: 提取对象数组
+    //   - 匹配 "key": [ {...}, {...} ]
+    //   - 用 _findMatching 找顶层 [ ]，然后迭代每个 {...} 配对
+    //   - 每个对象尝试 JSON.parse 解析，失败跳过
+    extractStr(raw, key, defaultVal) {
+        if (!raw || typeof raw !== 'string' || !key) return defaultVal !== undefined ? defaultVal : '';
+        const re = new RegExp('"' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"\\s*:\\s*"', 'i');
+        const m = raw.match(re);
+        if (!m) return defaultVal !== undefined ? defaultVal : '';
+        const startIdx = m.index + m[0].length;
+        let end = -1;
+        let escape = false;
+        for (let i = startIdx; i < raw.length; i++) {
+            const ch = raw[i];
+            if (escape) { escape = false; continue; }
+            if (ch === '\\') { escape = true; continue; }
+            if (ch === '"') { end = i; break; }
+        }
+        if (end === -1) return defaultVal !== undefined ? defaultVal : '';
+        let val = raw.slice(startIdx, end);
+        // 还原常见转义
+        val = val.replace(/\\"/g, '"').replace(/\\\\/g, '\\').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t');
+        return val;
+    },
+
+    extractArr(raw, key, defaultVal) {
+        if (!raw || typeof raw !== 'string' || !key) return defaultVal !== undefined ? defaultVal : [];
+        const re = new RegExp('"' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"\\s*:\\s*\\[', 'i');
+        const m = raw.match(re);
+        if (!m) return defaultVal !== undefined ? defaultVal : [];
+        const startIdx = m.index + m[0].length;
+        const end = this._findMatching(raw, '[', ']', startIdx);
+        if (end === -1) return defaultVal !== undefined ? defaultVal : [];
+        const arrStr = raw.slice(startIdx - 1, end + 1);
+        try {
+            const parsed = JSON.parse(arrStr);
+            return Array.isArray(parsed) ? parsed : (defaultVal !== undefined ? defaultVal : []);
+        } catch (e) {
+            return defaultVal !== undefined ? defaultVal : [];
+        }
+    },
+
+    extractObj(raw, key, defaultVal) {
+        if (!raw || typeof raw !== 'string' || !key) return defaultVal !== undefined ? defaultVal : {};
+        const re = new RegExp('"' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"\\s*:\\s*\\{', 'i');
+        const m = raw.match(re);
+        if (!m) return defaultVal !== undefined ? defaultVal : {};
+        const startIdx = m.index + m[0].length;
+        const end = this._findMatching(raw, '{', '}', startIdx);
+        if (end === -1) return defaultVal !== undefined ? defaultVal : {};
+        const objStr = raw.slice(startIdx - 1, end + 1);
+        try {
+            const parsed = JSON.parse(objStr);
+            return (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) ? parsed : (defaultVal !== undefined ? defaultVal : {});
+        } catch (e) {
+            return defaultVal !== undefined ? defaultVal : {};
+        }
+    },
+
+    extractObjArr(raw, key, defaultVal) {
+        if (!raw || typeof raw !== 'string' || !key) return defaultVal !== undefined ? defaultVal : [];
+        const re = new RegExp('"' + key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '"\\s*:\\s*\\[', 'i');
+        const m = raw.match(re);
+        if (!m) return defaultVal !== undefined ? defaultVal : [];
+        const startIdx = m.index + m[0].length;
+        const end = this._findMatching(raw, '[', ']', startIdx);
+        if (end === -1) return defaultVal !== undefined ? defaultVal : [];
+        // 在 [ ... ] 区间内扫描每个 { ... } 配对
+        const inner = raw.slice(startIdx, end);
+        const out = [];
+        let searchFrom = 0;
+        while (searchFrom < inner.length) {
+            const objStart = inner.indexOf('{', searchFrom);
+            if (objStart === -1) break;
+            const objEnd = this._findMatching(inner, '{', '}', objStart);
+            if (objEnd === -1) break;
+            const objStr = inner.slice(objStart, objEnd + 1);
+            try {
+                const parsed = JSON.parse(objStr);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    out.push(parsed);
+                }
+            } catch (e) {
+                // 单个对象解析失败：跳过，继续下一个
+            }
+            searchFrom = objEnd + 1;
+        }
+        return out;
     }
 };
 

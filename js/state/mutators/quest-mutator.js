@@ -110,18 +110,11 @@ const QuestMutator = {
     addQuest(quest, options) {
         const normalized = this.normalizeQuest(quest);
         if (!normalized) return false;
+        // [T1-P1-29] addQuest 改走 setQuests（内部用 _smartMerge 保留 id/desc/hint/rewards），
+        // 修复前 Object.assign(existing, normalized) 会用新生成的 id 'quest_title_timestamp' 覆盖 existing.id，
+        // 导致 AI 每回合 addQuest 同名任务都换新 id → undo 栈与 UI 锚定失效
         const quests = StateManager.get('entities.quests') || [];
-        const existing = quests.find((q) => q.id === normalized.id || q.title === normalized.title);
-        if (existing) {
-            // 合并更新（同 setQuests 的智能逻辑）
-            normalized.progress = this._pickHigherProgress(existing.progress, normalized.progress);
-            if (existing.status === this.STATUS.COMPLETED || existing.status === this.STATUS.FAILED) {
-                normalized.status = existing.status;
-            }
-            Object.assign(existing, normalized);
-        } else {
-            quests.push(normalized);
-        }
+        quests.push(normalized);
         return this.setQuests(quests, options);
     },
 

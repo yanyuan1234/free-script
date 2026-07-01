@@ -23,6 +23,9 @@ const AIOutputSchema = {
             keyEvents: [],
             relationships: [],
             world: [],
+            // [T2-P1-4] 补 npcMessages：AI 直接返回 NPC 对话列表（避免下游只能从 story 文本里正则提取）
+            // schema: [{ name: '苏菲', text: '你还好吗？', emotion: '担心', turn: 1 }, ...]
+            npcMessages: [],
             contextSummary: '',
             hud: {}
         };
@@ -86,6 +89,22 @@ const AIOutputSchema = {
         }
         if (raw.relationships && Array.isArray(raw.relationships)) out.relationships = raw.relationships.slice();
         if (raw.world && Array.isArray(raw.world)) out.world = raw.world.slice();
+
+        // [T2-P1-4] npcMessages normalize：保留 name/text/emotion/turn 字段，过滤空文本
+        if (raw.npcMessages && Array.isArray(raw.npcMessages)) {
+            out.npcMessages = raw.npcMessages.map(function(m) {
+                if (!m || typeof m !== 'object') return null;
+                var text = String(m.text || m.content || m.message || '').trim();
+                if (!text) return null;
+                return {
+                    name: String(m.name || m.speaker || m.character || '').trim(),
+                    text: text,
+                    emotion: String(m.emotion || m.mood || '').trim(),
+                    turn: typeof m.turn === 'number' ? m.turn : (parseInt(m.turn) || 0)
+                };
+            }).filter(function(m) { return m && m.text; });
+        }
+
         if (raw.contextSummary) out.contextSummary = String(raw.contextSummary);
         if (raw.hud && typeof raw.hud === 'object' && !Array.isArray(raw.hud)) out.hud = this._shallowClone(raw.hud);
         return out;

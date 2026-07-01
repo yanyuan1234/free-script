@@ -1213,15 +1213,27 @@ var LocalGameAPI = {
         if (typeof record === 'object') return record.reason || '';
         return '';
     },
-    isModelFailed(modelName) {
+    isModelFailed(modelName, slot) {
         if (!modelName) return false;
         var record = null;
         var matchedKey = null;
+
+        // [CP-12] 双参数显式消除歧义：当传入 slot 时优先用复合 key "slot|model" 精确匹配，
+        // 避免模糊匹配在多 slot 共享同一 model 时错把其他 slot 的失败状态串扰过来。
+        // 不传 slot 时维持原行为（向后兼容 UI 提醒等"任何 slot 失败即整模型失败"语义）。
+        if (slot) {
+            var compositeKey = slot + '|' + modelName;
+            if (this._failedModels[compositeKey]) {
+                record = this._failedModels[compositeKey];
+                matchedKey = compositeKey;
+            }
+        }
+
         // 精确匹配：支持复合 key "slot|model"（isModelFailedForSlot 会传这种格式）
-        if (this._failedModels[modelName]) {
+        if (!record && this._failedModels[modelName]) {
             record = this._failedModels[modelName];
             matchedKey = modelName;
-        } else {
+        } else if (!record) {
             // 模糊匹配：传入裸模型名时，遍历所有 slot 的复合 key 做后缀匹配
             // 只要任一 slot 下该模型失败，就认为是失败状态（UI 提醒用）
             for (let k in this._failedModels) {
@@ -1229,7 +1241,7 @@ var LocalGameAPI = {
                 var mName = sepIdx >= 0 ? k.substring(sepIdx + 1) : k;
                 if (mName === modelName) { matchedKey = k; record = this._failedModels[k]; break; }
             }
-            if (!matchedKey) return false;
+            if (!record) return false;
         }
         // 24小时过期机制，与注释描述一致
         // 之前是永久生效，导致所有模型一旦失败过一次就永远被跳过
@@ -3824,6 +3836,10 @@ function parseDiaryContent(html) { return parseTheaterItems(html, _THEATER_SCHEM
 //   - apiCodeMap（行 3928，inline 独立表）
 // 现合并为 _ERROR_MAPS.HTTP_STATUS（详情版）与 _ERROR_MAPS.API_CODE（精简版）
 // 两表共用，translateError 三个匹配路径（HTTP前缀/Error:前缀/裸码兜底）只查本表。
+// [T2-P1-5] 验证：_ERROR_MAPS 合并已完成（HTTP_STATUS / API_CODE 单一来源）
+// 旧实现三套重复映射：HTTP_STATUS_MAP（死常量）+ httpMap（inline）+ apiCodeMap（inline）。
+// 现状：HTTP_STATUS / API_CODE 统一在 _ERROR_MAPS 内，translateError 三个匹配路径
+// （HTTP 状态码前缀 / Error: 状态码前缀 / 裸码子串兜底）只查本表，重复定义已消除。
 var _ERROR_MAPS = {
     // HTTP 状态码：用于 "HTTP 4xx/5xx" 抓取（httpMap/translateError），文案较详细
     HTTP_STATUS: {
