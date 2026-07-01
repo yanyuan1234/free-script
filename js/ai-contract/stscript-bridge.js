@@ -2,6 +2,20 @@
  * STscript Bridge
  * 将原 patch.js 中的 STscript 引擎 hook 迁移至此，与新架构统一入口
  * 依赖：PresetManager, RegexManager, injectPresetGlobalVars, window.gameAdapter
+ *
+ * 职责边界（CP-06 误报澄清）：
+ *   本文件是 BRIDGE，只负责把酒馆生态（PresetManager / RegexManager / STscript macro 引擎）
+ *   的状态变更同步到游戏世界，不是 slash command 注册器。
+ *
+ *   真正的 slash command 引擎在 js/tavern-compat.js（TavernHelperCompat）：
+ *     - registerSlashCommand（line 167）  // 注册用户/预设命令
+ *     - triggerSlash（line 169）          // 执行管道命令
+ *     - _executeSingleCommand（line 181）  // 39 个内置命令（switch/case）
+ *     - _loadPresetConfigs（line 790）    // 加载预设配置命令
+ *     - window.SillyTavern（line 840）    // SillyTavern API shim
+ *
+ * 验证对比 backup/index.html：39/39 内置命令完全一致
+ *   （详见 docs/CP-06-误报审计-2026-07-02.md）
  */
 (function() {
     'use strict';
