@@ -197,20 +197,15 @@ const StateSchema = {
         return path.indexOf('world.') === 0 || path === 'world';
     },
 
-    // 危险键：禁止用于原型链污染
-    _DANGEROUS_KEYS: ['__proto__', 'constructor', 'prototype'],
-
     // 判断路径是否有效（简单实现：允许任意点分路径）
     validatePath(path) {
         if (typeof path !== 'string' || path.length === 0) return false;
         if (!/^[a-zA-Z_][a-zA-Z0-9_]*(\.[a-zA-Z_][a-zA-Z0-9_]*)*$/.test(path)) return false;
-        // 检查每一段都不是危险键
+        // 检查每一段都不是危险键（_DANGEROUS_KEYS 定义在文件顶部，对象形式）
         var segments = path.split('.');
         var dk = StateSchema._DANGEROUS_KEYS;
         for (var i = 0; i < segments.length; i++) {
-            for (var j = 0; j < dk.length; j++) {
-                if (segments[i] === dk[j]) return false;
-            }
+            if (dk[segments[i]]) return false;
         }
         return true;
     },
