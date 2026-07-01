@@ -130,10 +130,15 @@ const _TABLE_MAPPERS = {
     },
     quests: {
         fromArray: function (cq) {
-            // 状态映射：中文 → gm 内部状态
+            // 状态映射：通过 QuestMutator 统一判断（fallback 为内联兼容）
             var gStatus = 'pending';
-            if (cq.status === '已完成' || cq.status === 'resolved') gStatus = 'resolved';
-            else if (cq.status === '已失败' || cq.status === '失败' || cq.status === 'broken') gStatus = 'broken';
+            if (typeof QuestMutator !== 'undefined') {
+                if (QuestMutator.isCompleted(cq.status)) gStatus = 'resolved';
+                else if (QuestMutator.isFailed(cq.status)) gStatus = 'broken';
+            } else {
+                if (cq.status === '已完成' || cq.status === 'resolved') gStatus = 'resolved';
+                else if (cq.status === '已失败' || cq.status === '失败' || cq.status === 'broken') gStatus = 'broken';
+            }
             return {
                 title: cq.title,
                 type: cq.type || 'quest',

@@ -880,7 +880,13 @@ function mergeRelationships(newRels) {
 
 
 function _inferRelationshipsFromCharacters() {
-
+    // 委托 AIResponseMutator 的纯函数版本，避免重复实现
+    if (typeof AIResponseMutator !== 'undefined' && AIResponseMutator._inferRelationshipsFromCharacters) {
+        var inferred = AIResponseMutator._inferRelationshipsFromCharacters();
+        if (inferred.length > 0) mergeRelationships(inferred);
+        return;
+    }
+    // fallback：AIResponseMutator 不可用时走内联逻辑
     var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
     var playerName = (player && player.name) || '主角';
     var chars = {};

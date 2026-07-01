@@ -122,7 +122,7 @@ const ResponseParser = {
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;
-        var tags = OutputSanitizer && OutputSanitizer.THINKING_TAGS ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+        var tags = OutputSanitizer && OutputSanitizer.THINKING_TAGS ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought']; // fallback 仅在 OutputSanitizer 未加载时使用
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking) {
             s = OutputSanitizer.stripThinking(s);
         } else {

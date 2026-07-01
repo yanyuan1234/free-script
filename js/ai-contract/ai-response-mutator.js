@@ -562,45 +562,19 @@ const AIResponseMutator = {
             }
         });
 
-        // 3. 合并图谱条目到 StateManager.entities.relationships（max 10）
-
-        // 原代码 line 593-611 与 RelationshipMutator.mergeRelationships (relationship-mutator.js:18-37) 完全重复。
-        // 现统一委托，_syncLegacyMirror 自动同步到 gameState.relationships。
+        // 3. 合并图谱条目：委托 mergeRelationships（统一路径，消除双实现）
+        // mergeRelationships 内部已调 RelationshipMutator.mergeRelationships + _pushRelationshipsToGM
         if (graphEntries.length > 0) {
-            if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
+            if (typeof mergeRelationships === 'function') {
+                mergeRelationships(graphEntries);
+            } else if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
                 RelationshipMutator.mergeRelationships(graphEntries, { silent: true });
-            } else if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
-                // fallback：RelationshipMutator 不可用时用原逻辑
-                var existing = StateManager.get('entities.relationships') || [];
-                if (!Array.isArray(existing)) existing = [];
-                graphEntries.forEach(function(nr) {
-                    var existIdx = -1;
-                    for (var i = 0; i < existing.length; i++) {
-                        var er = existing[i];
-                        if ((er.from === nr.from && er.to === nr.to) || (er.from === nr.to && er.to === nr.from)) {
-                            existIdx = i;
-                            break;
-                        }
+                // mergeRelationships 不可用时，手动推送 gm
+                if (typeof _pushRelationshipsToGM === 'function') {
+                    try { _pushRelationshipsToGM(); } catch (e) {
+                        console.warn('[AIResponseMutator] _pushRelationshipsToGM 失败:', e && e.message);
                     }
-                    if (existIdx !== -1) {
-                        existing[existIdx] = nr;
-                    } else {
-                        existing.push(nr);
-                    }
-                });
-                if (existing.length > 10) existing = existing.slice(-10);
-                StateManager.set('entities.relationships', existing, { silent: true });
-            }
-
-            // 4. 推送到 gm.tables.relationships（供 MemoryManagerUI + 存档读取）
-            // _syncLegacyMirror 已将 entities.relationships 同步到 gameState.relationships，
-            // _pushRelationshipsToGM 从 gameState.relationships 推送到 gm.tables.relationships
-            if (typeof _pushRelationshipsToGM === 'function') {
-                try { _pushRelationshipsToGM(); } catch (e) {
-                    console.warn('[AIResponseMutator] _pushRelationshipsToGM 失败:', e && e.message);
                 }
-            } else {
-                throw new Error('[AIResponseMutator] _pushRelationshipsToGM 未定义，请确保 core.js 已加载');
             }
         }
     },

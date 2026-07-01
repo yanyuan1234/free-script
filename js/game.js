@@ -823,7 +823,9 @@ function injectPresetGlobalVars() {
                 if (_cotPreset && _cotPreset.prompts) {
                     _presetHasCot = _cotPreset.prompts.some(function(p) {
                         var c = (p && p.content) || '';
-                        return /<thinking>|<thought>|<cot>|ECoT/i.test(c);
+                        var _cotP = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
+                            ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+                        return new RegExp('<(' + _cotP.join('|') + ')>', 'i').test(c);
                     });
                 }
             }
@@ -1661,9 +1663,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         _reCotTags.lastIndex = 0;  // 重置全局正则的 lastIndex（exec 复用必须重置）
         var cotMatch;
         while ((cotMatch = _reCotTags.exec(storyText)) !== null) {
-            // 捕获组1: XML标签格式 <thinking>...</thinking>
-            // 捕获组2: 💭...💭 格式
-            var cotContent = (cotMatch[1] || cotMatch[2] || '').trim();
+            // 捕获组2: XML标签格式 <thinking>...</thinking>（组1=标签名, 组3=闭合标签名）
+            // 捕获组4: 💭...💭 格式
+            var cotContent = (cotMatch[2] || cotMatch[4] || '').trim();
             if (cotContent) {
                 cotMatches.push(cotContent);
             }
@@ -1678,11 +1680,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
         }
         // 【v3审查修复】清理未闭合的思考标签（被 max_tokens 截断，无闭标签）
-        // 原实现 cotRegex 要求开闭标签成对出现，截断的 <thinking>...（无</thinking>）
-        // 不匹配，思考内容泄漏到 cleanStoryText 显示给用户。
-        // ResponseParser._stripThinkingTokens 已处理 think/thinking/reasoning/thought/analysis，
-        // 但 game.js 还需处理 cot/chain_of_thought/ECoT 等额外标签，统一在此兜底
-        cleanStoryText = cleanStoryText.replace(/<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>[\s\S]*$/gi, '').trim();
+        // 由 OutputSanitizer.THINKING_TAGS 动态构建正则，新增标签无需改此处
+        var _cotTags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
+            ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+        cleanStoryText = cleanStoryText.replace(new RegExp('<(?:' + _cotTags.join('|') + ')>[\\s\\S]*$', 'gi'), '').trim();
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
             storyText = cleanStoryText;
@@ -1709,13 +1710,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (response && typeof response === 'string' && response.trim().length > 0) {
                 // 如果原始响应有内容但storyText为空，说明解析可能有问题
                 // 尝试直接显示清理后的原始响应（去掉JSON标记和COT）
-                var cleanedRaw = response
-                    .replace(/```json[\s\S]*?```/g, '')
-                    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-                    .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
-                    .replace(/💭[\s\S]*?💭/g, '')
-                    .replace(/"story"\s*:\s*""/g, '')
-                    .trim();
+                var _cleanedRaw = response.replace(/```json[\s\S]*?```/g, '');
+                _cleanedRaw = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking)
+                    ? OutputSanitizer.stripThinking(_cleanedRaw)
+                    : _cleanedRaw.replace(/💭[\s\S]*?💭/g, '');
+                var cleanedRaw = _cleanedRaw.replace(/"story"\s*:\s*""/g, '').trim();
 
                 var isRawSSE = cleanedRaw.indexOf('data:') !== -1 && cleanedRaw.indexOf('"object"') !== -1;
                 if (cleanedRaw && cleanedRaw.length > 10 && !isRawSSE) {
@@ -2879,8 +2878,14 @@ function renderStory(text) {
 var globalThoughtId = 0;
 
 
-// cotRegex：思维链标签提取（<thinking>/<ECoT>/<cot>/<reasoning>/<chain_of_thought>/💭）
-var _reCotTags = /(?:<(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)([\s\S]+?)(?:<\/(?:ECoT|think(?:ing)?|cot|reasoning|chain_of_thought)>)|💭([\s\S]+?)💭/gi;
+// cotRegex：思维链标签提取，由 OutputSanitizer.THINKING_TAGS 动态构建
+var _reCotTags = (function() {
+    var tags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
+        ? OutputSanitizer.THINKING_TAGS
+        : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+    var alt = tags.join('|');
+    return new RegExp('(?:<(' + alt + ')\\b[^>]*>)([\\s\\S]+?)(?:</(' + alt + ')\\s*>)|💭([\\s\\S]+?)💭', 'gi');
+})();
 // decorTags：装饰性标签清理（giggle/ice/snow/echo/danmu/branches/prologue 等）
 var _reDecorTags = /<(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
 // _reInitialSceneMarkers：初始场景标识（第一章/苏醒/开始/序幕等）

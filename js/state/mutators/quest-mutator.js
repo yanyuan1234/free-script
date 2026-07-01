@@ -250,6 +250,18 @@ const QuestMutator = {
         return this._statusMap[key] || String(status);
     },
 
+    // 判断是否为已完成状态（中文/英文均支持）
+    isCompleted(status) {
+        var n = this.normalizeStatus(status);
+        return n === this.STATUS.COMPLETED;
+    },
+
+    // 判断是否为已失败状态（中文/英文均支持）
+    isFailed(status) {
+        var n = this.normalizeStatus(status);
+        return n === this.STATUS.FAILED;
+    },
+
     // 标准化类型
     normalizeType(type) {
         if (!type) return this.TYPE.SIDE;

@@ -129,10 +129,13 @@ const GameMemoryAdapter = {
                         titleMap[q.title] = gq;
                     }
                     gq.type = q.type || gq.type;
-                    if (q.status === '已完成' || q.status === 'resolved') {
+                    // 通过 QuestMutator 统一判断（fallback 为内联兼容）
+                    var _isComp = (typeof QuestMutator !== 'undefined') ? QuestMutator.isCompleted(q.status) : (q.status === '已完成' || q.status === 'resolved');
+                    var _isFail = (typeof QuestMutator !== 'undefined') ? QuestMutator.isFailed(q.status) : (q.status === '已失败' || q.status === '失败' || q.status === 'broken');
+                    if (_isComp) {
                         gq.status = 'resolved';
                         if (!gq.resolvedTurn) gq.resolvedTurn = turn;
-                    } else if (q.status === '已失败' || q.status === '失败' || q.status === 'broken') {
+                    } else if (_isFail) {
                         gq.status = 'broken';
                         if (!gq.resolvedTurn) gq.resolvedTurn = turn;
                     } else {
