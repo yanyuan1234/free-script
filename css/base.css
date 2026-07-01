@@ -750,6 +750,15 @@ input:checked + .slider:before {
     background: rgba(255, 255, 255, .92);
     color: #1a1a1a
 }
+/* [T2-P1-3] 4 种 toast 类型颜色区分（info/success/warning/error） */
+.toast.toast-info    { background: rgba(59, 130, 246, .95); }
+.toast.toast-success { background: rgba(34, 197, 94, .95); }
+.toast.toast-warning { background: rgba(245, 158, 11, .95); color: #1a1a1a; }
+.toast.toast-error   { background: rgba(239, 68, 68, .95); }
+[data-theme="dark"] .toast.toast-info    { background: rgba(96, 165, 250, .95); }
+[data-theme="dark"] .toast.toast-success { background: rgba(74, 222, 128, .95); }
+[data-theme="dark"] .toast.toast-warning { background: rgba(251, 191, 36, .95); color: #1a1a1a; }
+[data-theme="dark"] .toast.toast-error   { background: rgba(248, 113, 113, .95); }
 
 @keyframes toastIn {
     from {

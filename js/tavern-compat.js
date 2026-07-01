@@ -153,13 +153,14 @@ _getSettings: function() {
 // 2. 通知系统
 // 【缺陷修复】toastr 合并到 UI.toast，移除独立容器，避免两套 toast 系统并存
 // 保留 toastr 接口供旧代码调用，内部统一委托给 UI.toast
+// [T2-P1-3] 4 种 type 透传给 UI.toast，附加对应 class 区分颜色
 _initToastr: function() {
     if (window.toastr) return;
     window.toastr = {
-        info: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); },
-        success: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); },
-        warning: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); },
-        error: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg); }
+        info: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg, 'info'); },
+        success: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg, 'success'); },
+        warning: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg, 'warning'); },
+        error: function(msg) { if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg, 'error'); }
     };
 },
 

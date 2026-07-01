@@ -412,11 +412,12 @@ var UI = {
         }
         return false;
     },
-    toast: function(msg) {
+    toast: function(msg, type) {
         var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
         var t = document.createElement('div');
-        t.className = 'toast';
+        // [T2-P1-3] 接受 type 参数，附加 toast-info/success/warning/error class 实现 4 种颜色区分
+        t.className = 'toast' + (type ? ' toast-' + type : '');
         t.textContent = msg;
 
         t.setAttribute('role', 'status');
