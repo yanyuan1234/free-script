@@ -608,7 +608,7 @@ var UI = {
         var content = document.createElement('div');
         content.className = 'modal-content';
         content.setAttribute('role', 'document');
-        content.innerHTML = (typeof sanitizeHtml === 'function') ? sanitizeHtml(opts.html || '') : (opts.html || '');
+        content.innerHTML = (typeof sanitizeHtml === 'function') ? sanitizeHtml(opts.html || '') : ((typeof escapeHtml === 'function') ? escapeHtml(opts.html || '') : (opts.html || ''));
         content.style.cssText = 'background:var(--card);border-radius:var(--radius-lg);max-width:400px;width:90%;max-height:80vh;overflow-y:auto;padding:20px;';
         overlay.appendChild(content);
         document.body.appendChild(overlay);
@@ -1059,101 +1059,99 @@ var LocalGameAPI = {
 
         var startTs = Date.now();
 
-        async function retryRequest(slotIdx, attempt) {
+        if (!this._autoRotate) {
             try {
-                const result = await requestFn(slotIdx);
+                var result = await this._retrySingleRequest(requestFn, this._currentSlot, 0, MAX_RETRIES, RETRY_DELAY_BASE);
+                this._logRequest(this._currentSlot, true, '', Date.now() - startTs);
                 return result;
-                } catch (e) {
-
-                // translateError 之后文案是中文的，一旦未来改 i18n 这里就漏判
-                var isRetryable =
-                    (e && e.name === 'AbortError') ||
-                    (e && e.name === 'TypeError' && /fetch|network/i.test(String(e.message || ''))) ||
-                    (e && (e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND' || e.code === 'EAI_AGAIN')) ||
-                    (e && /network|fetch failed|timeout|aborted/i.test(String(e.message || '')));
-
-                if (isRetryable && attempt < MAX_RETRIES - 1) {
-                    var delay = RETRY_DELAY_BASE * Math.pow(2, attempt); // 指数退避
-                    console.log('[重试] 配置 ' + (slotIdx + 1) + ' 第' + (attempt + 1) + '次失败，' + delay + 'ms后重试...');
-                    await new Promise(function(resolve) { setTimeout(resolve, delay); });
-                    return retryRequest(slotIdx, attempt + 1);
-                }
+            } catch (e) {
+                var _singleErr = (e && e.message) ? e.message : String(e);
+                this._logRequest(this._currentSlot, false, _singleErr, Date.now() - startTs);
+                this._markModelFailed(this._currentSlot, _singleErr);
                 throw e;
             }
-    }
+        }
+        const totalSlots = this._configs.length;
+        let attemptedCount = 0;
+        // 轮换顺序：当前 slot 起循环，失败标记仅作 UI 提醒，不影响轮换顺序
+        var orderedSlots = [];
+        for (let i = 0; i < totalSlots; i++) {
+            orderedSlots.push((this._currentSlot + i) % totalSlots);
+        }
 
-    if (!this._autoRotate) {
-        try {
-            var result = await retryRequest(this._currentSlot, 0);
-            this._logRequest(this._currentSlot, true, '', Date.now() - startTs);
-            return result;
-            } catch (e) {
-            var _singleErr = (e && e.message) ? e.message : String(e);
-            this._logRequest(this._currentSlot, false, _singleErr, Date.now() - startTs);
-            this._markModelFailed(this._currentSlot, _singleErr);
-            throw e;
+        var failReasons = [];
+        for (let attempt = 0; attempt < totalSlots; attempt++) {
+            const slotIdx = orderedSlots[attempt];
+            const cfg = this._configs[slotIdx];
+            // 跳过配置不完整的API
+            if (!cfg.baseUrl || !cfg.apiKey) {
+                console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 不完整，跳过');
+                continue;
             }
-    }
-    const totalSlots = this._configs.length;
-    let attemptedCount = 0;
-    // 轮换顺序：当前 slot 起循环，失败标记仅作 UI 提醒，不影响轮换顺序
-    var orderedSlots = [];
-    for (let i = 0; i < totalSlots; i++) {
-        orderedSlots.push((this._currentSlot + i) % totalSlots);
-    }
 
-    var failReasons = [];
-    for (let attempt = 0; attempt < totalSlots; attempt++) {
-        const slotIdx = orderedSlots[attempt];
-        const cfg = this._configs[slotIdx];
-        // 跳过配置不完整的API
-        if (!cfg.baseUrl || !cfg.apiKey) {
-            console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 不完整，跳过');
-            continue;
+            if (this.isSlotTimeoutRecent(slotIdx)) {
+                console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 近期超时，跳过');
+                continue;
+            }
+            // 注意：不再自动跳过"近期失败"的模型——失败只是 UI 提醒，玩家想用就能用
+            // 如果某个模型一直挂，玩家会在 UI 上看到 ⚠️ 提醒，自然会换或调整
+            attemptedCount++;
+            try {
+                const result = await this._retrySingleRequest(requestFn, slotIdx, 0, MAX_RETRIES, RETRY_DELAY_BASE);
+                this._logRequest(slotIdx, true, '', Date.now() - startTs);
+                if (attempt > 0 && slotIdx !== this._currentSlot) {
+                    this.setCurrentSlot(slotIdx);
+                    UI.toast('已自动切换到配置 ' + (slotIdx + 1));
+                }
+                return result;
+            } catch (e) {
+                var errMsg = translateError((e && e.message) ? e.message : String(e));
+                this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
+                // 失败标记记录原因，超时模型会在短期内被跳过
+                this._markModelFailed(slotIdx, errMsg);
+                console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
+
+                failReasons.push('配置' + (slotIdx + 1) + '(' + (cfg.model || '?') + '): ' + errMsg);
+                // 超时错误给出明确提示
+                if (/timeout|timed out|超时/i.test(errMsg)) {
+                    UI.toast('配置 ' + (slotIdx + 1) + ' 请求超时，已临时跳过');
+                } else if (attemptedCount < totalSlots && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
+                    UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
+                }
+            }
+        }
+        // 更详细的错误信息
+        if (attemptedCount === 0) {
+            throw new Error('没有可用的API配置，请检查API设置（URL和Key是否完整）');
         }
 
-        if (this.isSlotTimeoutRecent(slotIdx)) {
-            console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 近期超时，跳过');
-            continue;
-        }
-        // 注意：不再自动跳过"近期失败"的模型——失败只是 UI 提醒，玩家想用就能用
-        // 如果某个模型一直挂，玩家会在 UI 上看到 ⚠️ 提醒，自然会换或调整
-        attemptedCount++;
-    try {
-        const result = await retryRequest(slotIdx, 0);
-        this._logRequest(slotIdx, true, '', Date.now() - startTs);
-        if (attempt > 0 && slotIdx !== this._currentSlot) {
-            this.setCurrentSlot(slotIdx);
-            UI.toast('已自动切换到配置 ' + (slotIdx + 1));
-        }
-        return result;
+        // 只保留前 3 条原因避免过长，每条截断到 100 字符
+        throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + (failReasons.length > 0
+            ? '\n失败原因：\n' + failReasons.slice(0, 3).map(function(r) {
+                return r.length > 100 ? truncateByChars(r, 100, '...') : r;
+            }).join('\n')
+            : ''));
+    },
+    // [T1-P1-3] 单次请求 + 指数退避重试，拆出 tryWithFallback 内部闭包减少嵌套层级
+    async _retrySingleRequest(requestFn, slotIdx, attempt, maxRetries, retryDelayBase) {
+        try {
+            return await requestFn(slotIdx);
         } catch (e) {
-        var errMsg = translateError((e && e.message) ? e.message : String(e));
-        this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
-        // 失败标记记录原因，超时模型会在短期内被跳过
-        this._markModelFailed(slotIdx, errMsg);
-        console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
+            // translateError 之后文案是中文的，一旦未来改 i18n 这里就漏判
+            var isRetryable =
+                (e && e.name === 'AbortError') ||
+                (e && e.name === 'TypeError' && /fetch|network/i.test(String(e.message || ''))) ||
+                (e && (e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND' || e.code === 'EAI_AGAIN')) ||
+                (e && /network|fetch failed|timeout|aborted/i.test(String(e.message || '')));
 
-        failReasons.push('配置' + (slotIdx + 1) + '(' + (cfg.model || '?') + '): ' + errMsg);
-        // 超时错误给出明确提示
-        if (/timeout|timed out|超时/i.test(errMsg)) {
-            UI.toast('配置 ' + (slotIdx + 1) + ' 请求超时，已临时跳过');
-        } else if (attemptedCount < totalSlots && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
-            UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
+            if (isRetryable && attempt < maxRetries - 1) {
+                var delay = retryDelayBase * Math.pow(2, attempt); // 指数退避
+                console.log('[重试] 配置 ' + (slotIdx + 1) + ' 第' + (attempt + 1) + '次失败，' + delay + 'ms后重试...');
+                await new Promise(function(resolve) { setTimeout(resolve, delay); });
+                return this._retrySingleRequest(requestFn, slotIdx, attempt + 1, maxRetries, retryDelayBase);
+            }
+            throw e;
         }
-    }
-    }
-    // 更详细的错误信息
-    if (attemptedCount === 0) {
-        throw new Error('没有可用的API配置，请检查API设置（URL和Key是否完整）');
-    }
-
-    // 只保留前 3 条原因避免过长，每条截断到 100 字符
-    throw new Error('所有 ' + attemptedCount + ' 个可用配置均调用失败' + (failReasons.length > 0
-        ? '\n失败原因：\n' + failReasons.slice(0, 3).map(function(r) {
-            return r.length > 100 ? truncateByChars(r, 100, '...') : r;
-        }).join('\n')
-        : ''));
     },
     _logRequest(slot, success, error, durationMs) {
         var cfg = this._configs[slot];
@@ -3001,6 +2999,14 @@ if (Object.keys(theaterContent).length > 0) {
         }
     }
 
+    // [T1-P1-2] 兜底：data 缺失时构造最小骨架，让 AIResponseMutator 等下游
+    // 不因 data==null 而跳过（之前 data=null 时仅 storyText 有值，Mutator.apply 走空路径）
+    if (!data && storyText && typeof AIOutputSchema !== 'undefined' && AIOutputSchema.getDefaultOutput) {
+        const _skeleton = AIOutputSchema.getDefaultOutput();
+        _skeleton.story = storyText;
+        data = _skeleton;
+    }
+
     return {
         data,
         storyText,
@@ -3012,8 +3018,6 @@ if (Object.keys(theaterContent).length > 0) {
         success: !!(data || storyText)
     };
 }
-
-
 // 返回 { valid: Boolean, missing: Array, storyField: String }
 function validateAIResponse(data) {
     if (!isObject(data)) {
@@ -4164,6 +4168,9 @@ try {
 });
 function parseMarkdown(text) {
     if (!text) return '';
+    // [T1-P1-5] 先 escapeHtml 转义所有 HTML 特殊字符，防止 AI 返回的 <script>/<img onerror>
+    // 等恶意标签原样输出（XSS 修复）。后续 markdown 替换会基于已转义文本安全构造 HTML
+    text = (typeof escapeHtml === 'function') ? escapeHtml(String(text)) : String(text);
     return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>').replace(/\*(.*?)\*/g, '<em>$1</em>')
     .replace(/\n/g, '<br>');
 }
@@ -5396,21 +5403,26 @@ async function extractSetupToMemory() {
         }
 
         // 4. 关系 → tables.relationships
-        if (Array.isArray(parsed.relationships)) {
-            parsed.relationships.forEach(function(r) {
-                if (!r || !r.from || !r.to) return;
-                gm.tables.relationships[r.from + '->' + r.to] = {
-                    from: r.from,
-                    to: r.to,
-                    type: r.type || '',
-                    desc: r.desc || '',
-                    lastChangedTurn: 0
-                };
-            });
-
-            // 由 _syncRelationshipsToGameState 作为唯一同步点统一更新 gameState + StateManager
-            if (typeof _syncRelationshipsToGameState === 'function') {
-                _syncRelationshipsToGameState();
+        if (Array.isArray(parsed.relationships) && parsed.relationships.length > 0) {
+            // [T1-P1-4] 统一走 RelationshipMutator.mergeRelationships → entities.relationships，
+            // StateManager._syncLegacyMirror 自动同步 gm.tables.relationships 旧字段
+            if (typeof RelationshipMutator !== 'undefined' && RelationshipMutator.mergeRelationships) {
+                RelationshipMutator.mergeRelationships(parsed.relationships);
+            } else {
+                // fallback: Mutator 未加载时仍保留原直写逻辑
+                parsed.relationships.forEach(function(r) {
+                    if (!r || !r.from || !r.to) return;
+                    gm.tables.relationships[r.from + '->' + r.to] = {
+                        from: r.from,
+                        to: r.to,
+                        type: r.type || '',
+                        desc: r.desc || '',
+                        lastChangedTurn: 0
+                    };
+                });
+                if (typeof _syncRelationshipsToGameState === 'function') {
+                    _syncRelationshipsToGameState();
+                }
             }
         }
 
