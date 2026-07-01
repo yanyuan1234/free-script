@@ -801,7 +801,7 @@ var UI = {
             } else {
                 a.click();
             }
-            setTimeout(function() { URL.revokeObjectURL(url); }, 1000);
+            TimerManager.setTimeout('revokeDownloadURL', function() { URL.revokeObjectURL(url); }, 1000);
             return true;
         } catch (e) {
             console.error('[downloadJSON] 失败:', e);
@@ -5051,7 +5051,7 @@ async function callAI(messages, options = {}) {
         _timeoutMs = gameState.aiTimeoutMs;
     }
     var localAC = new AbortController();
-    var timeoutId = setTimeout(function() {
+    TimerManager.setTimeout('aiRequestTimeout', function() {
         try { localAC.abort(new Error('AI请求超时（' + Math.round(_timeoutMs / 60000) + '分钟）')); }
         catch (e) { /* 忽略 */ }
     }, _timeoutMs);
@@ -5082,7 +5082,7 @@ async function callAI(messages, options = {}) {
             }
         });
     } finally {
-        clearTimeout(timeoutId);
+        TimerManager.clearTimeout('aiRequestTimeout');
         if (externalListener && externalSignal) {
             try { externalSignal.removeEventListener('abort', externalListener); } catch (e) { /* 忽略 */ }
         }

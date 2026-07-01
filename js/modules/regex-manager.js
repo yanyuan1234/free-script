@@ -1064,22 +1064,8 @@ if (match) {
 }
 
 // 创建正则对象
-// ReDoS防护：检测危险的正则模式
-var redosPatterns = [
-    /\((\([^()]*\)|[^()]*)*\+/,  // 嵌套量词 (a+)+
-    /\([^)]*\)\{[^}]*\}\{[^}]*\}/,  // 嵌套量词 (a){n}{m}
-/(\.\*|\.\+)[\*\+\?]\*[\*\+\?]/,  // 连续量词 .*+*+
-/\(\.\*\)\+/,  // (.*)+
-/\(\.\+\)\+/,  // (.+)+
-];
-var isDangerous = false;
-for (var ri = 0; ri < redosPatterns.length; ri++) {
-    if (redosPatterns[ri].test(regexBody)) {
-        isDangerous = true;
-        break;
-    }
-}
-if (isDangerous) {
+// ReDoS 防护：统一使用 RegexSafetyChecker
+if (typeof RegexSafetyChecker !== 'undefined' && !RegexSafetyChecker.isSafe(regexBody)) {
     console.warn('[RegexManager] 检测到潜在ReDoS风险的正则，已跳过执行: ' + regexBody.substring(0, 50));
     return text;
 }

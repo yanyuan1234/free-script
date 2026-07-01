@@ -5047,7 +5047,7 @@ async function continueStory() {
             p.then(function() { gameState._continuePrefill = ''; }).catch(function() { gameState._continuePrefill = ''; });
         } else {
             // 兜底：1秒后清除（防止 sendAIRequest 非 Promise 时标记残留）
-            setTimeout(function() { gameState._continuePrefill = ''; }, 1000);
+            TimerManager.setTimeout('clearContinuePrefill', function() { gameState._continuePrefill = ''; }, 1000);
         }
     } catch (e) {
         console.error('[继续剧情] 同步错误:', e);

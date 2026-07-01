@@ -728,3 +728,41 @@ function parseTheaterItems(html, schema) {
 
 if (typeof window !== 'undefined') window.parseTheaterItems = parseTheaterItems;
 if (typeof module !== 'undefined' && module.exports) module.exports.parseTheaterItems = parseTheaterItems;
+
+// ========================================
+// 正则安全检测 - RegexSafetyChecker
+// 统一 ReDoS 防护入口，合并 worldinfo.js 与 regex-manager.js 两处独立实现
+// ========================================
+const RegexSafetyChecker = {
+    // 正则长度上限（超出直接判为不安全）
+    MAX_LENGTH: 1000,
+    // 量词数量上限（嵌套量词场景下，量词总数超此值判为不安全）
+    MAX_QUANTIFIERS: 3,
+    // 已知危险模式列表（来自原 regex-manager.js）
+    _DANGEROUS_PATTERNS: [
+        /\((\([^()]*\)|[^()]*)*\+/,      // 嵌套量词 (a+)+
+        /\([^)]*\)\{[^}]*\}\{[^}]*\}/,   // 嵌套量词 (a){n}{m}
+        /(\.\*|\.\+)[\*\+\?]\*[\*\+\?]/, // 连续量词 .*+*+
+        /\(\.\*\)\+/,                     // (.*)+
+        /\(\.\+\)\+/                      // (.+)+
+    ],
+    // 嵌套量词检测正则（来自原 worldinfo.js）
+    _NESTED_QUANTIFIER_RE: /(\(.+\)[+*?])+|(\[.+\][+*?])+|(\{.+\}[+*?])+/,
+
+    // 检测正则是否安全，返回 true 表示安全可用
+    isSafe(pattern) {
+        if (typeof pattern !== 'string' || pattern.length === 0) return true;
+        if (pattern.length > this.MAX_LENGTH) return false;
+        // 危险模式命中任一即不安全
+        for (var i = 0; i < this._DANGEROUS_PATTERNS.length; i++) {
+            if (this._DANGEROUS_PATTERNS[i].test(pattern)) return false;
+        }
+        // 嵌套量词 + 量词总数超阈值
+        if (this._NESTED_QUANTIFIER_RE.test(pattern) &&
+            (pattern.match(/[+*?]/g) || []).length > this.MAX_QUANTIFIERS) {
+            return false;
+        }
+        return true;
+    }
+};
+if (typeof window !== 'undefined') window.RegexSafetyChecker = RegexSafetyChecker;

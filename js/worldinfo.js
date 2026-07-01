@@ -1656,9 +1656,9 @@ var WorldInfo = {
 
         return triggers.some(function(trigger) {
             if (!trigger) return false;
-            // 添加 ReDoS 防护：限制正则长度和复杂度
-            if (trigger.length > 1000) {
-                console.warn('[WorldInfo] trigger 正则过长，跳过:', truncateByChars(trigger, 50, '...'));
+            // 添加 ReDoS 防护：统一使用 RegexSafetyChecker
+            if (typeof RegexSafetyChecker !== 'undefined' && !RegexSafetyChecker.isSafe(trigger)) {
+                console.warn('[WorldInfo] trigger 正则存在 ReDoS 风险或过长，跳过:', truncateByChars(trigger, 50, '...'));
                 return false;
             }
         try {
@@ -1675,13 +1675,6 @@ var WorldInfo = {
                 flags = match[2] || '';
                 if (!flags.includes('g')) flags += 'g';
                 if (!caseSensitive && !flags.includes('i')) flags += 'i';
-            }
-
-            // 检测潜在的 ReDoS 风险模式（嵌套量词）
-            var redosRiskPattern = /(\(.+\)[+*?])+|(\[.+\][+*?])+|(\{.+\}[+*?])+/;
-            if (redosRiskPattern.test(pattern) && (pattern.match(/[+*?]/g) || []).length > 3) {
-                console.warn('[WorldInfo] trigger 正则可能存在 ReDoS 风险，跳过:', trigger);
-                return false;
             }
 
 

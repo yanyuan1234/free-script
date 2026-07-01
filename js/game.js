@@ -2054,17 +2054,14 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 此安全网在 30 秒后无条件调用 cleanCursor，覆盖所有卡死场景
         // 【v3审查修复】原实现裸 setTimeout 未保存 timer ID，连续多回合会累积多个
         //   定时器，且新回合开始时无法清理旧定时器，导致光标被误清。
-        //   现保存到模块级变量，在新请求入口与正常完成路径中 clearTimeout
-        if (typeof window._cursorSafetyTimer !== 'undefined' && window._cursorSafetyTimer) {
-            clearTimeout(window._cursorSafetyTimer);
-        }
-        window._cursorSafetyTimer = setTimeout(function() {
+        //   现统一用 TimerManager（固定 ID 'cursorSafety'），可被统一清理
+        TimerManager.clearTimeout('cursorSafety');
+        TimerManager.setTimeout('cursorSafety', function() {
             try {
                 if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.cleanCursor) {
                     TypewriterBuffer.cleanCursor();
                 }
             } catch (e) { /* 忽略 */ }
-            window._cursorSafetyTimer = null;
         }, 30000);
         // 记录
         // storyHistory 已合并到 conversationHistory，不再单独存储

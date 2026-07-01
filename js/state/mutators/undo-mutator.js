@@ -4,7 +4,13 @@
 // ========================================
 const UndoMutator = {
     // 安全克隆：深拷贝（处理循环引用）
+    // 优先用 StateSchema.deepClone（过滤危险键，防原型污染）；
+    // 若含循环引用（deepClone 不支持），回退 structuredClone；
+    // structuredClone 不可用时回退 JSON
     _safeClone(o) {
+        if (typeof StateSchema !== 'undefined' && StateSchema.deepClone) {
+            try { return StateSchema.deepClone(o); } catch (e) { /* 含循环引用，走 fallback */ }
+        }
         if (typeof structuredClone === 'function') {
             try { return structuredClone(o); } catch (e) { /* 循环引用，走 fallback */ }
         }
