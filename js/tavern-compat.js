@@ -5070,14 +5070,22 @@ var MemoryManagerUI = {
     },
 
     resolveQuestByIndex: function(idx) {
-        var gm = window.GameMemory; if (!gm || !gm.quests[idx]) return;
-        gm.quests[idx].status = 'resolved'; gm.quests[idx].resolvedTurn = gm.currentTurn;
-        if (typeof gameState !== 'undefined' && gameState.currentQuests && gm.quests[idx].title) {
-            var questTitle = gm.quests[idx].title;
-            for (let i = 0; i < gameState.currentQuests.length; i++) {
-                if (gameState.currentQuests[i].title && gameState.currentQuests[i].title.indexOf(questTitle.substring(0, 10)) >= 0) {
-                    gameState.currentQuests[i].status = '已完成'; break;
-                }
+        // 【P2-42修复】统一到 resolveQuest(title, status)：通过 QuestMutator 持久化
+        var gm = window.GameMemory;
+        if (!gm || !gm.quests[idx]) return;
+        var quest = gm.quests[idx];
+        if (!quest.title) return;
+
+        // 使用 resolveQuest 统一路径，会通过 StateManager 持久化
+        if (typeof QuestMutator !== 'undefined' && QuestMutator.resolveQuest) {
+            QuestMutator.resolveQuest(quest.title, 'resolved');
+        } else {
+            // fallback：直接更新 gm.quests + StateManager
+            quest.status = 'resolved';
+            quest.resolvedTurn = gm.currentTurn;
+            // 同步到 StateManager
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('entities.quests', gm.quests, { silent: true });
             }
         }
         UI.afterMemoryChange('quests', 'currentQuests', '约定已完成');

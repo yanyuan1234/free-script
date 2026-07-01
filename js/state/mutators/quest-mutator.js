@@ -150,9 +150,30 @@ const QuestMutator = {
             // 等泛化关键词误触发完成
             if (q.id && String(q.id).indexOf('guidance_') === 0) return;
             // 任务标题关键词在剧情中出现，且伴随完成类动词，则标记完成
+            // 【P2-61修复】要求关键词与完成动词在同一句或邻近窗口（50字符内）出现
             const titleKeywords = self._extractKeywords(title);
-            const matched = titleKeywords.some((kw) => lowerStory.indexOf(kw) !== -1);
-            if (matched && completionKeywords.test(lowerStory)) {
+            const matchedKeywordPos = titleKeywords.map((kw) => {
+                const pos = lowerStory.indexOf(kw);
+                return pos !== -1 ? pos : -1;
+            }).filter((pos) => pos !== -1);
+
+            // 查找邻近窗口内的完成动词
+            var nearbyCompletion = false;
+            var completionMatch;
+            completionKeywords.lastIndex = 0; // 重置正则状态
+            while ((completionMatch = completionKeywords.exec(lowerStory)) !== null) {
+                var completionPos = completionMatch.index;
+                // 检查是否有任何任务关键词在完成动词前后50字符窗口内
+                for (var i = 0; i < matchedKeywordPos.length; i++) {
+                    if (Math.abs(matchedKeywordPos[i] - completionPos) <= 50) {
+                        nearbyCompletion = true;
+                        break;
+                    }
+                }
+                if (nearbyCompletion) break;
+            }
+
+            if (nearbyCompletion) {
                 q.status = self.STATUS.COMPLETED;
                 const parts = self._parseProgressParts(q.progress);
                 if (parts.total > 0) {

@@ -772,7 +772,11 @@ function renderQuests() {
         worldModules.parentNode.insertBefore(div, worldModules);
         container = div;
     }
-    var quests = gameState.currentQuests || [];
+    // 【P2-47修复】使用 QuestSystem.getAllQuests() 获取所有任务（包括引导任务）
+    // 旧代码直接读 gameState.currentQuests，缺少引导任务
+    var quests = (typeof QuestSystem !== 'undefined' && QuestSystem.getAllQuests)
+        ? QuestSystem.getAllQuests()
+        : (gameState.currentQuests || []);
     if (quests.length === 0) {
         container.style.display = 'none';
         return;

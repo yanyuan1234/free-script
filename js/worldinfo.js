@@ -2002,7 +2002,7 @@ var WorldInfo = {
                 case 3: groups.emBottom.push(text); break;        // AFTER_EXAMPLE_MESSAGES
                 case 4: groups.anTop.push(text); break;           // TOP_OF_AUTHOR_NOTE
                 case 5: groups.anBottom.push(text); break;        // BOTTOM_OF_AUTHOR_NOTE
-                case 6: groups.atDepth.push({ text: text, depth: entry.depth || 4 }); break; // AT_DEPTH
+                case 6: groups.atDepth.push({ text: text, depth: entry.depth || 4, uid: entry.uid, comment: entry.comment, name: entry.name }); break; // AT_DEPTH
                 case 7: groups.outlet.push({ text: text, outletName: entry.outletName || '' }); break; // OUTLET
                 default: groups.beforeChar.push(text); break;
             }

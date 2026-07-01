@@ -53,7 +53,14 @@ const CharacterMutator = {
             const cleanName = self._cleanName(normalized.name);
             const idx = list.findIndex((c) => c && self._cleanName(c.name) === cleanName);
             if (idx >= 0) {
-                list[idx] = Object.assign({}, list[idx], normalized);
+                // 【P2-60修复】精确匹配也取 Math.max：AI 好感度与累积值取较大者
+                // 与模糊匹配分支保持一致，避免精确匹配覆盖掉玩家积累的关系
+                var merged = Object.assign({}, list[idx], normalized);
+                if (typeof list[idx].favorability === 'number' && typeof normalized.favorability === 'number') {
+                    merged.favorability = Math.max(list[idx].favorability, normalized.favorability);
+                    merged.favor = merged.favorability;
+                }
+                list[idx] = merged;
                 return;
             }
             // 2. 【修复BUG-005】模糊匹配：通过描述重叠识别同一角色的不同名称

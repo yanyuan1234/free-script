@@ -5371,28 +5371,13 @@ async function extractSetupToMemory() {
                 if (!c || !c.name) return;
                 // 跳过主角（主角不进NPC表）
                 if (playerName && (c.name === playerName || c.name.includes(playerName) || playerName.includes(c.name))) return;
-                // 写入 tables.characters
-                gm.tables.characters[c.name] = {
-                    name: c.name,
-                    title: c.title || '',
-                    relation: c.relation || '',
-                    mood: '',
-                    location: '',
-                    outfit: '',
-                    favorability: typeof c.favorability === 'number' ? c.favorability : 50,
-                    status: '',
-                    history: [{ turn: 0, changes: c.desc || '开局设定' }],
-                    lastChangedTurn: 0,
-                    gameTime: gm.getGameTimeStr(),
-                    accessCount: 0,
-                    locked: false
-                };
                 // 写入 permanentFacts.npcProfiles
                 var profileDesc = c.name + '：' + (c.title || '') + (c.relation ? '，与主角关系：' + c.relation : '') + (typeof c.favorability === 'number' ? '，好感度' + c.favorability : '') + (c.desc ? '。' + c.desc : '');
                 gm.addWorldAnchor('npc_profile', profileDesc, 'setup_extract', 0);
 
-                // 统一走 CharacterMutator.mergeCharacters → entities.characters，
-                // 由 StateManager._syncLegacyMirror 自动同步 allCharacters 旧字段
+                // 【P2-34修复】统一走 CharacterMutator.mergeCharacters → entities.characters，
+                // 不再手动直写 gm.tables.characters。
+                // 若 GameMemoryAdapter 已绑定，变更会自动同步；若未绑定，在 extractSetupToMemory 末尾统一同步
                 if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
                     CharacterMutator.mergeCharacters([{
                         name: c.name,
@@ -5402,7 +5387,6 @@ async function extractSetupToMemory() {
                         desc: c.desc || ''
                     }]);
                 } else {
-
                     throw new Error('[extractSetupToMemory] CharacterMutator 未加载，无法同步角色');
                 }
             });
@@ -5537,6 +5521,16 @@ async function extractSetupToMemory() {
         }
     } catch (e) {
         console.warn('[设定提取] 失败（不影响游戏继续）:', e && e.message);
+    }
+
+    // 【P2-34修复】extractSetupToMemory 末尾手动同步：
+    // 若 GameMemoryAdapter 尚未绑定（StateManager → gm 同步不可用），手动同步一次
+    if (typeof GameMemoryAdapter !== 'undefined' && GameMemoryAdapter.syncToGameMemory) {
+        try {
+            GameMemoryAdapter.syncToGameMemory();
+        } catch (syncErr) {
+            console.warn('[extractSetupToMemory] 同步 GameMemory 失败:', syncErr);
+        }
     }
 }
 

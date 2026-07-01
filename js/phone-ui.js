@@ -1518,12 +1518,14 @@ function _openPresetApp(tag) {
 
 // 渲染包含HTML/CSS的预设app（如ice、snow中的交互小剧场）
 function _renderPresetAppHTML(content, tag) {
-    // 安全处理：使用 sandbox iframe 隔离 AI 生成的内容
+    // 【P2-72修复】安全处理：使用 sandbox iframe + sanitizeIframeHtml 隔离 AI 生成的内容
+    // sanitizeIframeHtml 只放行安全标签（包含 <style>），移除脚本和危险属性
     var wrapperClass = 'preset-app-content';
     if (tag === 'snow') wrapperClass += ' preset-app-snow';
     if (tag === 'ice') wrapperClass += ' preset-app-ice';
 
-    return '<iframe sandbox="allow-scripts" srcdoc="' + content.replace(/"/g, '&quot;') + '" style="width:100%;border:none;min-height:200px;border-radius:8px;"></iframe>';
+    var safeContent = (typeof sanitizeIframeHtml === 'function') ? sanitizeIframeHtml(content) : escapeHtml(content);
+    return '<iframe sandbox="allow-scripts" srcdoc="' + safeContent.replace(/"/g, '&quot;') + '" style="width:100%;border:none;min-height:200px;border-radius:8px;"></iframe>';
 }
 
 // 渲染纯文本/XML预设app内容
