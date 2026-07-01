@@ -1210,8 +1210,32 @@ var GameMemory = {
                 self.addImportantEvent({ content: innerContent, importance: 7, source: 'ai_edit' });
                 edit.content = innerContent;
             } else if (type === 'quest') {
-                if (action === 'add' && innerContent) { self.addQuest({ title: innerContent, type: 'quest', status: 'pending' }); edit.content = innerContent; }
-                else if (action === 'resolve' && innerContent) { self.resolveQuest(innerContent, 'resolved'); edit.content = innerContent; }
+                if (action === 'add' && innerContent) {
+                    // [CP-01] 统一走 QuestMutator.addQuest 写入 StateManager 权威源，
+                    //          _syncLegacyMirror 自动同步 gameState.currentQuests。
+                    if (typeof QuestMutator !== 'undefined' && QuestMutator.addQuest) {
+                        QuestMutator.addQuest({ title: innerContent, type: 'quest', status: 'pending' });
+                    }
+                    // 兼容旧 GM.quests 数组（dormant tracking + _buildQuestsSection 依赖该数组），
+                    // 仅在原数组中无同名 pending 项时追加，避免重复。
+                    if (!self.quests.some(function(q) { return q && q.title === innerContent && q.status === 'pending'; })) {
+                        self.quests.push({ title: innerContent, type: 'quest', status: 'pending', createdTurn: self.currentTurn });
+                    }
+                    edit.content = innerContent;
+                }
+                else if (action === 'resolve' && innerContent) {
+                    if (typeof QuestMutator !== 'undefined' && QuestMutator.resolveQuest) {
+                        QuestMutator.resolveQuest(innerContent, '已完成');
+                    }
+                    // 兼容旧 GM.quests 数组
+                    self.quests.forEach(function(q) {
+                        if (q && q.status === 'pending' && q.title.indexOf(innerContent) >= 0) {
+                            q.status = 'resolved';
+                            q.resolvedTurn = self.currentTurn;
+                        }
+                    });
+                    edit.content = innerContent;
+                }
             } else if (type === 'time') {
                 if (attrs.day) self.gameClock.day = parseInt(attrs.day) || self.gameClock.day;
                 if (attrs.period) self.gameClock.period = attrs.period;
@@ -3174,23 +3198,11 @@ var GameMemory = {
     },
 
 
-    // （原 content 字段已废弃，旧存档由 _migrateDataToV3 重命名）
-    addQuest: function(quest) {
-        if (!quest || !quest.title) return null;
-        if (this.quests.some(function(q) { return q && q.title === quest.title && q.status === 'pending'; })) return null;
-        if (!quest.createdTurn) quest.createdTurn = this.currentTurn;
-        if (!quest.status) quest.status = 'pending';
-        if (!quest.type) quest.type = 'promise';
-        this.quests.push(quest);
-        return quest;
-    },
-
-
-    resolveQuest: function(contentFragment, newStatus) {
-        var self = this; var count = 0;
-        self.quests.forEach(function(q) { if (q.status === 'pending' && q.title.indexOf(contentFragment) >= 0) { q.status = newStatus || 'resolved'; q.resolvedTurn = self.currentTurn; count++; } });
-        return count;
-    },
+    // [CP-01] 已删除 GameMemory.addQuest / GameMemory.resolveQuest，全部走 QuestMutator。
+    //   旧实现直接 push/splice self.quests 数组，绕过 StateManager，导致 <mem type="quest"> 添加
+    //   的任务无法跨重启恢复。新代码统一通过 QuestMutator.addQuest / QuestMutator.resolveQuest
+    //   写入 StateManager 权威源，由 _syncLegacyMirror 自动同步 gameState.currentQuests 旧字段。
+    //   旧数组 self.quests 由各调用方 inline 维护（dormant tracking / _buildQuestsSection 兼容）。
 
     _cleanupQuests: function() {
         var self = this; var currentTurn = self.currentTurn;
@@ -3220,8 +3232,15 @@ var GameMemory = {
         self.extractPromisesFromText(content).forEach(function(p) {
             var anchor = self.addWorldAnchor('promise', p.content, message.role === 'user' ? 'player' : 'ai', self.currentTurn);
             if (anchor) registered.push(anchor);
-            var quest = self.addQuest({ type: 'promise', title: p.content, status: 'pending' });
-            if (quest) registered.push(quest);
+            // [CP-01] 统一走 QuestMutator.addQuest 写入 StateManager 权威源
+            if (typeof QuestMutator !== 'undefined' && QuestMutator.addQuest) {
+                QuestMutator.addQuest({ type: 'promise', title: p.content, status: 'pending' });
+            }
+            // 兼容旧 GM.quests 数组（dormant tracking + _buildQuestsSection 依赖该数组）
+            if (!self.quests.some(function(q) { return q && q.title === p.content && q.status === 'pending'; })) {
+                self.quests.push({ title: p.content, type: 'promise', status: 'pending', createdTurn: self.currentTurn });
+            }
+            registered.push({ title: p.content, type: 'promise', status: 'pending' });
         });
         return registered;
     },
@@ -5066,23 +5085,20 @@ var MemoryManagerUI = {
     },
 
     resolveQuestByIndex: function(idx) {
-        // 【P2-42修复】统一到 resolveQuest(title, status)：通过 QuestMutator 持久化
+        // [CP-01] 直接走 QuestMutator.resolveQuest（已内置）。原 fallback "else 分支" 在
+        //         QuestMutator.resolveQuest 缺失时会静默 no-op，约定完成后无法跨重启恢复。
         var gm = window.GameMemory;
         if (!gm || !gm.quests[idx]) return;
         var quest = gm.quests[idx];
         if (!quest.title) return;
 
-        // 使用 resolveQuest 统一路径，会通过 StateManager 持久化
         if (typeof QuestMutator !== 'undefined' && QuestMutator.resolveQuest) {
-            QuestMutator.resolveQuest(quest.title, 'resolved');
-        } else {
-            // fallback：直接更新 gm.quests + StateManager
+            QuestMutator.resolveQuest(quest.title, '已完成');
+        }
+        // 兼容旧 GM.quests 数组
+        if (quest.status !== 'resolved' && quest.status !== '已完成') {
             quest.status = 'resolved';
             quest.resolvedTurn = gm.currentTurn;
-            // 同步到 StateManager
-            if (typeof StateManager !== 'undefined' && StateManager.set) {
-                StateManager.set('entities.quests', gm.quests, { silent: true });
-            }
         }
         UI.afterMemoryChange('quests', 'currentQuests', '约定已完成');
     },

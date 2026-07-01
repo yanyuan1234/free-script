@@ -125,6 +125,29 @@ const QuestMutator = {
         return this.setQuests(quests, options);
     },
 
+    // 完成任务：按 title 查找并标记为指定状态
+    //   旧路径（tavern-compat.js:5069-5086, 1214）曾硬编码 self.quests.push/splice
+    //   绕过 StateManager，导致 <mem type="quest"> 添加的任务重启后丢失。
+    //   该方法统一切换到 StateManager 权威源，由 _syncLegacyMirror 自动同步 gameState.currentQuests。
+    resolveQuest(title, status, options) {
+        if (!title) return false;
+        const targetStatus = status || this.STATUS.COMPLETED;
+        const quests = StateManager.get('entities.quests') || [];
+        const q = quests.find(function(qq) { return qq && qq.title === title; });
+        if (!q) return false;
+        q.status = targetStatus;
+        if (targetStatus === this.STATUS.COMPLETED) {
+            // 自动补齐进度
+            const parts = this._parseProgressParts(q.progress);
+            if (parts.total > 0) {
+                q.progress = parts.total + '/' + parts.total;
+            } else {
+                q.progress = '1/1';
+            }
+        }
+        return this.setQuests(quests, options);
+    },
+
     // 根据剧情文本自动推进任务进度
 
     // - autoAdvanceByStory：基于剧情文本关键词 + 完成类动词，标记 AI 返回的持久化任务完成
