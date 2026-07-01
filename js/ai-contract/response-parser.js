@@ -31,6 +31,21 @@ const ResponseParser = {
             result.warnings.push('thinking tokens stripped');
         }
 
+        // [T1-P1-7] Level -1: <json></json> 标签（酒馆助手 TokenSender 模式 + 文心/豆包等国产模型）
+        const jsonTagMatch = effectiveReply.match(/<json>([\s\S]*?)<\/json>/i);
+        if (jsonTagMatch) {
+            const data2 = this._tryDirectJSON(jsonTagMatch[1]);
+            if (data2) {
+                result.success = true;
+                result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(data2) : data2;
+                result.fallbackLevel = -1;
+                result.storyText = result.data.story;
+                result.warnings.push('parsed from <json> tag');
+                this._postExtractMems(result);
+                return result;
+            }
+        }
+
         // Level 0: direct JSON（先尝试原始字符串，避免 sanitizeJSON 破坏 JSON 字符串字面量）
         let data = this._tryDirectJSON(effectiveReply);
         if (data) {
@@ -229,7 +244,8 @@ const ResponseParser = {
 
     _tryCodeBlockJSON(raw) {
         if (!raw || typeof raw !== 'string') return null;
-        const m = raw.match(/```json\n?([\s\S]*?)\n?```/);
+        // [T1-P1-6] 支持多种 fence 标签：json / JSON / js / javascript / object / output / 纯 ```（Gemini 2.5+ 主流输出格式）
+        const m = raw.match(/```(?:json|JSON|js|javascript|object|output)?\s*\n?([\s\S]*?)\n?```/i);
         if (m) return this._tryDirectJSON(m[1]);
         return null;
     },
