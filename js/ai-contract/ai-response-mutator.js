@@ -308,11 +308,11 @@ const AIResponseMutator = {
         // 来源 2：从 title + story 文本提取（兜底，AI 可能未在 JSON 中列出但剧情中提到）
         var fromText = [];
         var storyText = String(data.story || '') + ' ' + String(data.title || data.sceneTitle || data.chapterTitle || '');
-        if (storyText.trim() && typeof _extractLocations === 'function') {
+        if (storyText.trim() && typeof EnhancedMemory !== 'undefined' && EnhancedMemory._extractLocations) {
             try {
-                fromText = _extractLocations(storyText) || [];
+                fromText = EnhancedMemory._extractLocations(storyText) || [];
             } catch (e) {
-                console.warn('[AIResponseMutator] _extractLocations 失败:', e && e.message);
+                console.warn('[AIResponseMutator] EnhancedMemory._extractLocations 失败:', e && e.message);
             }
         }
         // 合并两个来源并归一化

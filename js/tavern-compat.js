@@ -4019,7 +4019,7 @@ var MemoryManagerUI = {
         }
     },
 
-    _escAttr: function(str) { return escapeAttr(str); },
+    // 注：原 _escAttr 别名已移除，直接使用 core.js 的 escapeAttr
 
     // 通用按钮：action ∈ edit/delete/cancel/save/add/addOutline/editOutline/refresh/detail/search/resolve
     // arg 支持 string / number（数字不加引号，字符串加引号并转义）
@@ -4032,7 +4032,7 @@ var MemoryManagerUI = {
         } else if (typeof arg === 'number') {
             argStr = String(arg);
         } else {
-            argStr = '\'' + this._escAttr(arg) + '\'';
+            argStr = '\'' + escapeAttr(arg) + '\'';
         }
         var onclick = 'MemoryManagerUI.' + fnName + (argStr ? '(' + argStr + ')' : '()');
         var radius = borderRadius || '6px';
@@ -4098,7 +4098,7 @@ var MemoryManagerUI = {
             saveBtn = this._btn(action, saveFn, undefined, '8px');
         } else if (Array.isArray(saveArgs)) {
             var parts = saveArgs.map(function(a) {
-                return typeof a === 'string' ? "'" + this._escAttr(a) + "'" : a;
+                return typeof a === 'string' ? "'" + escapeAttr(a) + "'" : a;
             }, this);
             var s = MemoryManagerUI._btnPresets._getPreset(action);
             saveBtn = '<button onclick="MemoryManagerUI.' + saveFn + '(' + parts.join(',') + ')" style="font-size:' + s.fontSize + ';color:' + s.color + ';background:' + s.bg + ';border:' + s.border + ';padding:' + s.padding + ';border-radius:8px;cursor:pointer;">' + s.text + '</button>';
@@ -4362,7 +4362,7 @@ var MemoryManagerUI = {
             html += '<div class="memory-card"><div class="memory-card-title">' + (typeLabels[t] || t) + ' <span style="font-weight:normal;font-size:11px;color:var(--text-tertiary);">' + list.length + ' 条</span></div>';
             list.forEach(function(a, i) {
                 var sourceTag = a.source === 'manual' ? '<span style="font-size:10px;background:#4a4;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">手动</span>' : a.source === 'auto' ? '<span style="font-size:10px;background:#666;color:white;padding:1px 6px;border-radius:4px;margin-left:6px;">自动</span>' : '';
-                var escType = self._escAttr(t);
+                var escType = escapeAttr(t);
                 var editBtn = '<button onclick="MemoryManagerUI.editPermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:var(--accent);background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">编辑</button>';
                 var delBtn  = '<button onclick="MemoryManagerUI.deletePermanentFact(\'' + escType + '\',' + i + ')" style="font-size:12px;color:#f44;background:none;border:1px solid var(--border);padding:4px 10px;border-radius:6px;cursor:pointer;">删除</button>';
                 var btns = '<div style="display:flex;gap:6px;flex-shrink:0;">' + editBtn + delBtn + '</div>';

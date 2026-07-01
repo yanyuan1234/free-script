@@ -145,11 +145,7 @@ async function initApp() {
 
         if (typeof registerGameStartListener === 'function') registerGameStartListener();
 
-
-        // utils.js:62-104 的 _globalA11yDelegate 已是统一的 data-action 委托（支持 kebab→camelCase 自动转换），
-        // init.js 此处的委托是重复注册，且仅处理 toggle-thought 一个 action。
-        // toggleThought 现已兼容 utils.js 委托的 fn.call(actEl) 调用约定（trigger = trigger || this）。
-        // _setupGlobalEventDelegation();
+        // 注：原 _setupGlobalEventDelegation() 已移除，统一由 utils.js 的 _globalA11yDelegate 处理 data-action 委托
 
         // 设置菜单顶部日期为当天
         try {

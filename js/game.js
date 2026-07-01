@@ -3,13 +3,7 @@
 // 世界观主题检测 + 动态术语系统
 // ========================================
 
-
-function _extractLocations(text) {
-    if (typeof EnhancedMemory !== 'undefined' && typeof EnhancedMemory._extractLocations === 'function') {
-        return EnhancedMemory._extractLocations(text);
-    }
-    return [];
-}
+// 注：原 _extractLocations 转发包装已移除，调用方直接使用 EnhancedMemory._extractLocations
 
 /**
  * 获取当前世界观的术语（缓存版，避免重复检测）
@@ -1818,7 +1812,9 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 跳过 legacy 文本提取（避免 REPLACE 语义覆盖 mutator 的 MERGE 结果）
             if (_doLegacyStateWrites && StateManager && (data.title || storyText)) {
-                var extractedLocations = _extractLocations(String(data.title || '') + ' ' + String(storyText || ''));
+                var extractedLocations = (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._extractLocations)
+                    ? EnhancedMemory._extractLocations(String(data.title || '') + ' ' + String(storyText || ''))
+                    : [];
                 if (extractedLocations.length > 0) {
                     StateManager.set('entities.locations', extractedLocations, { silent: true });
                 }

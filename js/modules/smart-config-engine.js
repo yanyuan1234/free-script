@@ -295,18 +295,13 @@ var SmartConfigEngine = {
     this.currentConfig = config;
     },
 
-    // 兼容别名：保留 applyConfig 作为 logConfig 的别名，避免外部调用处报错
-    applyConfig: function(config, presetName) {
-        return this.logConfig(config, presetName);
-    },
-
     /**
     * 从预设加载并应用配置
     */
     loadFromPreset: function(preset) {
         var config = this.extractConfig(preset);
         if (config) {
-            this.applyConfig(config, preset.name || '未命名');
+            this.logConfig(config, preset.name || '未命名');
         }
         return config;
     },
