@@ -4443,7 +4443,12 @@ function bindEvents() {
         btn._testing = false;
         btn._testAbortCtrl = null;
         btn.textContent = origText;
-        renderAPISettings();
+        // [M-1] 批量测试连接完成：仅状态变化，对每个被测试 slot 走 updateApiStatus 局部更新
+        if (LocalGameAPI._configs) {
+            LocalGameAPI._configs.forEach(function(_, idx) {
+                updateApiStatus(idx);
+            });
+        }
         // 显示结果
         var msg = '';
         if (successList.length > 0) msg += '连接成功: ' + successList.join(', ');
@@ -5266,6 +5271,106 @@ function renderAPISettings() {
         });
     }
 }
+
+// [M-1] renderAPISettings 局部更新函数
+// 旧实现 12 处调用点全量重渲染（约 100+ 行 DOM 构造），单按钮操作（测试/切换/状态变更）
+// 触发的全量重渲染在配置 5+ API 时感知明显卡顿。
+// 局部更新策略：
+//   - updateApiRow(slot)     单行内容变更（保存后）
+//   - updateApiStatus(slot)  仅连接/失败状态变化（测试连接完成）
+//   - updateApiCurrentBadge() 仅"使用中"标记变更（切换当前 API）
+// 行不存在则回退到全量 renderAPISettings（增删场景仍走全量）。
+function _buildApiCardHtml(cfg, i) {
+    var isCurrent = i === LocalGameAPI._currentSlot;
+    var modelDisplay = cfg.model || '未设置';
+    var urlDisplay = cfg.baseUrl ? cfg.baseUrl.replace(/^https?:\/\//, '').split('/')[0] : '未设置';
+    var apiName = cfg.name || 'API ' + (i + 1);
+    var connectionStatus = LocalGameAPI._connectionStatus || {};
+    var isFailed = connectionStatus[i] === false;
+    var modelIsFailed = cfg.model && LocalGameAPI.isModelFailed(cfg.model);
+    var modelWarnTag = modelIsFailed ?
+        ' <span style="color:#e6a23c;font-size:11px;margin-left:4px;" title="失败提醒（依然可用）">△提醒</span>' : '';
+    var errorIcon = isFailed ?
+        '<span style="color:#ff3b30;margin-left:6px;font-size:14px;">!</span>' : '';
+    return '<div class="pearl-card api-card" role="button" tabindex="0" style="padding:14px;margin-bottom:10px;cursor:pointer;' +
+        (isCurrent ? 'border-color:var(--text);' : '') + (isFailed ? 'border-color:#ff3b30;' : '') +
+        '" data-action="showApiDetail" data-args=\'[' + i + ']\' data-api-index="' + i + '">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+        '<div><div style="font-size:14px;font-weight:500;display:flex;align-items:center;">' +
+        escapeHtml(apiName) + errorIcon + '</div>' +
+        '<div style="font-size:12px;color:var(--text-secondary);margin-top:2px;">' +
+        escapeHtml(urlDisplay) + ' · ' + escapeHtml(modelDisplay) + modelWarnTag + '</div></div>' +
+        (isCurrent ? '<span class="badge badge-primary">使用中</span>' : '') +
+        '</div></div>';
+}
+
+function updateApiRow(slot) {
+    var container = document.getElementById('apiListContainer');
+    if (!container) return renderAPISettings();
+    var card = container.querySelector('.api-card[data-api-index="' + slot + '"]');
+    if (!card) return renderAPISettings();
+    var cfg = LocalGameAPI._configs[slot];
+    if (!cfg) return renderAPISettings();
+    card.outerHTML = _buildApiCardHtml(cfg, slot);
+}
+
+function updateApiStatus(slot) {
+    var container = document.getElementById('apiListContainer');
+    if (!container) return;
+    var card = container.querySelector('.api-card[data-api-index="' + slot + '"]');
+    if (!card) return;
+    var cfg = LocalGameAPI._configs[slot];
+    if (!cfg) return;
+    var connectionStatus = LocalGameAPI._connectionStatus || {};
+    var isFailed = connectionStatus[slot] === false;
+    // 仅更新 border 颜色 + 错误图标，不动内容（性能最高）
+    if (isFailed) {
+        card.style.borderColor = '#ff3b30';
+        if (!card.querySelector('.api-error-icon')) {
+            var nameEl = card.querySelector('div > div > div');
+            if (nameEl) {
+                var icon = document.createElement('span');
+                icon.className = 'api-error-icon';
+                icon.style.cssText = 'color:#ff3b30;margin-left:6px;font-size:14px;';
+                icon.textContent = '!';
+                nameEl.appendChild(icon);
+            }
+        }
+    } else {
+        card.style.borderColor = '';
+        var icon = card.querySelector('.api-error-icon');
+        if (icon) icon.remove();
+    }
+}
+
+function updateApiCurrentBadge() {
+    var container = document.getElementById('apiListContainer');
+    if (!container) return renderAPISettings();
+    var currentSlot = LocalGameAPI._currentSlot;
+    // 先清掉所有"使用中"badge + 旧 border
+    container.querySelectorAll('.api-card').forEach(function(card) {
+        var oldBadge = card.querySelector('.badge-primary');
+        if (oldBadge && oldBadge.textContent === '使用中') oldBadge.remove();
+        if (parseInt(card.dataset.apiIndex) !== currentSlot) {
+            card.style.borderColor = card.style.borderColor.replace('var(--text);', '').replace('var(--text)', '');
+        }
+    });
+    // 给新当前行加 badge + border
+    var currentCard = container.querySelector('.api-card[data-api-index="' + currentSlot + '"]');
+    if (currentCard) {
+        currentCard.style.borderColor = 'var(--text)';
+        if (!currentCard.querySelector('.badge-primary')) {
+            var flex = currentCard.querySelector('div');
+            if (flex) {
+                var badge = document.createElement('span');
+                badge.className = 'badge badge-primary';
+                badge.textContent = '使用中';
+                flex.appendChild(badge);
+            }
+        }
+    }
+}
+
 function showApiDetail(slot) {
     var newCancelBtn = document.getElementById('btnCancelTestApi');
     var cfg = LocalGameAPI._configs[slot];
@@ -5424,7 +5529,8 @@ function showApiDetail(slot) {
             compatibleMode: compatibleMode ? compatibleMode.checked : false
         });
         UI.hideModal('apiDetailModal');
-        renderAPISettings();
+        // [M-1] 单行内容变更走 updateApiRow 局部更新，避免 100+ 行 DOM 重建
+        updateApiRow(slot);
         UI.toast('已保存');
     });
 
@@ -5433,7 +5539,8 @@ function showApiDetail(slot) {
     bindFresh('btnSetCurrentApi', 'click', function() {
         LocalGameAPI.setCurrentSlot(slot);
         UI.hideModal('apiDetailModal');
-        renderAPISettings();
+        // [M-1] 仅 "使用中" 标记变更走 updateApiCurrentBadge 局部更新
+        updateApiCurrentBadge();
         UI.toast('已切换');
     });
 
@@ -5472,8 +5579,8 @@ function showApiDetail(slot) {
 
             UI.toast(result.message);
 
-            // 刷新API列表显示状态
-            renderAPISettings();
+            // [M-1] 单 slot 测试连接完成：仅状态变化，走 updateApiStatus 局部更新
+            updateApiStatus(slot);
         } catch (e) {
             if (e.name === 'AbortError') {
                 UI.toast('已取消测试');

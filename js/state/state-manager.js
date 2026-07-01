@@ -9,9 +9,9 @@ const StateManager = {
     _pendingChanges: [],
     _transactionBackup: null,   // 事务快照，用于真正回滚
 
-    // 是一个误导性的"撛设开关"（永远为 true，无切换为 false 的路径）。
-    // getLegacy/setLegacy 当前仍在使用（_syncLegacyMirror 桥接 gameState ↔ StateManager），
-    // 是否可用由方法本身的存在性决定，无需此标志。
+    // [M-5] 删除原 _useLegacyBridge 死字段（line 12-14 注释残留）
+    // 旧字段是"永远为 true 的开关"，无任何路径切换为 false，是否启用由 getLegacy/setLegacy
+    // 方法本身存在性决定。状态机运行 token 保留为 _nextToken（仍在用）。
     _nextToken: 1,
 
     // 初始化：接管全局 gameState

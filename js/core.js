@@ -4525,6 +4525,10 @@ async function autoSave() {
 }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
 // 缓存 setWaiting 重复 DOM 查询的元素引用
+// [M-6] 修复缓存 stale reference：单页应用切换视图后旧 DOM 节点会被卸载，
+// 缓存的引用还在但已脱离 document，下次操作抛错或无效。
+// 修复策略：每次调用前验证 element.isConnected，false 时清空 cache 强制重新查询。
+// 命中 connected 路径仍走 cache（性能保留），仅在切换视图/卸载时付出一次重查成本。
 var _setWaitingCache = {
     input: null,
     sendBtn: null,
@@ -4532,6 +4536,28 @@ var _setWaitingCache = {
     progressBar: null,
     initialized: false
 };
+
+function _refreshSetWaitingCache() {
+    _setWaitingCache.input = document.getElementById('customAction');
+    _setWaitingCache.sendBtn = document.getElementById('btnSendAction');
+    _setWaitingCache.genControl = document.getElementById('genControl');
+    _setWaitingCache.progressBar = document.getElementById('genProgressBar');
+    _setWaitingCache.initialized = true;
+}
+
+function _getSetWaitingEl(key) {
+    if (!_setWaitingCache.initialized) {
+        _refreshSetWaitingCache();
+    } else {
+        // stale 防御：cache 中任一元素若已脱离 document（如视图切换），全量重查
+        var sample = _setWaitingCache[key];
+        if (sample && typeof sample.isConnected === 'boolean' && !sample.isConnected) {
+            _setWaitingCache.initialized = false;
+            _refreshSetWaitingCache();
+        }
+    }
+    return _setWaitingCache[key];
+}
 
 function setWaiting(w) {
     // 状态未变化时直接返回
@@ -4542,15 +4568,9 @@ function setWaiting(w) {
     RuntimeState.isWaiting = w;
 
 
-    if (!_setWaitingCache.initialized) {
-        _setWaitingCache.input = document.getElementById('customAction');
-        _setWaitingCache.sendBtn = document.getElementById('btnSendAction');
-        _setWaitingCache.genControl = document.getElementById('genControl');
-        _setWaitingCache.progressBar = document.getElementById('genProgressBar');
-        _setWaitingCache.initialized = true;
-    }
-    var input = _setWaitingCache.input;
-    var sendBtn = _setWaitingCache.sendBtn;
+    // [M-6] 改走 _getSetWaitingEl 防御 stale reference（缓存元素已被视图切换卸载）
+    var input = _getSetWaitingEl('input');
+    var sendBtn = _getSetWaitingEl('sendBtn');
     if (input) input.disabled = w;
     if (sendBtn) sendBtn.disabled = w;
 
@@ -4567,14 +4587,16 @@ function setWaiting(w) {
     else document.body.classList.remove('is-waiting');
 
     // 显示/隐藏生成控制条
-    if (_setWaitingCache.genControl) {
-        if (w) _setWaitingCache.genControl.classList.add('active');
-        else _setWaitingCache.genControl.classList.remove('active');
+    var genControl = _getSetWaitingEl('genControl');
+    if (genControl) {
+        if (w) genControl.classList.add('active');
+        else genControl.classList.remove('active');
     }
     // 显示/隐藏流式输出进度条
-    if (_setWaitingCache.progressBar) {
-        if (w) _setWaitingCache.progressBar.classList.add('active');
-        else _setWaitingCache.progressBar.classList.remove('active');
+    var progressBar = _getSetWaitingEl('progressBar');
+    if (progressBar) {
+        if (w) progressBar.classList.add('active');
+        else progressBar.classList.remove('active');
     }
 }
 

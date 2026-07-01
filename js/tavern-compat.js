@@ -3309,6 +3309,18 @@ var GameMemory = {
             self._pruneImportantEvents(50);
             // 批量同步：仅 1 次 _syncEventsToKeyEvents + 1 次 saveToStorage
             if (typeof _syncEventsToKeyEvents === 'function') _syncEventsToKeyEvents();
+            // [M-2] 同步写 StateManager.entities.events（对象数组）
+            // 旧实现只走 _syncEventsToKeyEvents 同步 gameState.keyEvents（字符串数组），
+            // 但 gameState.keyEvents 是从 StateManager.entities.events 派生的镜像字段（_syncLegacyMirror），
+            // 缺源头写入 → 任何读 StateManager.get('entities.events') 的代码会拿到旧值。
+            // _syncLegacyMirror 会从 entities.events 镜像到 gameState.keyEvents，方向不重复。
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                try {
+                    StateManager.set('entities.events', self.events, { silent: true });
+                } catch (e) {
+                    console.warn('[GameMemory] _addImportantEventsInternal 同步 StateManager 失败:', e);
+                }
+            }
             try { self.saveToStorage(); } catch(e) { console.warn('[GameMemory] _addImportantEventsInternal 保存失败:', e); }
         }
         return added;
