@@ -122,7 +122,8 @@ const ResponseParser = {
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;
-        var tags = OutputSanitizer && OutputSanitizer.THINKING_TAGS ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought']; // fallback 仅在 OutputSanitizer 未加载时使用
+        // [T1-P1-9] fallback 改空数组（按报告建议），OutputSanitizer 未加载时不做 CoT 检测更安全
+        var tags = OutputSanitizer && OutputSanitizer.THINKING_TAGS ? OutputSanitizer.THINKING_TAGS : []; // fallback 仅在 OutputSanitizer 未加载时使用
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking) {
             s = OutputSanitizer.stripThinking(s);
         } else {

@@ -5,7 +5,12 @@
 
 // 旧代码：output-sanitizer 用 7 标签（硬编码在 7 个 replace 里），response-parser 用 5 标签数组
 // 现统一为常量，两处引用，消除标签集不一致隐患
-const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+// [CP-11] 12 标签：补 final/inner_thoughts/reflection/assistantfinal，
+//   final = 酒馆助手 End-Tag 标配 + Gemini 2.5+ / Claude 4 Thinking 模式正式回复包裹（漏此 = 正式回复整段被当 CoT 剥离）
+//   inner_thoughts = 酒馆助手 v3 引入
+//   reflection = MiniMax / Reflection 系列
+//   assistantfinal = Qwen3 / 酒馆 fallback
+const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought', 'final', 'inner_thoughts', 'reflection', 'assistantfinal'];
 const OutputSanitizer = {
     THINKING_TAGS: THINKING_TAGS,
     sanitizeStory(text) {

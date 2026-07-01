@@ -817,8 +817,9 @@ function injectPresetGlobalVars() {
                 if (_cotPreset && _cotPreset.prompts) {
                     _presetHasCot = _cotPreset.prompts.some(function(p) {
                         var c = (p && p.content) || '';
+                        // [T1-P1-9] fallback 改空数组（按报告建议），OutputSanitizer 未加载时不做 CoT 检测更安全
                         var _cotP = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
-                            ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+                            ? OutputSanitizer.THINKING_TAGS : [];
                         return new RegExp('<(' + _cotP.join('|') + ')>', 'i').test(c);
                     });
                 }
@@ -1675,8 +1676,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 【v3审查修复】清理未闭合的思考标签（被 max_tokens 截断，无闭标签）
         // 由 OutputSanitizer.THINKING_TAGS 动态构建正则，新增标签无需改此处
+        // [T1-P1-9] fallback 改空数组（按报告建议），OutputSanitizer 未加载时不做 CoT 检测更安全
         var _cotTags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
-            ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+            ? OutputSanitizer.THINKING_TAGS : [];
         cleanStoryText = cleanStoryText.replace(new RegExp('<(?:' + _cotTags.join('|') + ')>[\\s\\S]*$', 'gi'), '').trim();
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
@@ -2896,10 +2898,11 @@ var globalThoughtId = 0;
 
 
 // cotRegex：思维链标签提取，由 OutputSanitizer.THINKING_TAGS 动态构建
+// [T1-P1-9] fallback 改空数组（按报告建议），OutputSanitizer 未加载时不做 CoT 检测更安全
 var _reCotTags = (function() {
     var tags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
         ? OutputSanitizer.THINKING_TAGS
-        : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought'];
+        : [];
     var alt = tags.join('|');
     return new RegExp('(?:<(' + alt + ')\\b[^>]*>)([\\s\\S]+?)(?:</(' + alt + ')\\s*>)|💭([\\s\\S]+?)💭', 'gi');
 })();
