@@ -4859,44 +4859,31 @@ var MemoryManagerUI = {
         var _newLocData = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
 
 
-        // 旧实现只改 gm.tables.locations 不同步 StateManager，导致用户编辑对 StateManager.entities.locations
-        // 不可见——后续 AI 写入新 locations 时 StateManager.set('entities.locations') 会覆盖，
-        // 但 gm.tables 中用户编辑的 entry 因适配器 MERGE 语义被保留（孤儿条目），
-        // 造成"用户改了地点锁定但 AI 看不到"的不一致
-        // 新策略：先写 StateManager.entities.locations（无 LocMutator，直接操作数组），成功后再同步 gm.tables
-        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
-            // 构建 StateManager 视角的 locations（按现有 + 用户编辑）
-            var smLocs = [];
-            var rawLocs = StateManager.get('entities.locations') || [];
-            rawLocs.forEach(function(l) {
-                if (l && l.name && l.name !== oldName) {
-                    smLocs.push({ name: l.name, desc: l.desc || '', features: l.features || '', charactersPresent: l.charactersPresent || '' });
-                }
-            });
-            // 加入编辑后的新条目
-            smLocs.push({
-                name: _newLocData.name,
-                desc: _newLocData.desc,
-                features: _newLocData.features,
-                charactersPresent: _newLocData.charactersPresent
-            });
-
-            var smOk = false;
+        // [CP-03] 改走 LocationMutator，不再直接 StateManager.set（绕过 normalizeLocation 缺 id/notes 字段、
+        //        不触发 _syncLegacyMirror 同步、SM 写失败时 gm 已被污染）。与 P1-PU7 阶段 4 saveCharacter
+        //        强制走 CharacterMutator 架构一致。
+        if (typeof LocationMutator !== 'undefined' && LocationMutator.mergeLocations) {
+            var mutatorOk = false;
             try {
-                smOk = !!StateManager.set('entities.locations', smLocs, { silent: true });
+                mutatorOk = !!LocationMutator.mergeLocations([_newLocData], { silent: true });
             } catch (e) {
-                console.error('[MemoryManagerUI] StateManager.set entities.locations 异常:', e);
+                console.error('[MemoryManagerUI] LocationMutator.mergeLocations 异常:', e);
             }
-            if (!smOk) {
+            if (!mutatorOk) {
                 UI.toast('保存失败：状态层拒绝写入');
-                return;  // gm.tables 未改动
+                return;  // gm.tables 完全未改动，状态一致
             }
-            // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[newName]
+            // 重命名场景：mergeLocations 已按新名写入，需删除旧名
+            if (oldName !== newName && LocationMutator.removeLocation) {
+                try { LocationMutator.removeLocation(oldName, { silent: true }); }
+                catch (e) { console.error('[MemoryManagerUI] LocationMutator.removeLocation 异常:', e); }
+            }
+            // 适配器已 MERGE 实体字段到 gm.tables.locations[newName]
             // 补齐运行时字段（locked/lastChangedTurn）并处理 rename
             self._mergeRuntimeFields(gm.tables.locations, oldName, newName, _newLocData,
                 ['desc', 'features', 'charactersPresent', 'lastChangedTurn', 'locked']);
         } else {
-            // legacy 兜底（无 StateManager 环境）
+            // legacy 兜底（无 LocationMutator 环境，不应发生但保留防御性）
             if (newName !== oldName) delete gm.tables.locations[oldName];
             gm.tables.locations[newName] = _newLocData;
         }
@@ -4905,12 +4892,22 @@ var MemoryManagerUI = {
 
     deleteLocation: function(name) {
         var gm = window.GameMemory; if (!gm || !gm.tables.locations[name]) return;
-        delete gm.tables.locations[name];
 
-        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
-            var rawLocs = StateManager.get('entities.locations') || [];
-            var smLocs = rawLocs.filter(function(l) { return l && l.name !== name; });
-            StateManager.set('entities.locations', smLocs, { silent: true });
+        // [CP-03] 改走 LocationMutator.removeLocation。旧实现先 delete gm.tables 再 StateManager.set
+        //        数组过滤，若 StateManager 写失败则 gm 已被污染（sm 失败但 gm 看到 entry 已删）。
+        if (typeof LocationMutator !== 'undefined' && LocationMutator.removeLocation) {
+            var mutatorOk = false;
+            try {
+                mutatorOk = !!LocationMutator.removeLocation(name, { silent: true });
+            } catch (e) {
+                console.error('[MemoryManagerUI] LocationMutator.removeLocation 异常:', e);
+            }
+            if (!mutatorOk) {
+                UI.toast && UI.toast('删除失败：状态层拒绝写入');
+                return;  // gm.tables 未改动
+            }
+        } else {
+            delete gm.tables.locations[name];
         }
         UI.afterMemoryChange('locations', 'worldSnapshot', '地点已删除');
     },
@@ -4931,27 +4928,29 @@ var MemoryManagerUI = {
         var _newLocData = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
 
 
-        if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
-            var rawLocs = StateManager.get('entities.locations') || [];
-            var smLocs = rawLocs.filter(function(l) { return l && l.name; }).map(function(l) {
-                return { name: l.name, desc: l.desc || '', features: l.features || '', charactersPresent: l.charactersPresent || '' };
-            });
-            // 检查是否已存在同名条目，避免重复
-            var exists = smLocs.some(function(l) { return l.name === name; });
-            if (!exists) {
-                smLocs.push({ name: _newLocData.name, desc: _newLocData.desc, features: _newLocData.features, charactersPresent: _newLocData.charactersPresent });
+        // [CP-03] 改走 LocationMutator.mergeLocations。旧实现手动 read-modify-write StateManager
+        //        数组，存在 4 个问题：
+        //          1) 绕过 normalizeLocation（缺 id/notes 默认值）
+        //          2) 不触发 _syncLegacyMirror → gameState.worldSnapshot.locations 不一致
+        //          3) 静默 silent 写入失败不抛错 → gm 看到 entry 但 SM 实际失败
+        //          4) 与其他 Mutator 路径不统一，调试栈难追
+        if (typeof LocationMutator !== 'undefined' && LocationMutator.mergeLocations) {
+            // 复用 addLocation 路径的同名检查（避免覆盖已有地点的累积数据）
+            if (LocationMutator.getLocation && LocationMutator.getLocation(name)) {
+                UI.toast('地点已存在');
+                return;
             }
-            var smOk = false;
+            var mutatorOk = false;
             try {
-                smOk = !!StateManager.set('entities.locations', smLocs, { silent: true });
+                mutatorOk = !!LocationMutator.mergeLocations([_newLocData], { silent: true });
             } catch (e) {
-                console.error('[MemoryManagerUI] StateManager.set entities.locations 异常:', e);
+                console.error('[MemoryManagerUI] LocationMutator.mergeLocations 异常:', e);
             }
-            if (!smOk) {
+            if (!mutatorOk) {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;
             }
-            // StateManager 成功 → 适配器已 MERGE 实体字段到 gm.tables.locations[name]
+            // 适配器已 MERGE 实体字段到 gm.tables.locations[name]
             // 补齐运行时字段
             if (!gm.tables.locations[name]) {
                 gm.tables.locations[name] = { name: name };

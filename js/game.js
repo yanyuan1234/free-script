@@ -1816,7 +1816,28 @@ async function sendAIRequest(userMessage, isInit = false) {
                     ? EnhancedMemory._extractLocations(String(data.title || '') + ' ' + String(storyText || ''))
                     : [];
                 if (extractedLocations.length > 0) {
-                    StateManager.set('entities.locations', extractedLocations, { silent: true });
+                    // [CP-03] 改走 LocationMutator.mergeLocations。
+                    //   旧实现两个问题：
+                    //     1) REPLACE 语义（StateManager.set 全量覆盖）覆盖用户累积的 locations 数据
+                    //     2) _extractLocations 返回字符串数组，直接 set 会把 entities.locations 变成
+                    //        字符串数组，破坏 schema（LocationMutator 等读 .name 全部失败）
+                    //   新实现：转 {name, desc:''} 对象 → MERGE 语义 → 不丢用户编辑
+                    if (typeof LocationMutator !== 'undefined' && LocationMutator.mergeLocations) {
+                        var normalized = extractedLocations.map(function(loc) {
+                            return typeof loc === 'string' ? { name: loc.trim(), desc: '' } : loc;
+                        });
+                        try {
+                            LocationMutator.mergeLocations(normalized, { silent: true });
+                        } catch (e) {
+                            console.error('[legacy] LocationMutator.mergeLocations 异常:', e);
+                        }
+                    } else {
+                        // legacy 兜底（无 LocationMutator 时退化为对象数组再 set，至少不破坏 schema）
+                        var normalizedLegacy = extractedLocations.map(function(loc) {
+                            return typeof loc === 'string' ? { name: loc.trim(), desc: '' } : loc;
+                        });
+                        StateManager.set('entities.locations', normalizedLegacy, { silent: true });
+                    }
                 }
             }
         }
