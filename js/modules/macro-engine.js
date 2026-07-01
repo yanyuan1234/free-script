@@ -681,6 +681,9 @@ var MacroEngine = {
     */
     process: function(text, env) {
         if (!text || typeof text !== 'string') return String(text || '');
+        // [T1-P1-16] 性能短路：text 中没有任何宏标记（{{ 或 <<）时直接返回，
+        // 避免 40+ 次 text.replace 空扫描。保留回退保留 `<<` 兼容旧式标记
+        if (text.indexOf('{{') === -1 && text.indexOf('<<') === -1) return text;
         const self = this;
         env = env || {};
 
@@ -824,6 +827,35 @@ var MacroEngine = {
 
     // 注释宏（最后执行）
     text = text.replace(/\{\{\/\/([\s\S]*?)\}\}/gm, '');
+
+    // [T1-P1-15] 补 4 个酒馆核心宏（idle_duration/lastMessageId/mesId/last_message）
+    // {{last_message}} - 最后一条消息（任意角色）
+    text = text.replace(/\{\{last_message\}\}/gi, function() {
+        return self.getLastMessage ? self.getLastMessage() : (env.lastMessage || '');
+        });
+    // {{lastMessageId}} - 最后一条消息的 ID（酒馆专用）
+    text = text.replace(/\{\{lastMessageId\}\}/gi, function() {
+        if (typeof gameState === 'undefined' || !gameState) return '0';
+        var history = gameState.conversationHistory || [];
+        return history.length > 0 ? String(history.length - 1) : '0';
+        });
+    // {{mesId}} - 等价 lastMessageId
+    text = text.replace(/\{\{mesId\}\}/gi, function() {
+        if (typeof gameState === 'undefined' || !gameState) return '0';
+        var history = gameState.conversationHistory || [];
+        return history.length > 0 ? String(history.length - 1) : '0';
+        });
+    // {{idle_duration}} - 距离上次聊天时间（人类可读：5m / 2h / 3d）
+    text = text.replace(/\{\{idle_duration\}\}/gi, function() {
+        if (typeof gameState === 'undefined' || !gameState) return '0m';
+        var lastTs = gameState._lastMessageTime || gameState.lastMessageTime;
+        if (!lastTs) return '0m';
+        var diff = Date.now() - Number(lastTs);
+        if (diff < 60000) return Math.floor(diff / 1000) + 's';
+        if (diff < 3600000) return Math.floor(diff / 60000) + 'm';
+        if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
+        return Math.floor(diff / 86400000) + 'd';
+        });
 
     // ===== 补全酒馆常用宏 =====
 

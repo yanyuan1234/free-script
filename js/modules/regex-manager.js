@@ -940,29 +940,33 @@ apply: function(text, placement, messageIndex) {
                 if (placements.indexOf(p) === -1) placements.push(p);
             });
     }
-if (script.applyInput && placements.indexOf(1) === -1) placements.push(1);  // USER_INPUT
-if (script.applyOutput && placements.indexOf(2) === -1) placements.push(2); // AI_OUTPUT
+// [T1-P1-14] 数字语义与 PLACEMENT 表对齐：1=AI_OUTPUT, 2=USER_INPUT
+if (script.applyInput && placements.indexOf(2) === -1) placements.push(2);  // USER_INPUT
+if (script.applyOutput && placements.indexOf(1) === -1) placements.push(1); // AI_OUTPUT
 
 var shouldApply = false;
 
 // 根据 placement 参数检查是否应该应用
+// [T1-P1-14] 数字语义与 PLACEMENT 表对齐：1=AI_OUTPUT, 2=USER_INPUT, 4=WORLD_INFO, 6=REASONING
 switch(placement) {
     case 'input':
     case 'user_input':
-    shouldApply = placements.includes(1) || placements.includes('USER_INPUT');
+    // 2 = USER_INPUT
+    shouldApply = placements.includes(2) || placements.includes('USER_INPUT');
     break;
     case 'output':
     case 'ai_output':
-    shouldApply = placements.includes(2) || placements.includes('AI_OUTPUT');
+    // 1 = AI_OUTPUT (MD_DISPLAY)
+    shouldApply = placements.includes(1) || placements.includes('AI_OUTPUT');
     break;
     case 'worldInfo':
     case 'world_info':
-    // 酒馆标准: 4 = WORLD_INFO
+    // 4 = WORLD_INFO
     shouldApply = placements.includes(4) || placements.includes('WORLD_INFO');
     break;
     case 'reasoning':
-    // placement 5 = REASONING
-    shouldApply = placements.includes(5) || placements.includes('REASONING');
+    // 6 = REASONING (旧版本 5 = MACRO_COMMAND)
+    shouldApply = placements.includes(6) || placements.includes('REASONING') || placements.includes(5) || placements.includes('MACRO_COMMAND');
     break;
     case 'display':
     // display模式：应用所有启用的脚本（除非明确排除）

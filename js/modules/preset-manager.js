@@ -1910,7 +1910,23 @@ var PresetManager = {
             top_a: preset.params.top_a || 0,
             repetition_penalty: preset.params.repetition_penalty || 1,
             // 包含prompts数组
-            prompts: preset.prompts || [],
+            // [T1-P1-21] 显式输出 marker 锚点字段，与 T1-P1-11 导入对称
+            prompts: (preset.prompts || []).map(function(p) {
+                return {
+                    identifier: p.identifier || '',
+                    name: p.name || '',
+                    role: p.role || 'system',
+                    content: p.content,
+                    injection_position: p.injection_position,
+                    injection_depth: p.injection_depth,
+                    injection_order: p.injection_order,
+                    system_prompt: !!p.system_prompt,
+                    enabled: p.enabled !== false,
+                    forbid_overrides: !!p.forbid_overrides,
+                    injection_trigger: p.injection_trigger || [],
+                    marker: !!p.marker
+                    };
+                }),
             // 包含prompt_order（用于恢复启用状态）
             prompt_order: [{
                 character_id: 100000,  // dummyId for global

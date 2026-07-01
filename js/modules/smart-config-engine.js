@@ -306,5 +306,18 @@ var SmartConfigEngine = {
         return config;
     },
 
+    // [T1-P1-18] applyConfig 别名（指向 logConfig），消除"功能空壳"误解
+    // 原方法 logConfig 实质已经实现完整的解析+日志+toast 提示，但方法名暗示
+    // 用户"已应用配置"是误导。applyConfig 名字更直观但行为完全一致（仅记录+提示）
+    applyConfig: function(config, presetName) {
+        return this.logConfig(config, presetName);
+        },
+
+    // [T1-P1-18] 占位方法（报告 P1-18 提到 getConfigSummary 不存在），返回当前
+    // currentConfig 字段（也用于外部检测是否已加载推荐配置）
+    getConfigSummary: function() {
+        return this.currentConfig || null;
+        }
+
 
 };
