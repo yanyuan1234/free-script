@@ -5746,7 +5746,7 @@ return prompts.map(p => {
     */
     execute(text, scripts, options = {}) {
         if (!text || !Array.isArray(scripts)) return text;
-        const { messageDepth = 0, isPrompt = true, isMarkdown = false } = options;
+        const { messageDepth = 0, isPrompt = true, isMarkdown = false, currentPlacement = 0 } = options;
 
         for (const script of scripts) {
             if (!script) continue;
@@ -5755,12 +5755,15 @@ return prompts.map(p => {
             if (disabled) continue;
 
             // ── placement 过滤（月读格式） ──
-            // placement: [1] = user input, [2] = AI output
+            // 与酒馆标准一致（regex-manager.js:615-616 同样语义）：
+            //   1 = AI 输出 (MD_DISPLAY)
+            //   2 = 用户输入 (USER_INPUT)
+            // currentPlacement: 0 = 未知/双兼容（应用全部），1 = AI 输出，2 = 用户输入
+            // 旧实现（CP-04 修复前）placement.length > 0 检查后无任何逻辑，注释写"应该跳过"
+            // 实际 fallthrough，果实/月读预设 placement 完全失效（用户输入专用正则错跑在 AI 输出上）。
             const placement = script.placement || [];
-            if (placement.length > 0) {
-                // 1 = 用户输入侧, 2 = AI输出侧
-                // 如果当前不在placement范围内则跳过
-                // 默认都执行（如果没有placement限制）
+            if (placement.length > 0 && currentPlacement > 0 && !placement.includes(currentPlacement)) {
+                continue;
             }
 
         // ── promptOnly / markdownOnly 过滤（月读格式） ──

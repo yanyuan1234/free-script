@@ -2865,12 +2865,15 @@ function renderStory(text) {
 
 
     // 调用 RegexEngine.execute，isPrompt=false / isMarkdown=true 表示 AI 输出侧的 markdown 渲染阶段
+    // [CP-04] 补充 currentPlacement=1（AI 输出 = MD_DISPLAY），配合 RegexEngine 的 placement 过滤
+    //         让 placement=[2]（用户输入专用）的正则正确跳过此阶段
     if (typeof RegexEngine !== 'undefined' && RegexEngine.regexScripts && RegexEngine.regexScripts.length > 0) {
         var depth = (gameState.conversationHistory || []).length;
         text = RegexEngine.execute(text, RegexEngine.regexScripts, {
             messageDepth: depth,
             isPrompt: false,
-            isMarkdown: true
+            isMarkdown: true,
+            currentPlacement: 1
         });
     }
 
