@@ -3565,27 +3565,35 @@ function _syncPresetWordCountToUI(config) {
     if (!gameState.wordCountConfig) {
         gameState.wordCountConfig = { enabled: true, min: 1500, max: 3000, paragraphMin: 15, paragraphMax: 17, paragraphStyle: 'medium', lengthPreset: 'medium' };
     }
-// 更新gameState
-if (config.enabled !== undefined) gameState.wordCountConfig.enabled = config.enabled;
-if (config.min != null) gameState.wordCountConfig.min = config.min;
-if (config.max != null) gameState.wordCountConfig.max = config.max;
-if (config.paragraphMin != null) gameState.wordCountConfig.paragraphMin = config.paragraphMin;
-if (config.paragraphMax != null) gameState.wordCountConfig.paragraphMax = config.paragraphMax;
-if (config.paragraphStyle) gameState.wordCountConfig.paragraphStyle = config.paragraphStyle;
-if (config.lengthPreset) gameState.wordCountConfig.lengthPreset = config.lengthPreset;
+    // 更新 gameState：按判断条件分组循环（保持与原逻辑完全等价）
+    // 用 != null 判断的字段（null/undefined 都跳过）
+    var _nullableFields = ['min', 'max', 'paragraphMin', 'paragraphMax'];
+    for (var i = 0; i < _nullableFields.length; i++) {
+        var k = _nullableFields[i];
+        if (config[k] != null) gameState.wordCountConfig[k] = config[k];
+    }
+    // 用 truthy 判断的字段（空字符串等也跳过）
+    var _truthyFields = ['paragraphStyle', 'lengthPreset'];
+    for (var j = 0; j < _truthyFields.length; j++) {
+        var f = _truthyFields[j];
+        if (config[f]) gameState.wordCountConfig[f] = config[f];
+    }
+    // enabled 单独处理（用 !== undefined 判断，允许 false 显式传入）
+    if (config.enabled !== undefined) gameState.wordCountConfig.enabled = config.enabled;
 
-// 同步到UI元素（如果设置页面有对应的DOM）
-var wcMinEl = document.getElementById('wcMin');
-var wcMaxEl = document.getElementById('wcMax');
-var wcStyleEl = document.getElementById('wcParagraphStyle');
-var wcEnabledEl = document.getElementById('wcEnabled');
+    // 同步到 UI 元素（如果设置页面有对应的 DOM）
+    var _domSync = [
+        { id: 'wcMin', value: config.min || 1500, prop: 'value' },
+        { id: 'wcMax', value: config.max || 3000, prop: 'value' },
+        { id: 'wcParagraphStyle', value: config.paragraphStyle || 'medium', prop: 'value' },
+        { id: 'wcEnabled', value: config.enabled !== false, prop: 'checked' }
+    ];
+    for (var d = 0; d < _domSync.length; d++) {
+        var el = document.getElementById(_domSync[d].id);
+        if (el) el[_domSync[d].prop] = _domSync[d].value;
+    }
 
-if (wcMinEl) wcMinEl.value = config.min || 1500;
-if (wcMaxEl) wcMaxEl.value = config.max || 3000;
-if (wcStyleEl) wcStyleEl.value = config.paragraphStyle || 'medium';
-if (wcEnabledEl) wcEnabledEl.checked = config.enabled !== false;
-
-console.log('[深度融合] 已将预设字数配置同步到设置UI:', config.min + '-' + config.max + '字');
+    console.log('[深度融合] 已将预设字数配置同步到设置UI:', config.min + '-' + config.max + '字');
 }
 
 // 【深度融合】将预设<profile>角色关系数据桥接到游戏关系系统

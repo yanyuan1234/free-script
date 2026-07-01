@@ -590,21 +590,25 @@ function _coerceTs(ts) {
     // 兜底：当前时间
     return Date.now();
 }
+// 通用时间格式化：method 为 Date 的 toLocaleXxx 方法名
+function _formatTs(ts, method) {
+    return new Date(_coerceTs(ts))[method]();
+}
 function formatTime(ts) {
     // 仅时分秒，用于聊天消息、评论等
-    return new Date(_coerceTs(ts)).toLocaleTimeString();
+    return _formatTs(ts, 'toLocaleTimeString');
 }
 function formatDate(ts) {
     // 仅日期，用于日记、成就解锁日等
-    return new Date(_coerceTs(ts)).toLocaleDateString();
+    return _formatTs(ts, 'toLocaleDateString');
 }
 function formatDateTime(ts) {
     // 完整日期时间，用于存档时间、邮件、论坛帖子等
-    return new Date(_coerceTs(ts)).toLocaleString();
+    return _formatTs(ts, 'toLocaleString');
 }
 function formatTimeShort(ts) {
     // HH:mm 短格式，用于朋友圈等
-    return new Date(_coerceTs(ts)).toLocaleTimeString().slice(0, 5);
+    return _formatTs(ts, 'toLocaleTimeString').slice(0, 5);
 }
 
 

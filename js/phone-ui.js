@@ -332,11 +332,24 @@ function _formatLogTime(timestamp, mode) {
 }
 
 
+// 隐藏所有论坛帖子详情并清除 active 状态
+function _hideAllForumPostDetails() {
+    var details = document.querySelectorAll('.forum-post-detail');
+    for (var i = 0; i < details.length; i++) {
+        details[i].style.display = 'none';
+        details[i].classList.remove('active');
+    }
+}
+// 设置论坛 tab 激活态（清除全部后激活指定索引）
+function _setForumTabActive(activeIdx) {
+    var tabs = document.querySelectorAll('.forum-tab-item');
+    for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
+    if (activeIdx != null && tabs[activeIdx]) tabs[activeIdx].classList.add('active');
+}
 function _switchForumView(showHot) {
     var hotView = document.getElementById('forumHotView');
     var topicView = document.getElementById('forumTopicView');
     var tabBar = document.getElementById('forumTabBar');
-    var details = document.querySelectorAll('.forum-post-detail');
     var showEl = showHot ? hotView : topicView;
     var hideEl = showHot ? topicView : hotView;
     var activeIdx = showHot ? 0 : 1;
@@ -354,14 +367,9 @@ function _switchForumView(showHot) {
     } else {
         if (showEl) showEl.style.display = 'block';
     }
-    for (var i = 0; i < details.length; i++) {
-        details[i].style.display = 'none';
-        details[i].classList.remove('active');
-    }
+    _hideAllForumPostDetails();
     if (tabBar) tabBar.style.display = 'flex';
-    var tabs = document.querySelectorAll('.forum-tab-item');
-    for (var j = 0; j < tabs.length; j++) tabs[j].classList.remove('active');
-    if (tabs[activeIdx]) tabs[activeIdx].classList.add('active');
+    _setForumTabActive(activeIdx);
 }
 function showForumHot() { _switchForumView(true); }
 function showForumTopic() { _switchForumView(false); }
@@ -374,22 +382,15 @@ function showForumMine() {
     if (topicView) topicView.style.display = 'none';
     if (mineView) mineView.style.display = 'block';
     if (tabBar) tabBar.style.display = 'flex';
-    var tabs = document.querySelectorAll('.forum-tab-item');
-    for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
-    if (tabs[2]) tabs[2].classList.add('active');
-    var details = document.querySelectorAll('.forum-post-detail');
-    for (var k = 0; k < details.length; k++) details[k].style.display = 'none';
+    _setForumTabActive(2);
+    _hideAllForumPostDetails();
 }
 function openForumPost(idx) {
     var detail = document.getElementById('forumPostDetail' + idx);
     var hotView = document.getElementById('forumHotView');
     var topicView = document.getElementById('forumTopicView');
     var tabBar = document.getElementById('forumTabBar');
-    var allDetails = document.querySelectorAll('.forum-post-detail');
-    for (var i = 0; i < allDetails.length; i++) {
-        allDetails[i].style.display = 'none';
-        allDetails[i].classList.remove('active');
-    }
+    _hideAllForumPostDetails();
     if (hotView) hotView.style.display = 'none';
     if (topicView) topicView.style.display = 'none';
     if (tabBar) tabBar.style.display = 'none';
@@ -996,8 +997,10 @@ function renderWorldModules(modules) {
         return;
     }
     if (gameState._worldModules.length === 0) {
-        subContentEl.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无世界信息" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div><p>暂无世界信息</p></div>';
+        subContentEl.innerHTML = renderSvgEmptyState(
+            '<svg role="img" aria-label="暂无世界信息" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
+            '暂无世界信息'
+        );
         if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
         return;
     }
@@ -2685,8 +2688,11 @@ function renderMailPage() {
 
     var mailListHtml = '';
     if (allMails.length === 0) {
-        mailListHtml =
-            '<div class="empty-state" style="padding:60px 0;"><div class="empty-state-icon"><svg role="img" aria-label="收件箱为空" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><p>收件箱为空</p><p style="font-size:12px;margin-top:4px;">暂无邮件</p></div>';
+        mailListHtml = '<div style="padding:60px 0;">' + renderSvgEmptyState(
+            '<svg role="img" aria-label="收件箱为空" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+            '收件箱为空',
+            '暂无邮件'
+        ) + '</div>';
     } else {
         mailListHtml = allMails.map(function(mail, i) {
             var unread = mail.read ? '' : ' unread';
@@ -2760,8 +2766,11 @@ function renderShopPage() {
 
     var goodsHtml = '';
     if (allGoods.length === 0) {
-        goodsHtml =
-            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="商店暂无商品" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg></div><p>商店暂无商品</p><p style="font-size:12px;margin-top:4px;">探索世界解锁更多商品</p></div>';
+        goodsHtml = renderSvgEmptyState(
+            '<svg role="img" aria-label="商店暂无商品" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>',
+            '商店暂无商品',
+            '探索世界解锁更多商品'
+        );
     } else {
         goodsHtml = allGoods.map(function(g, gi) {
             var icon = g.icon || '包';
@@ -3428,8 +3437,10 @@ function renderBag(items) {
         if (typeof RenderCache !== 'undefined') RenderCache.mark('renderBag', bagKey);
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     if (currentBag.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="背包空空如也" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p></div>';
+        container.innerHTML = renderSvgEmptyState(
+            '<svg role="img" aria-label="背包空空如也" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>',
+            '背包空空如也'
+        );
         return;
     }
 
@@ -3516,8 +3527,10 @@ function renderRecapPage() {
                 '<div class="timeline-item-summary" style="white-space:pre-wrap;line-height:1.6;">' +
                 escapeHtml(memSummary.substring(0, 500)) + '</div></div></div>';
         } else {
-            container.innerHTML =
-                '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无剧情记录" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><p>暂无剧情记录</p></div>';
+            container.innerHTML = renderSvgEmptyState(
+                '<svg role="img" aria-label="暂无剧情记录" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
+                '暂无剧情记录'
+            );
         }
     } else {
 
@@ -7241,8 +7254,11 @@ function renderNpcPage() {
     var container = document.getElementById('characterList');
     if (!container) return;
     if (chars.length === 0) {
-        container.innerHTML =
-            '<div class="empty-state"><div class="empty-state-icon"><svg role="img" aria-label="暂无角色" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><p>暂无角色</p><p style="font-size:12px;margin-top:4px;">AI会在剧情中自动创造角色</p></div>';
+        container.innerHTML = renderSvgEmptyState(
+            '<svg role="img" aria-label="暂无角色" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+            '暂无角色',
+            'AI会在剧情中自动创造角色'
+        );
     } else {
         container.innerHTML = chars.map(function(c) {
             var fav = Number(c.favorability) || 0;
