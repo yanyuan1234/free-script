@@ -66,24 +66,47 @@ const GameMemoryAdapter = {
             });
 
             this._mergeTable('characters', StateManager.get('entities.characters') || [], {
+                // [CP-02] 补全 5 个遗漏字段：identity / desc / tags / stats / notes
+                //   原 fieldMap 只映射 7 个字段，导致 CharacterMutator.normalizeCharacter 写入的
+                //   identity/desc/tags/stats/notes 无法同步到 gm.tables.characters，
+                //   _ensureDataLinkage 引用别名 gameState.allCharacters = gm.tables.characters 后
+                //   gameState.allCharacters 也缺这些字段，下游 _buildCharactersSection / 注入层
+                //   读到的是残缺数据（AI 失忆）。
+                //   增加 favor 是为了与 CharacterMutator.normalizeCharacter 输出对齐（favor=favorability），
+                //   兼容读 c.favor 的旧代码。
+                //   增加 id 是为了追踪角色跨重命名/合并的唯一标识（CharacterMutator 用 Date.now() 生成）。
                 name: 'name',
                 title: 'title',
+                identity: 'identity',
                 relation: 'relation',
                 mood: 'mood',
                 location: 'location',
                 outfit: 'outfit',
                 favorability: 'favorability',
-                status: 'status'
-            }, function(name) {
+                favor: 'favor',
+                status: 'status',
+                desc: 'desc',
+                tags: 'tags',
+                stats: 'stats',
+                notes: 'notes',
+                id: 'id'
+            }, function(name, src) {
                 return {
                     name: name,
-                    title: '',
-                    relation: '',
+                    title: (src && src.title) || '',
+                    identity: (src && src.identity) || '',
+                    relation: (src && src.relation) || '',
                     mood: '',
                     location: '',
                     outfit: '',
-                    favorability: 0,
+                    favorability: (src && typeof src.favorability === 'number') ? src.favorability : 0,
+                    favor: (src && typeof src.favor === 'number') ? src.favor : ((src && typeof src.favorability === 'number') ? src.favorability : 0),
                     status: '',
+                    desc: (src && src.desc) || '',
+                    tags: Array.isArray(src && src.tags) ? src.tags : [],
+                    stats: Array.isArray(src && src.stats) ? src.stats : [],
+                    notes: (src && src.notes) || '',
+                    id: (src && src.id) || '',
                     history: [],
                     lastChangedTurn: turn,
                     locked: false
