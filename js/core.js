@@ -3649,20 +3649,16 @@ if (relations.length > 0 && gameState.allCharacters) {
                         c.relation = rel.relation;
                         return c;
                     });
-                } else if (gameState.allCharacters[rel.from]) {
-                    gameState.allCharacters[rel.from].relation = rel.relation;
                 }
             }
             // 确保"to"角色也存在（必须有名有姓）
             if (rel.to && typeof rel.to === 'string' && rel.to.trim()) {
                 var _toExists = (typeof CharacterMutator !== 'undefined' && CharacterMutator.getCharacter)
                     ? !!CharacterMutator.getCharacter(rel.to)
-                    : !!gameState.allCharacters[rel.to];
+                    : false;
                 if (!_toExists) {
                     if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
                         CharacterMutator.mergeCharacters([{ name: rel.to, relation: '' }]);
-                    } else {
-                        gameState.allCharacters[rel.to] = { name: rel.to, relation: '' };
                     }
                 }
             }
@@ -5414,7 +5410,7 @@ async function extractSetupToMemory() {
 
         // 3. 角色 → tables.characters + permanentFacts.npcProfiles
         if (Array.isArray(parsed.characters)) {
-            var playerName = gameState.playerName || (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
+            var playerName = getPlayerName('');
             parsed.characters.forEach(function(c) {
                 if (!c || !c.name) return;
                 // 跳过主角（主角不进NPC表）
@@ -5614,7 +5610,7 @@ async function initializeGame() {
         // 此前新游戏流程从不设置 gameState.playerName，只有读档时（loadGameState）才同步，
         // 导致新游戏个人页始终显示"未命名"
         var _smPlayer = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.player') || {}) : (gameState.playerData || {});
-        var _smPlayerName = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('world.playerName') || '') : (gameState.playerName || '');
+        var _smPlayerName = getPlayerName('');
         var _mcName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
         if (!_smPlayerName && _mcName) _smPlayerName = _mcName;
         if (!_smPlayer.name && _smPlayerName) _smPlayer.name = _smPlayerName;

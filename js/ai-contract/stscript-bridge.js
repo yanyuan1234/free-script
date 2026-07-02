@@ -136,8 +136,9 @@
                     });
                 }
 
-                if (typeof gameState !== 'undefined' && gameState.playerName) {
-                    window.gameAdapter.updateContext({ user: gameState.playerName });
+                var _pn = getPlayerName('');
+                if (_pn) {
+                    window.gameAdapter.updateContext({ user: _pn });
                 }
             }
 

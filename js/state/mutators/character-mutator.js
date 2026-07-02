@@ -12,9 +12,8 @@ const CharacterMutator = {
         if (typeof StateManager !== 'undefined' && StateManager.get) {
             var player = StateManager.get('entities.player');
             if (player && player.name) playerName = player.name;
-        } else if (typeof gameState !== 'undefined') {
-            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '';
         }
+        if (!playerName) playerName = getPlayerName('');
         return chars.filter(function(c) {
             if (!c || !c.name || typeof c.name !== 'string') return false;
             var name = c.name.trim();

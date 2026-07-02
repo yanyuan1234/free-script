@@ -1411,7 +1411,7 @@ var PresetManager = {
             (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
             (gameState && gameState._lastOriginalContent) || '';
         var macroEnv = {
-            user: gameState.playerName || '玩家',
+            user: getPlayerName('玩家'),
             char: firstChar ? (firstChar.name || '角色') : '角色',
             original: _origForPreset,
             input: lastUserMsg,

@@ -507,7 +507,7 @@ function buildSystemPrompt(includeFormatRules) {
             setupText: _setupText,
             userPrompt: _safeUserPrompt,
             player: (gameState && gameState.playerData) || {},
-            playerName: (gameState && gameState.playerName) || '',
+            playerName: getPlayerName(''),
             playerIdentity: (gameState && gameState.playerIdentity) || '',
             protagonistSetup: (gameState && gameState.protagonistSetup) || null,
             pcIdentity: _pcIdentity,
@@ -836,7 +836,7 @@ function injectPresetGlobalVars() {
     }
 
     // 注入其他常用的酒馆宏变量
-    if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', (gameState && gameState.playerName) || '玩家');
+    if (!MacroEngine.getGlobalVar('user')) MacroEngine.setGlobalVar('user', getPlayerName('玩家'));
     if (!MacroEngine.getGlobalVar('char')) MacroEngine.setGlobalVar('char', (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色');
     MacroEngine.setGlobalVar('original',
         (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
@@ -1243,7 +1243,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                     (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
                     (gameState && gameState._lastOriginalContent) || '';
                 var macroEnvForDepth = {
-                    user: (gameState && gameState.playerName) || '玩家',
+                    user: getPlayerName('玩家'),
                     char: (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
                     original: _origForDepth
                 };
@@ -1338,7 +1338,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             (typeof StateManager !== 'undefined' && StateManager.get && StateManager.get('ui.lastOriginalContent')) ||
             (gameState && gameState._lastOriginalContent) || '';
         var macroEnv = {
-            user: gameState.playerName || '玩家',
+            user: getPlayerName('玩家'),
             char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
             original: _origForMacro
         };
@@ -1374,7 +1374,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (namesBehavior === 1 || namesBehavior === 2) {
             var charName = (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) 
                 ? gameState.worldSnapshot.characters[0].name : 'AI';
-            var userName = (gameState && gameState.playerName) || '玩家';
+            var userName = getPlayerName('玩家');
             messages.forEach(function(msg) {
                 if (msg.role === 'assistant' && typeof msg.content === 'string' && !msg.content.startsWith(charName)) {
                     msg.content = charName + ': ' + msg.content;
@@ -1417,7 +1417,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 此注入位于消息列表末尾（紧贴用户消息前），确保 AI 生成前始终看到格式要求。
         // 连带修复 BUG-003/004/007/008/009/014（均由纯文本响应引发）。
         if (gameState && gameState.pureTextMode !== true) {
-            var _curPlayerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
+            var _curPlayerName = getPlayerName('');
             var _formatReminder = '【输出格式·必读】直接输出JSON（以 { 开头，以 } 结尾），禁止输出纯文本、思考过程或前缀说明。\n' +
                 '必填字段：title(章节标题)、story(叙事正文,\\n换行,「」对话)、gameTime({date,time,period})、keyEvents(本回合关键事件数组)。\n' +
                 '可选字段：choices([{id,text}])、player({name,identity,stats:[{label,value}]}——须包含完整属性数组)、characters([{name,title,relation,favorability,desc}])、bag、quests、world([聊天/论坛/排行榜/商店/日记/朋友圈/邮箱模块])。\n' +
@@ -3873,7 +3873,7 @@ async function requestNpcReply(playerText) {
             }).join('\n') + '\n';
         }
         // 注入主角完整信息，让 NPC 能正确理解和称呼玩家
-        var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
+        var playerName = getPlayerName('主角');
         systemMsg += '【玩家信息】\n名字: ' + playerName + '\n';
         // 注入玩家设定（用精简版避免重复挤占context，记忆系统已有结构化数据）
         var _compactSetup = getCompactSetupForSubFunction();
@@ -4074,7 +4074,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
     var modules = gameState._worldModules;
     var hasType = function(t) { return modules.some(function(m) { return m && m.type === t; }); };
-    var playerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '主角';
+    var playerName = getPlayerName('主角');
     var chars = gameState.allCharacters || {};
     var charList = Object.keys(chars).map(function(k) { return chars[k]; }).filter(Boolean);
     var bag = gameState.currentBag || gameState.bag || [];

@@ -212,8 +212,8 @@ const AIResponseMutator = {
         const current = StateManager.get('entities.player') || {};
         // 玩家设定的主角名优先级最高，禁止 AI 覆盖
         let lockedName = current.name || '';
-        if (!lockedName && typeof gameState !== 'undefined') {
-            lockedName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
+        if (!lockedName) {
+            lockedName = getPlayerName('');
         }
         const aiName = String(player.name || '').trim();
         // 【v2审查修复】仅在已有锁定名且 AI 尝试覆盖时才警告
@@ -239,6 +239,10 @@ const AIResponseMutator = {
         // 同步到 playerName，确保全项目读取一致
         if (typeof gameState !== 'undefined') {
             gameState.playerName = normalized.name;
+        }
+        // 同时写入 StateManager.entities.player.name
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            StateManager.set('entities.player.name', normalized.name, { silent: true, allowReadOnly: false });
         }
     },
 
@@ -524,8 +528,8 @@ const AIResponseMutator = {
         if (typeof StateManager !== 'undefined' && StateManager.get) {
             var player = StateManager.get('entities.player');
             if (player && player.name) playerName = player.name;
-        } else if (typeof gameState !== 'undefined') {
-            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
+        } else {
+            playerName = getPlayerName('主角');
         }
 
         // 1. 分类收集：图谱条目 + 好感度更新
@@ -587,14 +591,7 @@ const AIResponseMutator = {
     // 原 systems.js:893 在 legacy 路径调用（写状态），现收敛到 mutator 层（事务内）
     _inferRelationshipsFromCharacters() {
         if (typeof StateManager === 'undefined' || !StateManager.get) return [];
-        var playerName = '';
-        var player = StateManager.get('entities.player');
-        if (player && player.name) playerName = player.name;
-        else if (typeof gameState !== 'undefined') {
-            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '主角';
-        } else {
-            playerName = '主角';
-        }
+        var playerName = getPlayerName('主角');
         var chars = StateManager.get('entities.characters');
         if (!Array.isArray(chars)) return [];
         var inferred = [];

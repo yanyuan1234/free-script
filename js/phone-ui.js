@@ -418,7 +418,7 @@ function sendForumComment(postIdx, replyToName) {
     var text = input.textContent.trim();
     if (!text) return;
     input.textContent = '';
-    var playerName = gameState.playerName || '我';
+    var playerName = getPlayerName('我');
     var commentMods = getModulesByType('comments');
     if (!commentMods[postIdx]) return;
     if (!commentMods[postIdx].comments) commentMods[postIdx].comments = [];
@@ -1908,7 +1908,7 @@ function renderWorldPage() {
 }
 // 渲染朋友圈页面
 function renderMomentsPage() {
-    var playerName = gameState.playerName || '我';
+    var playerName = getPlayerName('我');
     var modules = gameState._worldModules || [];
     // 朋友圈只使用 type === 'moments' 的模块，不复用 comments
     var momentModules = modules.filter(function(m) {
@@ -2114,7 +2114,7 @@ function getMomentPost(idx) {
 function toggleMomentLike(idx) {
     var post = getMomentPost(idx);
     if (!post) return;
-    var playerName = gameState.playerName || '我';
+    var playerName = getPlayerName('我');
     if (!Array.isArray(post.likes)) post.likes = [];
     var likeIdx = post.likes.indexOf(playerName);
     if (likeIdx === -1) { post.likes.push(playerName); }
@@ -2135,7 +2135,7 @@ function sendMomentComment(idx) {
     if (!text) return;
     var post = getMomentPost(idx);
     if (!post) return;
-    var playerName = gameState.playerName || '我';
+    var playerName = getPlayerName('我');
     if (!Array.isArray(post.comments)) post.comments = [];
     post.comments.push({ name: playerName, text: text, replyTo: '' });
     autoSave();
@@ -2154,7 +2154,7 @@ function renderForumPage() {
     var _lastSig = _lastMod ? String(_lastMod.title || '').slice(0, 20) + '|' + (_lastMod.comments || []).length : '';
     var _key = 'forum:' + commentMods.length + '|' + _lastSig;
     if (shouldSkipPageRender('renderForumPage', _key)) return;
-    var playerName = gameState.playerName || '我';
+    var playerName = getPlayerName('我');
     var tagClasses = ['hot', 'bao', 'xin', 'hot', 'bao', 'xin'];
     var timeLabels = ['刚刚', '1分钟前', '3分钟前', '5分钟前', '10分钟前', '半小时前', '1小时前', '2小时前', '昨天', '前天'];
 
@@ -2428,7 +2428,7 @@ function renderItemsPage() {
         var name = String(item.name || item.title || '').trim();
         return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知';
     });
-    var playerName = gameState.playerName || '我';
+    var playerName = getPlayerName('我');
     var currency = getPlayerMoney();
     var currencyName = getCurrencyName();
 
@@ -2555,9 +2555,10 @@ function renderDiaryPage() {
                 var mCount = (diaries[npcName].memos || []).length;
                 // 检测有多少篇提到玩家
                 var mentionCount = 0;
-                if (gameState.playerName) {
+                var _diaryPlayerName = getPlayerName('');
+                if (_diaryPlayerName) {
                     for (var me = 0; me < entriesArr.length; me++) {
-                        if ((entriesArr[me].content || entriesArr[me].text || '').indexOf(gameState.playerName) !== -1) {
+                        if ((entriesArr[me].content || entriesArr[me].text || '').indexOf(_diaryPlayerName) !== -1) {
                             mentionCount++;
                         }
                     }
@@ -2590,7 +2591,7 @@ function renderDiaryPage() {
     if (charIdx >= 0) avatarColor = AVATAR_COLORS[charIdx % AVATAR_COLORS.length];
 
     var allEntries = npcData.entries || [];
-    var _playerName = gameState.playerName || '';
+    var _playerName = getPlayerName('');
     // 提到玩家的日记置顶
     if (_playerName && allEntries.length > 1) {
         allEntries = allEntries.slice().sort(function(a, b) {
@@ -3191,7 +3192,7 @@ function renderPlayerStats(player) {
                 }
             }
 
-            var _lockedName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || gameState.playerName || _existingPD.name;
+            var _lockedName = getPlayerName(_existingPD.name || '主角');
             if (_lockedName && _mergedPD.name !== _lockedName) {
                 _mergedPD.name = _lockedName;
                 if (typeof StateManager !== 'undefined' && StateManager.set) {
@@ -4780,7 +4781,7 @@ async function _generateEndingRender(stories) {
                 return c.name + (c.relation ? '（' + c.relation + '）' : '');
             }).join('、');
         }
-        var playerName = gameState.playerName || (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) || '主角';
+        var playerName = getPlayerName('主角');
         var worldTheme = (typeof getCompactSetupForSubFunction === 'function') ? getCompactSetupForSubFunction() : (gameState.userPrompt || '');
 
         var prompt = '你是一个结局创作专家，你的任务是为这段故事画上一个有深度、有画面感的句号。结局应该与原作世界观和风格一脉相承。\n\n' +
@@ -5087,7 +5088,7 @@ function deleteLastTurn() {
 
         // 确认主角在 _undoChars 快照中已剔除（避免回退后"主角复活"）
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.setCharacters) {
-            const _playerName = (typeof gameState !== 'undefined' && gameState) ? gameState.playerName : '';
+            const _playerName = getPlayerName('');
             if (_playerName) {
                 const _curChars = StateManager.get('entities.characters') || [];
                 const _filtered = _curChars.filter(function (c) { return c && c.name !== _playerName; });
@@ -7341,7 +7342,12 @@ function saveNpcEdit() {
 }
 var renderNpcList = renderNpcPage;
 function renderNpcPage() {
-    // 确保 allCharacters 已初始化
+    // 确保 allCharacters 已初始化（通过 StateManager 保证一致性）
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        if (!StateManager.get('entities.characters')) {
+            StateManager.set('entities.characters', [], { silent: true });
+        }
+    }
     if (gameState && !gameState.allCharacters) gameState.allCharacters = {};
     var chars = getAllCharactersArray();
 

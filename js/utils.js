@@ -2,6 +2,63 @@
 * 安全工具函数 - 2026-06-01
 * 仅新增工具，不修改任何原有逻辑
 */
+
+// ========================================
+// Services 依赖注入注册表（P0-1 修复）
+// 替代全项目 492 处 `typeof X !== 'undefined'` 防御性检查
+// 使用方式：
+//   Services.register('StateManager', StateManager);  // 在模块初始化后注册
+//   var sm = Services.get('StateManager');              // 获取
+//   if (sm) sm.get('entities.player');                  // 使用
+// ========================================
+const Services = {
+    _registry: {},
+    _lazyGetters: {},
+
+    // 注册服务实例
+    register(name, instance) {
+        if (!name) return;
+        this._registry[name] = instance;
+        // 触发延迟等待的回调
+        var pending = this._lazyGetters[name];
+        if (pending) {
+            delete this._lazyGetters[name];
+            for (var i = 0; i < pending.length; i++) {
+                try { pending[i](instance); } catch (e) {}
+            }
+        }
+    },
+
+    // 获取服务实例（无 typeof 检查）
+    get(name) {
+        return this._registry[name] || null;
+    },
+
+    // 检查服务是否已注册
+    has(name) {
+        return name in this._registry;
+    },
+
+    // 等待服务就绪后回调（已就绪则立即执行）
+    whenReady(name, cb, timeoutMs) {
+        var inst = this._registry[name];
+        if (inst) { try { cb(inst); } catch (e) {} return; }
+        if (!this._lazyGetters[name]) this._lazyGetters[name] = [];
+        this._lazyGetters[name].push(cb);
+        // 超时处理
+        if (timeoutMs && timeoutMs > 0) {
+            var self = this;
+            setTimeout(function() {
+                var pending = self._lazyGetters[name];
+                if (pending) {
+                    var idx = pending.indexOf(cb);
+                    if (idx >= 0) pending.splice(idx, 1);
+                }
+            }, timeoutMs);
+        }
+    }
+};
+
 const DOMCache = {
     _cache: {},
     _permanent: {},
@@ -198,6 +255,26 @@ function safeInt(v, defaultVal) {
 // 替代散落 50+ 处的 `!x || typeof x !== 'object'` 模式
 function isObject(v) {
     return v !== null && typeof v === 'object';
+}
+
+// 统一获取玩家名称（P0-3 修复）
+// 优先级：StateManager.entities.player.name > gameState.playerName > playerData.name > protagonistSetup.mcName > worldSnapshot.player.name > defaultName
+// 消除 38 处各不相同的 gameState.playerName 默认值（'玩家'/'我'/'主角'/'')
+function getPlayerName(defaultName) {
+    defaultName = defaultName || '玩家';
+    // 主路径：StateManager
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var smName = StateManager.get('entities.player.name');
+        if (smName) return smName;
+    }
+    // 兜底：gameState 遗留字段
+    if (typeof gameState !== 'undefined' && gameState) {
+        if (gameState.playerName) return gameState.playerName;
+        if (gameState.playerData && gameState.playerData.name) return gameState.playerData.name;
+        if (gameState.protagonistSetup && gameState.protagonistSetup.mcName) return gameState.protagonistSetup.mcName;
+        if (gameState.worldSnapshot && gameState.worldSnapshot.player && gameState.worldSnapshot.player.name) return gameState.worldSnapshot.player.name;
+    }
+    return defaultName;
 }
 
 

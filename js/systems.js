@@ -422,7 +422,7 @@ var AchievementSystem = {
     var rels = (typeof StateManager !== 'undefined' && StateManager.get)
         ? (StateManager.get('entities.relationships') || gameState.relationships || [])
         : (gameState.relationships || []);  // [CP-10] 优先 StateManager 权威源，legacy 兜底
-    var pn = gameState.playerName || '主角';
+    var pn = getPlayerName('主角');
     rels.forEach(function(r) {
         if (r.from === pn || r.to === pn) {
             if (r.type === '友好' || r.type === '盟友' || r.type === '师徒') stats.friendlyNpc++;
@@ -848,7 +848,7 @@ function mergeRelationships(newRels) {
     if (!newRels || !Array.isArray(newRels)) return;
 
     var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
-    var playerName = (player && player.name) || (gameState && gameState.playerName) || '主角';
+    var playerName = (player && player.name) || getPlayerName('主角');
     // 标准化输入：把 {name, delta} 格式转为关系图谱条目
     var normalized = newRels.map(function(nr) {
         if (!nr) return null;

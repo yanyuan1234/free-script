@@ -78,32 +78,64 @@ async function initApp() {
         // 初始化统一状态层（接管全局 gameState）
         if (typeof StateManager !== 'undefined') {
             StateManager.init(typeof gameState !== 'undefined' ? gameState : null);
+            Services.register('StateManager', StateManager);
         }
         // 绑定 GameMemory 适配器
         if (typeof GameMemoryAdapter !== 'undefined') {
             GameMemoryAdapter.bind();
+            Services.register('GameMemoryAdapter', GameMemoryAdapter);
         }
         // 初始化主题管理
         if (typeof ThemeManager !== 'undefined') ThemeManager.init();
         // 初始化世界书系统
         WorldInfo.init();
+        Services.register('WorldInfo', WorldInfo);
         // 初始化预设管理系统
         PresetManager.init();
+        Services.register('PresetManager', PresetManager);
         // 初始化正则脚本系统
         RegexManager.init();
+        Services.register('RegexManager', RegexManager);
         // 初始化宏引擎
-        if (typeof MacroEngine !== 'undefined' && MacroEngine.init) MacroEngine.init();
+        if (typeof MacroEngine !== 'undefined' && MacroEngine.init) {
+            MacroEngine.init();
+            Services.register('MacroEngine', MacroEngine);
+        }
         // 初始化记忆管理系统（已合并到 MemoryManagerUI，无需单独初始化）
         // 初始化酒馆助手兼容层
         // 添加 typeof 检查，因为 TavernHelperCompat 在后续 script 块中定义
         // 当 initApp 在 script 块末尾直接调用时，后续块可能尚未加载
         if (typeof TavernHelperCompat !== 'undefined') {
             TavernHelperCompat.init();
+            Services.register('TavernHelperCompat', TavernHelperCompat);
         }
         // 初始化SaveDB
         await SaveDB.init();
         await SaveDB.migrate();
+        Services.register('SaveDB', SaveDB);
         loadGameSettings();
+
+        // 注册所有 Mutator 和 AI 契约模块（始终可用，无需 typeof 检查）
+        Services.register('CharacterMutator', CharacterMutator);
+        Services.register('BagMutator', BagMutator);
+        Services.register('QuestMutator', QuestMutator);
+        Services.register('TimeMutator', TimeMutator);
+        Services.register('CurrencyMutator', CurrencyMutator);
+        Services.register('RelationshipMutator', RelationshipMutator);
+        Services.register('LocationMutator', LocationMutator);
+        Services.register('UndoMutator', UndoMutator);
+        if (typeof PromptBuilder !== 'undefined') Services.register('PromptBuilder', PromptBuilder);
+        if (typeof OutputSanitizer !== 'undefined') Services.register('OutputSanitizer', OutputSanitizer);
+        if (typeof ResponseParser !== 'undefined') Services.register('ResponseParser', ResponseParser);
+        if (typeof AIResponseMutator !== 'undefined') Services.register('AIResponseMutator', AIResponseMutator);
+        if (typeof SmartConfigEngine !== 'undefined') Services.register('SmartConfigEngine', SmartConfigEngine);
+        if (typeof MemoryManagerUI !== 'undefined') Services.register('MemoryManagerUI', MemoryManagerUI);
+        if (typeof UI !== 'undefined') Services.register('UI', UI);
+        if (typeof Logger !== 'undefined') Services.register('Logger', Logger);
+        Services.register('Storage', Storage);
+        Services.register('TimerManager', TimerManager);
+        Services.register('DOMCache', DOMCache);
+        Services.register('Services', Services);
 
 
         // 导致崩溃后备份就在 localStorage 里却无法恢复。这里检查备份是否比自动存档更新

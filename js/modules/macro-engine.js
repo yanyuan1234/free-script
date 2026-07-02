@@ -602,7 +602,7 @@ var MacroEngine = {
     // 获取用户名
     getUser: function() {
         if (typeof gameState === 'undefined' || !gameState) return '玩家';
-        return gameState.playerName || '玩家';
+        return getPlayerName('玩家');
         },
 
     // 获取角色名（取当前场景中的第一个NPC名或玩家指定名）

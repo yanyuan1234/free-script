@@ -59,7 +59,7 @@ var TavernHelperCompat = {
                 if (!msg) return null;
                 return {
                     mes: msg.content || msg.text || '',
-                    name: msg.role === 'user' ? (gameState.playerName || '玩家') : (msg.name || '角色'),
+                    name: msg.role === 'user' ? getPlayerName('玩家') : (msg.name || '角色'),
                     is_user: msg.role === 'user',
                     is_system: msg.role === 'system',
                     send_date: msg.timestamp || Date.now(),
@@ -104,7 +104,7 @@ var TavernHelperCompat = {
         // 角色名（AI）
         name1: character.name || '角色',
         // 玩家名
-        name2: (typeof gameState !== 'undefined' && gameState && gameState.playerName) || '玩家',
+        name2: getPlayerName('玩家'),
         // 角色卡完整数据
         characterCard: character,
         // 聊天元数据
@@ -594,7 +594,7 @@ _renderQuickReplyButtons: function() {
                         var varValue = btn.setVariable[varName];
                         if (typeof varValue === 'string') {
                             varValue = MacroEngine.process(varValue, {
-                                user: gameState.playerName || '玩家',
+                                user: getPlayerName('玩家'),
                                 char: (gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色'
                             });
                         }
@@ -613,7 +613,7 @@ _renderQuickReplyButtons: function() {
                     var promptText = '';
                     try {
                         promptText = MacroEngine.process(btn.prompt, {
-                            user: (typeof gameState !== 'undefined' && gameState.playerName) || '玩家',
+                            user: getPlayerName('玩家'),
                             char: (typeof gameState !== 'undefined' && gameState.worldSnapshot && gameState.worldSnapshot.characters && gameState.worldSnapshot.characters.length > 0) ? gameState.worldSnapshot.characters[0].name : '角色',
                             input: (document.getElementById('userInput') || {}).value || ''
                         });
@@ -4550,16 +4550,6 @@ var MemoryManagerUI = {
             // 现在补齐运行时字段（locked/history/gameTime/accessCount/lastChangedTurn）并处理 rename
             self._mergeRuntimeFields(gm.tables.characters, oldName, newName, _newCharData,
                 ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
-        } else if (typeof gameState !== 'undefined' && gameState.allCharacters) {
-            // legacy 兜底（无 StateManager 环境）
-            if (oldName !== newName) delete gm.tables.characters[oldName];
-            gm.tables.characters[newName] = _newCharData;
-            if (oldName !== newName && gameState.allCharacters[oldName]) delete gameState.allCharacters[oldName];
-            gameState.allCharacters[newName] = gameState.allCharacters[newName] || {};
-            gameState.allCharacters[newName].name = newName;
-            gameState.allCharacters[newName].title = _newCharData.title;
-            gameState.allCharacters[newName].relation = _newCharData.relation;
-            gameState.allCharacters[newName].favorability = _newCharData.favorability;
         }
         UI.afterMemoryChange('characters', 'allCharacters', undefined);
     },
@@ -4570,8 +4560,6 @@ var MemoryManagerUI = {
 
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.removeCharacter) {
             CharacterMutator.removeCharacter(name);
-        } else if (typeof gameState !== 'undefined' && gameState.allCharacters && gameState.allCharacters[name]) {
-            delete gameState.allCharacters[name];
         }
         // 【v3审查修复】清理 permanentFacts.npcProfiles 中的孤儿引用
         // 否则 AI 在"核心设定"层仍看到已删除角色的 profile，可能继续让该角色登场
@@ -4625,11 +4613,6 @@ var MemoryManagerUI = {
             // 补齐运行时字段
             self._mergeRuntimeFields(gm.tables.characters, null, name, _newCharData,
                 ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
-        } else if (typeof gameState !== 'undefined') {
-            // legacy 兜底
-            gm.tables.characters[name] = _newCharData;
-            if (!gameState.allCharacters) gameState.allCharacters = {};
-            gameState.allCharacters[name] = { name: name, title: _newCharData.title, relation: _newCharData.relation, favorability: _newCharData.favorability };
         }
         UI.afterMemoryChange('characters', 'allCharacters', undefined);
     },
