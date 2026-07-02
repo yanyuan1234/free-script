@@ -671,6 +671,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports.bindFresh = 
 // parseTheaterItems：通用小剧场 HTML 解析器
 // 阶段1：8 个 parse*Content 函数（core.js:3562-3707）合并为单一函数
 // ========================================
+
+// [M-4] 按 schema 对象缓存编译后的正则，避免每次解析小剧场都重新 new RegExp
+//（长剧情 30+ 节点时重复编译明显卡顿）。schema 在运行期固定，WeakMap 不会阻止 gc。
+var _theaterRegexCache = new WeakMap();
 /**
  * 解析小剧场 HTML：提取 <div class="itemClass"> 项，按 fieldSchema 提取子字段
  *
@@ -699,21 +703,28 @@ function parseTheaterItems(html, schema) {
     var fallback = schema.fallback;
 
     var items = [];
-    // 抓所有 class=itemClass 的 div
-    var re = new RegExp('<div[^>]*class=["\']' + itemClass + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'gi');
+
+    // [M-4] 优先从缓存取编译后的正则，避免每次调用都重新编译
+    var cached = _theaterRegexCache.get(schema);
+    if (!cached) {
+        cached = {};
+        // 抓所有 class=itemClass 的 div
+        cached.itemRe = new RegExp('<div[^>]*class=["\']' + itemClass + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'gi');
+        // multiline/body 字段用 [\s\S]*?</div> 抓取；普通字段用 [^<]+ 抓取
+        cached.fieldRegexes = {};
+        var multilineFields = schema.multilineFields || [];
+        Object.keys(fields).forEach(function (fieldName) {
+            var className = fields[fieldName];
+            var isMultiline = multilineFields.indexOf(fieldName) >= 0;
+            cached.fieldRegexes[fieldName] = isMultiline
+                ? new RegExp('class=["\']' + className + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'i')
+                : new RegExp('class=["\']' + className + '["\'][^>]*>([^<]+)', 'i');
+        });
+        _theaterRegexCache.set(schema, cached);
+    }
+    var re = cached.itemRe;
+    var fieldRegexes = cached.fieldRegexes;
     var matches = html.match(re) || [];
-
-
-    // multiline/body 字段用 [\s\S]*?</div> 抓取；普通字段用 [^<]+ 抓取
-    var multilineFields = schema.multilineFields || [];
-    var fieldRegexes = {};
-    Object.keys(fields).forEach(function (fieldName) {
-        var className = fields[fieldName];
-        var isMultiline = multilineFields.indexOf(fieldName) >= 0;
-        fieldRegexes[fieldName] = isMultiline
-            ? new RegExp('class=["\']' + className + '["\'][^>]*>([\\s\\S]*?)<\\/div>', 'i')
-            : new RegExp('class=["\']' + className + '["\'][^>]*>([^<]+)', 'i');
-    });
 
     matches.forEach(function (match) {
         var parts = {};

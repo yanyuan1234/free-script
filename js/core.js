@@ -42,10 +42,10 @@
 // ========================================
 // 数据联通（方案 A：单一来源）
 // ========================================
-// 设计：gm.tables.* / gm.quests / gm.events 是权威源
-//       gameState.allCharacters / currentBag / currentQuests / relationships / keyEvents 是视图
-// 任何写入权威源后，调用 _ensureDataLinkage() 自动同步到视图
-// 视图别名：gameState.allCharacters === gm.tables.characters（同一引用，最快）
+// 设计：StateManager 为唯一权威源，gm.tables.* / gm.quests / gm.events 是其运行时缓存视图，
+//       gameState.allCharacters / currentBag / currentQuests / relationships / keyEvents 为 legacy 视图。
+// 任何状态变更应经对应 Mutator → StateManager.set；_syncLegacyMirror 自动回写 legacy 字段，
+// 需要时调用 _ensureDataLinkage() 建立视图别名（gameState.allCharacters === gm.tables.characters）。
 // ========================================
 
 // ========================================
