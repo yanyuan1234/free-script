@@ -1505,18 +1505,9 @@ var SaveDB = {
     },
     async set(slot, data) {
         await this.init();
-        var backupSlot = this._getBackupSlot(slot);
-
-        if (backupSlot !== null && data !== null && data !== undefined) {
-            try {
-                var oldData = await this.get(slot);
-                if (oldData) {
-                    if (this._useFallback) this._lsSet(backupSlot, oldData);
-                    else await this._setRaw('slot_' + backupSlot, oldData);
-                }
-            } catch (backupErr) {
-                console.warn('[SaveDB] 写前备份失败，继续写入:', backupErr);
-            }
+        // 多版本备份：写入前先轮转备份链
+        if (data !== null && data !== undefined) {
+            await this._rotateBackup(slot);
         }
         // 附加校验和，便于读档时检测静默损坏
         var dataToWrite = (data === null || data === undefined) ? data : this._attachChecksum(data);
@@ -1543,21 +1534,108 @@ var SaveDB = {
             }
         }
     },
-    // 从备份槽恢复
-    async restore(slot) {
-        var backupSlot = this._getBackupSlot(slot);
-        if (backupSlot === null) return null;
-        var backup = await this.get(backupSlot);
+    // [优化#7] 多版本备份轮转：保留 MAX_BACKUPS 份历史快照
+    // 轮转策略：v3 丢弃 → v2→v3 → v1→v2 → 当前→v1
+    // 兼容旧格式：若旧的单备份槽（-100-slot）存在，迁移为 v1
+    MAX_BACKUPS: 3,
+    async _rotateBackup(slot) {
+        if (slot === 0 || !(typeof slot === 'number' && slot >= 1 && slot <= 99)) return;
+        try {
+            var current = await this.get(slot);
+            if (!current) return;
+            // 兼容旧格式：检查旧单备份槽是否存在，存在则迁移为 v1
+            var legacyBackupSlot = -100 - slot;
+            var legacyKey = 'slot_' + legacyBackupSlot;
+            var hasV1 = false;
+            try {
+                var legacy = this._useFallback ? this._lsGet(legacyBackupSlot) : await this._getRaw(legacyKey);
+                if (legacy) {
+                    // 旧备份迁移为 v1（如果 v1 还不存在）
+                    var v1Key = 'slot_' + (-100 - slot) + '_v1';
+                    var existingV1 = this._useFallback ? null : await this._getRaw(v1Key);
+                    if (!existingV1) {
+                        if (this._useFallback) this._lsSet(-100 - slot + '_v1', legacy);
+                        else await this._setRaw(v1Key, legacy);
+                    }
+                    // 清理旧槽
+                    if (this._useFallback) this._lsSet(legacyBackupSlot, null);
+                    else await this._setRaw(legacyKey, null);
+                    hasV1 = true;
+                }
+            } catch (e) { /* 旧槽读取失败忽略 */ }
+
+            // 从最旧版本开始轮转：v(MAX)→丢弃，v(MAX-1)→v(MAX)，... v1→v2，当前→v1
+            for (var v = this.MAX_BACKUPS; v >= 2; v--) {
+                var fromKey = 'slot_' + (-100 - slot) + '_v' + (v - 1);
+                var toKey = 'slot_' + (-100 - slot) + '_v' + v;
+                try {
+                    var data = this._useFallback ? this._lsGet(-100 - slot + '_v' + (v - 1)) : await this._getRaw(fromKey);
+                    if (data) {
+                        if (this._useFallback) this._lsSet(-100 - slot + '_v' + v, data);
+                        else await this._setRaw(toKey, data);
+                    }
+                } catch (e) { /* 单个版本轮转失败不阻塞 */ }
+            }
+            // 当前数据 → v1
+            var v1Key = 'slot_' + (-100 - slot) + '_v1';
+            if (this._useFallback) this._lsSet(-100 - slot + '_v1', current);
+            else await this._setRaw(v1Key, current);
+        } catch (e) {
+            console.warn('[SaveDB] 备份轮转失败，继续写入:', e);
+        }
+    },
+    // [优化#7] 从备份恢复：默认恢复最近的 v1，可指定版本号
+    async restore(slot, version) {
+        if (slot === 0 || !(typeof slot === 'number' && slot >= 1 && slot <= 99)) return null;
+        var v = version || 1; // 默认恢复 v1（最近一次备份）
+        var backupSlot = -100 - slot + '_v' + v;
+        var backupKey = 'slot_' + (-100 - slot) + '_v' + v;
+        var backup = null;
+        try {
+            backup = this._useFallback ? this._lsGet(backupSlot) : await this._getRaw(backupKey);
+        } catch (e) { /* 读取失败 */ }
+        // 兼容旧格式：v1 不存在时尝试旧单备份槽
+        if (!backup && v === 1) {
+            try {
+                backup = this._useFallback ? this._lsGet(-100 - slot) : await this._getRaw('slot_' + (-100 - slot));
+            } catch (e) {}
+        }
         if (!backup) {
-            console.warn('[SaveDB] 槽位 ' + slot + ' 没有备份可恢复');
+            console.warn('[SaveDB] 槽位 ' + slot + ' v' + v + ' 没有备份可恢复');
             return null;
         }
         if (!this._verifyChecksum(backup)) {
-            console.error('[SaveDB] 备份数据校验失败，无法恢复');
+            console.error('[SaveDB] 备份数据校验失败（v' + v + '），无法恢复');
             return null;
         }
         await this.set(slot, backup);
         return backup;
+    },
+    // [优化#7] 列出某存档槽的所有可用备份版本
+    async listBackups(slot) {
+        if (slot === 0 || !(typeof slot === 'number' && slot >= 1 && slot <= 99)) return [];
+        var result = [];
+        for (var v = 1; v <= this.MAX_BACKUPS; v++) {
+            var key = 'slot_' + (-100 - slot) + '_v' + v;
+            try {
+                var data = this._useFallback ? this._lsGet(-100 - slot + '_v' + v) : await this._getRaw(key);
+                if (data) {
+                    result.push({
+                        version: v,
+                        timestamp: data._checksumTime || 0,
+                        turn: (data.state && data.state.progress && data.state.progress.turn) || 0
+                    });
+                }
+            } catch (e) {}
+        }
+        // 兼容旧格式
+        if (result.length === 0) {
+            try {
+                var legacy = this._useFallback ? this._lsGet(-100 - slot) : await this._getRaw('slot_' + (-100 - slot));
+                if (legacy) result.push({ version: 1, timestamp: legacy._checksumTime || 0, turn: 0, legacy: true });
+            } catch (e) {}
+        }
+        return result;
     },
     // 启动时自动迁移：localStorage → IndexedDB
     async migrate() {
@@ -1583,12 +1661,15 @@ var SaveDB = {
         Storage.set(Storage.KEYS.IDB_MIGRATED, '1');
     },
     // ── 备份与校验工具 ──
+    // [优化#7] 保留旧方法兼容外部调用，实际备份已改为多版本
     _getBackupSlot(slot) {
         if (slot === 0) return -1;
         if (typeof slot === 'number' && slot >= 1 && slot <= 99) return -100 - slot;
         return null;
     },
     _isBackupSlot(slot) {
+        // 兼容多版本格式：-100-slot-vN（字符串形式）
+        if (typeof slot === 'string') return /^-\d+_v\d+$/.test(slot);
         return slot === -1 || (slot <= -101 && slot >= -199);
     },
     _attachChecksum(data) {
