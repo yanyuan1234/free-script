@@ -3883,6 +3883,36 @@ var GameMemory = {
         }];
         self._markLtmDirty();
         return 'updated';
+    },
+
+    // 按 content 首段（名字）或 keywords 匹配删除单条/多条永久事实
+    // 调用方：AIResponseMutator._applyMemoryUpdates（AI 主动删除，op='delete'）
+    // 匹配规则（与 upsertPermanentFact 去重键逻辑一致，line 3821）：
+    //   1. 精确匹配 a.content === contentOrKey
+    //   2. 首段匹配：按 [:：] 拆分后的第一段（名字）小写比较
+    //   3. keywords 包含 contentOrKey
+    // 返回被删除条数；locked 条目默认不删（避免 AI 误删玩家手动锁定的核心设定）
+    deletePermanentFactByContent: function(category, contentOrKey, options) {
+        if (!category || !contentOrKey) return 0;
+        var self = this;
+        if (!self.permanentFacts || !Array.isArray(self.permanentFacts[category])) return 0;
+        options = options || {};
+        var allowDeleteLocked = !!options.allowDeleteLocked;
+        var target = String(contentOrKey);
+        var key = target.split(/[:：]/)[0].trim().toLowerCase();
+        var before = self.permanentFacts[category].length;
+        self.permanentFacts[category] = self.permanentFacts[category].filter(function(a) {
+            if (!a || !a.content) return true; // 保留异常项，不误删
+            if (!allowDeleteLocked && a.locked) return true; // 锁定项不删
+            if (a.content === target) return false; // 精确匹配
+            var aKey = String(a.content).split(/[:：]/)[0].trim().toLowerCase();
+            if (aKey && aKey === key) return false; // 首段匹配（名字）
+            if (Array.isArray(a.keywords) && a.keywords.indexOf(target) !== -1) return false; // keywords 匹配
+            return true;
+        });
+        var removed = before - self.permanentFacts[category].length;
+        if (removed > 0) self._markLtmDirty();
+        return removed;
     }
 };
 

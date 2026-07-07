@@ -71,7 +71,7 @@ const OutputSanitizer = {
 
         // 场景：AI 把 "choices":[...]、"characters":[...] 等 JSON 片段写进了 story 字符串值
         // 匹配 "字段名": 后跟 [ 或 { 的 JSON 结构残片（非剧情对话内容）
-        s = s.replace(/\\?"(?:choices|characters|player|bag|currency|currencyName|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages)\\?"\s*:\s*[\[{][\s\S]*?(?:\]|\})\s*,?/gi, '');
+        s = s.replace(/\\?"(?:choices|characters|player|bag|currency|currencyName|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages|memoryUpdates)\\?"\s*:\s*[\[{][\s\S]*?(?:\]|\})\s*,?/gi, '');
         // 移除孤立的 JSON 结尾残片（如 ", "choices":[]}）
 
         // 改为非贪婪匹配，且仅当后面紧跟 ] 或 } 闭合符号时才删除（确认是 JSON 残片而非剧情对话）

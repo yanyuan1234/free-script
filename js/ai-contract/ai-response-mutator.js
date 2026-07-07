@@ -115,7 +115,11 @@ const AIResponseMutator = {
             { name: 'contextSummary',   fn: () => this._applyContextSummary(data) },
 
             // 解决"学院名变化"和"角色描述矛盾"问题：AI 看不到上轮已确定的世界观，重新编造导致不一致
-            { name: 'permanentFacts',   fn: () => this._applyPermanentFacts(data) }
+            { name: 'permanentFacts',   fn: () => this._applyPermanentFacts(data) },
+
+            // [P0] AI 主动维护记忆：应用 AI 显式声明的 memoryUpdates（增/改/删永久事实）
+            // 放在 permanentFacts 被动收割之后，让 AI 的显式意图覆盖自动收割结果
+            { name: 'memoryUpdates',    fn: () => this._applyMemoryUpdates(data) }
         ];
         // 串行执行所有 mutator，任一抛错即冒泡到 apply() 的 try-catch（被 StateManager.transaction 包裹）
         // → transaction 回滚 → apply 返回 { success: false, error }
@@ -442,6 +446,85 @@ const AIResponseMutator = {
         }
         // 兜底：永久事实区可能因内部早返回未置 dirty，这里强制失效一次 longTermMemory 缓存
         if (typeof EnhancedMemory !== 'undefined') EnhancedMemory._ltmDirty = true;
+    },
+
+    // [P0] 应用 AI 主动声明的 memoryUpdates（增/改/删永久事实）
+    // AI 通过 JSON 的 memoryUpdates 字段显式表达对永久事实区的变更意图
+    // 放在 _applyPermanentFacts（被动收割）之后执行，AI 显式意图优先级更高
+    _applyMemoryUpdates(data) {
+        if (typeof EnhancedMemory === 'undefined') return;
+        const updates = data.memoryUpdates;
+        if (!Array.isArray(updates) || updates.length === 0) return;
+
+        const turn = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? (StateManager.get('progress.turn') || 0)
+            : 0;
+        const stats = { add: 0, replace: 0, delete: 0, skipped: 0 };
+
+        for (let i = 0; i < updates.length; i++) {
+            const u = updates[i];
+            if (!u || !u.category) { stats.skipped++; continue; }
+
+            if (u.op === 'delete') {
+                // delete：按 content 或 keywords 定位删除
+                // 锁定项默认不删（deletePermanentFactByContent 内部处理）
+                const target = u.content || (Array.isArray(u.keywords) ? u.keywords[0] : '');
+                if (!target) { stats.skipped++; continue; }
+                const removed = (typeof EnhancedMemory.deletePermanentFactByContent === 'function')
+                    ? EnhancedMemory.deletePermanentFactByContent(u.category, target)
+                    : 0;
+                if (removed > 0) {
+                    stats.delete += removed;
+                } else {
+                    stats.skipped++;
+                }
+                continue;
+            }
+
+            if (!u.content) { stats.skipped++; continue; }
+
+            if (u.op === 'replace') {
+                // replace：替换语义（单值类如 pcIdentity），调 setPermanentFact
+                if (typeof EnhancedMemory.setPermanentFact === 'function') {
+                    EnhancedMemory.setPermanentFact(u.category, {
+                        content: u.content,
+                        locked: false,
+                        source: 'aiMemoryUpdates',
+                        createdTurn: turn,
+                        keywords: u.keywords && u.keywords.length ? u.keywords : undefined
+                    });
+                    stats.replace++;
+                } else {
+                    stats.skipped++;
+                }
+                continue;
+            }
+
+            // op === 'add'（默认）：合并累积语义，调 upsertPermanentFact
+            if (typeof EnhancedMemory.upsertPermanentFact === 'function') {
+                const result = EnhancedMemory.upsertPermanentFact(u.category, {
+                    content: u.content,
+                    locked: false,
+                    source: 'aiMemoryUpdates',
+                    createdTurn: turn,
+                    keywords: u.keywords && u.keywords.length ? u.keywords : undefined
+                });
+                if (result !== 'noop') stats.add++;
+                else stats.skipped++;
+            } else {
+                stats.skipped++;
+            }
+        }
+
+        // 有实际变更时失效注入缓存，确保下一轮 buildInjection 重新生成
+        if (stats.add + stats.replace + stats.delete > 0) {
+            EnhancedMemory._cachedInjection = null;
+            EnhancedMemory._cachedInjectionTurn = -1;
+            EnhancedMemory._ltmDirty = true;
+            if (typeof console !== 'undefined' && console.log) {
+                console.log('[AIResponseMutator] memoryUpdates 已应用：新增/合并 ' + stats.add + '，替换 ' + stats.replace + '，删除 ' + stats.delete + '，跳过 ' + stats.skipped);
+            }
+        }
     },
 
     // 关键事件

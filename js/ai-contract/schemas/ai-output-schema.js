@@ -7,6 +7,13 @@ const AIOutputSchema = {
     STORY_ALIASES: ['story', 'storyText', 'content', 'text', 'narrative'],
     TITLE_ALIASES: ['title', 'scene', 'sceneTitle', 'chapterTitle'],
 
+    // [P0] AI 主动维护记忆：memoryUpdates 字段
+    // 让 AI 每轮可显式声明对永久事实区的增/改/删（参考 mufy 动态记忆区机制）
+    // 合法类别白名单（与 EnhancedMemory.permanentFacts 六类一致，见 tavern-compat.js:959）
+    MEMORY_CATEGORIES: ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises', 'worldPlaces'],
+    // 合法操作白名单：add=合并累积 / replace=替换覆盖(单值类如pcIdentity) / delete=按内容/名字删除
+    MEMORY_OPS: ['add', 'replace', 'delete'],
+
     getDefaultOutput() {
         return {
             story: '',
@@ -27,7 +34,10 @@ const AIOutputSchema = {
             // schema: [{ name: '苏菲', text: '你还好吗？', emotion: '担心', turn: 1 }, ...]
             npcMessages: [],
             contextSummary: '',
-            hud: {}
+            hud: {},
+            // [P0] AI 主动维护记忆：AI 显式声明对永久事实区的变更
+            // schema: [{ op:'add/replace/delete', category:'六类之一', content:'事实', keywords?:[], reason?:'说明' }]
+            memoryUpdates: []
         };
     },
 
@@ -133,6 +143,33 @@ const AIOutputSchema = {
 
         if (raw.contextSummary) out.contextSummary = String(raw.contextSummary);
         if (raw.hud && typeof raw.hud === 'object' && !Array.isArray(raw.hud)) out.hud = this._shallowClone(raw.hud);
+
+        // [P0] memoryUpdates normalize：白名单校验 op/category，过滤非法项
+        // AI 可能输出 op='update'（归一为 'replace'）、action 代替 op、type 代替 category 等变体
+        if (raw.memoryUpdates && Array.isArray(raw.memoryUpdates)) {
+            var validCats = this.MEMORY_CATEGORIES;
+            var validOps = this.MEMORY_OPS;
+            out.memoryUpdates = raw.memoryUpdates.map(function(u) {
+                if (!u || typeof u !== 'object') return null;
+                // op 归一：兼容 action 字段，update→replace，remove→delete
+                var op = String(u.op || u.action || 'add').trim().toLowerCase();
+                if (op === 'update') op = 'replace';
+                else if (op === 'remove') op = 'delete';
+                if (validOps.indexOf(op) === -1) op = 'add'; // 非法 op 兜底为 add
+                // category 归一：兼容 type 字段
+                var category = String(u.category || u.type || '').trim();
+                if (validCats.indexOf(category) === -1) return null; // 非法类别直接丢弃，避免污染
+                // delete 操作 content 可空（仅按 keywords 删除），其他操作必须非空
+                var content = String(u.content || u.text || u.value || '').trim();
+                var keywords = Array.isArray(u.keywords)
+                    ? u.keywords.map(function(k) { return String(k).trim(); }).filter(function(k) { return k; })
+                    : [];
+                if (op !== 'delete' && !content) return null;
+                if (op === 'delete' && !content && keywords.length === 0) return null; // delete 至少要有定位信息
+                var reason = String(u.reason || u.note || '').trim();
+                return { op: op, category: category, content: content, keywords: keywords, reason: reason };
+            }).filter(function(u) { return u; });
+        }
         return out;
     },
 

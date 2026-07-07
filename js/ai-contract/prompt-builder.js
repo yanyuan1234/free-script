@@ -200,6 +200,28 @@ const PromptBuilder = {
 
         this.registerSection('formatAnchor', (ctx) => ctx.formatAnchor || '', { order: 71 });
 
+        // [P0] memoryContract：AI 主动维护记忆契约（参考 mufy 动态记忆区机制）
+        // 让 AI 每轮可显式声明对永久事实区的增/改/删，记忆更贴合剧情
+        // 三维度范式（mufy 风格）：何时输出 / 内容要求 / 强制约束
+        this.registerSection('memoryContract', function(ctx) {
+            const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
+            // 纯文本模式已有 <mem> 标签机制，不注入 memoryUpdates 契约避免重复
+            if (pureText) return '';
+            return '【记忆维护契约·memoryUpdates】\n'
+                + '何时输出：当本回合发生需要永久记住的事实时，在 JSON 中追加 memoryUpdates 数组。无变更时省略该字段或输出空数组。\n'
+                + '内容要求：每条 = { op, category, content, keywords?, reason? }\n'
+                + '  - op：add（新增/合并累积，已存在则追加新信息）| replace（替换覆盖，仅用于 pcIdentity 等单值）| delete（按名字或内容删除已过时事实）\n'
+                + '  - category：pcIdentity（主角身份）| settings（世界设定）| worldRules（世界规则/铁律）| npcProfiles（关键角色档案）| promises（玩家承诺）| worldPlaces（关键地点）\n'
+                + '  - content：事实正文。角色/地点用"名字：描述"格式（冒号分隔，便于去重合并）\n'
+                + '  - keywords（可选）：定位关键词数组，delete 操作可仅凭 keywords 定位\n'
+                + '  - reason（可选）：一句话说明为何增改删，供玩家在记忆面板核对\n'
+                + '强制约束：\n'
+                + '  - 仅记录跨回合长期生效的事实，日常剧情变化不要写入（那些由 story/characters/quests 等字段承载）\n'
+                + '  - 不要重复写入已存在的相同事实；信息更新时用 replace 或带新字段的 add\n'
+                + '  - delete 不会删除玩家手动锁定（locked）的事实\n'
+                + '  - 每回合 memoryUpdates 建议 0-3 条，宁缺毋滥';
+        }, { order: 72 });
+
         // gametime：当前游戏时间
         this.registerSection('gametime', function(ctx) {
             const time = ctx.gameTime || {};
