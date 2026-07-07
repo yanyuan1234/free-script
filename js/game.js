@@ -555,12 +555,11 @@ function _buildFormatAnchor() {
             '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
             '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
     }
-    return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**，不要"让我开始"、不要"title:"、不要"story:"。\n' +
-        '字段：{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' + (_hasChoicesForAnchor ? ', "choices": [{"id":"A","text":""}]' : '') + ', "player": {"name":"","identity":"","stats":[]}, "characters": [{"name":"","relation":"","favorability":0}], "world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":"","progress":"当前/总数，如1/1"}], "gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
-        '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
-        'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n' +
-        'currency 字段必须准确反映剧情中的金钱变化：**若剧情提到获得/花费金币，必须返回更新后的准确余额，禁止与剧情矛盾。**\n' +
-        '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
+    return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**。\n' +
+        'gameTime 为必填字段，每回合必须给出具体时间。\n' +
+        'quests 若任务已完成，status 填"已完成"、progress 填"1/1"。\n' +
+        'currency 必须准确反映剧情中的金钱变化。\n' +
+        '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（空字段省略）\n' +
         '心声系统：用 <giggle>角色名：心声内容</giggle> 格式穿插（每回合2-5个）。\n' +
         '**禁止写主角角度的心声**，只能写NPC的心声。\n' +
         'gameTime 推进规则：根据剧情中发生的事件合理推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n' +
@@ -940,7 +939,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         gameState._preAIState = preAIState;
     }
     // 应用正则脚本到用户输入
-    if (userMessage) {
+    if (userMessage && typeof RegexManager !== 'undefined') {
         userMessage = RegexManager.applyToInput(userMessage);
     }
     // 触发事件：USER_MESSAGE_RENDERED（用户消息渲染后）
@@ -3700,7 +3699,10 @@ async function saveToSlot(slot) {
 async function loadFromSlot(slot) {
 
     return withSaveLock(async function() {
-    if (typeof gameState !== 'undefined' && gameState) gameState._loading = true;
+    if (typeof gameState !== 'undefined' && gameState) {
+        gameState._loading = true;
+        gameState._loadingSince = Date.now();
+    }
     try {
         var data = null;
 
@@ -3826,7 +3828,10 @@ async function loadFromSlot(slot) {
         UI.toast('读档失败: ' + translateError(e.message || e));
     } finally {
 
-        if (typeof gameState !== 'undefined' && gameState) gameState._loading = false;
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState._loading = false;
+            gameState._loadingSince = null;
+        }
     }
     }, 'loadFromSlot:' + slot); // end withSaveLock
 }

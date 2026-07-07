@@ -4887,9 +4887,22 @@ function _restoreGameRender() {
                     if (data.hud) renderHUD(data.hud);
                     if (data.title || data.scene) updateSceneTitle(data.title || data.scene);
                     if (data.choices) renderChoices(data.choices);
-                    if (data.player) renderPlayerStats(data.player);
+                    if (data.player) {
+                        // 写入 gameState.playerData，确保 renderPlayerStats(null) 能读到
+                        renderPlayerStats(data.player);
+                        if (typeof StateManager !== 'undefined' && StateManager.set) {
+                            StateManager.set('entities.player', data.player, { silent: true });
+                        }
+                        gameState.playerData = Object.assign({}, gameState.playerData || {}, data.player);
+                    }
                     if (data.characters) mergeCharacters(data.characters);
-                    if (data.world) renderWorldModules(data.world);
+                    if (data.world) {
+                        renderWorldModules(data.world);
+                        // 写入数据源，切换页面后不会丢失
+                        if (typeof StateManager !== 'undefined' && StateManager.set) {
+                            StateManager.set('ui.worldSnapshot', data.world, { silent: true });
+                        }
+                    }
                     if (data.world && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0) {
                         _autoExtractWorldNotes(data.world);
                     }
@@ -4899,8 +4912,10 @@ function _restoreGameRender() {
                         renderQuests();
                     }
                     if (data.relationships) {
-
-                        // 不再调用 mergeRelationships 重复写入，仅刷新 UI
+                        // 写入数据源，切换页面后不会丢失
+                        if (typeof mergeRelationships === 'function') {
+                            mergeRelationships(data.relationships);
+                        }
                         renderRelationships();
                     }
 
@@ -4944,7 +4959,7 @@ function _restoreGameRender() {
         renderNpcList();
         renderQuests();
         renderRelationships();
-        if (gameState.currentBag && gameState.currentBag.length > 0) renderBag(gameState.currentBag);
+        if (gameState.currentBag) renderBag(gameState.currentBag);
         // 恢复场景标题和HUD数据
         var loadedSceneTitle = (typeof StateManager !== 'undefined' && StateManager.get)
             ? (StateManager.get('progress.sceneTitle') || '')
@@ -4974,42 +4989,51 @@ function _restoreGameRender() {
 // --- 默认游戏状态 ---
 // --- setWaiting 适配 ---
 async function retryStory() {
-
-    // 删除最后两条（assistant 回复 + user 消息），保留 lastUserMsg 用于重新生成。
-    // 原代码两次 pop() 原地 mutate gameState.conversationHistory，绕过 StateManager，
-    // 导致撤销快照引用被污染 + StateManager.get 返回陈旧值。
-    // 新实现用 slice(0, -2) 创建新数组，并通过 _updateConversationHistory 写回权威源。
+    // 原版逻辑：删除最后两条对话并重新生成
+    // 修复：先通过 deleteLastTurn 回滚 gameState（turn计数、角色、物品等），
+    // 再重新发送最后一条用户消息，避免回合数虚增和状态污染
     var _histForRetry = _getConversationHistory();
     if (isWaiting || _histForRetry.length < 3) return;
     var lastUserMsg = _histForRetry[_histForRetry.length - 2];
-    _updateConversationHistory(_histForRetry.slice(0, -2));
-    if (lastUserMsg) {
-        // 【日志页面】弹窗提示：AI 正在重新生成，可取消
-        if (typeof UI.showGenerating === 'function') {
-            UI.showGenerating('重新生成回复', {
-                hint: 'AI 会重新演绎这一段剧情，生成约需 5-20 秒',
-                onCancel: function() {
-                    if (window._currentAbort) {
-                        try { window._currentAbort.abort(); } catch (e) {}
-                    }
-                    UI.toast('已取消生成');
+    if (!lastUserMsg) return;
+
+    // 先回滚状态（turn计数、角色、物品等），deleteLastTurn 会处理 conversationHistory
+    if (typeof deleteLastTurn === 'function') {
+        try { deleteLastTurn(); } catch (e) { console.error('[retryStory] 回滚失败:', e); }
+    } else {
+        // fallback: 只删历史
+        _updateConversationHistory(_histForRetry.slice(0, -2));
+    }
+
+    // 重新获取用户消息（deleteLastTurn 可能改变了历史）
+    var _histAfter = _getConversationHistory();
+    var _lastUser = _histAfter.filter(function(m) { return m.role === 'user'; }).pop();
+    if (!_lastUser) _lastUser = lastUserMsg;
+
+    // 重新生成
+    if (typeof UI.showGenerating === 'function') {
+        UI.showGenerating('重新生成回复', {
+            hint: 'AI 会重新演绎这一段剧情，生成约需 5-20 秒',
+            onCancel: function() {
+                if (window._currentAbort) {
+                    try { window._currentAbort.abort(); } catch (e) {}
                 }
-            });
-        } else if (typeof UI !== 'undefined' && UI.toast) {
-            UI.toast('正在重新生成...');
-        }
-        // 防 unhandledrejection：捕获异步错误
-        try {
-            var p = sendAIRequest(lastUserMsg.content);
-            if (p && typeof p.catch === 'function') {
-                p.catch(function(e) {
-                    if (e && e.name === 'AbortError') return;
-                    console.error('[重新生成] 异步操作失败:', e);
-                });
+                UI.toast('已取消生成');
             }
-        } catch (e) {
-            console.error('[重新生成] 同步错误:', e);
+        });
+    } else if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('正在重新生成...');
+    }
+    try {
+        var p = sendAIRequest(_lastUser.content);
+        if (p && typeof p.catch === 'function') {
+            p.catch(function(e) {
+                if (e && e.name === 'AbortError') return;
+                console.error('[重新生成] 异步操作失败:', e);
+            });
         }
+    } catch (e) {
+        console.error('[重新生成] 同步错误:', e);
     }
 }
 async function continueStory() {
@@ -5128,8 +5152,7 @@ function deleteLastTurn() {
     }
     
     // 原有逻辑：删除最后一轮对话
-
-    // slice(0, -2) 创建新数组，避免原地 pop 污染 undo 快照引用。
+    // 修复：fallback 路径也回滚 turn 计数，避免历史删了但 turn 数虚增
     var _histForUndo = _getConversationHistory();
     if (_histForUndo.length < 3) {
         UI.toast('已经是最开始了');
@@ -5137,6 +5160,14 @@ function deleteLastTurn() {
     }
     var _newHistForUndo = _histForUndo.slice(0, -2);
     _updateConversationHistory(_newHistForUndo);
+    // 回滚 turn 计数
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var _curTurn = StateManager.get('progress.turn') || 0;
+        if (_curTurn > 0 && StateManager.set) {
+            StateManager.set('progress.turn', _curTurn - 1, { silent: true });
+        }
+    }
+    if (typeof updateTurnLabel === 'function') updateTurnLabel();
     var lastAI = [..._newHistForUndo].reverse().find(m => m.role === 'assistant');
     if (lastAI) {
         var parsed = parseAIResponse(lastAI.content);

@@ -4198,6 +4198,10 @@ var MemoryManagerUI = {
             catch(e) { console.warn('[saveMemoryEdits] worldSnapshot JSON 解析失败:', e.message); UI.toast('世界快照JSON格式错误，已忽略'); }
         }
         if (typeof autoSave === 'function') autoSave();
+        // 失效记忆注入缓存，确保下次 sendAIRequest 读到编辑后的最新内容
+        if (typeof EnhancedMemory !== 'undefined') {
+            EnhancedMemory._cachedInjection = null;
+        }
         UI.toast('记忆已保存');
     },
 
