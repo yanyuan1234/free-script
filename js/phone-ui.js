@@ -4089,6 +4089,24 @@ function bindEvents() {
             sendAIRequest(text);
         }
     });
+    // 【第4轮优化】手机端键盘遮挡处理：输入框聚焦时滚动到可视区域
+    // visualViewport 优先（更准确反映键盘弹出后的可视高度），降级到 scrollIntoView
+    bindEvent('customAction', 'focusin', function() {
+        var inputEl = this;
+        TimerManager.setTimeout('scrollInputIntoView', function() {
+            try {
+                if (window.visualViewport) {
+                    var rect = inputEl.getBoundingClientRect();
+                    var keyboardTop = window.visualViewport.height + window.visualViewport.offsetTop;
+                    if (rect.bottom > keyboardTop) {
+                        inputEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    }
+                } else {
+                    inputEl.scrollIntoView({ block: 'center' });
+                }
+            } catch (e) { /* 降级：保持默认行为 */ }
+        }, 300);
+    });
     bindEvent('btnSendAction', 'click', function() {
         var input = document.getElementById('customAction');
         var text = input.value.trim();

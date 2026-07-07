@@ -41,8 +41,21 @@ _evictIfNeeded() {
 // 项目代码 grep 'TimerManager\\.set' 即可确认所有调用方都使用本封装
 const TimerManager = {
     _intervals: {}, _timeouts: {},
-    setInterval(id, fn, delay) { this.clearInterval(id); this._intervals[id] = setInterval(fn, delay); },
-    setTimeout(id, fn, delay) { this.clearTimeout(id); var self = this; this._timeouts[id] = setTimeout(function() { fn(); delete self._timeouts[id]; }, delay); },
+    // 【第4轮优化】通用 try-catch 包装：避免回调抛错导致 setInterval 后续 tick 异常 / setTimeout 死记录残留
+    setInterval(id, fn, delay) {
+        this.clearInterval(id);
+        this._intervals[id] = setInterval(function() {
+            try { fn(); } catch (e) { console.error('[TimerManager interval ' + id + ']', e); }
+        }, delay);
+    },
+    setTimeout(id, fn, delay) {
+        this.clearTimeout(id);
+        var self = this;
+        this._timeouts[id] = setTimeout(function() {
+            try { fn(); } catch (e) { console.error('[TimerManager timeout ' + id + ']', e); }
+            delete self._timeouts[id];
+        }, delay);
+    },
     clearInterval(id) { if (this._intervals[id]) { clearInterval(this._intervals[id]); delete this._intervals[id]; } },
     clearTimeout(id) { if (this._timeouts[id]) { clearTimeout(this._timeouts[id]); delete this._timeouts[id]; } },
     clearAll() { for (let i in this._intervals) clearInterval(this._intervals[i]); for (let i in this._timeouts) clearTimeout(this._timeouts[i]); this._intervals = {}; this._timeouts = {}; }

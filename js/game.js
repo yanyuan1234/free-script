@@ -569,22 +569,32 @@ function _buildFormatAnchor() {
 // 渐进式格式规则（原 _buildFormatRules 改名为公共函数，避免与旧引用冲突）
 function _buildFormatRules(gs, _t, turn) {
     var hasChoices = gs.generateChoices;
-    // 原版始终输出完整格式规则，不按 turn 数精简
-    // 新版 turn>3 时切换精简版丢失了大量字段级约束（world类型、好感度范围、player.name约束等）
+    // 第4轮优化：从原版 backup/index.html 回填字段级规则，避免 AI 输出字段缺失或语义冲突
+    // 关键修正：keyEvents 从"至少1条"改为"0-3条可空"（原版语义，避免强迫AI编造事件污染记忆）
+    var _maxTokens = (gs && gs.maxTokens) || 8192;
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
-        + '{ "title": "", "story": "", '
-        + (hasChoices ? '"choices": [{"id":"A","text":""}],' : '')
-        + ' "player": {"name":"","identity":"","stats":[]}, '
-        + '"characters": [{"name":"","relation":"","favorability":0}], '
-        + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"","content":""}], '
-        + '"bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":"","progress":"当前/总数"}], '
-        + '"gameTime": {"date":"","time":"","period":""} }\n'
-        + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
-        + 'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n'
+        + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
+        + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
+        + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
+        + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
+        + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"标题","content":"内容"}], '
+        + '"bag": [{"name":"物品名","count":1,"desc":"描述","rarity":"普通/精良/珍稀/传说","usable":false,"effect":"","equippable":false,"equipped":false,"slot":"weapon/armor/accessory/head"}], '
+        + '"currency": 0, "currencyName": "按世界观设定（修仙用灵石，现代用元，古代用银两等）", '
+        + '"quests": [{"title":"任务名","type":"主线/支线/隐藏","status":"进行中/已完成/失败","progress":"当前/总数","hint":"下一步提示"}], '
+        + '"keyEvents": ["本回合重要事件，每条简短一句含人物名"], '
+        + '"gameTime": {"date":"日期","time":"时间","period":"时段","weather":"晴/阴/雨/雪","era":"时代/年号"} }\n'
+        + '可选字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊,正式通知用mail), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
+        + '**player=主角（玩家唯一操控角色），characters=NPC列表。绝对禁止把主角放进 characters！剧情提到任何角色名都必须放入 characters；已知角色即使本回合未出场也要保留；每回合检查不遗漏；同一角色只用一个固定名字不加括号备注。**\n'
+        + '**player.name 必须严格等于主角姓名，违反会导致游戏崩溃。原始JSON不用```json包裹。**\n'
+        + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
+        + 'quests 任务规则：type三类(主线/支线/隐藏),status三类(进行中/已完成/失败),progress用"当前/总数";同时存在不超过5个;第一回合至少1个主线;完成/失败保留1-2回合后移除。**若任务已完成,status填"已完成"、progress填"1/1";若仍在进行,progress必须推进,禁止始终为0/1。**\n'
+        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角用"主角"二字。\n'
+        + 'keyEvents 规则：**每回合 0-3 条，没有重要事件就输出空数组 []。**重要事件指：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露。每条简短一句含人物名。日常对话/普通移动不写入。\n'
+        + 'favorability 分级（整数）：80-100极度亲密,60-79非常亲近,40-59有好感,15-39关系融洽,-14~14中立(0=中立非敌意),-39~-15略有隔阂,-100~-40负面。范围 -100 到 100。relation用符合世界观的词,不要套固定模板,不要省略数值。\n'
         + 'currency 必须准确反映剧情中的金钱变化，禁止与剧情矛盾。\n'
-        + 'player=主角，characters=NPC。原始JSON不用```json包裹。\n'
-        + 'player.name 必须严格等于主角姓名，违反会导致游戏崩溃。绝对禁止把主角放进 characters。\n'
-        + '好感度范围 -100 到 100。世界模块(world)必须和剧情紧密联动，不要生成与剧情无关的静态内容。';
+        + '世界模块(world)必须和剧情紧密联动，不要生成与剧情无关的静态内容。\n'
+        + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
+        + '约' + _maxTokens + 'tokens输出空间';
 }
 
 /**

@@ -1668,6 +1668,15 @@ var PresetManager = {
 
     // 应用提示词到 systemPrompt
     this._applyPromptsToSystemPrompt(preset);
+    // 【第4轮优化】同步更新 conversationHistory[0]，避免切换预设后旧 system prompt 残留
+    // 仿 game.js:982-984 写法，让 WorldInfo 角色提取、buildSmartInjection 等直读 history[0] 的逻辑读到新值
+    try {
+        if (typeof gameState !== 'undefined' && gameState && gameState.conversationHistory
+            && gameState.conversationHistory.length > 0
+            && gameState.conversationHistory[0].role === 'system') {
+            gameState.conversationHistory[0].content = gameState.systemPrompt;
+        }
+    } catch (e) { console.warn('[loadPreset] 同步 conversationHistory[0] 失败:', e); }
     // 【增强】加载预设后，自动应用预设的行为控制参数
     if (preset.params) {
         gameState._useSysprompt = preset.params.use_sysprompt !== undefined ? preset.params.use_sysprompt : true;

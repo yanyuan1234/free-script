@@ -1083,7 +1083,18 @@ var GameMemory = {
         if (!oldData) return false;
         console.log('[GameMemory] 检测到旧版 EnhancedMemory 数据，开始迁移...');
         var old = oldData;
-        var turn = (old.stats && old.stats.totalMessages) || 0;
+        // 【第4轮优化】修正数据源：原版用 stats.totalMessages（消息数），但 currentTurn 语义是回合数
+        // 1 回合 = 2 条消息（user + assistant），混用会导致 currentTurn 翻倍
+        // 优先从 gameState._stats.totalTurns（权威源）读取，旧字段作为兜底
+        var turn = 0;
+        try {
+            if (typeof gameState !== 'undefined' && gameState && gameState._stats && gameState._stats.totalTurns) {
+                turn = parseInt(gameState._stats.totalTurns, 10) || 0;
+            } else if (old.stats && old.stats.totalMessages) {
+                // 兜底：从消息数估算回合数（除以 2 向下取整）
+                turn = Math.floor(parseInt(old.stats.totalMessages, 10) / 2) || 0;
+            }
+        } catch (e) { turn = 0; }
         self.currentTurn = turn;
         if (old.workingMemory) {
             if (old.workingMemory.turns) self.workingMemory.turns = old.workingMemory.turns;
@@ -3601,6 +3612,16 @@ var GameMemory = {
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
         var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
         for (let i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
+        // 【第4轮优化】加载后强制同步 currentTurn 到 gameState._stats.totalTurns
+        // 避免双源不同步导致 shouldTriggerCompression 用 _stats.totalTurns、其他逻辑用 self.currentTurn 产生偏差
+        try {
+            if (typeof gameState !== 'undefined' && gameState && gameState._stats) {
+                var _gsTurn = parseInt(gameState._stats.totalTurns, 10);
+                if (!isNaN(_gsTurn)) {
+                    self.currentTurn = _gsTurn;
+                }
+            }
+        } catch (e) { console.warn('[GameMemory.loadFromStorage] 同步 currentTurn 失败:', e); }
         // 嵌套对象默认值补全
         if (!self.workingMemory.turns) self.workingMemory.turns = [];
         if (!self.workingMemory.messages) self.workingMemory.messages = [];

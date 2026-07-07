@@ -415,6 +415,11 @@ var UI = {
     toast: function(msg, type) {
         var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
+        // 【第4轮优化】堆叠上限：最多保留 3 个 toast，超出移除最旧的
+        // 避免快速连续调用时移动端 toast 溢出视口
+        while (ct.children && ct.children.length >= 3) {
+            if (ct.firstChild) ct.firstChild.remove();
+        }
         var t = document.createElement('div');
         // [T2-P1-3] 接受 type 参数，附加 toast-info/success/warning/error class 实现 4 种颜色区分
         t.className = 'toast' + (type ? ' toast-' + type : '');
@@ -5022,7 +5027,17 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     var rawBodyTruncated = false;
 
     while (true) {
-        var readResult = await reader.read();
+        // 【第4轮优化】idle 超时保护：每个 chunk 之间最多等待 60 秒
+        // 避免服务端挂起（TCP 连接保持但无数据）导致 UI 卡死到 10 分钟整体超时
+        var _idleTimer = TimerManager.setTimeout('aiStreamIdle', function() {
+            try { reader.cancel('idle timeout 60s'); } catch (e) {}
+        }, 60 * 1000);
+        var readResult;
+        try {
+            readResult = await reader.read();
+        } finally {
+            TimerManager.clearTimeout('aiStreamIdle');
+        }
         if (readResult.done) {
             if (sseBuffer && sseBuffer.trim()) {
                 parseSSEEventText(sseBuffer, ctx);
