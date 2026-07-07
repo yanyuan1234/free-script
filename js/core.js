@@ -1038,10 +1038,20 @@ var LocalGameAPI = {
         return cfg ? Object.assign({}, cfg) : null;
     },
     setConfig(slot, config) {
+        var _wasEmpty = !this._configs[slot] || (!this._configs[slot].baseUrl && !this._configs[slot].apiKey);
         this._configs[slot] = {
             ...this._configs[slot],
             ...config
             };
+        // 如果是新建配置（此前为空）且当前没有可用的配置，自动设为当前
+        if (_wasEmpty && config.baseUrl && config.apiKey) {
+            var _hasActive = this._configs.some(function(c, i) {
+                return i !== slot && c.baseUrl && c.apiKey;
+            });
+            if (!_hasActive) {
+                this._currentSlot = slot;
+            }
+        }
         this.save();
     },
     setCurrentSlot(slot) {
@@ -5618,10 +5628,18 @@ async function initializeGame() {
         var _mcName = (gameState.protagonistSetup && gameState.protagonistSetup.mcName) || '';
         if (!_smPlayerName && _mcName) _smPlayerName = _mcName;
         if (!_smPlayer.name && _smPlayerName) _smPlayer.name = _smPlayerName;
+        // 从主角设定中补全身份等信息
+        if (gameState.protagonistSetup) {
+            if (!_smPlayer.identity && gameState.protagonistSetup.mcIdentity) _smPlayer.identity = gameState.protagonistSetup.mcIdentity;
+            if (!_smPlayer.age && gameState.protagonistSetup.mcAge) _smPlayer.age = gameState.protagonistSetup.mcAge;
+        }
         if (typeof StateManager !== 'undefined' && StateManager.set) {
             if (_smPlayerName) StateManager.set('world.playerName', _smPlayerName, { silent: true });
             if (_smPlayer.name) StateManager.set('entities.player', _smPlayer, { silent: true });
         }
+        // 同步到 gameState.playerData，让 renderPlayerPage 能立即显示主角信息
+        gameState.playerData = _smPlayer;
+        gameState.playerName = _smPlayerName;
         var _systemPrompt = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSystemPrompt) ? RuntimeBridge.buildSystemPrompt() : '';
         if (typeof StateManager !== 'undefined' && StateManager.set) {
             StateManager.set('progress.conversationHistory', [{ role: 'system', content: _systemPrompt }], { silent: true });

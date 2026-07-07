@@ -1874,16 +1874,29 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // 【方案C】AI没输出choices时，基于story末段自动生成3个选项
-
-
         // ResponseParser 失败时 schema 默认返回 choices: []，导致自动生成永远不触发，回合 0 选项
-        if (gameState && gameState.generateChoices && (!data || !data.choices || data.choices.length === 0)) {
-
-            var autoChoices = _generateAutoChoices(storyText, gameState._lastChoices);
-            if (autoChoices && autoChoices.length > 0) {
-                renderChoices(autoChoices);
+        if (gameState && gameState.generateChoices !== false && (!data || !data.choices || data.choices.length === 0)) {
+            // 先尝试从原文正则提取 choices
+            var rescuedChoices = extractObjArr(response, 'choices') || extractArr(response, 'choices');
+            if (rescuedChoices && rescuedChoices.length > 0) {
+                renderChoices(rescuedChoices);
                 data = data || {};
-                data.choices = autoChoices;
+                data.choices = rescuedChoices;
+            } else {
+                // 再尝试基于story末段自动推断
+                var autoChoices = _generateAutoChoices(storyText, gameState._lastChoices);
+                if (autoChoices && autoChoices.length > 0) {
+                    renderChoices(autoChoices);
+                    data = data || {};
+                    data.choices = autoChoices;
+                } else {
+                    // 最终兜底：渲染硬编码默认选项（与原版一致）
+                    renderChoices([
+                        { id: 'A', text: '继续探索' },
+                        { id: 'B', text: '观察四周' },
+                        { id: 'C', text: '等待观望' }
+                    ]);
+                }
             }
         }
 
@@ -2135,10 +2148,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
 
-        // 上方 1941 行已实现智能兜底：data.choices 为空时调 _generateAutoChoices(storyText)
-        // 若 _generateAutoChoices 也失败（autoChoices.length===0），说明 storyText 不可推断选项，
-        // 此时直接渲染空选项让玩家通过自定义输入框行动（项目本就支持自定义输入），
-        // 不再走"再次从 response 正则提取 + 硬编码三选项"双重兜底，避免 AI 重复学习硬编码套路。
+        // 用户明确关闭选项生成时，渲染空选项
         if ((!data || !data.choices) && gameState && gameState.generateChoices === false) {
             renderChoices([]);
         }
