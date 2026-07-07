@@ -4602,9 +4602,10 @@ var MemoryManagerUI = {
                 return;  // gm.tables 完全未改动，状态一致
             }
             // Mutator 成功 → 适配器已 MERGE 实体字段（name/title/relation/mood/location/outfit/favorability/status）到 gm.tables[newName]
-            // 现在补齐运行时字段（locked/history/gameTime/accessCount/lastChangedTurn）并处理 rename
+            // [优化#2] 消除双写：outfit/status 已由 adapter MERGE 自动同步，这里只补齐纯运行时字段
+            // 纯运行时字段 = locked/history/gameTime/accessCount/lastChangedTurn（不在 StateManager 实体 schema 里，需手动写）
             self._mergeRuntimeFields(gm.tables.characters, oldName, newName, _newCharData,
-                ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked', 'outfit', 'status']);
+                ['history', 'gameTime', 'accessCount', 'lastChangedTurn', 'locked']);
         } else if (typeof gameState !== 'undefined' && gameState.allCharacters) {
             // legacy 兜底（无 StateManager 环境）
             if (oldName !== newName) delete gm.tables.characters[oldName];
@@ -4777,10 +4778,11 @@ var MemoryManagerUI = {
                 UI.toast('保存失败：状态层拒绝写入');
                 return;  // gm.tables 未改动
             }
-            // Mutator 成功 → 适配器已 MERGE 实体字段到 gm.tables.items[newName]
-            // 补齐运行时字段（accessCount/gameTime）并处理 rename
+            // Mutator 成功 → 适配器已 MERGE 实体字段（name/qty/unit/rarity/desc 等）到 gm.tables.items[newName]
+            // [优化#2] 消除双写：qty/unit/rarity/desc 已由 adapter MERGE 自动同步，这里只补齐纯运行时字段
+            // 纯运行时字段 = obtainedTurn/lastChangedTurn/gameTime/accessCount/history（不在 StateManager 实体 schema 里）
             self._mergeRuntimeFields(gm.tables.items, oldName, newName, _newItemData,
-                ['qty', 'unit', 'rarity', 'desc', 'obtainedTurn', 'lastChangedTurn', 'gameTime', 'accessCount', 'history']);
+                ['obtainedTurn', 'lastChangedTurn', 'gameTime', 'accessCount', 'history']);
         } else if (typeof _syncItemsToBag === 'function') {
             // legacy 兜底：直接改 gm.tables，再走 _syncItemsToBag 同步
             if (oldName !== newName) delete gm.tables.items[oldName];

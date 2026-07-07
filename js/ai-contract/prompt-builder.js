@@ -52,11 +52,12 @@ const PromptBuilder = {
         // identity：身份与最高规则
         this.registerSection('identity', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const maxTokens = ctx.maxTokens || 8192;
             const base = '你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。';
+            // [优化#9] 模式规则收敛：详细的"直接输出JSON/纯文本"约束统一由 formatAnchor/format section 负责
+            // identity 仅保留最高级别的模式声明一句，避免与 workflow/formatAnchor 重复
             const modeRule = pureText
-                ? '【纯文本模式】**直接输出纯文本剧情**，不要任何JSON包裹、不要```json```代码块、不要"{"或"}"符号。你只需要写出剧情本身——状态变化用<mem>标签穿插在剧情中（前端自动提取维护结构化数据），心声用<giggle>标签。'
-                : '【JSON模式】你的回复将直接被前端JSON解析器读取。**不要输出任何思考过程、计划、解释、前缀**。每次回复都以 { 开头，以 } 结尾，中间是合法的JSON。';
+                ? '【纯文本模式】直接输出纯文本剧情，不要JSON包裹。状态变化用<mem>标签，心声用<giggle>标签。'
+                : '【JSON模式】你的回复将被前端JSON解析器读取，直接以 { 开头输出合法JSON，不要任何前缀或思考过程。';
             return base + '\n\n' + modeRule;
         }, { order: 10 });
 
@@ -156,11 +157,11 @@ const PromptBuilder = {
             parts.push('');
             parts.push('【你的工作方式】');
             if (pureText) {
-                parts.push('**直接输出纯文本剧情**。故事是核心，所有token预算都用在故事上。');
-                parts.push('对话用「」包裹，换行用\\n。状态变化用<mem>穿插在剧情中，心声用<giggle>穿插。');
+                // [优化#9] "直接输出纯文本"由 identity/format 负责，这里只写工作方式
+                parts.push('故事是核心，所有token预算都用在故事上。对话用「」包裹，换行用\\n。');
                 parts.push('你大约有 ' + maxTokens + ' tokens输出空间——把故事写完整、写精彩。');
             } else {
-                parts.push('**直接输出JSON**（以 { 开头），不要任何前缀（不要"让我开始"、不要"title:"、不要"story:"等思考过程）。');
+                // [优化#9] "直接输出JSON"由 formatAnchor/format 负责，这里只写工作方式
                 parts.push('story放第一个字段，用\\n换行，对话用「」。你大约有 ' + maxTokens + ' tokens输出空间。');
                 parts.push('- story=叙事正文，choices=决策点；严禁回到故事开头或重复初始场景。');
             }
@@ -170,18 +171,14 @@ const PromptBuilder = {
         }, { order: 60 });
 
         // format：输出格式要求
-
-        // 【第5轮优化】此 section 在 JSON 模式下是死代码：
-        // - includeFormatRules=true（默认）时，game.js 通过 ctx.formatRules 传入 _buildFormatRules 完整规则，下面第 179 行直接 return
-        // - includeFormatRules=false（预设模式）时，ctx.skipDefaultFormat=true，第 178 行返回空字符串
-        // 因此 JSON 模式分支永远不会发送给 AI；保留纯文本模式分支作为预留
-        // 历史 world type 扩展说明（chat/forum/rank/setting 等命名）已统一回填到 game.js _buildFormatRules
-        // 所有 type 命名以 game.js 为单一数据源，避免命名分裂
+        // [优化#9] 单一数据源原则：
+        // - JSON 模式：ctx.formatRules 由 game.js _buildFormatRules 传入完整字段规则，直接 return
+        // - 纯文本模式：<mem> 标签详细规则在此处（JSON 模式用 memoryUpdates 字段，由 memoryContract section 负责）
+        // - "直接输出JSON/纯文本"的顶层约束由 identity（最高规则）+ formatAnchor（补充要求）负责
         this.registerSection('format', function(ctx) {
             if (ctx.skipDefaultFormat) return '';
             if (ctx.formatRules) return ctx.formatRules;
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const hasChoices = ctx.generateChoices !== false;
             if (pureText) {
                 return '【输出要求·纯文本模式】\n' +
                     '直接输出纯文本剧情，不要任何JSON包裹，不要```json```代码块，不要"{"或"}"符号。\n' +
@@ -193,8 +190,7 @@ const PromptBuilder = {
                     '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
                     '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）';
             }
-            const json = '';
-            return json;
+            return '';
         }, { order: 70 });
 
 

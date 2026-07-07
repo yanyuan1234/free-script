@@ -297,21 +297,63 @@ var SmartConfigEngine = {
 
     /**
     * 从预设加载并应用配置
+    * [优化#4] 改为调用 applyConfig 真正应用，而非仅 logConfig 记录
     */
     loadFromPreset: function(preset) {
         var config = this.extractConfig(preset);
         if (config) {
-            this.logConfig(config, preset.name || '未命名');
+            this.applyConfig(config, preset.name || '未命名');
         }
         return config;
     },
 
-    // [T1-P1-18] applyConfig 别名（指向 logConfig），消除"功能空壳"误解
-    // 原方法 logConfig 实质已经实现完整的解析+日志+toast 提示，但方法名暗示
-    // 用户"已应用配置"是误导。applyConfig 名字更直观但行为完全一致（仅记录+提示）
+    // [优化#4] applyConfig：真正应用推荐配置（温度、API URL）
+    // 替代旧"仅记录+提示"的空壳行为，让一键应用真正生效
     applyConfig: function(config, presetName) {
-        return this.logConfig(config, presetName);
-        },
+        if (!config) return false;
+        var applied = [];
+
+        // 1. 应用温度推荐到 PresetManager.currentParams
+        if (config.temperatureGuide) {
+            var temp = config.temperatureGuide.recommended;
+            if (temp == null && config.temperatureGuide.low != null) {
+                // 没有推荐值时取区间中点
+                temp = (config.temperatureGuide.low + (config.temperatureGuide.high || config.temperatureGuide.low)) / 2;
+            }
+            if (temp != null && !isNaN(temp) && temp > 0 && temp <= 2) {
+                try {
+                    if (typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
+                        PresetManager.currentParams.temperature = temp;
+                        applied.push('温度 ' + temp);
+                        // 刷新 UI 显示
+                        if (typeof refreshPresetParams === 'function') refreshPresetParams();
+                    }
+                } catch (e) { console.warn('[SmartConfig] 应用温度失败:', e); }
+            }
+        }
+
+        // 2. 应用 API URL（如果当前为空，避免覆盖玩家已配置的地址）
+        if (config.apiSettings && config.apiSettings.apiUrl) {
+            try {
+                if (typeof gameState !== 'undefined' && gameState && !gameState.apiUrl) {
+                    gameState.apiUrl = config.apiSettings.apiUrl;
+                    applied.push('API地址 ' + config.apiSettings.apiUrl);
+                }
+            } catch (e) { /* gameState 不可用时跳过 */ }
+        }
+
+        // 3. 仍记录到 currentConfig 供 UI 展示
+        this.currentConfig = config;
+
+        if (applied.length > 0) {
+            console.log('[SmartConfig] 已应用推荐配置（' + (presetName || '未命名') + '）: ' + applied.join('，'));
+            if (typeof UI !== 'undefined' && UI.toast) {
+                UI.toast('已应用推荐配置：' + applied.join('、'));
+            }
+            return true;
+        }
+        return false;
+    },
 
     // [T1-P1-18] 占位方法（报告 P1-18 提到 getConfigSummary 不存在），返回当前
     // currentConfig 字段（也用于外部检测是否已加载推荐配置）

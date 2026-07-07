@@ -1476,6 +1476,25 @@ var WorldInfo = {
                 return;
             }
 
+            // [优化#5] characterFilter 过滤：条目可绑定特定角色，非该角色时跳过
+            // characterFilter 为角色名数组，当前主角名不在数组内则跳过该条目
+            // 空数组或 null/undefined 表示不限定角色（兼容旧条目）
+            if (entry.characterFilter && Array.isArray(entry.characterFilter) && entry.characterFilter.length > 0) {
+                var currentChar = '';
+                try {
+                    if (typeof gameState !== 'undefined' && gameState) {
+                        currentChar = gameState.playerName || (gameState.player && gameState.player.name) || '';
+                    }
+                } catch (e) { /* gameState 不可用时跳过过滤 */ }
+                if (currentChar) {
+                    var charMatched = false;
+                    for (var ci = 0; ci < entry.characterFilter.length; ci++) {
+                        var cf = entry.characterFilter[ci];
+                        if (cf && currentChar === String(cf)) { charMatched = true; break; }
+                    }
+                    if (!charMatched) return; // 当前角色不匹配，跳过该条目
+                }
+            }
 
         // 如果条目指定了 scan_depth，使用条目级别的值
         var entryScanDepth = (entry.scanDepth != null) ? entry.scanDepth : scanDepth;
