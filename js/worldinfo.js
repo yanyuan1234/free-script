@@ -8,7 +8,9 @@ var WorldInfo = {
         // 酒馆使用百分比（默认25%），这里存储百分比值
         tokenBudget: 25,
         tokenBudgetCap: 0,  // token预算硬上限（0=无限制）
-        recursive: true
+        recursive: true,
+        // [P2] 语义检索开关（启用后用向量检索补充关键词匹配）
+        vectorRetrieval: false
     },
 
     _regexCache: {},
@@ -69,6 +71,14 @@ var WorldInfo = {
     init: function() {
         this.load();
         this.bindEvents();
+        // [P2] 同步语义检索开关到 VectorRetriever
+        if (typeof VectorRetriever !== 'undefined' && this.settings.vectorRetrieval) {
+            VectorRetriever.setEnabled(true);
+            // 设置进度提示回调
+            VectorRetriever.onProgress(function(msg) {
+                if (typeof UI !== 'undefined' && UI.toast) UI.toast(msg);
+            });
+        }
         // 【世界书↔记忆联动】首次启动时一次性收割已存在条目
         // 避免老玩家世界书里的核心设定没进永久事实区
         this._harvestAllEntriesToMemory();
@@ -129,6 +139,8 @@ var WorldInfo = {
                     this.settings.tokenBudget = budget;
                 }
             this.settings.recursive = data.settings.recursive !== false;
+            // [P2] 读取语义检索开关（默认 false）
+            this.settings.vectorRetrieval = !!data.settings.vectorRetrieval;
         }
     } catch(e) {
         this.books = [];
@@ -263,9 +275,11 @@ var WorldInfo = {
         var depthEl = document.getElementById('wiScanDepth');
         var budgetEl = document.getElementById('wiTokenBudget');
         var recursiveEl = document.getElementById('wiRecursive');
+        var vectorEl = document.getElementById('wiVectorRetrieval');
         if (depthEl) depthEl.value = this.settings.scanDepth;
         if (budgetEl) budgetEl.value = this.settings.tokenBudget;
         if (recursiveEl) recursiveEl.checked = this.settings.recursive;
+        if (vectorEl) vectorEl.checked = !!this.settings.vectorRetrieval;
 
         // 重置到书籍列表视图
         this.currentView = 'books';
@@ -1410,9 +1424,21 @@ var WorldInfo = {
             var depthEl = document.getElementById('wiScanDepth');
             var budgetEl = document.getElementById('wiTokenBudget');
             var recursiveEl = document.getElementById('wiRecursive');
+            var vectorEl = document.getElementById('wiVectorRetrieval');
             if (depthEl) this.settings.scanDepth = safeInt(depthEl.value, 2);
             if (budgetEl) this.settings.tokenBudget = safeInt(budgetEl.value, 25);
             if (recursiveEl) this.settings.recursive = recursiveEl.checked;
+            // [P2] 同步语义检索开关，并联动 VectorRetriever
+            if (vectorEl) {
+                var newVectorVal = vectorEl.checked;
+                if (newVectorVal !== this.settings.vectorRetrieval) {
+                    this.settings.vectorRetrieval = newVectorVal;
+                    if (typeof VectorRetriever !== 'undefined') {
+                        VectorRetriever.setEnabled(newVectorVal);
+                    }
+                    this.save(); // 开关变化时持久化
+                }
+            }
             this._settingsCache = { turn: _turn };
         }
 
@@ -1598,6 +1624,16 @@ var WorldInfo = {
     // 同组条目同时触发时只选一个，按 group_weight 随机选择
     activated = this.applyInclusionGroups(activated);
 
+    // [P2 向量检索] 语义检索补充：对关键词未命中的非 constant 条目做向量检索
+    // 同步执行（依赖预计算的查询向量和条目向量缓存），未就绪时自动跳过
+    if (typeof VectorRetriever !== 'undefined' && VectorRetriever.isEnabled() && VectorRetriever.isReady()) {
+        try {
+            activated = this._applyVectorRetrieval(activated, allEntries, scanText, plainText);
+        } catch (e) {
+            console.warn('[WorldInfo] 向量检索异常:', e);
+        }
+    }
+
     // 按order排序
     activated.sort(function(a, b) { return (a.order || 100) - (b.order || 100); });
 
@@ -1609,6 +1645,104 @@ var WorldInfo = {
     activated = this.applyBudget(activated, contextLen);
 
     return activated;
+    },
+
+    // [P2] 同步向量检索：对关键词未命中的非 constant 条目做语义匹配
+    // 依赖 VectorRetriever 预计算的查询向量（_cachedQueryVector）和条目向量缓存
+    _applyVectorRetrieval: function(activated, allEntries, scanText, plainText) {
+        if (!activated || !allEntries) return activated;
+        var VR = VectorRetriever;
+        // 取预计算的查询向量（由 _precomputeQueryVector 提前异步算好）
+        var queryVec = VR._cachedQueryVector;
+        if (!queryVec) return activated;
+
+        // 已激活条目的 uid 集合（避免重复激活）
+        var activatedUids = {};
+        activated.forEach(function(e) {
+            if (e && e.uid !== undefined) activatedUids[e.uid] = true;
+        });
+
+        // 候选条目：未激活的、启用的、非常驻的、有内容的
+        // allEntries 是 { uid: entry } 对象
+        var candidates = [];
+        Object.keys(allEntries).forEach(function(uid) {
+            var e = allEntries[uid];
+            if (!e || e.enabled === false) return;
+            if (e.constant) return; // constant 已在主扫描处理
+            if (activatedUids[uid]) return;
+            if (!e.content || !e.content.trim()) return;
+            var key = 'uid:' + uid; // uid 已全局唯一
+            var cached = VR._vectorCache[key];
+            if (!cached || !cached.vector) return; // 向量未算好，跳过
+            candidates.push({ entry: e, key: key, vector: cached.vector, uid: uid });
+        });
+        if (candidates.length === 0) return activated;
+
+        // 同步计算余弦相似度
+        var threshold = VR._threshold;
+        var topK = VR._topK;
+        var scored = [];
+        for (var j = 0; j < candidates.length; j++) {
+            var c = candidates[j];
+            var score = VR._cosine(queryVec, c.vector);
+            if (score >= threshold) scored.push({ entry: c.entry, score: score });
+        }
+        if (scored.length === 0) return activated;
+        scored.sort(function(a, b) { return b.score - a.score; });
+        var picks = scored.slice(0, topK);
+
+        // 标记向量激活的条目（position 默认 beforeChar，order 设较低优先级避免抢关键词匹配的位置）
+        picks.forEach(function(p) {
+            var entry = p.entry;
+            // 创建浅拷贝避免修改原条目
+            var clone = Object.assign({}, entry);
+            clone._vectorActivated = true;
+            clone._vectorScore = p.score;
+            // 向量激活的条目默认注入到 AFTER_CHAR（position=1），避免抢占关键词条目的位置
+            if (clone.position === undefined || clone.position === 0) {
+                clone.position = 1;
+            }
+            activated.push(clone);
+        });
+        if (picks.length > 0 && typeof console !== 'undefined' && console.debug) {
+            console.debug('[WorldInfo] 向量检索补充激活 ' + picks.length + ' 条（阈值 ' + threshold + '）');
+        }
+        return activated;
+    },
+
+    // [P2] 预计算查询向量（异步，在 buildInjection 之前调用）
+    // 把最近对话文本算成 embedding 缓存到 VectorRetriever._cachedQueryVector
+    // 同时确保候选条目向量已计算
+    precomputeVectors: async function(chatMessages) {
+        if (typeof VectorRetriever === 'undefined' || !VectorRetriever.isEnabled()) return;
+        try {
+            // 构建查询文本（与 scan 的 scanText 逻辑一致）
+            var scanDepth = this.settings.scanDepth || 2;
+            var recent = (chatMessages || []).slice(-scanDepth);
+            var queryText = recent.map(function(m) {
+                var content = (typeof m === 'string' ? m : (m.content || m.text || ''));
+                return content;
+            }).join('\n');
+            if (!queryText.trim()) return;
+
+            // 计算查询向量
+            var queryVec = await VectorRetriever._embed(queryText);
+            VectorRetriever._cachedQueryVector = queryVec;
+
+            // 确保候选条目向量已计算
+            var allEntries = this.getAllEnabledEntries();
+            var candidates = [];
+            Object.keys(allEntries).forEach(function(uid) {
+                var e = allEntries[uid];
+                if (!e || e.enabled === false || e.constant || !e.content || !e.content.trim()) return;
+                candidates.push({ key: 'uid:' + uid, content: e.content });
+            });
+            if (candidates.length > 0) {
+                await VectorRetriever.buildIndex(candidates);
+            }
+        } catch (e) {
+            console.warn('[WorldInfo] 预计算向量失败:', e);
+        }
     },
 
     // 关键词匹配（任一匹配即可）

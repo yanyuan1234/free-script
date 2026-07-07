@@ -895,6 +895,7 @@
                         <label>扫描深度 <input type="number" id="wiScanDepth" value="5" min="1" max="50"></label>
                         <label>Token预算 <input type="number" id="wiTokenBudget" value="2000" min="100" max="8000" step="100"></label>
                         <label><input type="checkbox" id="wiRecursive" checked> 递归扫描</label>
+                        <label><input type="checkbox" id="wiVectorRetrieval"> 启用语义检索<span style="color:var(--text-tertiary);font-size:11px;">（首次加载约25MB模型，解决关键词漏检）</span></label>
                     </div>
                     <!-- 世界书信息（隐藏，由JS控制显示） -->
                     <div id="wiBookInfo" class="hidden">
@@ -2809,6 +2810,7 @@
     <script src="js/ai-contract/ai-response-mutator.js" defer></script>
     <script src="js/ai-contract/prompt-builder.js" defer></script>
     <script src="js/core.js" defer></script>
+    <script src="js/vector-retriever.js" defer></script>
     <script src="js/worldinfo.js" defer></script>
     <script src="js/modules/smart-config-engine.js" defer></script>
     <script src="js/modules/preset-manager.js" defer></script>

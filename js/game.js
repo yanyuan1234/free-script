@@ -1053,6 +1053,15 @@ async function sendAIRequest(userMessage, isInit = false) {
                     gameState._afterChatPrompts = [];
                 }
 
+                // [P2 向量检索] 预计算查询向量和候选条目向量（异步）
+                // 在同步的 getWorldInfoInjection 之前完成，让 _applyVectorRetrieval 能同步使用缓存
+                if (typeof WorldInfo !== 'undefined' && typeof WorldInfo.precomputeVectors === 'function') {
+                    try {
+                        await WorldInfo.precomputeVectors(gameState.conversationHistory || []);
+                    } catch (e) {
+                        console.warn('[sendAIRequest] 预计算向量失败，跳过向量检索:', e);
+                    }
+                }
 
                 var _cachedWI = getWorldInfoInjection();
                 if (gameState) {
