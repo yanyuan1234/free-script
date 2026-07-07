@@ -2809,8 +2809,12 @@ function onStreamChunk(delta, fullText) {
     // 模式锁定后直接走对应路径，避免每帧都做正则扫描
     if (RuntimeState.streamModeLocked) {
         if (RuntimeState.streamMode === 'plaintext') {
-            // 纯文本模式：直接推送到打字机
-            TypewriterBuffer.push(streamBuffer);
+            // 纯文本模式：直接推送到打字机（应用输出端正则，与原版一致）
+            if (typeof RegexManager !== 'undefined') {
+                TypewriterBuffer.push(RegexManager.apply(streamBuffer, 'output'));
+            } else {
+                TypewriterBuffer.push(streamBuffer);
+            }
             return;
         }
         // JSON 模式：继续提取 story 字段
@@ -2818,6 +2822,10 @@ function onStreamChunk(delta, fullText) {
         // 维护者易误读为两个独立变量。此处改名为 lockedStory 明确语义。
         var lockedStory = extractStoryStreaming(streamBuffer);
         if (lockedStory && lockedStory.length > 0) {
+            // 原版每次 chunk 都应用正则，确保打字过程和最终显示一致
+            if (typeof RegexManager !== 'undefined') {
+                lockedStory = RegexManager.apply(lockedStory, 'output');
+            }
             TypewriterBuffer.push(lockedStory);
         } else if (streamBuffer.length > 200) {
 
@@ -2831,6 +2839,9 @@ function onStreamChunk(delta, fullText) {
     if (story && story.length > 0) {
         RuntimeState.streamMode = 'json';
         RuntimeState.streamModeLocked = true;
+        if (typeof RegexManager !== 'undefined') {
+            story = RegexManager.apply(story, 'output');
+        }
         TypewriterBuffer.push(story);
     } else if (streamBuffer.length > 50) {
 
@@ -2846,7 +2857,11 @@ function onStreamChunk(delta, fullText) {
         // 非JSON响应才锁定为纯文本模式
         RuntimeState.streamMode = 'plaintext';
         RuntimeState.streamModeLocked = true;
-        TypewriterBuffer.push(streamBuffer);
+        if (typeof RegexManager !== 'undefined') {
+            TypewriterBuffer.push(RegexManager.apply(streamBuffer, 'output'));
+        } else {
+            TypewriterBuffer.push(streamBuffer);
+        }
     }
 }
 
@@ -3364,17 +3379,18 @@ function renderChoices(choices) {
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
 
 
+    // 原版行为：选项点击只填充到输入框并 focus，玩家可继续修改后再手动发送
+    // 新版改为直接 sendAIRequest 剥夺了玩家对选项的二次编辑能力
     var btns = container.querySelectorAll('.option-btn[data-choice-text]');
     btns.forEach(function(btn) {
         btn.addEventListener('click', function() {
             var text = this.getAttribute('data-choice-text');
             var input = document.getElementById('customAction');
             if (input) {
-                input.value = '';
+                input.value = text;
+                input.disabled = false;
                 input.focus();
             }
-
-            sendAIRequest(text);
         });
     });
 

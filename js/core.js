@@ -4486,8 +4486,16 @@ function withSaveLock(fn, label) {
 
 async function autoSave() {
     if (_autoSaveTimer) return; // 防抖：已有待执行的保存，跳过
-    // 加载中不自动保存，避免读到半合并状态
-    if (typeof gameState !== 'undefined' && gameState && gameState._loading) return;
+    // 加载中不自动保存，但设置超时保护防止 _loading 标志永久卡住导致存档丢失
+    if (typeof gameState !== 'undefined' && gameState && gameState._loading) {
+        if (gameState._loadingSince && (Date.now() - gameState._loadingSince > 10000)) {
+            console.warn('[autoSave] _loading 超过10秒，强制清除并继续保存');
+            gameState._loading = false;
+            gameState._loadingSince = null;
+        } else {
+            return;
+        }
+    }
     _autoSaveTimer = TimerManager.setTimeout('autoSave', async function() {
         _autoSaveTimer = null;
         await withSaveLock(async function() {
@@ -4570,8 +4578,9 @@ function _getSetWaitingEl(key) {
 }
 
 function setWaiting(w) {
-    // 状态未变化时直接返回
-    if (typeof isWaiting !== 'undefined' && isWaiting === w) return;
+    // 原版每次都完整执行所有 UI 状态恢复，不存在短路导致的 UI 卡死
+    // 新版引入的短路返回会导致 finally 块中的 setWaiting(false) 被跳过，
+    // 造成 genControl/progressBar/input.disabled 等残留不清理
 
     // 便于将来挂通知/订阅机制时只需要在 RuntimeState 上加 _notify('isWaiting')
     // 同时与同文件 resetRuntimeState() 内 `RuntimeState.isWaiting = false` 风格一致

@@ -47,6 +47,7 @@ const QuestMutator = {
     },
 
     // 智能合并：保留已完成的进度、取最新进度、防止 AI 回退进度
+    // 已完成/失败任务最多保留3条，避免长期游戏任务列表无限增长
     _smartMerge(existing, incoming) {
         const map = {};
         const result = [];
@@ -78,7 +79,11 @@ const QuestMutator = {
             }
             map[q.title] = q;
         });
-        return result;
+        // 原版逻辑：已完成/失败任务最多保留3条，活跃任务全部保留
+        var active = result.filter(function(q) { return q.status !== QuestMutator.STATUS.COMPLETED && q.status !== QuestMutator.STATUS.FAILED; });
+        var done = result.filter(function(q) { return q.status === QuestMutator.STATUS.COMPLETED || q.status === QuestMutator.STATUS.FAILED; });
+        if (done.length > 3) done = done.slice(-3);
+        return active.concat(done);
     },
 
     // 选择更高的进度字符串

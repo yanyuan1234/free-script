@@ -53,12 +53,12 @@ const CharacterMutator = {
             const cleanName = self._cleanName(normalized.name);
             const idx = list.findIndex((c) => c && self._cleanName(c.name) === cleanName);
             if (idx >= 0) {
-                // 【P2-60修复】精确匹配也取 Math.max：AI 好感度与累积值取较大者
-                // 与模糊匹配分支保持一致，避免精确匹配覆盖掉玩家积累的关系
+                // 原版行为：AI 是权威，直接覆盖好感度（允许降低）
+                // 新版 Math.max 拒绝降好感度，导致剧情冲突时（如玩家激怒NPC）好感度不降
                 var merged = Object.assign({}, list[idx], normalized);
-                if (typeof list[idx].favorability === 'number' && typeof normalized.favorability === 'number') {
-                    merged.favorability = Math.max(list[idx].favorability, normalized.favorability);
-                    merged.favor = merged.favorability;
+                if (typeof normalized.favorability === 'number') {
+                    merged.favorability = normalized.favorability;
+                    merged.favor = normalized.favorability;
                 }
                 list[idx] = merged;
                 return;
@@ -67,12 +67,11 @@ const CharacterMutator = {
             const fuzzyIdx = self._findFuzzyMatch(list, normalized);
             if (fuzzyIdx >= 0) {
                 console.log('[CharacterMutator] 模糊匹配命中："' + list[fuzzyIdx].name + '" → "' + normalized.name + '"，合并为同一角色');
-                // 保留旧角色的累积数据（好感度等），用新名称作为正式名称
                 const merged = Object.assign({}, list[fuzzyIdx], normalized);
-                // 累加好感度：若双方都有好感度，取较大值（避免重置关系发展）
-                if (typeof list[fuzzyIdx].favorability === 'number' && typeof normalized.favorability === 'number') {
-                    merged.favorability = Math.max(list[fuzzyIdx].favorability, normalized.favorability);
-                    merged.favor = merged.favorability;
+                // 原版行为：好感度直接覆盖，允许降低
+                if (typeof normalized.favorability === 'number') {
+                    merged.favorability = normalized.favorability;
+                    merged.favor = normalized.favorability;
                 }
                 list[fuzzyIdx] = merged;
                 return;
