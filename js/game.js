@@ -577,7 +577,7 @@ function _buildFormatRules(gs, _t, turn) {
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
-        + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"标题","content":"内容"}], '
+        + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary/chat/forum","title":"标题","content":"内容","items":[]}], '
         + '"bag": [{"name":"物品名","count":1,"desc":"描述","rarity":"普通/精良/珍稀/传说","usable":false,"effect":"","equippable":false,"equipped":false,"slot":"weapon/armor/accessory/head"}], '
         + '"currency": 0, "currencyName": "按世界观设定（修仙用灵石，现代用元，古代用银两等）", '
         + '"quests": [{"title":"任务名","type":"主线/支线/隐藏","status":"进行中/已完成/失败","progress":"当前/总数","hint":"下一步提示"}], '
@@ -593,6 +593,16 @@ function _buildFormatRules(gs, _t, turn) {
         + 'favorability 分级（整数）：80-100极度亲密,60-79非常亲近,40-59有好感,15-39关系融洽,-14~14中立(0=中立非敌意),-39~-15略有隔阂,-100~-40负面。范围 -100 到 100。relation用符合世界观的词,不要套固定模板,不要省略数值。\n'
         + 'currency 必须准确反映剧情中的金钱变化，禁止与剧情矛盾。\n'
         + '世界模块(world)必须和剧情紧密联动，不要生成与剧情无关的静态内容。\n'
+        + '【world 模块扩展】各 type 的 items 结构（content 字段为简述，items 数组为详情，按需生成）：\n'
+        + '  - chat: items[{npc:"角色名",content:"消息内容",time:"08:30"}] - NPC主动发来消息,每回合0-2条,npc须已出场\n'
+        + '  - forum: items[{author:"角色名",content:"帖子内容",replies:[{author,content}]}] - 论坛帖子\n'
+        + '  - mail: items[{from:"发件人",subject:"主题",body:"正文",preview:"预览",date:"日期",read:false}] - 邮件,每回合0-1封,from须已出场\n'
+        + '  - shop: items[{name:"商品名",price:10,desc:"说明",count:1}] - 商店商品\n'
+        + '  - diary: items[{npc:"角色名",date:"日期",content:"正文",mood:"心情",memos:["备忘"]}] - 角色日记\n'
+        + '  - moments: items[{author:"角色名",content:"动态内容",time:"08:30",likes:5,comments:[{author,content}]}] - 朋友圈,每回合0-2条,author须已出场\n'
+        + '  - ranking: items[{rank:1,name:"角色名",score:100,desc:"说明"}] - 排行榜\n'
+        + '  - cards: items[{icon:"单字图标",title:"标题",content:"内容"}] - 卡片\n'
+        + '  - comments: {main:"主帖",comments:[{name:"评论者",text:"评论"}]} - 评论模块(无items数组,直接main+comments)\n'
         + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
         + '约' + _maxTokens + 'tokens输出空间';
 }

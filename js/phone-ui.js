@@ -1885,6 +1885,12 @@ function renderWorldPage() {
                 var mPosts2 = [];
                 if (mod.posts) { mPosts2 = mod.posts.slice(0, 3); }
                 else if (mod.moments && Array.isArray(mod.moments)) { mPosts2 = mod.moments.slice(0, 3); }
+                else if (mod.items && Array.isArray(mod.items)) {
+                    // 第5轮优化：兼容 AI 直接返回 items 数组（renderWorldModules 标准化前）
+                    mPosts2 = mod.items.slice(0, 3).map(function(it) {
+                        return { author: it.author || it.name, text: it.content || it.text || '' };
+                    });
+                }
                 if (mPosts2.length > 0) {
                     inner = mPosts2.map(function(p) {
                         var mA = (p.author || '匿名').replace(/\n/g, '').trim();
@@ -1896,6 +1902,71 @@ function renderWorldPage() {
                     }).join('');
                 } else {
                     inner = '<div style="font-size:14px;color:var(--text-secondary);">暂无朋友圈动态</div>';
+                }
+                break;
+            // 第5轮优化：补 mail/shop/diary case，避免主世界页 JSON.stringify 兜底
+            // 子页面（renderMailPage/renderShopPage/renderDiaryPage）会做完整渲染，这里给精简预览
+            case 'mail':
+                var _mailItems = mod.items || [];
+                if (_mailItems.length === 0) {
+                    inner = '<div style="font-size:13px;color:var(--text-secondary);">暂无邮件</div>';
+                } else {
+                    inner = _mailItems.slice(0, 3).map(function(m) {
+                        return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+                            '<strong>' + escapeHtml(m.from || m.sender || '未知') + '</strong> · ' +
+                            escapeHtml(m.subject || m.title || '') + '</div>';
+                    }).join('') + (_mailItems.length > 3 ? '<div style="font-size:12px;color:var(--text-tertiary);padding:6px 0;">共 ' + _mailItems.length + ' 封</div>' : '');
+                }
+                break;
+            case 'shop':
+                var _shopItems = mod.items || [];
+                if (_shopItems.length === 0) {
+                    inner = '<div style="font-size:13px;color:var(--text-secondary);">暂无商品</div>';
+                } else {
+                    inner = _shopItems.slice(0, 4).map(function(s) {
+                        return '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+                            '<span>' + escapeHtml(s.name || '') + '</span>' +
+                            '<span style="color:var(--accent);">' + escapeHtml(String(s.price || 0)) + ' ' + (gameState.currencyName || '金币') + '</span></div>';
+                    }).join('');
+                }
+                break;
+            case 'diary':
+                var _diaryItems = mod.items || [];
+                if (_diaryItems.length === 0) {
+                    inner = '<div style="font-size:13px;color:var(--text-secondary);">' + parseMarkdown(escapeHtml(mod.content || '')) + '</div>';
+                } else {
+                    inner = _diaryItems.slice(0, 2).map(function(d) {
+                        var _preview = String(d.content || '').slice(0, 60);
+                        if (d.content && d.content.length > 60) _preview += '...';
+                        return '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+                            '<div style="font-weight:500;">' + escapeHtml(d.npc || '匿名') + ' · ' + escapeHtml(d.date || '') + '</div>' +
+                            '<div style="color:var(--text-secondary);margin-top:4px;">' + escapeHtml(_preview) + '</div></div>';
+                    }).join('');
+                }
+                break;
+            // 第5轮优化：chat/forum 在主世界页给精简预览，完整渲染走子页面
+            case 'chat':
+                var _chatItems = mod.items || [];
+                if (_chatItems.length === 0) {
+                    inner = '<div style="font-size:13px;color:var(--text-secondary);">暂无消息</div>';
+                } else {
+                    inner = _chatItems.slice(-3).map(function(c) {
+                        return '<div style="padding:6px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+                            '<strong>' + escapeHtml(c.npc || '未知') + '</strong>: ' +
+                            escapeHtml(String(c.content || '').slice(0, 40)) + '</div>';
+                    }).join('');
+                }
+                break;
+            case 'forum':
+                var _forumItems = mod.items || [];
+                if (_forumItems.length === 0) {
+                    inner = '<div style="font-size:13px;color:var(--text-secondary);">' + parseMarkdown(escapeHtml(mod.content || '')) + '</div>';
+                } else {
+                    inner = _forumItems.slice(0, 2).map(function(f) {
+                        return '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:13px;">' +
+                            '<div style="font-weight:500;">' + escapeHtml(f.author || '匿名') + ': ' + escapeHtml(String(f.content || '').slice(0, 50)) + '</div>' +
+                            (f.replies ? '<div style="color:var(--text-tertiary);font-size:12px;margin-top:2px;">' + f.replies.length + ' 条回复</div>' : '') + '</div>';
+                    }).join('');
                 }
                 break;
             default:

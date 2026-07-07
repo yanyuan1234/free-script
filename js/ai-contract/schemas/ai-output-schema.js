@@ -88,7 +88,33 @@ const AIOutputSchema = {
             }).filter(function(s) { return s; });
         }
         if (raw.relationships && Array.isArray(raw.relationships)) out.relationships = raw.relationships.slice();
-        if (raw.world && Array.isArray(raw.world)) out.world = raw.world.slice();
+        if (raw.world && Array.isArray(raw.world)) {
+            // 第5轮优化：world.type 防御性别名映射
+            // 业界做法（参考 SillyTavern WorldInfo 的 entry 标准化）：解析层做白名单 + 别名收敛，
+            // 避免依赖渲染层各自兜底，单点治理 AI 偶发输出的不一致命名
+            var _typeAlias = {
+                'rank': 'ranking',        // prompt-builder.js 死代码用过 rank
+                'setting': 'text',         // prompt-builder.js 死代码用过 setting
+                'post': 'comments',        // 单数转复数
+                'posts': 'comments',
+                'comment': 'comments',
+                'moment': 'moments',       // 单数转复数
+                'shop_item': 'shop',
+                'diary_entry': 'diary',
+                'mail_item': 'mail'
+            };
+            out.world = raw.world.map(function(w) {
+                if (!w || typeof w !== 'object') return w;
+                var _t = w.type ? String(w.type).trim().toLowerCase() : '';
+                if (_t && _typeAlias[_t]) {
+                    // 创建副本避免修改原始数据
+                    var _copy = Object.assign({}, w);
+                    _copy.type = _typeAlias[_t];
+                    return _copy;
+                }
+                return w;
+            });
+        }
 
         // [T2-P1-4] npcMessages normalize：保留 name/text/emotion/turn 字段，过滤空文本
         if (raw.npcMessages && Array.isArray(raw.npcMessages)) {

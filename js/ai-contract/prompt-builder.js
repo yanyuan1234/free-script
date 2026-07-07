@@ -171,9 +171,12 @@ const PromptBuilder = {
 
         // format：输出格式要求
 
-        // 跳过默认 format section（仍保留 formatAnchor 硬锚点）。
-        // 原实现 game.js 在 includeFormatRules=false 时绕过 PromptBuilder 手工拼装，
-        // 丢失 identity/world/terms/protagonist/preference/state/workflow/gametime 等上下文。
+        // 【第5轮优化】此 section 在 JSON 模式下是死代码：
+        // - includeFormatRules=true（默认）时，game.js 通过 ctx.formatRules 传入 _buildFormatRules 完整规则，下面第 179 行直接 return
+        // - includeFormatRules=false（预设模式）时，ctx.skipDefaultFormat=true，第 178 行返回空字符串
+        // 因此 JSON 模式分支永远不会发送给 AI；保留纯文本模式分支作为预留
+        // 历史 world type 扩展说明（chat/forum/rank/setting 等命名）已统一回填到 game.js _buildFormatRules
+        // 所有 type 命名以 game.js 为单一数据源，避免命名分裂
         this.registerSection('format', function(ctx) {
             if (ctx.skipDefaultFormat) return '';
             if (ctx.formatRules) return ctx.formatRules;
@@ -190,33 +193,7 @@ const PromptBuilder = {
                     '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
                     '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）';
             }
-            const json = '【输出要求·JSON模式】直接输出JSON（以 { 开头），不要任何前缀说明。\n' +
-                '{ "title": "简短章节标题（必填）", "story": "叙事（\\n换行，「」对话）"' +
-                (hasChoices ? ', "choices": [{"id":"A","text":""}]' : '') +
-                ', "player": {"name":"角色名","age":"年龄","identity":"身份","personality":"性格特点","title":"称号","stats":[{"label":"属性名","value":"属性值0-100"}]},' +
-                ' "characters": [{"name":"角色名","title":"身份","relation":"关系","favorability":-100到100的整数,"desc":"状态描述","details":[{"key":"字段","value":"值"}]}], ' +
-                '"world": [{"type":"","title":"","content":""}], "bag": [{"name":"","count":1}], ' +
-                '"currency": 0, "currencyName": "金币", "quests": [{"title":"","status":""}], ' +
-                '"keyEvents": ["本回合关键事件1","关键事件2"], ' +
-                '"gameTime": {"date":"必填，如2024-09-12","time":"必填，如08:30","period":"必填，如清晨"} }\n' +
-                '时间 gameTime 为必填字段，每一回合都必须给出具体时间。\n' +
-                'keyEvents 为必填字段，每回合至少给出 1 条关键事件（影响后续剧情的节点）。\n' +
-                'player.stats 的 value 必须是0-100的数字，根据世界观生成3-6项核心属性（如修仙世界返回灵力/境界/神识等）。\n' +
-                'characters.favorability 必须根据剧情动态生成（-100极度反感~100极度好感，0为陌生），不要固定返回50。新角色按其与玩家的初次互动设定初始值，已有角色根据本回合互动变化。\n' +
-                '可选字段：hud, relationships, npcMessages, contextSummary（空字段省略）\n' +
-                'relationships 格式：[{"from":"角色A","to":"角色B","type":"师徒/敌对/恋人/朋友","desc":"关系说明"}]（描述角色间关系，from/to 为已出场角色名）\n' +
-                '【world 模块扩展】world 数组除世界设定外，还可包含以下 type 用于填充对应页面（按需生成，至少保证 diary 和 forum 有内容）：\n' +
-                '  - {"type":"chat","title":"聊天","items":[{"npc":"角色名","content":"NPC发来的消息内容","time":"08:30"}]}\n' +
-                '    说明：chat 为 NPC 主动发来的消息，每回合可生成 0-2 条，用于聊天页面。npc 必须是已出场角色。\n' +
-                '  - {"type":"forum","title":"板块名","items":[{"author":"角色名","content":"帖子内容","replies":[{"author":"角色名","content":"回复"}]}]}\n' +
-                '  - {"type":"rank","title":"排行榜名","items":[{"rank":1,"name":"角色名","score":100,"desc":"说明"}]}\n' +
-                '  - {"type":"shop","title":"商店名","items":[{"name":"商品名","price":10,"desc":"说明","count":1}]}\n' +
-                '  - {"type":"diary","title":"日记标题","items":[{"npc":"角色名","date":"日期","content":"日记正文","mood":"心情","memos":["备忘1"]}]}\n' +
-                '  - {"type":"moments","title":"朋友圈","items":[{"author":"角色名","content":"动态内容","time":"08:30","likes":5,"comments":[{"author":"角色名","content":"评论"}]}]}\n' +
-                '    说明：moments 为角色发布的朋友圈动态，每回合可生成 0-2 条，author 必须是已出场角色。\n' +
-                '  - {"type":"mail","title":"邮箱","items":[{"from":"发件人","subject":"主题","body":"正文","preview":"预览","date":"日期","read":false}]}\n' +
-                '    说明：mail 为角色发来的邮件，每回合可生成 0-1 封，from 必须是已出场角色。\n' +
-                '  - {"type":"setting","title":"世界设定标题","content":"设定内容"}';
+            const json = '';
             return json;
         }, { order: 70 });
 

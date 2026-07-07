@@ -671,9 +671,24 @@ function bindFresh(elOrId, event, handler, refKey) {
     var key = refKey || ('_handler_' + event);
     if (el[key]) {
         el.removeEventListener(event, el[key]);
+        // 【第5轮优化】同步从 GlobalCleanup 注销旧 handler，保持收口一致
+        if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup._listeners) {
+            for (var i = 0; i < GlobalCleanup._listeners.length; i++) {
+                var _L = GlobalCleanup._listeners[i];
+                if (_L.target === el && _L.type === event && _L.handler === el[key]) {
+                    GlobalCleanup._listeners.splice(i, 1);
+                    break;
+                }
+            }
+        }
     }
     el[key] = handler;
-    el.addEventListener(event, handler);
+    // 【第5轮优化】走 GlobalCleanup 统一注册，与 bindEvent 保持一致，避免内存泄漏
+    if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+        GlobalCleanup.registerListener(el, event, handler);
+    } else {
+        el.addEventListener(event, handler);
+    }
     return el;
 }
 

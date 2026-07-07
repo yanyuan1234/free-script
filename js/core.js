@@ -4533,7 +4533,9 @@ async function autoSave() {
     }
     _autoSaveTimer = TimerManager.setTimeout('autoSave', async function() {
         _autoSaveTimer = null;
-        await withSaveLock(async function() {
+        // 【第5轮优化】await 外层加 try-catch，避免 withSaveLock reject 冒泡为 unhandledrejection
+        try {
+            await withSaveLock(async function() {
         try {
             // 存储空间预警
             if (typeof StorageMonitor !== 'undefined') {
@@ -4574,6 +4576,11 @@ async function autoSave() {
     if (dot2) dot2.style.display = 'none';
 }
         }, 'autoSave');
+        } catch (_outerErr) {
+            console.error('[自动保存] 外层异常:', _outerErr);
+            var _dot3 = document.getElementById('autoSaveDot');
+            if (_dot3) _dot3.style.display = 'none';
+        }
 }, 2000);
 }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
@@ -5026,12 +5033,18 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     var RAW_BODY_MAX = 256 * 1024;
     var rawBodyTruncated = false;
 
+    // 【第5轮优化】分层 idle 超时（参考业界 SSE 看门狗最佳实践）
+    // 单一 60 秒超时的问题：首 token 慢时（推理模型思考 30-50 秒）会被误杀，但服务端真挂起时 60 秒又太久
+    // 业界方案：首 token 用较长超时（容忍思考），后续 chunk 间隔用较短超时（真挂起快速判定）
+    var FIRST_TOKEN_TIMEOUT_MS = 60 * 1000;   // 首 token 60 秒（推理模型思考时间）
+    var CHUNK_IDLE_TIMEOUT_MS = 20 * 1000;   // 后续 chunk 间隔 20 秒（正常 100-500ms，20秒不来判定挂起）
+    var _hasFirstChunk = false;
+
     while (true) {
-        // 【第4轮优化】idle 超时保护：每个 chunk 之间最多等待 60 秒
-        // 避免服务端挂起（TCP 连接保持但无数据）导致 UI 卡死到 10 分钟整体超时
+        var _idleMs = _hasFirstChunk ? CHUNK_IDLE_TIMEOUT_MS : FIRST_TOKEN_TIMEOUT_MS;
         var _idleTimer = TimerManager.setTimeout('aiStreamIdle', function() {
-            try { reader.cancel('idle timeout 60s'); } catch (e) {}
-        }, 60 * 1000);
+            try { reader.cancel('idle timeout ' + _idleMs + 'ms'); } catch (e) {}
+        }, _idleMs);
         var readResult;
         try {
             readResult = await reader.read();
@@ -5044,6 +5057,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
             }
             break;
         }
+        _hasFirstChunk = true;
         var chunk = decoder.decode(readResult.value, { stream: true });
 
         rawBody += chunk;
