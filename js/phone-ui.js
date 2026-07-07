@@ -3216,9 +3216,9 @@ function renderPlayerPage() {
             n: pd.name, id: pd.identity, t: pd.title, p: pd.personality,
             st: statsSig,
             lv: pd.level, exp: pd.exp,
+            age: pd.age, dt: JSON.stringify(pd.details || []),
             favs: (gameState.relationships || []).length,
-            inv: (gameState.currentBag || []).length,
-
+            inv: JSON.stringify((gameState.currentBag || []).map(function(b){return b.name;})),
             r: _getConversationHistory().length
         });
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderPlayerPage', cacheKey)) return;
@@ -3396,15 +3396,13 @@ function renderPlayerPage() {
 // --- 背包渲染 ---
 function renderBag(items) {
 
-    // 改为合并语义：以现有 currentBag 为基础，合并/覆盖 AI 返回的物品
+    // 原版行为：AI 返回直接覆盖背包，允许 AI 表达"丢弃/消耗/失窃"等场景
+    // 新版改为合并语义导致物品永远累积，AI 想丢弃的物品残留在背包中
     if (items && Array.isArray(items)) {
         if (StateManager && BagMutator) {
-
-            // 删除 fallback 死分支：StateManager 与 BagMutator 均为核心依赖,必加载
-            BagMutator.mergeItems(items, { silent: true });
-        } else {
-            // StateManager / BagMutator 不可用 → 抛错暴露问题,禁止 fallback 到多套存储
-            throw new Error('[renderBag] StateManager 或 BagMutator 未加载,无法合并物品');
+            BagMutator.setItems(items, { silent: true });
+        } else if (gameState) {
+            gameState.currentBag = items;
         }
     }
 
@@ -3431,7 +3429,7 @@ function renderBag(items) {
 
     try {
         var bagKey = JSON.stringify(currentBag.map(function(it) {
-            return [it.id || it.name, it.count || it.amount || 1];
+            return [it.id || it.name, it.count || it.amount || 1, it.desc || '', it.rarity || '', it.equipped || false];
         }));
         if (typeof RenderCache !== 'undefined' && RenderCache.same('renderBag', bagKey)) return;
         if (typeof RenderCache !== 'undefined') RenderCache.mark('renderBag', bagKey);
@@ -4710,12 +4708,12 @@ function startNewGame() {
     // 保存上次填写
     Storage.set(Storage.KEYS.LAST_PROMPT, prompt);
 
-    UI.goHome();
+    // 原版行为：直接切换到剧情页并渲染导航栏，确保视觉一致
+    UI.showPage('storyPage');
+    renderNavBar('gameNav', MAIN_NAV_TABS, 0);
 
-    // 延迟初始化游戏，让浏览器先渲染页面（避免页面切换卡顿）
-    requestAnimationFrame(function() {
-        initializeGame();
-    });
+    // 原版同步调用 initializeGame，不延迟
+    initializeGame();
 
     // 触发事件：CHAT_CREATED（创建新聊天）
     if (typeof TavernHelperCompat !== 'undefined') {

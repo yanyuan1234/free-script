@@ -2945,9 +2945,48 @@ function parseAIResponse(reply) {
             }
         }
     } else {
-        // ResponseParser 不可用时的最小兜底（理论不应发生，契约层在 init 阶段已加载）
-        console.error('[parseAIResponse] ResponseParser 不可用，解析能力降级');
-        storyText = reply || '';
+        // ResponseParser 不可用时恢复原版4步兜底解析，不依赖外部契约层
+        console.error('[parseAIResponse] ResponseParser 不可用，降级到内联解析');
+        // 步骤1: 直接JSON解析
+        try {
+            var _direct = JSON.parse(reply);
+            if (_direct && typeof _direct === 'object') {
+                data = _direct;
+                storyText = data.story || '';
+            }
+        } catch (e1) {
+            // 步骤2: 代码块JSON提取
+            var _blockMatch = reply.match(/```json\n?([\s\S]*?)\n?```/);
+            if (_blockMatch) {
+                try {
+                    var _blockData = JSON.parse(_blockMatch[1]);
+                    if (_blockData && typeof _blockData === 'object') {
+                        data = _blockData;
+                        storyText = data.story || '';
+                    }
+                } catch (e2) {}
+            }
+            // 步骤3: 纯文本中提取JSON块
+            if (!data) {
+                var _jsonBlockMatch = reply.match(/\{[\s\S]*\}/);
+                if (_jsonBlockMatch) {
+                    try {
+                        var _extracted = JSON.parse(_jsonBlockMatch[0]);
+                        if (_extracted && typeof _extracted === 'object') {
+                            data = _extracted;
+                            storyText = (data.story || reply.replace(_jsonBlockMatch[0], '').trim()) || reply;
+                        }
+                    } catch (e3) {}
+                }
+            }
+        }
+        // 步骤4: 兜底用原文
+        if (!storyText && reply) {
+            storyText = reply.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+                .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
+                .replace(/💭[\s\S]*?💭/g, '')
+                .trim() || reply;
+        }
     }
 
     // 兜底：storyText 为空但 reply 有内容（纯文本小说预设）
@@ -4370,18 +4409,9 @@ function showError(msg, errObj) {
             '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
     }
-    // 3秒后自动淡出并移除错误banner（与其它弹窗保持一致）
-    // 【缺陷修复】使用唯一 key + 走 TimerManager，避免连续生成失败时旧 banner 永久残留
-    var errKey = 'errorBanner_' + Date.now() + '_' + Math.random();
-    TimerManager.setTimeout(errKey, function() {
-        var banner = document.querySelector('.api-error-banner[data-error-ts]');
-        if (banner) {
-            banner.style.opacity = '0';
-            TimerManager.setTimeout(errKey + '_remove', function() {
-                if (banner.parentNode) banner.remove();
-            }, 500);
-        }
-    }, POPUP_DURATION_MS);
+    // 原版行为：错误信息持久显示，用户可以从容阅读完整错误后手动关闭
+    // 新版的3秒自动淡出会让用户错过错误信息，对"生成失败"等需要决策的错误不友好
+    // banner 右上角已有 ✕ 按钮可手动关闭，无需自动淡出
     // 同步记录到 localStorage 方便排查
     try {
         var errs = Storage.getJSON(Storage.KEYS.API_ERRORS, []);

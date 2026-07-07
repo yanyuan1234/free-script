@@ -561,31 +561,31 @@ function _buildFormatAnchor() {
         'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n' +
         'currency 字段必须准确反映剧情中的金钱变化：**若剧情提到获得/花费金币，必须返回更新后的准确余额，禁止与剧情矛盾。**\n' +
         '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n' +
-        '<giggle>心声(2-5个) 约' + _maxTokensForAnchor + 'tokens输出空间';
+        '心声系统：用 <giggle>角色名：心声内容</giggle> 格式穿插（每回合2-5个）。\n' +
+        '**禁止写主角角度的心声**，只能写NPC的心声。\n' +
+        'gameTime 推进规则：根据剧情中发生的事件合理推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n' +
+        '约' + _maxTokensForAnchor + 'tokens输出空间';
 }
 
 // 渐进式格式规则（原 _buildFormatRules 改名为公共函数，避免与旧引用冲突）
 function _buildFormatRules(gs, _t, turn) {
     var hasChoices = gs.generateChoices;
-    if (turn <= 3) {
-        return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
-            + '{ "title": "", "story": "", '
-            + (hasChoices ? '"choices": [{"id":"A","text":""}],' : '')
-            + ' "player": {"name":"","identity":"","stats":[]}, '
-            + '"characters": [{"name":"","relation":"","favorability":0}], '
-            + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"","content":""}], '
-            + '"bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":"","progress":"当前/总数"}], '
-            + '"gameTime": {"date":"","time":"","period":""} }\n'
-            + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
-            + 'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n'
-            + 'currency 必须准确反映剧情中的金钱变化，禁止与剧情矛盾。\n'
-            + 'player=主角，characters=NPC。原始JSON不用```json包裹。';
-    } else {
-        return '【格式·JSON模式】直接输出JSON（以{开头），不要前缀，空字段省略。\n'
-            + '必填：title、story、player（含stats数组）、bag（完整库存）、gameTime。\n'
-            + '常用：choices、characters、world、quests、currency、currencyName、keyEvents、relationships、contextSummary。\n'
-            + 'player/bag/gameTime 每回合必须返回完整数据；<giggle>心声可穿插。';
-    }
+    // 原版始终输出完整格式规则，不按 turn 数精简
+    // 新版 turn>3 时切换精简版丢失了大量字段级约束（world类型、好感度范围、player.name约束等）
+    return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
+        + '{ "title": "", "story": "", '
+        + (hasChoices ? '"choices": [{"id":"A","text":""}],' : '')
+        + ' "player": {"name":"","identity":"","stats":[]}, '
+        + '"characters": [{"name":"","relation":"","favorability":0}], '
+        + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary","title":"","content":""}], '
+        + '"bag": [{"name":"","count":1}], "currency": 0, "currencyName": "金币", "quests": [{"title":"","status":"","progress":"当前/总数"}], '
+        + '"gameTime": {"date":"","time":"","period":""} }\n'
+        + '可选字段: hud, relationships, keyEvents, npcMessages, contextSummary（按需使用，空字段省略）\n'
+        + 'quests 任务字段必须每回合返回：**若任务已完成，status 填"已完成"、progress 填"1/1"；若仍在进行，progress 必须推进，禁止始终为 0/1。**\n'
+        + 'currency 必须准确反映剧情中的金钱变化，禁止与剧情矛盾。\n'
+        + 'player=主角，characters=NPC。原始JSON不用```json包裹。\n'
+        + 'player.name 必须严格等于主角姓名，违反会导致游戏崩溃。绝对禁止把主角放进 characters。\n'
+        + '好感度范围 -100 到 100。世界模块(world)必须和剧情紧密联动，不要生成与剧情无关的静态内容。';
 }
 
 /**
@@ -916,8 +916,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         QuestSystem.advanceGuidanceQuest();
     }
     
-    // 让浏览器先渲染 loading 动画，再执行重操作（避免点击后长时间无反馈）
-    await new Promise(function(r) { requestAnimationFrame(r); });
+    // 原版从 setWaiting(true) 到 callAI 之间没有异步等待窗口
+    // 新版的 requestAnimationFrame 等待帧引入竞态：等待期间取消按钮可误触刚创建的 AbortController
+    // 移除等待帧，让 loading 动画由 CSS 动画自动处理（不需要 JS 等待帧）
     
     // 保存撤销状态（在AI回复前）
     saveUndoState();
@@ -2031,7 +2032,7 @@ async function sendAIRequest(userMessage, isInit = false) {
                         gameState._chatLogs[msg.from].push({
                             role: 'npc',
                             text: msg.text,
-                            time: Date.now()
+                            time: new Date().toLocaleTimeString()
                         });
 
                         if (gameState._chatLogs[msg.from].length > 50) {
@@ -3471,19 +3472,10 @@ function buildSaveData(customName, useCache) {
     }
 
 
-    // 默认关闭，只有 autoSave 传 true 使用，防止同一回合内用户修改后保存得到旧数据
-    var currentTurns = (gameState && gameState._stats) ? gameState._stats.totalTurns : -1;
-    if (useCache && gameState && gameState._lastSaveTurn === currentTurns &&
-        gameState._lastSaveState && gameState._lastSaveMemoryData) {
-        return {
-            name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
-            prompt: (gameState && gameState.userPrompt) || '',
-            time: Date.now(),
-            version: GAME_VERSION,
-            state: gameState._lastSaveState,
-            memoryData: gameState._lastSaveMemoryData
-        };
-    }
+    // 原版行为：每次都重新 JSON.stringify，永远保存最新状态
+    // 新版的 useCache 缓存在同回合内用户修改后保存会得到旧数据，且缓存命中时跳过
+    // totalPlayTime 累加和 _version 更新，导致游戏时长统计错误
+    // 因此禁用缓存，始终走完整序列化路径
 
     // 打包记忆数据到存档中，确保存档包含完整游戏数据
     var memoryData = null;
@@ -3506,7 +3498,7 @@ function buildSaveData(customName, useCache) {
     var saveData = {
         name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
         prompt: (gameState && gameState.userPrompt) || '',
-        time: Date.now(),
+        time: new Date().toLocaleString(), // 原版用可读的本地化时间
         version: GAME_VERSION,
         state: gameState ? JSON.stringify(gameState) : '{}',
         memoryData: memoryData ? JSON.stringify(memoryData) : null
