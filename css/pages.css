@@ -418,6 +418,48 @@
     gap: 6px
 }
 
+/* [P1 Swipe] 多分支重生成切换器 */
+.swipe-switcher {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 4px 0;
+    margin-bottom: 4px;
+    font-size: 12px;
+    color: var(--text-tertiary);
+}
+.swipe-switcher .swipe-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    transition: background .15s, opacity .15s;
+}
+.swipe-switcher .swipe-btn:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--on-accent);
+    border-color: var(--accent);
+}
+.swipe-switcher .swipe-btn:disabled {
+    opacity: .35;
+    cursor: not-allowed;
+}
+.swipe-switcher .swipe-counter {
+    min-width: 44px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
 .story-text {
     font-size: var(--font-size-base);
     line-height: 1.85;

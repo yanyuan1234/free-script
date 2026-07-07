@@ -931,6 +931,12 @@ async function sendAIRequest(userMessage, isInit = false) {
     RuntimeState.streamMode = null;
     TypewriterBuffer.stop();
 
+    // [P1 Swipe] 非 retry 模式的新对话：重置 swipe 数组
+    // retry 模式下 SwipeManager._isRetrying=true，保留旧版本，让 addSwipe 追加
+    if (typeof SwipeManager !== 'undefined' && !SwipeManager.isRetrying()) {
+        SwipeManager.reset();
+    }
+
     if (!isInit && typeof QuestSystem !== 'undefined' && QuestSystem.advanceGuidanceQuest) {
         QuestSystem.advanceGuidanceQuest();
     }
@@ -2207,6 +2213,26 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (typeof StateManager !== 'undefined' && StateManager.set) {
                 StateManager.set('progress.conversationHistory', trimmedHist, { silent: true });
             }
+        }
+
+        // [P1 Swipe] 记录本轮 AI 回复为一个 swipe 版本
+        // 正常对话：重置 swipe 数组，记录唯一版本
+        // retry 生成：追加新版本，UI 切到新版本（保留旧版本可切换）
+        if (typeof SwipeManager !== 'undefined') {
+            var _swipeSceneTitle = '';
+            try {
+                _swipeSceneTitle = (typeof StateManager !== 'undefined' && StateManager.get)
+                    ? (StateManager.get('progress.sceneTitle') || '')
+                    : (gameState && gameState.sceneTitle || '');
+            } catch (e) {}
+            SwipeManager.addSwipe({
+                storyText: storyText || finalStory || '',
+                choices: (data && Array.isArray(data.choices)) ? data.choices : [],
+                sceneTitle: _swipeSceneTitle,
+                response: historyAssistantContent || response || '',
+                turn: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.turn') || 0) : 0,
+                timestamp: Date.now()
+            });
         }
         // 触发事件：CHARACTER_MESSAGE_RENDERED（AI消息渲染后）
         if (typeof TavernHelperCompat !== 'undefined') {

@@ -5078,17 +5078,23 @@ function _restoreGameRender() {
 // --- 默认游戏状态 ---
 // --- setWaiting 适配 ---
 async function retryStory() {
-    // 原版逻辑：删除最后两条对话并重新生成
-    // 修复：先通过 deleteLastTurn 回滚 gameState（turn计数、角色、物品等），
-    // 再重新发送最后一条用户消息，避免回合数虚增和状态污染
+    // [P1 Swipe] 重新生成保留多版本：旧版本存入 SwipeManager，新版本追加
     var _histForRetry = _getConversationHistory();
     if (isWaiting || _histForRetry.length < 3) return;
     var lastUserMsg = _histForRetry[_histForRetry.length - 2];
     if (!lastUserMsg) return;
 
+    // 标记 SwipeManager 进入 retry 模式（生成成功后 addSwipe 会追加而非重置）
+    if (typeof SwipeManager !== 'undefined') {
+        SwipeManager.setRetrying(true);
+    }
+
     // 先回滚状态（turn计数、角色、物品等），deleteLastTurn 会处理 conversationHistory
     if (typeof deleteLastTurn === 'function') {
-        try { deleteLastTurn(); } catch (e) { console.error('[retryStory] 回滚失败:', e); }
+        try { deleteLastTurn(); } catch (e) {
+            console.error('[retryStory] 回滚失败:', e);
+            if (typeof SwipeManager !== 'undefined') SwipeManager.setRetrying(false);
+        }
     } else {
         // fallback: 只删历史
         _updateConversationHistory(_histForRetry.slice(0, -2));
@@ -5108,6 +5114,8 @@ async function retryStory() {
                     try { window._currentAbort.abort(); } catch (e) {}
                 }
                 UI.toast('已取消生成');
+                // 取消时重置 retry 标记
+                if (typeof SwipeManager !== 'undefined') SwipeManager.setRetrying(false);
             }
         });
     } else if (typeof UI !== 'undefined' && UI.toast) {
@@ -5119,10 +5127,12 @@ async function retryStory() {
             p.catch(function(e) {
                 if (e && e.name === 'AbortError') return;
                 console.error('[重新生成] 异步操作失败:', e);
+                if (typeof SwipeManager !== 'undefined') SwipeManager.setRetrying(false);
             });
         }
     } catch (e) {
         console.error('[重新生成] 同步错误:', e);
+        if (typeof SwipeManager !== 'undefined') SwipeManager.setRetrying(false);
     }
 }
 async function continueStory() {
