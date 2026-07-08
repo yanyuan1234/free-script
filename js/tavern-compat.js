@@ -3511,10 +3511,13 @@ var GameMemory = {
         if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
         if (self.permanentFacts[key].some(function(a) { return a && a.content === content; })) return null;
         // 核心设定(pc/世界规则/角色) = 1.0, 次要(设定/承诺) = 0.5
-        var _importance = (type === 'pc_identity' || type === 'world_rule' || type === 'npc_profile') ? 1.0 : 0.5;
+        // 兼容 snake_case（旧）与 camelCase（新）两种 type 写法
+        var _importance = (type === 'pc_identity' || type === 'pcIdentity' ||
+                          type === 'world_rule' || type === 'worldRules' ||
+                          type === 'npc_profile' || type === 'npcProfiles') ? 1.0 : 0.5;
         var _isManual = (source === 'manual');
 
-        if (type === 'npc_profile' && content) {
+        if ((type === 'npc_profile' || type === 'npcProfiles') && content) {
             var nameMatch = content.match(/^([一-鿿A-Za-z·]{1,6})/);
             if (nameMatch) {
                 var name = nameMatch[1];
@@ -3587,21 +3590,30 @@ var GameMemory = {
     syncWorldInfoEntry: function(entry, uid, bookId) {
         var self = this;
         if (!entry) return null;
-        if (entry.enabled === false) { self.removeWorldAnchorsBySource('worldInfo:' + bookId + ':' + uid); return null; }
-        var content = (entry.content || '').trim();
-        if (!content) { self.removeWorldAnchorsBySource('worldInfo:' + bookId + ':' + uid); return null; }
-        var shouldSync = !!entry.constant;
-        var anchorType = 'worldRules';
-        if (!shouldSync) { var ruleRe = /(设定|规则|世界观|铁律|守则|不变|永远|永不|不可|严禁|禁止|角色|主角|境界|等级|天道|法则)/; if (ruleRe.test(content) || ruleRe.test(entry.comment || '')) { shouldSync = true; anchorType = 'settings'; } }
-        if (!shouldSync) return null;
         var sourceTag = 'worldInfo:' + bookId + ':' + uid;
+        // 禁用或空内容：清除该条目在 permanentFacts 中的旧记录
+        if (entry.enabled === false) { self.removeWorldAnchorsBySource(sourceTag); return null; }
+        var content = (entry.content || '').trim();
+        if (!content) { self.removeWorldAnchorsBySource(sourceTag); return null; }
+
+        // 【世界书↔记忆联动·仅 constant 收割】
+        // 只有玩家显式勾选 constant（常驻）的世界书条目才收割到 permanentFacts。
+        // 非 constant 条目一律走世界书关键词触发路径（buildInjectionGrouped → scan），
+        // 尊重玩家对 position/depth/关键词的显式配置，避免架空中世界书的"按需加载"机制。
+        // 旧逻辑用关键词启发式（含"设定/规则/角色/主角"等词就强制收割）会导致：
+        //   1. 关键词触发的按需加载失效（设定类条目被强制 constant）
+        //   2. 玩家配置的 position/depth 注入位置被架空
+        //   3. permanentFacts 占爆 token 预算，世界书 tokenBudget 形同虚设
+        if (!entry.constant) {
+            // 非 constant 条目：若之前被启发式收割过，清除旧记录
+            self.removeWorldAnchorsBySource(sourceTag);
+            return null;
+        }
         self.removeWorldAnchorsBySource(sourceTag);
         var label = entry.comment ? '【' + entry.comment + '】' : '';
         var syncContent = label ? label + ' ' + content : content;
-        // 【动态化】移除 300 字截断——世界设定是核心信息，不应被截断
-        // 旧代码截断到 300 字会导致长世界设定丢失后半段，AI 看到不完整的世界观
-        // 新策略：保留完整内容，由 token 预算系统自然控制
-        var created = self.addWorldAnchor(anchorType, syncContent, sourceTag, self.currentTurn);
+        // constant 条目统一进 worldRules 区（核心铁律/世界规则）
+        var created = self.addWorldAnchor('worldRules', syncContent, sourceTag, self.currentTurn);
         try { if (created) self.saveToStorage(); } catch(e) { console.warn('[GameMemory] syncWorldInfoEntry 保存失败:', e); }
         return created;
     },

@@ -84,8 +84,9 @@ var WorldInfo = {
         this._harvestAllEntriesToMemory();
         },
 
-    // 【世界书↔记忆联动】把当前所有世界书条目收割到永久事实区
-    // 仅收割：constant 标记的 + 命中核心关键词的
+    // 【世界书↔记忆联动】启动时同步所有世界书条目到记忆系统
+    // 仅 constant 条目会被收割到 permanentFacts（见 syncWorldInfoEntry）
+    // 非 constant 条目：清除旧启发式收割的残留记录，让其走世界书关键词触发路径
     _harvestAllEntriesToMemory: function() {
         try {
             if (!window.EnhancedMemory || !EnhancedMemory.syncWorldInfoEntry) return;
