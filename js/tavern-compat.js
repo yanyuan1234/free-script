@@ -972,6 +972,292 @@ var GameMemory = {
         }
         this._markLtmDirty();
     },
+
+    // ==========================
+    // SetupForge - 智能开局锻造
+    // 把用户任意长度的开局 blob 多轮解析成结构化设定，复用现有机制写入状态
+    // ==========================
+
+    _FORGE_SCHEMA_INSTRUCTION: function() {
+        return JSON.stringify({
+            worldSetting: '完整世界观，保留原文所有关键设定（500-2000字）',
+            worldSettingCompressed: '300-500字注入用世界观，不丢失核心信息',
+            protagonist: {
+                name: '主角名字',
+                identity: '身份',
+                appearance: '外貌',
+                personality: '性格',
+                background: '背景',
+                stats: [{ label: '属性名', value: 50 }]
+            },
+            characters: [{
+                name: '角色名',
+                identity: { surface: '表面身份', hidden: '隐藏身份（没写就空）' },
+                appearance: { hair: '发色', eyes: '瞳色', voice: '音色', figure: '身材', clothing: { formal: '', casual: '', withUser: '', work: '' } },
+                personality: { public: '对外人', private: '独处时', withUser: '对主角' },
+                attitudeToUser: '对主角的态度',
+                background: { childhood: '', adolescence: '', recentPast: '', currentState: '' },
+                speechHabits: '语言习惯',
+                sampleDialogues: [{ context: '情境标签', text: '台词示范' }],
+                emotionalTriggers: [{ topic: '触发点', reaction: '反应' }],
+                favorability: 50
+            }],
+            openingScene: '开局场景，300-800字',
+            themes: ['题材标签'],
+            styleNotes: '文风、节奏、禁忌等可执行指令',
+            memoryUpdates: [{ op: 'add', category: 'worldRules|npcProfiles|pcIdentity|promises|worldPlaces|settings', content: '事实内容', keywords: [] }],
+            setupKeywords: ['世界关键词']
+        }, null, 2);
+    },
+
+    _buildForgeMessages: function(state, fidelity) {
+        var blob = state.blob;
+        var extraction = state.extraction;
+        var critique = state.critique;
+        var pass = state.currentPass;
+        var schema = this._FORGE_SCHEMA_INSTRUCTION();
+        var systemPrompt = '';
+
+        if (pass === 1) {
+            systemPrompt = '你是一名专业的互动叙事设定解析器。用户会输入一段很长的开局设定（可能包含世界观、角色、主角、开局场景、文风等，混合在一起，长度不限）。\n\n' +
+                '你的任务：阅读全文，提取并整理成以下 JSON 结构。如果某字段信息原文确实没写，请根据上下文合理推断补充；如果信息矛盾，以文中明确写出的为准。\n\n' +
+                '输出格式（必须是合法 JSON，不要任何解释）：\n```json\n' + schema + '\n```\n\n' +
+                '规则：\n' +
+                '1. 不要截断、不要遗漏原文关键设定。\n' +
+                '2. 角色信息要详细：外貌、音色、穿衣、对主角态度、人生阶段都要尽量补全。\n' +
+                '3. memoryUpdates 只放跨回合需要长期记住的事实。\n' +
+                '4. 文风要提取成可执行的指令。\n' +
+                '5. 当前模式：' + fidelity + '（strict=只提取，尽量不补充；balanced=合理补充缺口；creative=主动丰富细节）';
+        } else if (pass === 2) {
+            systemPrompt = '你是一名资深编辑。用户输入了一段开局设定原文，以及第一轮提取的结构化结果。\n\n' +
+                '请对比原文和第一轮结果，输出以下 JSON 审查意见：\n' +
+                '{\n  "strengths": ["优秀设定1", "优秀设定2"],\n  "contradictions": ["矛盾点1"],\n  "missedFromSource": ["原文提到但被漏掉的信息"],\n  "gapsToFill": ["需要补充的缺口"],\n  "compressionCandidates": ["可压缩但不删除的冗余信息"]\n}\n\n' +
+                '规则：不要编造原文没有的信息，只指出问题和改进方向。';
+        } else {
+            systemPrompt = '你是一名创作者。基于用户开局原文、第一轮提取结果和第二轮审查意见，产出最终版结构化设定。\n\n' +
+                '输出格式（必须是合法 JSON，不要任何解释）：\n```json\n' + schema + '\n```\n\n' +
+                '规则：\n' +
+                '1. 保留原文所有优秀设定，不删减核心信息。\n' +
+                '2. 补充必要缺口，让开局可以运行。\n' +
+                '3. 对冗余部分做语义压缩（换更精炼表达），不能硬截断。\n' +
+                '4. 如果原文某部分已经很完整，不要画蛇添足。\n' +
+                '5. 当前模式：' + fidelity;
+        }
+
+        var userContent = '【开局原文】\n\n' + blob;
+        if (pass >= 2 && extraction) {
+            userContent += '\n\n【第一轮提取结果】\n```json\n' + JSON.stringify(extraction, null, 2) + '\n```';
+        }
+        if (pass >= 3 && critique) {
+            userContent += '\n\n【第二轮审查意见】\n```json\n' + JSON.stringify(critique, null, 2) + '\n```';
+        }
+
+        return [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userContent }
+        ];
+    },
+
+    _fallbackFromBlob: function(blob) {
+        return {
+            blob: blob,
+            worldSetting: blob,
+            worldSettingCompressed: blob.slice(0, 500),
+            protagonist: {},
+            characters: [],
+            openingScene: '',
+            themes: [],
+            styleNotes: '',
+            memoryUpdates: [],
+            setupKeywords: []
+        };
+    },
+
+    forgeSetup: function(blob, options) {
+        options = options || {};
+        var passes = Math.max(1, Math.min(5, options.passes || 3));
+        var fidelity = options.fidelity || 'balanced';
+        var self = this;
+        var onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+
+        return new Promise(function(resolve, reject) {
+            if (!blob || typeof blob !== 'string' || !blob.trim()) {
+                reject(new Error('开局内容不能为空'));
+                return;
+            }
+
+            var state = {
+                blob: blob.trim(),
+                currentPass: 0,
+                extraction: null,
+                critique: null,
+                refined: null
+            };
+
+            function runPass() {
+                state.currentPass++;
+                if (onProgress) {
+                    try {
+                        onProgress({
+                            pass: state.currentPass,
+                            total: passes,
+                            stage: state.currentPass === 1 ? 'extraction' : (state.currentPass === 2 ? 'critique' : 'refinement')
+                        });
+                    } catch (e) { /* 忽略 */ }
+                }
+
+                var messages = self._buildForgeMessages(state, fidelity);
+
+                if (typeof callAI !== 'function') {
+                    console.warn('[SetupForge] callAI 不可用，fallback 到原文');
+                    var fallback = self._fallbackFromBlob(state.blob);
+                    self._applyForgedSetup(fallback);
+                    return resolve(fallback);
+                }
+
+                callAI(messages, { max_tokens: 4096, temperature: 0.4 }).then(function(raw) {
+                    var parsed = ResponseParser.parse(raw);
+                    if (!parsed.success || !parsed.data) {
+                        console.warn('[SetupForge] 第' + state.currentPass + '轮解析失败');
+                        if (state.currentPass === 1) {
+                            var fb = self._fallbackFromBlob(state.blob);
+                            self._applyForgedSetup(fb);
+                            return resolve(fb);
+                        }
+                        if (state.currentPass >= passes) {
+                            self._applyForgedSetup(state.refined || self._fallbackFromBlob(state.blob));
+                            return resolve(state.refined || self._fallbackFromBlob(state.blob));
+                        }
+                        return runPass();
+                    }
+
+                    if (state.currentPass === 1) {
+                        state.extraction = parsed.data;
+                        state.refined = parsed.data;
+                    } else if (state.currentPass === 2) {
+                        state.critique = parsed.data;
+                    } else {
+                        state.refined = parsed.data;
+                    }
+
+                    if (state.currentPass >= passes) {
+                        self._applyForgedSetup(state.refined);
+                        return resolve(state.refined);
+                    }
+
+                    setTimeout(runPass, 0);
+                }).catch(function(err) {
+                    console.error('[SetupForge] API 调用失败:', err);
+                    if (state.currentPass === 1) {
+                        var fb = self._fallbackFromBlob(state.blob);
+                        self._applyForgedSetup(fb);
+                        return resolve(fb);
+                    }
+                    self._applyForgedSetup(state.refined || self._fallbackFromBlob(state.blob));
+                    return resolve(state.refined || self._fallbackFromBlob(state.blob));
+                });
+            }
+
+            runPass();
+        });
+    },
+
+    _applyForgedSetup: function(refined) {
+        if (!refined) return;
+        var self = this;
+
+        StateManager.transaction(function() {
+            StateManager.set('world.setupText', refined.blob || refined.worldSetting || '', { silent: true });
+            StateManager.set('world.userPrompt', refined.worldSetting || '', { silent: true });
+            StateManager.set('world.theme', Array.isArray(refined.themes) ? refined.themes.join(',') : (refined.themes || ''), { silent: true });
+
+            if (refined.protagonist && typeof refined.protagonist === 'object') {
+                StateManager.set('entities.player', refined.protagonist, { silent: true });
+            }
+
+            if (Array.isArray(refined.characters) && refined.characters.length > 0) {
+                StateManager.set('entities.characters', refined.characters, { silent: true });
+            }
+
+            StateManager.set('ui.worldSnapshot', {
+                openingScene: refined.openingScene || '',
+                styleNotes: refined.styleNotes || '',
+                themes: Array.isArray(refined.themes) ? refined.themes : []
+            }, { silent: true });
+        });
+
+        var fullSetup = refined.worldSetting || '';
+        var compressedSetup = refined.worldSettingCompressed || fullSetup;
+        this._setupLayers = {
+            coreRules: compressedSetup,
+            worldSummary: compressedSetup,
+            fullSetup: fullSetup,
+            compressedSetup: compressedSetup,
+            compressed: !!(refined.worldSettingCompressed && refined.worldSettingCompressed.length < fullSetup.length),
+            originalLength: fullSetup.length,
+            compressedLength: compressedSetup.length,
+            extractTurn: this.currentTurn || 0,
+            setupKeywords: refined.setupKeywords || []
+        };
+
+        if (refined.memoryUpdates && refined.memoryUpdates.length > 0) {
+            try {
+                AIResponseMutator._applyMemoryUpdates({ memoryUpdates: refined.memoryUpdates });
+            } catch (e) {
+                console.warn('[SetupForge] 应用 memoryUpdates 失败:', e);
+            }
+        }
+
+        this._syncFactsToWorldInfo(refined.memoryUpdates);
+        this._markLtmDirty();
+    },
+
+    _syncFactsToWorldInfo: function(updates) {
+        if (typeof WorldInfo === 'undefined' || !WorldInfo.books || !Array.isArray(updates)) return;
+
+        var book = null;
+        for (var i = 0; i < WorldInfo.books.length; i++) {
+            if (WorldInfo.books[i].name === '锻造世界书') {
+                book = WorldInfo.books[i];
+                break;
+            }
+        }
+        if (!book) {
+            book = {
+                id: 'book_forge_' + Date.now(),
+                name: '锻造世界书',
+                enabled: true,
+                entries: {}
+            };
+            WorldInfo.books.push(book);
+        }
+
+        updates.forEach(function(u) {
+            if (!u || !u.content) return;
+            var category = u.category || u.type || 'settings';
+            if (category !== 'worldRules' && category !== 'worldPlaces' && category !== 'npcProfiles') return;
+
+            var uid = 'forge_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+            book.entries[uid] = {
+                uid: uid,
+                key: Array.isArray(u.keywords) ? u.keywords : [],
+                keysecondary: [],
+                content: u.content,
+                comment: (u.content || '').slice(0, 30),
+                constant: category === 'worldRules',
+                selective: false,
+                enabled: true,
+                order: 100,
+                probability: 100,
+                depth: 4,
+                position: 0,
+                role: 0
+            };
+        });
+
+        if (typeof WorldInfo.save === 'function') WorldInfo.save();
+    },
+
     lastInjectionTurn: -1,
     gameClock: { day: 1, period: '早晨', lastUpdateTurn: 0 },
 

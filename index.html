@@ -401,11 +401,17 @@
                     </div>
                 </div>
                 <div class="p-16-20 flex-shrink-0">
-                    <button class="crystal-btn primary w-full" id="btnCreateWorld">
+                    <button class="crystal-btn primary w-full" id="btnForgeSetup">
                         <svg class="icon icon-sm" style="stroke:var(--on-accent);">
                             <use href="#icon-sparkles" />
                         </svg>
-                        创造世界
+                        智能锻造开局
+                    </button>
+                    <button class="crystal-btn w-full mt-8" id="btnCreateWorld">
+                        <svg class="icon icon-sm" style="stroke:currentColor;">
+                            <use href="#icon-play" />
+                        </svg>
+                        直接开始游戏
                     </button>
                 </div>
             </div>
@@ -834,6 +840,50 @@
                                     </svg>
                                     删除世界
                                 </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ==================== 开局锻造预览模态框 ==================== -->
+            <div class="modal-overlay" id="forgePreviewModal">
+                <div class="modal-content modal-enhanced max-w-480 max-h-85vh">
+                    <div class="modal-header">
+                        <h3 class="modal-title">锻造结果预览</h3>
+                        <button class="circle-btn flex-shrink-0" data-close="forgePreviewModal">
+                            <svg class="icon icon-sm"><use href="#icon-close" /></svg>
+                        </button>
+                    </div>
+                    <div class="modal-body" style="padding:14px !important;overflow-y:auto;flex:1;">
+                        <div id="forgeProgress" class="forge-progress" style="display:none;">
+                            <div class="text-sm text-secondary mb-8" id="forgeProgressText">准备中...</div>
+                            <div class="progress-bar"><div class="progress-fill" id="forgeProgressFill" style="width:0%"></div></div>
+                        </div>
+                        <div id="forgePreviewContent" style="display:none;">
+                            <div class="forge-section mb-12">
+                                <div class="forge-section-title">世界观</div>
+                                <div class="forge-section-body" id="forgeWorldSetting"></div>
+                            </div>
+                            <div class="forge-section mb-12">
+                                <div class="forge-section-title">主角</div>
+                                <div class="forge-section-body" id="forgeProtagonist"></div>
+                            </div>
+                            <div class="forge-section mb-12">
+                                <div class="forge-section-title">NPC</div>
+                                <div class="forge-section-body" id="forgeCharacters"></div>
+                            </div>
+                            <div class="forge-section mb-12">
+                                <div class="forge-section-title">开局场景</div>
+                                <div class="forge-section-body" id="forgeOpeningScene"></div>
+                            </div>
+                            <div class="forge-section mb-12">
+                                <div class="forge-section-title">永久事实</div>
+                                <div class="forge-section-body" id="forgeFacts"></div>
+                            </div>
+                            <div class="forge-actions flex-row-gap-8 mt-16">
+                                <button class="crystal-btn primary flex-1" id="btnConfirmForge">确认开始</button>
+                                <button class="crystal-btn flex-1" id="btnReforge">再炼一轮</button>
                             </div>
                         </div>
                     </div>

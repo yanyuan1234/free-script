@@ -4088,6 +4088,122 @@ function bindEvents() {
         startNewGame();
     });
 
+    // 智能锻造开局按钮
+    bindEvent('btnForgeSetup', 'click', function() {
+        var blob = document.getElementById('worldDescription').value.trim();
+        if (!blob) {
+            UI.toast('请先输入开局设定');
+            return;
+        }
+        _startForgeSetup(blob);
+    });
+
+    var _lastForgeBlob = '';
+    var _lastForgeData = null;
+
+    function _escapeHtml(text) {
+        if (text == null) return '';
+        return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function _updateForgeProgress(pass, total, stage) {
+        var progressEl = document.getElementById('forgeProgress');
+        var contentEl = document.getElementById('forgePreviewContent');
+        var textEl = document.getElementById('forgeProgressText');
+        var fillEl = document.getElementById('forgeProgressFill');
+        if (!progressEl || !textEl || !fillEl) return;
+        progressEl.style.display = 'block';
+        if (contentEl) contentEl.style.display = 'none';
+        var stageNames = { extraction: '结构抽取', critique: '审查找缺口', refinement: '精炼完善' };
+        textEl.textContent = '第 ' + pass + '/' + total + ' 轮：' + (stageNames[stage] || stage);
+        fillEl.style.width = Math.round((pass / total) * 100) + '%';
+    }
+
+    function _formatForgeProtagonist(p) {
+        var parts = [];
+        if (p.name) parts.push('名字：' + p.name);
+        if (p.identity) parts.push('身份：' + p.identity);
+        if (p.appearance) parts.push('外貌：' + p.appearance);
+        if (p.personality) parts.push('性格：' + p.personality);
+        return parts.join('\n') || '未提取';
+    }
+
+    function _formatForgeCharacter(c) {
+        var name = c.name || '未命名角色';
+        var identity = (c.identity && (c.identity.surface || c.identity.hidden)) ?
+            ((c.identity.surface || '') + (c.identity.hidden ? ' / ' + c.identity.hidden : '')) :
+            (c.desc || c.description || '');
+        var attitude = c.attitudeToUser || (c.personality && c.personality.withUser) || '';
+        return '<div class="forge-character-item">' +
+            '<div class="forge-character-name">' + _escapeHtml(name) + '</div>' +
+            '<div class="forge-character-meta">' + _escapeHtml(identity) + (attitude ? ' · ' + _escapeHtml(attitude) : '') + '</div>' +
+            '</div>';
+    }
+
+    function _formatForgeFact(u) {
+        return '<div class="forge-fact-item">' + _escapeHtml((u.category || 'settings') + ': ' + (u.content || '')) + '</div>';
+    }
+
+    function _showForgePreview(data) {
+        var progressEl = document.getElementById('forgeProgress');
+        var contentEl = document.getElementById('forgePreviewContent');
+        if (progressEl) progressEl.style.display = 'none';
+        if (contentEl) contentEl.style.display = 'block';
+
+        var worldEl = document.getElementById('forgeWorldSetting');
+        var protagEl = document.getElementById('forgeProtagonist');
+        var charsEl = document.getElementById('forgeCharacters');
+        var sceneEl = document.getElementById('forgeOpeningScene');
+        var factsEl = document.getElementById('forgeFacts');
+
+        if (worldEl) worldEl.textContent = (data.worldSettingCompressed || data.worldSetting || '').slice(0, 600) + (data.worldSetting && data.worldSetting.length > 600 ? '...' : '');
+        if (protagEl) protagEl.textContent = data.protagonist ? _formatForgeProtagonist(data.protagonist) : '未提取';
+        if (charsEl) charsEl.innerHTML = data.characters && data.characters.length > 0 ? data.characters.map(_formatForgeCharacter).join('') : '未提取';
+        if (sceneEl) sceneEl.textContent = data.openingScene || '未提取';
+        if (factsEl) factsEl.innerHTML = data.memoryUpdates && data.memoryUpdates.length > 0 ? data.memoryUpdates.map(_formatForgeFact).join('') : '未提取';
+    }
+
+    function _startForgeSetup(blob) {
+        _lastForgeBlob = blob;
+        UI.showModal('forgePreviewModal');
+        _updateForgeProgress(1, 3, 'extraction');
+
+        if (typeof EnhancedMemory === 'undefined' || !EnhancedMemory.forgeSetup) {
+            UI.toast('锻造功能未加载');
+            UI.hideModal('forgePreviewModal');
+            return;
+        }
+
+        EnhancedMemory.forgeSetup(blob, {
+            passes: 3,
+            fidelity: 'balanced',
+            onProgress: function(info) {
+                _updateForgeProgress(info.pass, info.total, info.stage);
+            }
+        }).then(function(data) {
+            data.blob = blob; // 保留原始开局文本
+            _lastForgeData = data;
+            _showForgePreview(data);
+        }).catch(function(err) {
+            console.error('[SetupForgeUI]', err);
+            UI.toast('锻造失败：' + (err && err.message ? err.message : '未知错误'));
+            UI.hideModal('forgePreviewModal');
+        });
+    }
+
+    bindEvent('btnConfirmForge', 'click', function() {
+        UI.hideModal('forgePreviewModal');
+        startNewGame(_lastForgeData);
+    });
+
+    bindEvent('btnReforge', 'click', function() {
+        if (!_lastForgeBlob) {
+            UI.toast('没有可重新锻造的内容');
+            return;
+        }
+        _startForgeSetup(_lastForgeBlob);
+    });
+
     // 保存预设按钮
     bindEvent('btnCreatePresetFromSetup', 'click', function() {
         document.getElementById('savePresetName').value = '';
@@ -4760,7 +4876,7 @@ function bindEvents() {
         StateManager.set('settings.chapterMode', this.value, { silent: true });
     });
 }
-function startNewGame() {
+function startNewGame(forgeResult) {
     var prompt = document.getElementById('worldDescription').value.trim();
     if (!prompt) {
         UI.toast('请描述你想玩的游戏');
@@ -4775,8 +4891,11 @@ function startNewGame() {
     // ======== 开始新游戏 ========
     gameState.userPrompt = prompt;
 
-    // 设定分层处理
-    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.processSetupPrompt) {
+    // 如果有锻造结果，直接应用；否则走原设定分层处理
+    if (forgeResult && typeof EnhancedMemory !== 'undefined' && EnhancedMemory._applyForgedSetup) {
+        EnhancedMemory._applyForgedSetup(forgeResult);
+        if (forgeResult.worldSetting) gameState.userPrompt = forgeResult.worldSetting;
+    } else if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.processSetupPrompt) {
         EnhancedMemory.processSetupPrompt(gameState.userPrompt);
     }
 
