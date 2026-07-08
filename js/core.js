@@ -4899,7 +4899,50 @@ function buildAIRequestBody(messages, options, config) {
         params.xtc_probability = presetParams.xtc_probability || 0;
         params.xtc_threshold = presetParams.xtc_threshold || 0;
         params.seed = presetParams.seed || null;
-        params.response_format = presetParams.response_format || null;
+        // response_format 优先级：预设手动配置 > options.jsonSchema 自动推导 > null
+        // 预设里手动配的 response_format 优先级最高，不被覆盖（尊重高级用户配置）
+        if (presetParams.response_format) {
+            params.response_format = presetParams.response_format;
+        } else if (options.jsonSchema) {
+            // options.jsonSchema: 'strict' | 'json_object' | 'auto' | null
+            // 由调用方（game.js 剧情生成）根据 pureTextMode 决定传什么
+            var _schemaMode = options.jsonSchema;
+            var _modelName = config.model || '';
+            // 【降级机制】若上一轮 strict/json_object 触发 400，读取降级标志位
+            // _jsonSchemaDowngrade: 'json_object' 表示已从 strict 降级，null 表示无降级
+            var _downgrade = (typeof gameState !== 'undefined' && gameState) ? gameState._jsonSchemaDowngrade : null;
+            if (_downgrade === 'off') {
+                // 连 json_object 都失败了，本轮完全关闭 schema
+                _schemaMode = null;
+                console.log('[API] response_format 关闭（此前 json_object 也失败）');
+            } else if (_downgrade === 'json_object') {
+                // strict 失败过，降级为 json_object
+                _schemaMode = 'json_object';
+                console.log('[API] response_format 降级为 json_object（此前 strict 失败）');
+            } else if (_schemaMode === 'auto') {
+                // auto 模式：根据模型名自动选 strict 或 json_object
+                if (typeof AIOutputJSONSchema !== 'undefined' &&
+                    AIOutputJSONSchema.isStrictSupported(_modelName)) {
+                    _schemaMode = 'strict';
+                } else if (typeof AIOutputJSONSchema !== 'undefined' &&
+                           AIOutputJSONSchema.isJsonObjectSupported(_modelName)) {
+                    _schemaMode = 'json_object';
+                } else {
+                    _schemaMode = null;
+                }
+            }
+            if (_schemaMode && typeof AIOutputJSONSchema !== 'undefined') {
+                var _rf = AIOutputJSONSchema.buildResponseFormat(_schemaMode);
+                if (_rf) {
+                    params.response_format = _rf;
+                    console.log('[API] response_format = ' + _schemaMode + ' (model=' + _modelName + ')');
+                }
+            } else {
+                params.response_format = null;
+            }
+        } else {
+            params.response_format = null;
+        }
         params.modalities = presetParams.modalities || null;
         params.tool_reasoning_mode = presetParams.tool_reasoning_mode || 'disabled';
         params.reasoning_effort = presetParams.reasoning_effort || null;
@@ -5283,6 +5326,40 @@ async function callAI(messages, options = {}) {
                 return await executeAINormal(url, body, config.apiKey, localAC.signal);
             }
         });
+    } catch (e) {
+        // 【JSON Schema 降级机制】检测 schema 相关的 400 错误，自动降级重试一次
+        // 常见错误关键词：response_format / json_schema / schema / strict / invalid
+        // 降级路径：strict → json_object → off
+        var _errMsg = (e && e.message) ? String(e.message).toLowerCase() : '';
+        var _isSchemaErr = /response_format|json_schema|schema|strict|invalid.*format/.test(_errMsg) &&
+                          (e && (e.status === 400 || e.status === 422 || /400|422|bad request/.test(_errMsg)));
+        if (_isSchemaErr && options.jsonSchema && typeof gameState !== 'undefined' && gameState) {
+            var _curDowngrade = gameState._jsonSchemaDowngrade;
+            if (!_curDowngrade) {
+                // 第一次降级：strict → json_object
+                gameState._jsonSchemaDowngrade = 'json_object';
+                console.warn('[API] JSON Schema strict 模式被 API 拒绝，降级为 json_object 重试');
+                // 递归重试一次（去掉 stream 避免 onChunk 重复绑定问题）
+                var _retryOpts = Object.assign({}, options);
+                delete _retryOpts.onChunk;
+                _retryOpts.stream = false;
+                return await callAI(messages, _retryOpts);
+            } else if (_curDowngrade === 'json_object') {
+                // 第二次降级：json_object → off
+                gameState._jsonSchemaDowngrade = 'off';
+                console.warn('[API] json_object 模式也被拒绝，关闭 response_format 重试');
+                var _retryOpts2 = Object.assign({}, options);
+                delete _retryOpts2.onChunk;
+                _retryOpts2.stream = false;
+                var _result = await callAI(messages, _retryOpts2);
+                // 重置降级标志，下次恢复正常尝试（可能只是临时问题）
+                setTimeout(function() {
+                    if (gameState) gameState._jsonSchemaDowngrade = null;
+                }, 60000);
+                return _result;
+            }
+        }
+        throw e;
     } finally {
         TimerManager.clearTimeout('aiRequestTimeout');
         if (externalListener && externalSignal) {

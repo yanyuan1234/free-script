@@ -1575,6 +1575,13 @@ async function sendAIRequest(userMessage, isInit = false) {
                 onStreamChunk(delta, fullText);
             }
         };
+        // 【JSON Schema strict 模式】仅在 JSON 模式（非 pureTextMode）下启用
+        // 'auto' = 根据模型名自动选 strict（DeepSeek/OpenAI/通义）或 json_object（其他兼容 API）
+        // 预设里手动配的 response_format 优先级更高（见 buildAIRequestBody），不会被覆盖
+        // 纯文本模式不启用 schema，靠 <mem> 标签解析
+        if (gameState && gameState.pureTextMode !== true) {
+            options.jsonSchema = 'auto';
+        }
         if (gameState && !_useStreamNow && _streamFailCount >= 2) {
             console.log('[流式降级] 连续失败' + _streamFailCount + '次, 本轮使用非流式');
         }
