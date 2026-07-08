@@ -78,6 +78,8 @@ const GameMemoryAdapter = {
                 name: 'name',
                 title: 'title',
                 identity: 'identity',
+                identitySurface: 'identitySurface',
+                identityHidden: 'identityHidden',
                 relation: 'relation',
                 mood: 'mood',
                 location: 'location',
@@ -89,12 +91,22 @@ const GameMemoryAdapter = {
                 tags: 'tags',
                 stats: 'stats',
                 notes: 'notes',
-                id: 'id'
+                id: 'id',
+                // Mufy 风格扩展字段
+                appearance: 'appearance',
+                personality: 'personality',
+                background: 'background',
+                speechHabits: 'speechHabits',
+                sampleDialogues: 'sampleDialogues',
+                emotionalTriggers: 'emotionalTriggers',
+                attitudeToUser: 'attitudeToUser'
             }, function(name, src) {
                 return {
                     name: name,
                     title: (src && src.title) || '',
                     identity: (src && src.identity) || '',
+                    identitySurface: (src && src.identitySurface) || '',
+                    identityHidden: (src && src.identityHidden) || '',
                     relation: (src && src.relation) || '',
                     mood: '',
                     location: '',
@@ -107,6 +119,14 @@ const GameMemoryAdapter = {
                     stats: Array.isArray(src && src.stats) ? src.stats : [],
                     notes: (src && src.notes) || '',
                     id: (src && src.id) || '',
+                    // Mufy 风格扩展字段默认值
+                    appearance: (src && src.appearance) || '',
+                    personality: (src && src.personality) || '',
+                    background: (src && src.background) || '',
+                    speechHabits: (src && src.speechHabits) || '',
+                    sampleDialogues: Array.isArray(src && src.sampleDialogues) ? src.sampleDialogues : [],
+                    emotionalTriggers: Array.isArray(src && src.emotionalTriggers) ? src.emotionalTriggers : [],
+                    attitudeToUser: (src && src.attitudeToUser) || '',
                     history: [],
                     lastChangedTurn: turn,
                     locked: false

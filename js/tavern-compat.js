@@ -2586,6 +2586,43 @@ var GameMemory = {
         }
     },
 
+    // 永久事实单行格式化：情绪标签前置，便于 AI 识别高情绪记忆
+    _formatFactLine: function(fact) {
+        if (!fact || !fact.content) return '';
+        var prefix = '• ';
+        var tag = fact.emotionalTag ? '[' + fact.emotionalTag + ']' : '';
+        return prefix + tag + fact.content;
+    },
+
+    // 将 Mufy 风格的字符串/对象字段压平为单行注入文本
+    _summarizeRichField: function(value, maxLen) {
+        if (!value) return '';
+        var text = '';
+        if (typeof value === 'string') {
+            text = value;
+        } else if (typeof value === 'object') {
+            var parts = [];
+            Object.keys(value).forEach(function(k) {
+                var v = value[k];
+                if (v == null || v === '') return;
+                if (typeof v === 'object') {
+                    var sub = [];
+                    Object.keys(v).forEach(function(sk) {
+                        var sv = v[sk];
+                        if (sv != null && sv !== '') sub.push(sk + ':' + sv);
+                    });
+                    if (sub.length > 0) parts.push(k + '{' + sub.join(',') + '}');
+                } else {
+                    parts.push(k + ':' + v);
+                }
+            });
+            text = parts.join(' / ');
+        }
+        text = text.trim();
+        if (maxLen && text.length > maxLen) text = text.substring(0, maxLen) + '…';
+        return text;
+    },
+
     _buildPermanentFactsSection: function() {
         var lines = [];
         var pf = this.permanentFacts;
@@ -2600,7 +2637,7 @@ var GameMemory = {
             if (list && list.length > 0) {
                 lines.push('【' + typeLabels[t] + '】');
                 if (t === 'npcProfiles') {
-                    // 角色档案：按关键词匹配排序，相关角色优先注入
+                    // 角色档案：按关键词匹配 + 叙事权重排序，相关角色优先注入
                     var sorted = list.slice().sort(function(a, b) {
                         var scoreA = 0, scoreB = 0;
                         var kA = (a && a.keywords) || [], kB = (b && b.keywords) || [];
@@ -2611,11 +2648,23 @@ var GameMemory = {
                         // 关键词匹配
                         kA.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreA += 10; });
                         kB.forEach(function(k) { if (topicKeywords.indexOf(k) >= 0) scoreB += 10; });
+                        // 叙事权重加成
+                        scoreA += (a && typeof a.narrativeWeight === 'number') ? a.narrativeWeight * 10 : 5;
+                        scoreB += (b && typeof b.narrativeWeight === 'number') ? b.narrativeWeight * 10 : 5;
                         return scoreB - scoreA;
                     });
-                    sorted.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
+                    sorted.forEach(function(a) { if (a && a.content) lines.push(self._formatFactLine(a)); });
                 } else {
-                    list.forEach(function(a) { if (a && a.content) lines.push('• ' + a.content); });
+                    // 其他事实：按叙事权重降序，让情绪记忆与核心设定优先注入
+                    var sorted = list.slice().sort(function(a, b) {
+                        var wA = (a && typeof a.narrativeWeight === 'number') ? a.narrativeWeight : 0;
+                        var wB = (b && typeof b.narrativeWeight === 'number') ? b.narrativeWeight : 0;
+                        if (wB !== wA) return wB - wA;
+                        var tA = (a && typeof a.createdTurn === 'number') ? a.createdTurn : 0;
+                        var tB = (b && typeof b.createdTurn === 'number') ? b.createdTurn : 0;
+                        return tB - tA;
+                    });
+                    sorted.forEach(function(a) { if (a && a.content) lines.push(self._formatFactLine(a)); });
                 }
             }
         });
@@ -2820,12 +2869,30 @@ var GameMemory = {
                 var timeTag = relTime ? ' [' + relTime + ']' : '';
                 var line = '• ' + c.name + timeTag;
                 if (c.title) line += '（' + c.title + '）';
+                if (c.identitySurface || c.identity) line += ' | 身份:' + (c.identitySurface || c.identity);
                 if (c.relation) line += ' | 关系:' + c.relation;
                 if (typeof c.favorability === 'number') line += ' | 好感:' + c.favorability;
+                if (c.attitudeToUser) line += ' | 对主角:' + c.attitudeToUser;
                 if (c.mood) line += ' | 心情:' + c.mood;
                 if (c.location) line += ' | 位置:' + c.location;
                 if (c.status) line += ' | ' + c.status;
                 lines.push(line);
+
+                // Mufy 风格详细档案（超限时由 _smartCompressModule 字段级精简）
+                var details = [];
+                var appearanceSummary = self._summarizeRichField(c.appearance, 40);
+                if (appearanceSummary) details.push('外貌:' + appearanceSummary);
+                var personalitySummary = self._summarizeRichField(c.personality, 40);
+                if (personalitySummary) details.push('性格:' + personalitySummary);
+                var backgroundSummary = self._summarizeRichField(c.background, 50);
+                if (backgroundSummary) details.push('背景:' + backgroundSummary);
+                if (c.speechHabits) details.push('口癖:' + self._summarizeRichField(c.speechHabits, 30));
+                if (c.emotionalTriggers && c.emotionalTriggers.length) {
+                    details.push('情绪触发:' + c.emotionalTriggers.map(function(t) { return (t && t.topic) ? t.topic : String(t); }).join(','));
+                }
+                if (details.length > 0) {
+                    lines.push('  ' + details.join(' | '));
+                }
             });
         }
 
@@ -2872,7 +2939,9 @@ var GameMemory = {
             var imp = e.importance || 5;
             var relTime = self._calculateRelativeTime(e.gameTime || '');
             var timeTag = relTime ? ' [' + relTime + ']' : '';
-            lines.push((imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○')) + '[重要度' + imp + ']' + timeTag + ' ' + content);
+            var emoTag = e.emotionalTag ? '[情绪:' + e.emotionalTag + ']' : '';
+            var weightMark = (typeof e.narrativeWeight === 'number') ? '[权重' + e.narrativeWeight.toFixed(1) + ']' : '';
+            lines.push((imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○')) + '[重要度' + imp + ']' + emoTag + weightMark + timeTag + ' ' + content);
         });
         return lines;
     },

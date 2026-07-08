@@ -7665,6 +7665,32 @@ function openNpcDetail(name) {
     var c = gameState.allCharacters[name];
     if (!c) return;
 
+    // Mufy 风格字段格式化：对象压平为可读文本
+    function formatMufyField(value) {
+        if (!value) return '';
+        if (typeof value === 'string') return value;
+        if (Array.isArray(value)) return value.map(function(v) { return (v && v.topic) ? (v.topic + (v.reaction ? '→' + v.reaction : '')) : String(v); }).join('；');
+        if (typeof value === 'object') {
+            var parts = [];
+            Object.keys(value).forEach(function(k) {
+                var v = value[k];
+                if (v == null || v === '') return;
+                if (typeof v === 'object') {
+                    var sub = [];
+                    Object.keys(v).forEach(function(sk) {
+                        var sv = v[sk];
+                        if (sv != null && sv !== '') sub.push(sk + '：' + sv);
+                    });
+                    if (sub.length > 0) parts.push(k + '｜' + sub.join('，'));
+                } else {
+                    parts.push(k + '：' + v);
+                }
+            });
+            return parts.join('；');
+        }
+        return String(value);
+    }
+
     // 构建详情内容
     var html = '';
     // 头像和名称
@@ -7677,15 +7703,17 @@ function openNpcDetail(name) {
     // 基本信息字段（key-value 行）
 
     var baseFields = [
-        {
-            key: '关系',
-            value: c.relation || '-'
-        }
+        { key: '关系', value: c.relation || '-' }
     ];
-    if (c.desc) baseFields.push({
-        key: '状态',
-        value: c.desc
-    });
+    if (c.identity || c.identitySurface) baseFields.push({ key: '身份', value: c.identitySurface || c.identity });
+    if (c.attitudeToUser) baseFields.push({ key: '对主角态度', value: c.attitudeToUser });
+    if (c.appearance) baseFields.push({ key: '外貌', value: formatMufyField(c.appearance) });
+    if (c.personality) baseFields.push({ key: '性格', value: formatMufyField(c.personality) });
+    if (c.background) baseFields.push({ key: '背景', value: formatMufyField(c.background) });
+    if (c.speechHabits) baseFields.push({ key: '说话习惯', value: formatMufyField(c.speechHabits) });
+    if (c.emotionalTriggers && c.emotionalTriggers.length) baseFields.push({ key: '情绪触发', value: formatMufyField(c.emotionalTriggers) });
+    if (c.sampleDialogues && c.sampleDialogues.length) baseFields.push({ key: '台词示例', value: formatMufyField(c.sampleDialogues) });
+    if (c.desc) baseFields.push({ key: '状态', value: c.desc });
 
     html += '<div class="pearl-card" style="padding:12px;margin-bottom:12px;">';
     html += baseFields.map(function(f) {

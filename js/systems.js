@@ -937,6 +937,18 @@ function renderRelationships() {
         if (r.desc) {
             html += '<div class="relation-desc">' + escapeHtml(r.desc) + '</div>';
         }
+        // 多维关系展示
+        if (r.dimensions && typeof r.dimensions === 'object') {
+            var dimParts = [];
+            Object.keys(r.dimensions).forEach(function(k) {
+                var v = r.dimensions[k];
+                if (v === undefined || v === '') return;
+                dimParts.push(escapeHtml(k) + ':' + escapeHtml(String(v)));
+            });
+            if (dimParts.length > 0) {
+                html += '<div class="relation-dimensions" style="margin-top:6px;font-size:12px;color:var(--text-secondary);">' + dimParts.join(' · ') + '</div>';
+            }
+        }
         html += '</div>';
     });
     list.innerHTML = html;

@@ -617,13 +617,17 @@ const AIResponseMutator = {
         relationships.forEach(function(r) {
             if (!r) return;
             if (r.from && r.to) {
-                // 图谱格式 {from,to,type,desc}
-                graphEntries.push({
+                // 图谱格式 {from,to,type,desc,dimensions}
+                var entry = {
                     from: String(r.from).trim(),
                     to: String(r.to).trim(),
                     type: String(r.type || '中立').trim() || '中立',
                     desc: String(r.desc || '').trim()
-                });
+                };
+                if (r.dimensions && typeof r.dimensions === 'object') {
+                    entry.dimensions = Object.assign({}, r.dimensions);
+                }
+                graphEntries.push(entry);
             } else if (r.name) {
                 // 好感度格式 {name,delta}：转为图谱条目 + 收集 delta
                 var delta = safeInt(r.delta || r.change || r.favor || 0, 0);

@@ -201,11 +201,26 @@ const CharacterMutator = {
             (raw.favor !== undefined ? raw.favor :
             (raw.friendship !== undefined ? raw.friendship :
             (raw.relationship !== undefined ? raw.relationship : 0))), 10) || 0;
+
+        // 【阶段3】Mufy 风格角色 schema：兼容对象型 identity（surface/hidden）
+        var rawIdentity = raw.identity;
+        var identitySurface = '';
+        var identityHidden = '';
+        if (rawIdentity && typeof rawIdentity === 'object') {
+            identitySurface = String(rawIdentity.surface || rawIdentity.public || '').trim();
+            identityHidden = String(rawIdentity.hidden || rawIdentity.private || '').trim();
+        } else {
+            identitySurface = String(rawIdentity || raw.role || raw.title || '').trim();
+        }
+        var identity = identitySurface || identityHidden || raw.role || raw.title || '';
+
         return {
             id: raw.id || ('char_' + name + '_' + Date.now()),
             name: name,
-            title: raw.title || raw.identity || raw.role || '',
-            identity: raw.identity || raw.role || raw.title || '',
+            title: raw.title || identitySurface || raw.role || '',
+            identity: identity,
+            identitySurface: identitySurface,
+            identityHidden: identityHidden,
             relation: raw.relation || '',
             favorability: favorability,
             favor: favorability,  // 兼容旧代码读 c.favor
@@ -214,7 +229,16 @@ const CharacterMutator = {
             stats: this.normalizeStats(raw.stats),
             notes: raw.notes || '',
 
-            mood: raw.mood || '',
+            // Mufy 风格扩展字段
+            appearance: raw.appearance || '',
+            personality: raw.personality || '',
+            background: raw.background || '',
+            speechHabits: raw.speechHabits || '',
+            sampleDialogues: Array.isArray(raw.sampleDialogues) ? raw.sampleDialogues : [],
+            emotionalTriggers: Array.isArray(raw.emotionalTriggers) ? raw.emotionalTriggers : [],
+            attitudeToUser: raw.attitudeToUser || '',
+
+            mood: raw.mood || raw.emotionalState || '',
             location: raw.location || '',
             outfit: raw.outfit || '',
             status: raw.status || '',

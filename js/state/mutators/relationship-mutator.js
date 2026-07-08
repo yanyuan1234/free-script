@@ -27,8 +27,16 @@ const RelationshipMutator = {
                 }
             }
             if (existIdx !== -1) {
-                list[existIdx] = nr;
+                // 多维关系：保留旧维度并覆盖新维度，避免 AI 只返回部分维度时丢失已有数据
+                var merged = Object.assign({}, list[existIdx], nr);
+                if (nr.dimensions || list[existIdx].dimensions) {
+                    merged.dimensions = Object.assign({}, list[existIdx].dimensions || {}, nr.dimensions || {});
+                }
+                list[existIdx] = merged;
             } else {
+                if (nr.dimensions && typeof nr.dimensions === 'object') {
+                    nr.dimensions = Object.assign({}, nr.dimensions);
+                }
                 list.push(nr);
             }
         });
