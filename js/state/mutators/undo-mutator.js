@@ -28,7 +28,7 @@ const UndoMutator = {
     // 推入一条快照（在 AI 回复前调用）
     // snap 应包含：conversationHistory / allCharacters / worldSnapshot /
     // keyEvents / currentQuests / relationships / currentBag /
-    // progressTurn / sceneTitle / lastSceneTitle
+    // progressTurn / sceneTitle / lastSceneTitle / swipes
     pushSnapshot(snap) {
         const max = StateManager.get('ui.maxUndoHistory') || 50;
         const list = this.getHistory();
@@ -45,6 +45,8 @@ const UndoMutator = {
             progressTurn: snap.progressTurn || 0,
             sceneTitle: snap.sceneTitle || '',
             lastSceneTitle: snap.lastSceneTitle || '',
+            // 【P1 Swipe】快照包含 swipes，撤销时恢复（retryStory 会单独绕过此恢复）
+            swipes: this._safeClone(snap.swipes || {}),
             timestamp: snap.timestamp || Date.now()
         };
         list.push(safe);
@@ -117,6 +119,11 @@ const UndoMutator = {
             }
             if (snap.lastSceneTitle !== undefined) {
                 StateManager.set('progress.lastSceneTitle', snap.lastSceneTitle || '', { silent: true });
+            }
+            // 【P1 Swipe】恢复 swipes（用户主动撤销时回到上一轮 swipe 状态）
+            // 注意：retryStory 会在 deleteLastTurn 后单独写回 swipes 备份，绕过此恢复
+            if (snap.swipes !== undefined) {
+                StateManager.set('progress.swipes', snap.swipes || {}, { silent: true });
             }
         }
         return true;

@@ -365,7 +365,11 @@ _executeSingleCommand: function(cmdStr) {
         case 'comment': case '#': result=''; break;
         // 更多酒馆常用命令
         case 'swipe':
-            if(typeof sendAIRequest==='function') TimerManager.setTimeout('swipeAI', function(){sendAIRequest('请重新生成');},100);
+            // 【P1 Swipe 修复】原实现直接调 sendAIRequest('请重新生成')，
+            // 没设 setRetrying(true) 导致 sendAIRequest 开头 reset() 清空旧版本，
+            // 且会把 '请重新生成' 当新 user 消息追加到 history。
+            // 改为调 retryStory：正确走 deleteLastTurn + retry 流程，保留多版本
+            if(typeof retryStory==='function') TimerManager.setTimeout('swipeAI', function(){retryStory();},100);
             result=''; break;
         case 'continue':
 

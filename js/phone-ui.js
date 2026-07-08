@@ -5195,6 +5195,14 @@ function _restoreGameRender() {
         applyFontSize();
         setWaiting(false);
 
+        // 【P1 Swipe】加载存档后回填 SwipeManager 内存缓存
+        // 从 progress.swipes[当前turn] 读取已保存的版本数组，恢复切换器 UI
+        if (typeof SwipeManager !== 'undefined' && SwipeManager.loadCurrentTurn) {
+            try { SwipeManager.loadCurrentTurn(); } catch (e) {
+                console.warn('[restoreGame] SwipeManager.loadCurrentTurn 失败:', e);
+            }
+        }
+
         // 渲染导航栏
         renderNavBar('gameNav', MAIN_NAV_TABS, 0);
     } catch (e) {
@@ -5212,6 +5220,15 @@ async function retryStory() {
     var lastUserMsg = _histForRetry[_histForRetry.length - 2];
     if (!lastUserMsg) return;
 
+    // 【P1 Swipe 持久化】备份当前 progress.swipes
+    // deleteLastTurn 会通过 UndoMutator 把 swipes 恢复到上一轮 pushSnapshot 时的状态，
+    // 这会清掉当前轮的 swipe 历史。retry 需要保留旧版本让新版本追加，
+    // 所以先备份，deleteLastTurn 后写回。
+    var _swipesBackup = null;
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        _swipesBackup = StateManager.get('progress.swipes') || {};
+    }
+
     // 标记 SwipeManager 进入 retry 模式（生成成功后 addSwipe 会追加而非重置）
     if (typeof SwipeManager !== 'undefined') {
         SwipeManager.setRetrying(true);
@@ -5226,6 +5243,13 @@ async function retryStory() {
     } else {
         // fallback: 只删历史
         _updateConversationHistory(_histForRetry.slice(0, -2));
+    }
+
+    // 【P1 Swipe 持久化】恢复 swipes 备份（保留上一轮的 swipe 历史）
+    // deleteLastTurn 已把 turn 倒退到上一轮，addSwipe 时 turn 会 +1 回到当前轮，
+    // 此时 progress.swipes[当前turn] 仍是上一轮的版本数组，新版本会追加进去
+    if (_swipesBackup && typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('progress.swipes', _swipesBackup, { silent: true });
     }
 
     // 重新获取用户消息（deleteLastTurn 可能改变了历史）
@@ -5375,6 +5399,10 @@ function deleteLastTurn() {
         }
         UI.toast('已撤销 (' + UndoMutator.size() + '/' + UNDO_HISTORY_LIMIT + ')');
         autoSave();
+        // 【P1 Swipe】撤销后回填 SwipeManager 到撤销后的 turn
+        if (typeof SwipeManager !== 'undefined' && SwipeManager.loadCurrentTurn) {
+            try { SwipeManager.loadCurrentTurn(); } catch (e) {}
+        }
         return;
     }
     
@@ -5402,6 +5430,10 @@ function deleteLastTurn() {
         if (parsed.data && parsed.data.choices) renderChoices(parsed.data.choices);
         else renderChoices([{id: 'A', text: '继续'}, {id: 'B', text: '观察'}, {id: 'C', text: '等待'}]);
     }
+    // 【P1 Swipe】fallback 路径也回填 SwipeManager
+    if (typeof SwipeManager !== 'undefined' && SwipeManager.loadCurrentTurn) {
+        try { SwipeManager.loadCurrentTurn(); } catch (e) {}
+    }
 }
 
 // 保存当前状态到撤销历史（在AI回复前调用）
@@ -5426,6 +5458,8 @@ function saveUndoState() {
         progressTurn: (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.turn') : 0,
         sceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.sceneTitle') || '') : '',
         lastSceneTitle: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.lastSceneTitle') || '') : '',
+        // 【P1 Swipe】快照保存 swipes，撤销时恢复
+        swipes: (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.swipes') || {}) : {},
         timestamp: Date.now()
     });
 }

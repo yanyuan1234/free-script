@@ -36,7 +36,11 @@ const StateSchema = {
                 preAIState: {
                     title: '',
                     gameTime: null
-                }
+                },
+                // 【P1 Swipe 多分支】按 turn 索引存该轮的多个版本
+                // 结构：{ "5": { versions: [{storyText,choices,sceneTitle,response,turn,timestamp}], current: 0 } }
+                // conversationHistory 最后一条 assistant 始终是当前选中版本的内容
+                swipes: {}
             },
             entities: {
                 player: {
@@ -239,6 +243,12 @@ const StateSchema = {
         const result = this.getDefaultState();
         // 递归合并，优先保留已有值
         this._deepMerge(result, state);
+        // 【P1 Swipe】兼容老存档/异常格式：progress.swipes 必须是对象
+        // 若为 null/数组/其他类型，重置为空对象
+        if (!result.progress || typeof result.progress.swipes !== 'object'
+            || Array.isArray(result.progress.swipes) || result.progress.swipes === null) {
+            if (result.progress) result.progress.swipes = {};
+        }
         // 处理旧字段映射：把旧字段迁移到新路径
         for (const legacyName in this._legacyToPath) {
             if (legacyName.indexOf('.') !== -1) {

@@ -2,9 +2,15 @@
 // Swipe 多分支重生成管理器
 // 参考 SillyTavern / RisuAI / mufy 的 swipe 机制
 // 让 retryStory 保留多个版本，玩家可横向切换
+//
+// 【P1 持久化改造】swipe 数据存 progress.swipes[turn]，内存仅作缓存
+// - addSwipe：写 progress.swipes[turn].versions，更新 current
+// - switchTo：更新 progress.swipes[turn].current + 同步 conversationHistory 最后一条 assistant
+// - reset：只清内存缓存，保留 progress.swipes 历史（让历史轮次的 swipe 仍可查）
+// - loadCurrentTurn：加载存档/retry 后从 StateManager 回填内存
 // ========================================
 var SwipeManager = {
-    // 当前轮次的 swipe 版本数组
+    // 内存缓存：当前轮次的 swipe 版本数组（与 progress.swipes[turn].versions 同步）
     // 每个 swipe = { storyText, choices, sceneTitle, response, turn, timestamp }
     _swipes: [],
     // 当前显示的 swipe 索引（-1 表示无 swipe / 普通模式）
@@ -12,7 +18,55 @@ var SwipeManager = {
     // 标记：正在 retry 生成新 swipe（避免重复 push）
     _isRetrying: false,
 
+    // 内部：读取 progress.swipes 整个对象
+    _readAllSwipes() {
+        if (typeof StateManager === 'undefined' || !StateManager.get) return {};
+        var s = StateManager.get('progress.swipes');
+        return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
+    },
+
+    // 内部：写入 progress.swipes 整个对象
+    _writeAllSwipes(swipes) {
+        if (typeof StateManager === 'undefined' || !StateManager.set) return;
+        StateManager.set('progress.swipes', swipes, { silent: true });
+    },
+
+    // 内部：读取当前 turn
+    _currentTurn() {
+        if (typeof StateManager === 'undefined' || !StateManager.get) return 0;
+        return StateManager.get('progress.turn') || 0;
+    },
+
+    // 内部：把内存缓存同步到 progress.swipes[turn]
+    _flushToState() {
+        if (this._swipes.length === 0) return;
+        var turn = this._currentTurn();
+        var all = this._readAllSwipes();
+        all[String(turn)] = {
+            versions: this._swipes,
+            current: this._currentIndex >= 0 ? this._currentIndex : 0
+        };
+        this._writeAllSwipes(all);
+    },
+
+    // 加载当前 turn 的 swipe 到内存（存档加载/retry 回填时调用）
+    loadCurrentTurn() {
+        var turn = this._currentTurn();
+        var all = this._readAllSwipes();
+        var entry = all[String(turn)];
+        if (entry && Array.isArray(entry.versions) && entry.versions.length > 0) {
+            this._swipes = entry.versions;
+            this._currentIndex = (typeof entry.current === 'number') ? entry.current : 0;
+            this._renderSwitcher();
+        } else {
+            this._swipes = [];
+            this._currentIndex = -1;
+            this._hideSwitcher();
+        }
+    },
+
     // 重置（每轮新对话开始时调用）
+    // 【P1 改造】只清内存缓存，保留 progress.swipes 历史轮次记录
     reset() {
         this._swipes = [];
         this._currentIndex = -1;
@@ -49,15 +103,20 @@ var SwipeManager = {
     addSwipe(swipe) {
         if (!swipe || !swipe.storyText) return;
         if (this._isRetrying) {
-            // retry 生成的新版本：追加
+            // retry 生成的新版本：追加到现有内存（retryStory 已确保内存有上一轮的 swipe）
+            // 若内存为空（如页面刷新后直接 retry），从 StateManager 加载当前 turn
+            if (this._swipes.length === 0) {
+                this.loadCurrentTurn();
+            }
             this._swipes.push(swipe);
             this._currentIndex = this._swipes.length - 1;
             this._isRetrying = false;
         } else {
-            // 正常新一轮对话：重置
+            // 正常新一轮对话：内存重置为单一版本
             this._swipes = [swipe];
             this._currentIndex = 0;
         }
+        this._flushToState();
         this._renderSwitcher();
     },
 
@@ -69,7 +128,7 @@ var SwipeManager = {
         var swipe = this._swipes[index];
         if (!swipe) return;
 
-        // 恢复 UI 显示（仅 UI 层，不改 conversationHistory）
+        // 恢复 UI 显示（仅 UI 层，conversationHistory 由 _syncLastAssistantContent 同步）
         if (typeof renderStory === 'function' && swipe.storyText) {
             renderStory(swipe.storyText);
         }
@@ -88,6 +147,8 @@ var SwipeManager = {
         // 这样下一轮 AI 请求时看到的"上一轮回复"是玩家选中的版本
         this._syncLastAssistantContent(swipe.response || swipe.storyText);
 
+        // 持久化当前选中索引
+        this._flushToState();
         this._renderSwitcher();
         if (typeof UI !== 'undefined' && UI.toast) {
             UI.toast('已切换到版本 ' + (index + 1) + '/' + this._swipes.length);
