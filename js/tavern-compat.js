@@ -930,13 +930,32 @@ var GameMemory = {
     // 对比：worldAnchors 有 30 条上限，importantEvents 有 60/40 预算，timeline 有 50 条上限
     _PERMANENT_FACTS_LIMITS: { pcIdentity: 5, worldRules: 20, settings: 20, npcProfiles: 30, promises: 20, worldPlaces: 20 },
 
+    _normalizeFact: function(fact, category) {
+        if (!fact || typeof fact !== 'object') return null;
+        var content = String(fact.content || '').trim();
+        if (!content) return null;
+        var isCore = (category === 'pcIdentity' || category === 'worldRules' || category === 'npcProfiles');
+        return {
+            content: content,
+            source: fact.source || 'auto',
+            locked: fact.locked !== false,
+            importance: (typeof fact.importance === 'number') ? fact.importance : (isCore ? 1.0 : 0.5),
+            createdTurn: (typeof fact.createdTurn === 'number') ? fact.createdTurn : (this.currentTurn || 0),
+            keywords: Array.isArray(fact.keywords) ? fact.keywords.slice() : [],
+            emotionalTag: fact.emotionalTag || '',
+            narrativeWeight: (typeof fact.narrativeWeight === 'number') ? fact.narrativeWeight : (isCore ? 1.0 : 0.5)
+        };
+    },
+
     _pushPermanentFact: function(listName, item) {
         var list = this.permanentFacts[listName];
         if (!Array.isArray(list)) {
             list = [];
             this.permanentFacts[listName] = list;
         }
-        list.push(item);
+        var normalized = this._normalizeFact(item, listName);
+        if (!normalized) return null;
+        list.push(normalized);
         var limit = this._PERMANENT_FACTS_LIMITS[listName] || 20;
         if (list.length > limit) {
             // 优先淘汰最旧的非 locked 项
@@ -1109,7 +1128,12 @@ var GameMemory = {
             ltm.worldAnchors.forEach(function(a) {
                 var key = typeMap[a.type] || 'settings';
                 if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
-                self.permanentFacts[key].push({ content: a.content, source: a.source || 'auto', locked: a.locked !== false, createdTurn: a.createdTurn || turn });
+                self.permanentFacts[key].push(self._normalizeFact({
+                    content: a.content,
+                    source: a.source || 'auto',
+                    locked: a.locked !== false,
+                    createdTurn: a.createdTurn || turn
+                }, key));
             });
         }
         if (ltm.characterTable) {
@@ -1867,9 +1891,12 @@ var GameMemory = {
 
         // 主角身份 → 永久事实（去重：覆盖旧身份，避免重复注入）
         if (parsed.playerIdentity) {
-            self.permanentFacts.pcIdentity = self.permanentFacts.pcIdentity || [];
-            // 只保留一条主角身份，新解析覆盖旧的
-            self.permanentFacts.pcIdentity = [{ content: parsed.playerIdentity, locked: true, source: 'aiParse', createdTurn: self.currentTurn }];
+            self.setPermanentFact('pcIdentity', {
+                content: parsed.playerIdentity,
+                locked: true,
+                source: 'aiParse',
+                createdTurn: self.currentTurn
+            });
         }
 
         // 核心规则 → 永久事实
@@ -3128,6 +3155,10 @@ var GameMemory = {
         var key = typeMap[type] || type;
         if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
         if (self.permanentFacts[key].some(function(a) { return a && a.content === content; })) return null;
+        // 核心设定(pc/世界规则/角色) = 1.0, 次要(设定/承诺) = 0.5
+        var _importance = (type === 'pc_identity' || type === 'world_rule' || type === 'npc_profile') ? 1.0 : 0.5;
+        var _isManual = (source === 'manual');
+
         if (type === 'npc_profile' && content) {
             var nameMatch = content.match(/^([一-鿿A-Za-z·]{1,6})/);
             if (nameMatch) {
@@ -3136,7 +3167,13 @@ var GameMemory = {
                     var entry = self.permanentFacts[key][i];
                     if (entry && entry.content && entry.content.indexOf(name) === 0) {
                         if (entry.source === 'manual') { self._markLtmDirty(); return null; }
-                        self.permanentFacts[key][i] = { content: content, source: source || 'auto', locked: true, importance: 1.0, createdTurn: createdTurn || self.currentTurn };
+                        self.permanentFacts[key][i] = self._normalizeFact({
+                            content: content,
+                            source: source || 'auto',
+                            locked: true,
+                            importance: _importance,
+                            createdTurn: createdTurn || self.currentTurn
+                        }, key);
                         self._markLtmDirty();
                         return self.permanentFacts[key][i];
                     }
@@ -3144,11 +3181,14 @@ var GameMemory = {
             }
         }
 
-        // 核心设定(pc/世界规则/角色) = 1.0, 次要(设定/承诺) = 0.5
-        var _importance = (type === 'pc_identity' || type === 'world_rule' || type === 'npc_profile') ? 1.0 : 0.5;
-
-        var _isManual = (source === 'manual');
-        var anchor = { content: content, source: source || 'auto', locked: _isManual, importance: _importance, createdTurn: createdTurn || self.currentTurn };
+        var anchor = self._normalizeFact({
+            content: content,
+            source: source || 'auto',
+            locked: _isManual,
+            importance: _importance,
+            createdTurn: createdTurn || self.currentTurn
+        }, key);
+        if (!anchor) return null;
         self.permanentFacts[key].push(anchor);
         var total = 0; Object.keys(self.permanentFacts).forEach(function(k) { total += self.permanentFacts[k].length; });
 
@@ -3825,13 +3865,7 @@ var GameMemory = {
             return _splitByColon(a.content)[0] === key;
         });
         if (idx === -1) {
-            list.push({
-                content: fact.content,
-                locked: fact.locked !== false,
-                source: fact.source || 'runtime',
-                createdTurn: fact.createdTurn || self.currentTurn || 0,
-                keywords: fact.keywords
-            });
+            list.push(self._normalizeFact(fact, category));
             self._markLtmDirty();
             return 'added';
         }
@@ -3874,13 +3908,9 @@ var GameMemory = {
         var oldContent = (list[0] && list[0].content) ? String(list[0].content) : '';
         var newContent = String(fact.content).trim();
         if (oldContent === newContent) return 'noop';
-        self.permanentFacts[category] = [{
-            content: newContent,
-            locked: fact.locked !== false,
-            source: fact.source || 'runtime',
-            createdTurn: fact.createdTurn || self.currentTurn || 0,
-            keywords: fact.keywords
-        }];
+        var normalized = self._normalizeFact(fact, category);
+        if (!normalized) return 'noop';
+        self.permanentFacts[category] = [normalized];
         self._markLtmDirty();
         return 'updated';
     },
@@ -3989,7 +4019,12 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
                 var key = typeMap[a.type] || 'settings';
                 if (!self.permanentFacts[key]) self.permanentFacts[key] = [];
                 if (!self.permanentFacts[key].some(function(x) { return x && x.content === a.content; })) {
-                    self.permanentFacts[key].push({ content: a.content, source: a.source || 'auto', locked: a.locked !== false, createdTurn: a.createdTurn || 0 });
+                    self.permanentFacts[key].push(self._normalizeFact({
+                        content: a.content,
+                        source: a.source || 'auto',
+                        locked: a.locked !== false,
+                        createdTurn: a.createdTurn || 0
+                    }, key));
                 }
             });
         }
@@ -4518,7 +4553,16 @@ var MemoryManagerUI = {
         var gm = window.GameMemory; if (!gm || !gm.permanentFacts[type] || !gm.permanentFacts[type][idx]) return;
         var content = (document.getElementById('editFactContent').value || '').trim();
         if (!content) { UI.toast && UI.toast('内容不能为空'); return; }
-        gm.permanentFacts[type][idx].content = content; gm.permanentFacts[type][idx].source = 'manual';
+        gm.permanentFacts[type][idx] = gm._normalizeFact({
+            content: content,
+            source: 'manual',
+            locked: gm.permanentFacts[type][idx].locked,
+            importance: gm.permanentFacts[type][idx].importance,
+            createdTurn: gm.permanentFacts[type][idx].createdTurn,
+            keywords: gm.permanentFacts[type][idx].keywords,
+            emotionalTag: gm.permanentFacts[type][idx].emotionalTag,
+            narrativeWeight: gm.permanentFacts[type][idx].narrativeWeight
+        }, type);
         // 【v3审查修复】失效注入缓存：_getCacheVersion 不含 permanentFacts 计数，
         //   编辑后 cacheVersion 不变、currentTurn 不变 → buildInjection 命中缓存返回旧文本，
         //   AI 本轮仍看到旧设定，用户以为编辑没保存
