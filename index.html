@@ -376,6 +376,13 @@
                             <label class="field-label">作者备注 <span class="text-xs text-secondary font-normal">（每轮对话都会注入，微调AI行为）</span></label>
                             <textarea class="input-field textarea-field mt-8" id="authorsNote" rows="2"
                                 placeholder="如：请侧重描写主角心理活动 / 这章要出现一个新角色 / 增加恐怖氛围..."></textarea>
+                            <div class="flex items-center gap-8 mt-8">
+                                <label class="text-xs text-secondary">注入深度</label>
+                                <input type="number" id="authorsNoteDepth" min="0" max="20" step="1" value="0"
+                                    class="input-field" style="width:72px;padding:4px 8px;text-align:center;"
+                                    title="0=紧贴用户消息前（默认，模型最重视）；3-5=注入到聊天历史倒数第N条前（SillyTavern推荐4）；越大越远">
+                                <span class="text-xs text-secondary">0=最近(推荐) · 3-5=距生成点适中 · 越大越远</span>
+                            </div>
                         </div>
 
                         <div>

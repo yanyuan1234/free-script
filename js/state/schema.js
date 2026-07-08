@@ -103,6 +103,13 @@ const StateSchema = {
                 generateChoices: true,           // 是否在 AI 输出末尾生成选项(覆盖 world.generateChoices)
                 narrativeEyes: 'first',          // 叙事视角(first / second / third)
 
+                // 【Author's Note at_depth】参考 SillyTavern/KoboldAI 的 Author's Note 机制
+                // authorsNote: 每轮注入的作者备注，让玩家在游戏中随时微调 AI 行为
+                // authorsNoteDepth: 注入深度（0=紧贴用户消息前，>0=注入到聊天历史倒数第 N 条前）
+                // depth 越大，作者备注离生成点越远；depth=3-5 时模型最重视（SillyTavern 默认 4）
+                authorsNote: '',
+                authorsNoteDepth: 0,
+
                 apiTestingSlot: -1
             }
         };
@@ -150,6 +157,8 @@ const StateSchema = {
         'chapterMode': 'settings.chapterMode',
         'presetArchetype': 'settings.presetArchetype',
         'wordCountConfig': 'settings.wordCountConfig',
+        'authorsNote': 'settings.authorsNote',
+        'authorsNoteDepth': 'settings.authorsNoteDepth',
         'narrativeEyes': 'settings.narrativeEyes',
         'apiTestingSlot': 'settings.apiTestingSlot',
 

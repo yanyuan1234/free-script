@@ -2803,6 +2803,25 @@ async function manualCompress(btn) {
     }
 })();
 
+// 回填作者备注（从 StateManager 读取，存档加载后恢复玩家上次填的值）
+// 延迟到 DOMContentLoaded 后执行，确保 StateManager 已 init
+function _restoreAuthorsNoteFields() {
+    try {
+        if (typeof StateManager === 'undefined' || !StateManager.get) return;
+        var _an = StateManager.get('settings.authorsNote');
+        var _anD = StateManager.get('settings.authorsNoteDepth');
+        var _anEl = document.getElementById('authorsNote');
+        var _anDEl = document.getElementById('authorsNoteDepth');
+        if (_anEl && typeof _an === 'string') _anEl.value = _an;
+        if (_anDEl && typeof _anD === 'number') _anDEl.value = _anD;
+    } catch (e) { /* 忽略 */ }
+}
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _restoreAuthorsNoteFields);
+} else {
+    _restoreAuthorsNoteFields();
+}
+
 // ========================================
 // 渲染器 - 使用集成版UI样式
 // ========================================
@@ -3893,6 +3912,10 @@ async function loadFromSlot(slot) {
         if (typeof gameState !== 'undefined' && gameState) {
             gameState._loading = false;
             gameState._loadingSince = null;
+        }
+        // 读档后回填作者备注到 UI（存档里的值覆盖 UI 当前显示）
+        if (typeof _restoreAuthorsNoteFields === 'function') {
+            _restoreAuthorsNoteFields();
         }
     }
     }, 'loadFromSlot:' + slot); // end withSaveLock

@@ -4907,10 +4907,19 @@ function startNewGame(forgeResult) {
         if (el && el.value.trim()) gameState.protagonistSetup[MC_FIELD_MAP[id]] = el.value.trim();
     });
 
-    // 收集作者备注（酒馆Author's Note特性）
+    // 收集作者备注（酒馆Author's Note特性，at_depth 注入深度可调）
     var authorsNoteEl = document.getElementById('authorsNote');
-    if (authorsNoteEl && authorsNoteEl.value.trim()) {
+    if (authorsNoteEl) {
         gameState.authorsNote = authorsNoteEl.value.trim();
+    }
+    // 收集注入深度：0=紧贴用户消息前（默认），>0=注入到聊天历史倒数第 N 条前
+    // SillyTavern 推荐 depth=4，让作者备注距生成点适中，模型最重视
+    var authorsNoteDepthEl = document.getElementById('authorsNoteDepth');
+    if (authorsNoteDepthEl) {
+        var _anDepth = parseInt(authorsNoteDepthEl.value, 10);
+        if (isNaN(_anDepth) || _anDepth < 0) _anDepth = 0;
+        if (_anDepth > 20) _anDepth = 20;
+        gameState.authorsNoteDepth = _anDepth;
     }
 
     // 保存上次填写
