@@ -1715,6 +1715,15 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 保存COT内容供调试查看
             if (gameState) gameState._lastCotContent = cotMatches.join('\n---\n');
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
+            // 【P2 CoT 面板】渲染到可折叠面板
+            if (typeof renderCotPanel === 'function') {
+                renderCotPanel(gameState._lastCotContent);
+            }
+        } else {
+            // 无 CoT 内容时隐藏面板
+            if (typeof renderCotPanel === 'function') {
+                renderCotPanel('');
+            }
         }
         // 【v3审查修复】清理未闭合的思考标签（被 max_tokens 截断，无闭标签）
         // 由 OutputSanitizer.THINKING_TAGS 动态构建正则，新增标签无需改此处
@@ -2998,6 +3007,43 @@ function renderStory(text) {
     }
     if (storyEl) storyEl.innerHTML = formatted;
     if (contentEl) contentEl.scrollTop = 0;
+}
+
+// 【P2 CoT 面板】渲染思维链折叠面板
+// content: CoT 文本（空串则隐藏面板）
+// 面板默认折叠，点击标题展开/收起
+function renderCotPanel(content) {
+    var panel = document.getElementById('cotPanel');
+    var contentEl = document.getElementById('cotContent');
+    var toggleBtn = document.getElementById('cotToggle');
+    if (!panel || !contentEl) return;
+
+    if (!content || !String(content).trim()) {
+        panel.style.display = 'none';
+        contentEl.style.display = 'none';
+        contentEl.innerHTML = '';
+        if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'false');
+        return;
+    }
+
+    panel.style.display = 'block';
+    // 转义 HTML 防注入，保留换行
+    var escaped = String(content)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    contentEl.innerHTML = escaped;
+
+    // 绑定折叠事件（只绑一次）
+    if (toggleBtn && !toggleBtn._cotBound) {
+        toggleBtn._cotBound = true;
+        toggleBtn.addEventListener('click', function() {
+            var expanded = this.getAttribute('aria-expanded') === 'true';
+            this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+            contentEl.style.display = expanded ? 'none' : 'block';
+        });
+    }
 }
 // 全局心声计数器
 var globalThoughtId = 0;
