@@ -675,7 +675,13 @@ _originalPlacement: Array.isArray(data.placement) ? data.placement.slice() : (ty
 
 // 编辑脚本
 editScript: function(idx) {
-    var script = this.scripts[idx];
+    // [B7修复] 预设正则不在此处编辑（saveScript 写全局 this.scripts 会改错对象）
+    if (this._detailGroupType === 'preset') {
+        UI.toast('预设正则请通过预设编辑器修改');
+        return;
+    }
+    var scripts = this._getCurrentGroupScripts ? this._getCurrentGroupScripts() : this.scripts;
+    var script = scripts[idx];
     if (!script) return;
 
     this._editingId = script.id;
@@ -771,12 +777,15 @@ var script = {
     // 保存时保留原始 _originalPlacement 中的额外 placement 值
     // 只更新 applyInput/applyOutput 对应的 1/2，保留其他值（如 5=WORLD_INFO）
     _originalPlacement: (function() {
-        var existing = (this._editingId && this.scripts)
-        ? (this.scripts.find(function(s) { return s.id === this._editingId; }) || {})._originalPlacement
+        // [B6修复] 捕获 _editingId 到闭包变量，避免 find 回调内 this 丢失
+        var editingId = this._editingId;
+        var existing = (editingId && this.scripts)
+        ? (this.scripts.find(function(s) { return s.id === editingId; }) || {})._originalPlacement
         : null;
         var base = Array.isArray(existing) ? existing.filter(function(p) { return p !== 1 && p !== 2; }) : [];
-        if (applyInput && base.indexOf(1) === -1) base.push(1);
-        if (applyOutput && base.indexOf(2) === -1) base.push(2);
+        // [B3修复] placement 1=MD_DISPLAY(AI输出), 2=USER_INPUT(用户输入)
+        if (applyOutput && base.indexOf(1) === -1) base.push(1);
+        if (applyInput && base.indexOf(2) === -1) base.push(2);
         return base;
     }).call(this)
 };

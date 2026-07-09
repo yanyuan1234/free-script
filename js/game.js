@@ -1679,10 +1679,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
 
-        // 【方案C】应用<mem>标签解析结果到gameState（自动维护结构化数据）
-        if (parseResult.mems && parseResult.mems.length > 0) {
+        // 【方案C】<mem>标签解析结果已由 AIResponseMutator.apply 在事务内消费（A3修复）
+        // 不再在事务外重复应用，避免半写入和重复执行
+        // 若 mutator 未消费（旧版兼容），则走兜底
+        if (parseResult.mems && parseResult.mems.length > 0 && !(_mutatorResult && _mutatorResult.success)) {
             _applyMemsToGameState(parseResult.mems);
-
         }
 
         // === COT（思维链）处理 ===

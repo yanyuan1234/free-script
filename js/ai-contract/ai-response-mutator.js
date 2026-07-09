@@ -62,16 +62,17 @@ const AIResponseMutator = {
             return { success: false, changes: [] };
         }
         const data = parsed.data || {};
+        const mems = parsed.mems || [];
         var self = this;
         const result = { success: true, changes: [] };
 
         try {
             if (typeof StateManager !== 'undefined' && StateManager.transaction) {
                 StateManager.transaction(function() {
-                    self._applyAll(data, result, options);
+                    self._applyAll(data, result, options, mems);
                 });
             } else {
-                self._applyAll(data, result, options);
+                self._applyAll(data, result, options, mems);
             }
         } catch (e) {
             console.error('[AIResponseMutator] 应用状态失败:', e);
@@ -95,7 +96,7 @@ const AIResponseMutator = {
     //   apply() 返回 { success: false } → 调用方（game.js:1731-1742）走 deleteLastTurn
     //   兜底路径，本轮 AI 输出整体被拒绝，玩家可重新生成。
     // - 此为更严格的契约：要么全部写入成功，要么全部回滚，避免"半写入"状态污染 StateManager。
-    _applyAll(data, result, options) {
+    _applyAll(data, result, options, mems) {
         const steps = [
             { name: 'storyAndTitle',    fn: () => this._applyStoryAndTitle(data) },
             { name: 'turn',             fn: () => this._applyTurn(data) },
@@ -119,7 +120,11 @@ const AIResponseMutator = {
 
             // [P0] AI 主动维护记忆：应用 AI 显式声明的 memoryUpdates（增/改/删永久事实）
             // 放在 permanentFacts 被动收割之后，让 AI 的显式意图覆盖自动收割结果
-            { name: 'memoryUpdates',    fn: () => this._applyMemoryUpdates(data) }
+            { name: 'memoryUpdates',    fn: () => this._applyMemoryUpdates(data) },
+
+            // [A3修复] 消费纯文本模式 <mem> 标签解析结果，在事务内应用避免半写入
+            // 之前 game.js:1684 在事务外调用 _applyMemsToGameState，失败不回滚
+            { name: 'mems',             fn: () => this._applyMems(mems) }
         ];
         // 串行执行所有 mutator，任一抛错即冒泡到 apply() 的 try-catch（被 StateManager.transaction 包裹）
         // → transaction 回滚 → apply 返回 { success: false, error }
@@ -135,6 +140,15 @@ const AIResponseMutator = {
             console.warn('[AIResponseMutator] 数据持久化校验本身失败:', e && e.message ? e.message : e);
         }
         result.changes = this._collectChanges();
+    },
+
+    // [A3修复] 消费纯文本模式 <mem> 标签解析结果
+    // 委托给 core.js 的全局 _applyMemsToGameState，确保在事务内执行
+    _applyMems(mems) {
+        if (!mems || mems.length === 0) return;
+        if (typeof _applyMemsToGameState === 'function') {
+            _applyMemsToGameState(mems);
+        }
     },
 
 

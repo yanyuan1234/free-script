@@ -653,6 +653,12 @@ var WorldInfo = {
         if (!book || !book.entries[uid]) return;
         var ok = await UI.confirm('删除条目', '确定删除这条目？');
         if (!ok) return;
+        // [D3修复] 清理该条目对应的永久事实，避免 permanentFacts 残留已删除条目
+        try {
+            if (window.EnhancedMemory && EnhancedMemory.removeWorldAnchorsBySource) {
+                EnhancedMemory.removeWorldAnchorsBySource('worldInfo:' + book.id + ':' + uid);
+            }
+        } catch (e) { console.warn('[WorldInfo] 删除条目清理记忆失败:', e); }
         delete book.entries[uid];
         this.save();
         this.renderCurrentView();
@@ -1422,27 +1428,24 @@ var WorldInfo = {
         // 同一回合内多次 scan 现在可以命中缓存（之前永远 miss）
         var _turn = self._getCurrentTurn();
 
-        // 读取UI设置（缓存DOM查询，避免每次scan都getElementById）
-        if (!this._settingsCache || this._settingsCache.turn !== _turn) {
-            var depthEl = document.getElementById('wiScanDepth');
-            var budgetEl = document.getElementById('wiTokenBudget');
-            var recursiveEl = document.getElementById('wiRecursive');
-            var vectorEl = document.getElementById('wiVectorRetrieval');
-            if (depthEl) this.settings.scanDepth = safeInt(depthEl.value, 2);
-            if (budgetEl) this.settings.tokenBudget = safeInt(budgetEl.value, 25);
-            if (recursiveEl) this.settings.recursive = recursiveEl.checked;
-            // [P2] 同步语义检索开关，并联动 VectorRetriever
-            if (vectorEl) {
-                var newVectorVal = vectorEl.checked;
-                if (newVectorVal !== this.settings.vectorRetrieval) {
-                    this.settings.vectorRetrieval = newVectorVal;
-                    if (typeof VectorRetriever !== 'undefined') {
-                        VectorRetriever.setEnabled(newVectorVal);
-                    }
-                    this.save(); // 开关变化时持久化
+        // 读取UI设置（[D6修复] 移除 turn 缓存，每次 scan 都从 DOM 同步，确保用户改设置当前回合生效）
+        var depthEl = document.getElementById('wiScanDepth');
+        var budgetEl = document.getElementById('wiTokenBudget');
+        var recursiveEl = document.getElementById('wiRecursive');
+        var vectorEl = document.getElementById('wiVectorRetrieval');
+        if (depthEl) this.settings.scanDepth = safeInt(depthEl.value, 2);
+        if (budgetEl) this.settings.tokenBudget = safeInt(budgetEl.value, 25);
+        if (recursiveEl) this.settings.recursive = recursiveEl.checked;
+        // [P2] 同步语义检索开关，并联动 VectorRetriever
+        if (vectorEl) {
+            var newVectorVal = vectorEl.checked;
+            if (newVectorVal !== this.settings.vectorRetrieval) {
+                this.settings.vectorRetrieval = newVectorVal;
+                if (typeof VectorRetriever !== 'undefined') {
+                    VectorRetriever.setEnabled(newVectorVal);
                 }
+                this.save(); // 开关变化时持久化
             }
-            this._settingsCache = { turn: _turn };
         }
 
 
@@ -1884,11 +1887,15 @@ var WorldInfo = {
         var activatedIds = {};
         activated.forEach(function(e) { activatedIds[e.uid] = true; });
         var allActivated = activated.slice();
+        // currentActivated 跟踪每步可用于递归触发的条目（初始为已激活的）
+        var currentActivated = activated.slice();
 
         var buffer = plainText;  // 纯文本用于关键词匹配
         var bufferWithPrefix = scanText;  // 带前缀的文本用于正则匹配
         for (var step = 0; step < maxSteps; step++) {
-            var newContent = activated
+            // [D1修复] 用 currentActivated 而非初始 activated 构建 buffer
+            // 否则 chain reaction（A→B→C）失效：B 的内容从未进入扫描 buffer
+            var newContent = currentActivated
             .filter(function(e) { return !e.excludeRecursion && !e.preventRecursion; })
             .map(function(e) { return e.content || ''; })
             .join('\n');
@@ -1943,6 +1950,8 @@ var WorldInfo = {
 
     if (newActivated.length === 0) break;
     allActivated = allActivated.concat(newActivated);
+    // [D1修复] 更新 currentActivated，让下一步扫描包含新激活条目的内容
+    currentActivated = newActivated;
     }
 
     return allActivated;
