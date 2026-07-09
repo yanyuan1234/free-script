@@ -530,8 +530,8 @@ var WorldInfo = {
 
     // 位置名称映射
     var positionNames = {
-        0: '角色前', 1: '角色后', 2: 'AN前', 3: 'AN后',
-        4: '指定深度', 5: '示例前', 6: '示例后', 7: '出口'
+        0: '角色前', 1: '角色后', 2: '示例前', 3: '示例后',
+        4: 'AN前', 5: 'AN后', 6: '指定深度', 7: '出口'
         };
 
     var html = '';
@@ -865,7 +865,9 @@ var WorldInfo = {
         }
 
     return {
-        uid: parseInt(uid) || raw.uid || raw.id || Date.now(),
+        uid: (uid !== undefined && uid !== null && uid !== '')
+            ? (typeof uid === 'number' ? uid : (parseInt(uid, 10) || 0))
+            : (raw.uid !== undefined ? raw.uid : (raw.id !== undefined ? raw.id : Date.now())),
         key: normalizeKeys(raw.key || raw.keys),
         keysecondary: normalizeKeys(raw.keysecondary || raw.secondary_keys),
         comment: raw.comment || raw.name || '',

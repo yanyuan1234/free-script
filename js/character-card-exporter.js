@@ -20,7 +20,9 @@ var CharacterCardExporter = {
         var pd = (typeof StateManager !== 'undefined' && StateManager.get)
             ? (StateManager.get('entities.player') || {})
             : ((typeof gameState !== 'undefined' && gameState.playerData) || {});
-        var name = pd.name || (gameState && gameState.playerName) || '玩家';
+        // 统一安全访问 gameState，避免未定义时 ReferenceError
+        var gs = (typeof gameState !== 'undefined') ? gameState : null;
+        var name = pd.name || (gs && gs.playerName) || '玩家';
         return {
             spec: 'chara_card_v2',
             spec_version: '2.0',
@@ -34,16 +36,16 @@ var CharacterCardExporter = {
                 first_mes: '',
                 mes_example: '',
                 creator_notes: '由 Free-Script 导出',
-                system_prompt: (gameState && gameState.userPrompt) || '',
-                post_history_instructions: (gameState && gameState.authorsNote) || '',
+                system_prompt: (gs && gs.userPrompt) || '',
+                post_history_instructions: (gs && gs.authorsNote) || '',
                 tags: ['free-script', 'player'],
                 creator: 'Free-Script',
                 character_version: '1.0',
                 alternate_greetings: [],
                 extensions: {
                     depth_prompt: {
-                        prompt: (gameState && gameState.authorsNote) || '',
-                        depth: (gameState && gameState.authorsNoteDepth) || 0,
+                        prompt: (gs && gs.authorsNote) || '',
+                        depth: (gs && gs.authorsNoteDepth) || 0,
                         role: 'system'
                     },
                     talkativeness: '0.5'

@@ -1152,12 +1152,13 @@ var LocalGameAPI = {
         try {
             return await requestFn(slotIdx);
         } catch (e) {
+            // 用户主动取消（AbortError）不重试，直接抛出
+            if (e && e.name === 'AbortError') throw e;
             // translateError 之后文案是中文的，一旦未来改 i18n 这里就漏判
             var isRetryable =
-                (e && e.name === 'AbortError') ||
                 (e && e.name === 'TypeError' && /fetch|network/i.test(String(e.message || ''))) ||
                 (e && (e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND' || e.code === 'EAI_AGAIN')) ||
-                (e && /network|fetch failed|timeout|aborted/i.test(String(e.message || '')));
+                (e && /network|fetch failed|timeout/i.test(String(e.message || '')));
 
             if (isRetryable && attempt < maxRetries - 1) {
                 var delay = retryDelayBase * Math.pow(2, attempt); // 指数退避

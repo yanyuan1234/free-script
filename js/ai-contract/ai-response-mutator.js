@@ -170,7 +170,7 @@ const AIResponseMutator = {
 
     // 剧情与标题
     _applyStoryAndTitle(data) {
-        const story = OutputSanitizer ? OutputSanitizer.sanitizeStory(data.story || '') : (data.story || '');
+        const story = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer) ? OutputSanitizer.sanitizeStory(data.story || '') : (data.story || '');
         const title = String(data.title || data.sceneTitle || data.chapterTitle || '').trim();
         if (story && title) {
 

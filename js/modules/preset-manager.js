@@ -70,7 +70,17 @@ var PresetManager = {
         for (var i = 0; i < window.BUILT_IN_PRESETS.length; i++) {
             var bp = window.BUILT_IN_PRESETS[i];
             if (existingIds[bp.builtinId]) continue;
-            this.presets.push(bp);
+            // 深拷贝，避免共享引用导致跨预设状态串改（公共段被多套预设共享）
+            var clone = JSON.parse(JSON.stringify(bp));
+            // 解析正则脚本为引擎内部格式（findRegex→findPattern, placement→applyInput/applyOutput）
+            // 否则 RegexManager.apply 读 findPattern 为 undefined，正则静默失效
+            if (clone.regexScripts && clone.regexScripts.length > 0 && typeof RegexManager !== 'undefined' && RegexManager.parseSingleRegex) {
+                clone._parsedRegexScripts = clone.regexScripts.map(function(r) {
+                    try { return RegexManager.parseSingleRegex(r, false); }
+                    catch(e) { console.error('[PresetManager] 内置正则解析失败:', r.scriptName, e); return null; }
+                }).filter(Boolean);
+            }
+            this.presets.push(clone);
             added++;
         }
 
@@ -465,7 +475,7 @@ var PresetManager = {
         // 显示当前参数
         if (currentInfo) {
             currentInfo.style.display = 'block';
-            if (currentName) currentName.textContent = this.currentPresetIndex >= 0 ? this.presets[this.currentPresetIndex].name : '自定义参数';
+            if (currentName) currentName.textContent = (this.currentPresetIndex >= 0 && this.currentPresetIndex < this.presets.length) ? this.presets[this.currentPresetIndex].name : '自定义参数';
             if (currentParams) {
                 var cp = this.currentParams;
                 var paramParts = [];
@@ -562,6 +572,16 @@ var PresetManager = {
                     // 新导入的放在最前面，并限制总数为 30；避免 push 后 slice 把新预设截掉
                     self.presets.unshift(imported);
                     if (self.presets.length > 30) self.presets = self.presets.slice(0, 30);
+
+                    // 先解析正则脚本，再 loadPreset（否则 loadPreset 读原始格式，正则静默失效）
+                    if (imported.regexScripts && imported.regexScripts.length > 0) {
+                        try {
+                            imported._parsedRegexScripts = RegexManager.parseRegexScripts(imported.regexScripts);
+                        } catch(regexErr) {
+                            console.error('[PresetManager] 正则脚本解析失败:', regexErr);
+                        }
+                    }
+
                     self.save();
                     self.renderPresetList();
 
@@ -579,17 +599,10 @@ var PresetManager = {
                         UI.toast('已导入 ' + imported.prompts.length + ' 个提示词条目');
                     }
 
-                // 预设正则脚本保持在预设内部，不添加到全局列表
-                // 加载预设时会自动通过 RegexManager.setPresetScripts() 切换
-                if (imported.regexScripts && imported.regexScripts.length > 0) {
-                    try {
-                        // 解析正则脚本格式，但保持在预设内部
-                        imported._parsedRegexScripts = RegexManager.parseRegexScripts(imported.regexScripts);
+                    // 正则脚本提示（已在上面解析完成）
+                    if (imported.regexScripts && imported.regexScripts.length > 0) {
                         UI.toast('已导入 ' + imported.regexScripts.length + ' 个正则脚本（预设绑定）');
-                        } catch(regexErr) {
-                        console.error('[PresetManager] 正则脚本解析失败:', regexErr);
-                        }
-                }
+                    }
 
                 UI.toast('成功导入预设: ' + imported.name);
                 } else {
@@ -2127,7 +2140,7 @@ var PresetManager = {
                     findRegex: r.findRegex || r.findPattern || '',
                     replaceString: r.replaceString || '',
                     trimStrings: r.trimStrings || [],
-                    placement: r._originalPlacement || (r.applyInput ? [1] : []).concat(r.applyOutput ? [2] : []),
+                    placement: r._originalPlacement || (r.applyOutput ? [1] : []).concat(r.applyInput ? [2] : []),
                     disabled: r.disabled === true || r.enabled === false,
                     markdownOnly: !!r.markdownOnly,
                     promptOnly: !!r.promptOnly,
