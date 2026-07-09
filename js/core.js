@@ -1974,7 +1974,7 @@ function createDefaultGameState() {
         rollingSummary: '',
         autoCompress: true,
         tokenCount: 0,
-        maxTokens: 8192,
+        maxTokens: DEFAULT_MAX_TOKENS,
         useStream: true,
         streamFailCount: 0,
         generateChoices: true,
@@ -2123,7 +2123,7 @@ function ensureGameStateFields(gs) {
     // 特殊处理：maxTokens 的历史 bug 兼容（80000 是旧版本误写的异常默认值）
     var _mtVal = Number(gs.maxTokens);
     if (!isFinite(_mtVal) || _mtVal <= 0 || _mtVal === 80000) {
-        gs.maxTokens = 8192;
+        gs.maxTokens = DEFAULT_MAX_TOKENS;
     }
     // 特殊处理：_stats.startTime 读档时应重置
     if (gs._stats) {
@@ -5788,7 +5788,7 @@ async function extractSetupToMemory() {
                 ], {
                     stream: false,
                     temperature: 0.2,
-                    max_tokens: Math.min(targetChars + 500, 8192)
+                    max_tokens: Math.min(targetChars + 500, DEFAULT_MAX_TOKENS)
                 });
 
                 if (compressedResult && compressedResult.trim().length > 200) {

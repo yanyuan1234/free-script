@@ -522,7 +522,7 @@ function buildSystemPrompt(includeFormatRules) {
             gameTime: (gameState && gameState.gameTime) || {},
             pureTextMode: !!(gameState && gameState.pureTextMode),
             generateChoices: !(gameState && gameState.generateChoices === false),
-            maxTokens: (gameState && gameState.maxTokens) || 8192,
+            maxTokens: (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS,
             worldTerms: _terms,
             turn: turn
         };
@@ -539,7 +539,7 @@ function buildSystemPrompt(includeFormatRules) {
 
 // 格式锚点（硬性要求，始终存在）
 function _buildFormatAnchor() {
-    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || 8192;
+    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
     var _hasChoicesForAnchor = gameState && gameState.generateChoices;
     var _pureTextMode = gameState && gameState.pureTextMode;
     if (_pureTextMode) {
@@ -571,7 +571,7 @@ function _buildFormatRules(gs, _t, turn) {
     var hasChoices = gs.generateChoices;
     // 第4轮优化：从原版 backup/index.html 回填字段级规则，避免 AI 输出字段缺失或语义冲突
     // 关键修正：keyEvents 从"至少1条"改为"0-3条可空"（原版语义，避免强迫AI编造事件污染记忆）
-    var _maxTokens = (gs && gs.maxTokens) || 8192;
+    var _maxTokens = (gs && gs.maxTokens) || DEFAULT_MAX_TOKENS;
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
         + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
@@ -1493,7 +1493,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 参考：https://sillytavern.wiki/usage/common-settings/
 
         var contextSize = (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000);
-        var maxTokens = (gameState && gameState.maxTokens) || 8192;
+        var maxTokens = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
         // 酒馆公式：输入预算 = 上下文大小 - 输出预留
         // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
         // 预留不足会导致AI输出到一半被截断，JSON解析失败，残余`\n\n`被当纯文本渲染

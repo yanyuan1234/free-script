@@ -134,8 +134,8 @@ var WorldInfo = {
                 // tokenBudget 处理：如果值 > 100，认为是旧格式的绝对值，转换为百分比
                 var budget = data.settings.tokenBudget;
                 if (budget > 100) {
-                    // 旧格式绝对值，假设上下文为 8192，计算百分比
-                    this.settings.tokenBudget = Math.round(budget / 8192 * 100);
+                    // 旧格式绝对值，假设上下文为 DEFAULT_CONTEXT_SIZE，计算百分比
+                    this.settings.tokenBudget = Math.round(budget / DEFAULT_CONTEXT_SIZE * 100);
                     } else if (budget != null) {
                     this.settings.tokenBudget = budget;
                 }

@@ -24,7 +24,7 @@ const StateSchema = {
                 pureTextMode: false,
                 generateChoices: true,
                 maxTokens: 4096,
-                contextSize: 8192,
+                contextSize: DEFAULT_CONTEXT_SIZE,
                 temperature: 0.7
             },
             progress: {

@@ -2,6 +2,12 @@
 * 安全工具函数 - 2026-06-01
 * 仅新增工具，不修改任何原有逻辑
 */
+
+// 【冗余审计 P0-4】统一 max_tokens / context 默认值常量，消除 20+ 处硬编码
+// 所有 fallback 用此常量，避免 8000/8192 混用导致行为不一致
+const DEFAULT_MAX_TOKENS = 8192;
+const DEFAULT_CONTEXT_SIZE = 8192;
+
 const DOMCache = {
     _cache: {},
     _permanent: {},
@@ -149,11 +155,13 @@ function getContextSize() {
         var n = Number(gameState.contextSize);
         if (!isNaN(n) && n > 0) return n;
     }
-    return 8000;
+    // 【冗余审计 P0-4】统一用 DEFAULT_CONTEXT_SIZE 常量（原硬编码 8000）
+    return DEFAULT_CONTEXT_SIZE;
 }
 
 function getContextScale() {
-    return Math.max(0.5, getContextSize() / 8000);
+    // 【冗余审计 P0-4】scale 基准统一用常量（原硬编码 8000）
+    return Math.max(0.5, getContextSize() / DEFAULT_CONTEXT_SIZE);
 }
 
 // 获取各层的动态截断配置（供记忆系统使用）

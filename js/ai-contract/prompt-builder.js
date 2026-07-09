@@ -148,7 +148,7 @@ const PromptBuilder = {
         // workflow：工作方式
         this.registerSection('workflow', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const maxTokens = ctx.maxTokens || 8192;
+            const maxTokens = ctx.maxTokens || DEFAULT_MAX_TOKENS;
             const parts = [];
             parts.push('【引导玩家输入】（提升剧情质量）');
             parts.push('- 好的输入：包含动作+对象+意图，如"我想去图书室查阅螺旋塔的资料"');

@@ -1393,14 +1393,15 @@ function getLogPageRenderers() {
 
         // 直接绑定到 QuestSystem / AchievementSystem 已有渲染方法
         quests: function() {
-            if (typeof QuestSystem !== 'undefined' && typeof QuestSystem.renderQuests === 'function') {
+            if (typeof QuestSystem !== 'undefined' && typeof QuestSystem.renderQuestPage === 'function') {
                 var c = document.getElementById('logSubContent');
                 if (c && !c.querySelector('#questModule')) {
                     var qm = document.createElement('div');
                     qm.id = 'questModule';
                     c.appendChild(qm);
                 }
-                QuestSystem.renderQuests();
+                // 【冗余审计 P0-2】原调用 QuestSystem.renderQuests（不存在），改为 renderQuestPage
+                QuestSystem.renderQuestPage(c);
             }
             return '';
         },
@@ -1656,14 +1657,15 @@ function _applyLogPageStyle(content, type, html) {
             content.innerHTML = html;
         }
     } else if (type === 'quests') {
-        if (typeof QuestSystem !== 'undefined' && QuestSystem.renderQuests) {
-            // 确保 #questModule 存在（renderQuests 内部会查该 ID）
+        if (typeof QuestSystem !== 'undefined' && QuestSystem.renderQuestPage) {
+            // 确保 #questModule 存在（renderQuestPage 内部会查该 ID）
             if (!content.querySelector('#questModule')) {
                 var qm = document.createElement('div');
                 qm.id = 'questModule';
                 content.appendChild(qm);
             }
-            QuestSystem.renderQuests();
+            // 【冗余审计 P0-2】原调用 QuestSystem.renderQuests（不存在），改为 renderQuestPage
+            QuestSystem.renderQuestPage(content);
         }
     }
 
@@ -6271,7 +6273,7 @@ function saveGameSettings() {
     // 保存默认参数设置（从预设管理器读取，设置页已移除手动输入框）
     var pm = (typeof PresetManager !== 'undefined' && PresetManager.currentParams) ? PresetManager.currentParams : null;
     var defaultParams = {
-        contextLength: pm ? (pm.context_length || pm.openai_max_context || 8192) : 8192,
+        contextLength: pm ? (pm.context_length || pm.openai_max_context || DEFAULT_CONTEXT_SIZE) : DEFAULT_CONTEXT_SIZE,
         temperature: pm ? pm.temperature : 0.8,
         topP: pm ? pm.top_p : 0.9,
         topK: pm ? (pm.top_k || 0) : 0,
@@ -6351,7 +6353,7 @@ function saveGameSettings() {
 function _syncMaxTokens(value) {
     var mt = value != null ? value :
         (typeof PresetManager !== 'undefined' && PresetManager.currentParams ?
-            (PresetManager.currentParams.max_tokens != null ? PresetManager.currentParams.max_tokens : 8192) : 8192);
+            (PresetManager.currentParams.max_tokens != null ? PresetManager.currentParams.max_tokens : DEFAULT_MAX_TOKENS) : DEFAULT_MAX_TOKENS);
     // 1. 同步 PresetManager（如果 value 是外部传入的）
     if (value != null && typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
         PresetManager.currentParams.max_tokens = mt;
@@ -6386,7 +6388,7 @@ var UNIFIED_PRESETS = {
     natural: {
         temperature: 1.3, top_p: 0.91, top_k: 64,
         frequency_penalty: 0, presence_penalty: 0,
-        max_tokens: 8192, repeat_penalty: 1.1,
+        max_tokens: DEFAULT_MAX_TOKENS, repeat_penalty: 1.1,
         _label: '📗 中篇', _name: '均衡自然',
         _desc: '中高温+TopK，输出自然丰富，适合大多数场景'
     },
@@ -6394,7 +6396,7 @@ var UNIFIED_PRESETS = {
     passionate: {
         temperature: 1.71, top_p: 0.9, top_k: 0,
         frequency_penalty: 0.65, presence_penalty: 0.75,
-        max_tokens: 8192, repeat_penalty: 1.1,
+        max_tokens: DEFAULT_MAX_TOKENS, repeat_penalty: 1.1,
         _label: '📙 长篇', _name: '高温创意',
         _desc: '超高温+高惩罚，输出极具创意，适合长篇叙事'
     },
@@ -6839,7 +6841,7 @@ function loadGameSettings() {
         PresetManager.currentParams.frequency_penalty = defaultParams.frequencyPenalty !== undefined ? defaultParams.frequencyPenalty : 0;
         PresetManager.currentParams.presence_penalty = defaultParams.presencePenalty !== undefined ? defaultParams.presencePenalty : 0;
         PresetManager.currentParams.repeat_penalty = defaultParams.repeatPenalty !== undefined ? defaultParams.repeatPenalty : 1.1;
-        PresetManager.currentParams.context_length = defaultParams.contextLength || 8192;
+        PresetManager.currentParams.context_length = defaultParams.contextLength || DEFAULT_CONTEXT_SIZE;
         PresetManager.syncParamsToUI();
     }
     applyFontSize();

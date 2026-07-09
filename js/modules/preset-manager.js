@@ -33,7 +33,7 @@ var PresetManager = {
         top_k: 0,
         frequency_penalty: 0,
         presence_penalty: 0,
-        max_tokens: 8192,
+        max_tokens: DEFAULT_MAX_TOKENS,
         tool_reasoning_mode: 'disabled'
     },
 
@@ -99,7 +99,7 @@ var PresetManager = {
         { param: 'top_p',             elId: 'presetTopP',       valId: 'presetTopPValue',       type: 'float', def: 0.9 },
         { param: 'frequency_penalty', elId: 'presetFreqPen',    valId: 'presetFreqPenValue',    type: 'float', def: 0 },
         { param: 'presence_penalty',  elId: 'presetPresPen',    valId: 'presetPresPenValue',    type: 'float', def: 0 },
-        { param: 'max_tokens',        elId: 'presetMaxTokens',                                  type: 'int',   def: 8192 },
+        { param: 'max_tokens',        elId: 'presetMaxTokens',                                  type: 'int',   def: DEFAULT_MAX_TOKENS },
         { param: 'top_k',             elId: 'presetTopK',                                       type: 'int',   def: 0 },
         { param: 'min_p',             elId: 'presetMinP',       valId: 'presetMinPValue',       type: 'float', def: 0 },
         { param: 'repeat_penalty',    elId: 'presetRepeatPen',  valId: 'presetRepeatPenValue',  type: 'float', def: 1.1 }
@@ -461,7 +461,7 @@ var PresetManager = {
             frequency_penalty: safeNum(data.freq_pen, data.frequency_penalty, 0),
             presence_penalty: safeNum(data.pres_pen, data.presence_pen, data.presence_penalty, 0),
             max_tokens: safeNum(data.openai_max_tokens, data.max_tokens, 4096),
-            max_context: safeNum(data.openai_max_context, data.max_context, 8192),
+            max_context: safeNum(data.openai_max_context, data.max_context, DEFAULT_CONTEXT_SIZE),
             min_p: safeNum(data.min_p, null, 0),
             top_a: safeNum(data.top_a, null, 0),
             repetition_penalty: safeNum(data.repetition_penalty, data.rep_pen, 1),

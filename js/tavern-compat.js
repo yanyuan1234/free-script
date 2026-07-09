@@ -44,35 +44,37 @@ var TavernHelperCompat = {
     _context: null,
     _contextVersion: '',
     getContext: function() {
+        // 【冗余审计 P0-3】原 8 次 typeof gameState 检查收敛为开头一次
+        var gs = (typeof gameState !== 'undefined' && gameState) ? gameState : null;
+        var hist = (gs && Array.isArray(gs.conversationHistory)) ? gs.conversationHistory : [];
+        var ws = (gs && gs.worldSnapshot) ? gs.worldSnapshot : null;
+        var wsChars = (ws && Array.isArray(ws.characters)) ? ws.characters : [];
+
         // 计算当前状态版本：聊天长度 + 存档key + 角色数量
-        var chatLen = (typeof gameState !== 'undefined' && gameState && Array.isArray(gameState.conversationHistory)) ? gameState.conversationHistory.length : 0;
-        var saveKey = (typeof gameState !== 'undefined' && gameState && gameState.saveKey) ? gameState.saveKey : '';
-        var charLen = (typeof gameState !== 'undefined' && gameState && gameState.worldSnapshot && Array.isArray(gameState.worldSnapshot.characters)) ? gameState.worldSnapshot.characters.length : 0;
+        var chatLen = hist.length;
+        var saveKey = (gs && gs.saveKey) ? gs.saveKey : '';
+        var charLen = wsChars.length;
         var version = chatLen + '|' + saveKey + '|' + charLen;
         if (this._context && this._contextVersion === version) return this._context;
         this._contextVersion = version;
         // 构建聊天消息列表（与酒馆格式一致）
-        var chat = [];
-        // 修复：检查 conversationHistory 是数组（防御旧存档/损坏数据）
-        if (gameState && Array.isArray(gameState.conversationHistory)) {
-            chat = gameState.conversationHistory.map(function(msg, idx) {
-                if (!msg) return null;
-                return {
-                    mes: msg.content || msg.text || '',
-                    name: msg.role === 'user' ? (gameState.playerName || '玩家') : (msg.name || '角色'),
-                    is_user: msg.role === 'user',
-                    is_system: msg.role === 'system',
-                    send_date: msg.timestamp || Date.now(),
-                    extra: msg.extra || {},
-                    index: idx
-                };
-            }).filter(Boolean);
-        }
+        var chat = hist.map(function(msg, idx) {
+            if (!msg) return null;
+            return {
+                mes: msg.content || msg.text || '',
+                name: msg.role === 'user' ? (gs.playerName || '玩家') : (msg.name || '角色'),
+                is_user: msg.role === 'user',
+                is_system: msg.role === 'system',
+                send_date: msg.timestamp || Date.now(),
+                extra: msg.extra || {},
+                index: idx
+            };
+        }).filter(Boolean);
 
     // 获取角色信息
     var character = {};
-    if (typeof gameState !== 'undefined' && gameState && gameState.worldSnapshot && Array.isArray(gameState.worldSnapshot.characters) && gameState.worldSnapshot.characters.length > 0) {
-        var char = gameState.worldSnapshot.characters[0];
+    if (wsChars.length > 0) {
+        var char = wsChars[0];
         character = {
             name: char.name || '角色',
             description: char.desc || '',
@@ -94,21 +96,21 @@ var TavernHelperCompat = {
         // 核心聊天数据
         chat: chat,
         // 角色列表
-        characters: (typeof gameState !== 'undefined' && gameState && gameState.worldSnapshot && Array.isArray(gameState.worldSnapshot.characters)) ? gameState.worldSnapshot.characters : [],
+        characters: wsChars,
         // 当前角色ID
         characterId: 0,
         // 聊天ID
-        chatId: (typeof gameState !== 'undefined' && gameState && gameState.saveKey) ? gameState.saveKey : 'default',
+        chatId: (gs && gs.saveKey) ? gs.saveKey : 'default',
         // 群组ID（如果支持群组）
         groupId: null,
         // 角色名（AI）
         name1: character.name || '角色',
         // 玩家名
-        name2: (typeof gameState !== 'undefined' && gameState && gameState.playerName) || '玩家',
+        name2: (gs && gs.playerName) || '玩家',
         // 角色卡完整数据
         characterCard: character,
         // 聊天元数据
-        chatMetadata: (typeof gameState !== 'undefined' && gameState && gameState.chatMetadata) ? gameState.chatMetadata : {},
+        chatMetadata: (gs && gs.chatMetadata) ? gs.chatMetadata : {},
         // 扩展设置
         extensionSettings: this._getExtensionSettings(),
         // 全局设置
@@ -6671,109 +6673,11 @@ init();
     // 任何代码读取，对应 UI 入口（视角选择 / 节奏选择 / 推荐参数应用）从未实现。
     // 同时删除 PresetConfigManager.configs / getConfig / getRecommendedParams—— 链式死代码：
     // getRecommendedParams 零外部调用 → getConfig 仅被它调用 → configs 仅被 getConfig 读取。
-    // 保留 detectPresetType（patch.js:161）与 validatePreset（patch.js:167），二者是真正被
-    // 使用的预设识别/校验逻辑，不依赖任何 config 对象字段。
-    var PresetConfigManager = {
-
-/**
- * 自动识别预设类型
- */
-detectPresetType(preset) {
-if (!preset) return 'unknown';
-const name = (preset.name || '').toLowerCase();
-const prompts = preset.prompts || [];
-
-// 检查特征标识
-const hasMoonRead = prompts.some(p =>
-    p.identifier === 'main' && (p.name || '').includes('静谧之夜')
-);
-const hasFruit = prompts.some(p =>
-    (p.name || '').includes('乐园载入') || (p.name || '').includes('超现实梦境')
-);
-
-if (hasMoonRead || name.includes('月读')) return 'moonread';
-if (hasFruit || name.includes('果实') || name.includes('mom')) return 'fruit';
-// 蛾摩拉检测
-const hasGomorrah = prompts.some(p =>
-    p.identifier === 'main' && (p.name || '').includes('身份定义')
-);
-if (hasGomorrah || name.includes('蛾摩拉') || name.includes('gomorrah')) return 'gomorrah';
-return 'generic';
-},
-
-/**
- * 验证预设兼容性
- */
-validatePreset(preset) {
-const result = {
-    compatible: true,
-    warnings: [],
-    info: []
-};
-
-if (!preset) {
-    result.compatible = false;
-    result.warnings.push('预设为空');
-    return result;
-}
-
-// 检查prompts
-if (!preset.prompts || !Array.isArray(preset.prompts)) {
-    result.warnings.push('预设缺少prompts数组');
-} else {
-    result.info.push(`共 ${preset.prompts.length} 个prompt条目`);
-}
-
-// 检查正则脚本
-const regexScripts = preset.regexScripts || preset.extensions?.regex_scripts || [];
-if (regexScripts.length > 0) {
-    result.info.push(`共 ${regexScripts.length} 个正则脚本`);
-
-    // 检查月读格式
-    const hasFindRegex = regexScripts.some(s => s.findRegex);
-    const hasFind = regexScripts.some(s => s.find);
-    if (hasFindRegex) result.info.push('正则格式: 月读 (findRegex)');
-    if (hasFind) result.info.push('正则格式: 果实 (find)');
-
-    // 检查美化正则
-    const beautyScripts = regexScripts.filter(s => s.markdownOnly === true);
-    if (beautyScripts.length > 0) {
-        result.info.push(`${beautyScripts.length} 个美化正则（需要markdown渲染支持）`);
-    }
-}
-
-// 检查prompt_order
-if (preset.prompt_order) {
-    result.info.push('包含prompt_order排序');
-}
-
-// 检查tavern_helper
-if (preset.extensions?.tavern_helper?.scripts) {
-    result.info.push('包含酒馆助手脚本');
-    result.warnings.push('酒馆助手脚本中的triggerSlash/toastr等API不可用，但commands配置已提取');
-}
-
-// 检查STscript语法
-const allContent = (preset.prompts || []).map(p => p.content || '').join('\n');
-const stscriptFeatures = [];
-if (/\{\{setvar::/.test(allContent)) stscriptFeatures.push('setvar');
-if (/\{\{getvar::/.test(allContent)) stscriptFeatures.push('getvar');
-if (/\{\{if:/.test(allContent)) stscriptFeatures.push('条件判断');
-if (/\{\{random::/.test(allContent)) stscriptFeatures.push('random');
-if (/<user>/i.test(allContent)) stscriptFeatures.push('<user>标签');
-if (/<char>/i.test(allContent)) stscriptFeatures.push('<char>标签');
-
-if (stscriptFeatures.length > 0) {
-    result.info.push(`STscript特性: ${stscriptFeatures.join(', ')}`);
-}
-
-return result;
-}
-    };
+    // 【冗余审计 P0-1】detectPresetType / validatePreset 全项目无任何外部调用
+    // （注释引用的 patch.js 已不存在），整个 PresetConfigManager 对象删除。
 
     // ============================================================================
-    // 导出
+    // 导出（PresetConfigManager 已删除，此处无内容）
     // ============================================================================
-    global.PresetConfigManager = PresetConfigManager;
 
 })(window);
