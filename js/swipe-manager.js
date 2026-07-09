@@ -3,32 +3,50 @@
 // 参考 SillyTavern / RisuAI / mufy 的 swipe 机制
 // 让 retryStory 保留多个版本，玩家可横向切换
 //
-// 【P1 持久化改造】swipe 数据存 progress.swipes[turn]，内存仅作缓存
-// - addSwipe：写 progress.swipes[turn].versions，更新 current
-// - switchTo：更新 progress.swipes[turn].current + 同步 conversationHistory 最后一条 assistant
-// - reset：只清内存缓存，保留 progress.swipes 历史（让历史轮次的 swipe 仍可查）
-// - loadCurrentTurn：加载存档/retry 后从 StateManager 回填内存
+// 【设计原则】swipe 只存在于当前回合，进入下一回合时自动覆盖
+// 避免长期积累导致内存/存档膨胀
+//
+// 数据结构（progress.swipes）：
+//   { versions: [swipe...], current: 0, turn: 5 }
+// 仅保留当前 turn 的多版本，新回合开始时整体覆盖
+//
+// 每个 swipe = { storyText, choices, sceneTitle, response, turn, timestamp }
 // ========================================
 var SwipeManager = {
-    // 内存缓存：当前轮次的 swipe 版本数组（与 progress.swipes[turn].versions 同步）
-    // 每个 swipe = { storyText, choices, sceneTitle, response, turn, timestamp }
+    // 内存缓存：当前轮次的 swipe 版本数组（与 progress.swipes.versions 同步）
     _swipes: [],
     // 当前显示的 swipe 索引（-1 表示无 swipe / 普通模式）
     _currentIndex: -1,
     // 标记：正在 retry 生成新 swipe（避免重复 push）
     _isRetrying: false,
 
-    // 内部：读取 progress.swipes 整个对象
-    _readAllSwipes() {
-        if (typeof StateManager === 'undefined' || !StateManager.get) return {};
+    // 内部：读取 progress.swipes（单轮结构）
+    _readState() {
+        if (typeof StateManager === 'undefined' || !StateManager.get) return null;
         var s = StateManager.get('progress.swipes');
-        return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
+        if (!s || typeof s !== 'object' || Array.isArray(s)) return null;
+        // 兼容老格式（按 turn 索引的对象）：取当前 turn 对应的条目
+        if (s.versions && Array.isArray(s.versions)) return s;
+        // 老格式迁移：按 turn 索引的对象，取当前 turn
+        var turn = this._currentTurn();
+        var entry = s[String(turn)];
+        if (entry && Array.isArray(entry.versions)) return entry;
+        return null;
     },
 
-    // 内部：写入 progress.swipes 整个对象
-    _writeAllSwipes(swipes) {
+    // 内部：写入 progress.swipes（单轮结构，整体覆盖）
+    _writeState(versions, current) {
         if (typeof StateManager === 'undefined' || !StateManager.set) return;
-        StateManager.set('progress.swipes', swipes, { silent: true });
+        if (!versions || versions.length === 0) {
+            // 无版本时写空结构（而非 null，避免 normalizeState 误判）
+            StateManager.set('progress.swipes', { versions: [], current: -1, turn: this._currentTurn() }, { silent: true });
+            return;
+        }
+        StateManager.set('progress.swipes', {
+            versions: versions,
+            current: (typeof current === 'number' && current >= 0) ? current : 0,
+            turn: this._currentTurn()
+        }, { silent: true });
     },
 
     // 内部：读取当前 turn
@@ -37,26 +55,18 @@ var SwipeManager = {
         return StateManager.get('progress.turn') || 0;
     },
 
-    // 内部：把内存缓存同步到 progress.swipes[turn]
+    // 内部：把内存缓存同步到 progress.swipes
     _flushToState() {
         if (this._swipes.length === 0) return;
-        var turn = this._currentTurn();
-        var all = this._readAllSwipes();
-        all[String(turn)] = {
-            versions: this._swipes,
-            current: this._currentIndex >= 0 ? this._currentIndex : 0
-        };
-        this._writeAllSwipes(all);
+        this._writeState(this._swipes, this._currentIndex);
     },
 
     // 加载当前 turn 的 swipe 到内存（存档加载/retry 回填时调用）
     loadCurrentTurn() {
-        var turn = this._currentTurn();
-        var all = this._readAllSwipes();
-        var entry = all[String(turn)];
-        if (entry && Array.isArray(entry.versions) && entry.versions.length > 0) {
-            this._swipes = entry.versions;
-            this._currentIndex = (typeof entry.current === 'number') ? entry.current : 0;
+        var state = this._readState();
+        if (state && Array.isArray(state.versions) && state.versions.length > 0) {
+            this._swipes = state.versions;
+            this._currentIndex = (typeof state.current === 'number') ? state.current : 0;
             this._renderSwitcher();
         } else {
             this._swipes = [];
@@ -66,12 +76,15 @@ var SwipeManager = {
     },
 
     // 重置（每轮新对话开始时调用）
-    // 【P1 改造】只清内存缓存，保留 progress.swipes 历史轮次记录
+    // 【关键】这是"进入下一回合时覆盖上一轮 swipe"的核心入口
+    // 由 sendAIRequest 在非 retry 模式下调用，清空内存 + 写空结构到 StateManager
     reset() {
         this._swipes = [];
         this._currentIndex = -1;
         this._isRetrying = false;
         this._hideSwitcher();
+        // 写空结构覆盖上一轮的 swipe（实现"只存当前回合"）
+        this._writeState([], -1);
     },
 
     // 当前是否有 swipe 版本
@@ -99,11 +112,11 @@ var SwipeManager = {
     },
 
     // 记录一个 swipe 版本（AI 回复成功后调用）
-    // 如果是 retry 触发的新版本，追加；否则重置后记录
+    // 如果是 retry 触发的新版本，追加；否则重置后记录（覆盖上一轮）
     addSwipe(swipe) {
         if (!swipe || !swipe.storyText) return;
         if (this._isRetrying) {
-            // retry 生成的新版本：追加到现有内存（retryStory 已确保内存有上一轮的 swipe）
+            // retry 生成的新版本：追加到现有内存
             // 若内存为空（如页面刷新后直接 retry），从 StateManager 加载当前 turn
             if (this._swipes.length === 0) {
                 this.loadCurrentTurn();
@@ -112,7 +125,7 @@ var SwipeManager = {
             this._currentIndex = this._swipes.length - 1;
             this._isRetrying = false;
         } else {
-            // 正常新一轮对话：内存重置为单一版本
+            // 正常新一轮对话：内存重置为单一版本（覆盖上一轮）
             this._swipes = [swipe];
             this._currentIndex = 0;
         }

@@ -37,10 +37,10 @@ const StateSchema = {
                     title: '',
                     gameTime: null
                 },
-                // 【P1 Swipe 多分支】按 turn 索引存该轮的多个版本
-                // 结构：{ "5": { versions: [{storyText,choices,sceneTitle,response,turn,timestamp}], current: 0 } }
-                // conversationHistory 最后一条 assistant 始终是当前选中版本的内容
-                swipes: {}
+                // 【P2 Swipe 单轮】只存当前回合的多版本，进入下一回合时整体覆盖
+                // 结构：{ versions: [swipe...], current: 0, turn: 5 }
+                // 避免长期积累导致内存/存档膨胀
+                swipes: { versions: [], current: -1, turn: 0 }
             },
             entities: {
                 player: {
@@ -243,11 +243,30 @@ const StateSchema = {
         const result = this.getDefaultState();
         // 递归合并，优先保留已有值
         this._deepMerge(result, state);
-        // 【P1 Swipe】兼容老存档/异常格式：progress.swipes 必须是对象
-        // 若为 null/数组/其他类型，重置为空对象
-        if (!result.progress || typeof result.progress.swipes !== 'object'
-            || Array.isArray(result.progress.swipes) || result.progress.swipes === null) {
-            if (result.progress) result.progress.swipes = {};
+        // 【P2 Swipe 单轮】兼容老存档格式迁移
+        // 老格式：{ "5": {versions, current}, "6": {...} }（按 turn 索引，越积越多）
+        // 新格式：{ versions: [...], current: 0, turn: N }（只存当前轮）
+        if (result.progress && result.progress.swipes) {
+            var oldSw = result.progress.swipes;
+            if (typeof oldSw === 'object' && !Array.isArray(oldSw) && oldSw !== null) {
+                if (!oldSw.versions) {
+                    // 老格式：取当前 turn 对应的条目迁移，其余丢弃
+                    var curTurn = (result.progress && typeof result.progress.turn === 'number') ? result.progress.turn : 0;
+                    var entry = oldSw[String(curTurn)];
+                    if (entry && Array.isArray(entry.versions)) {
+                        result.progress.swipes = {
+                            versions: entry.versions,
+                            current: (typeof entry.current === 'number') ? entry.current : 0,
+                            turn: curTurn
+                        };
+                    } else {
+                        result.progress.swipes = { versions: [], current: -1, turn: curTurn };
+                    }
+                }
+                // 新格式直接保留（含 versions 字段）
+            } else {
+                result.progress.swipes = { versions: [], current: -1, turn: 0 };
+            }
         }
         // 处理旧字段映射：把旧字段迁移到新路径
         for (const legacyName in this._legacyToPath) {

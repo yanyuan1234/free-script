@@ -5220,18 +5220,21 @@ async function retryStory() {
     var lastUserMsg = _histForRetry[_histForRetry.length - 2];
     if (!lastUserMsg) return;
 
-    // 【P1 Swipe 持久化】备份当前 progress.swipes
-    // deleteLastTurn 会通过 UndoMutator 把 swipes 恢复到上一轮 pushSnapshot 时的状态，
-    // 这会清掉当前轮的 swipe 历史。retry 需要保留旧版本让新版本追加，
-    // 所以先备份，deleteLastTurn 后写回。
+    // 【P2 单轮 Swipe】备份当前 progress.swipes（单轮结构）
+    // deleteLastTurn 会把 swipes 恢复到上一轮快照状态（空），
+    // retry 需要保留当前轮的旧版本让新版本追加，所以先备份后恢复
     var _swipesBackup = null;
     if (typeof StateManager !== 'undefined' && StateManager.get) {
-        _swipesBackup = StateManager.get('progress.swipes') || {};
+        _swipesBackup = StateManager.get('progress.swipes') || null;
     }
 
     // 标记 SwipeManager 进入 retry 模式（生成成功后 addSwipe 会追加而非重置）
     if (typeof SwipeManager !== 'undefined') {
         SwipeManager.setRetrying(true);
+        // 确保 SwipeManager 内存有当前轮的旧版本（供 addSwipe 追加）
+        if (SwipeManager._swipes.length === 0) {
+            SwipeManager.loadCurrentTurn();
+        }
     }
 
     // 先回滚状态（turn计数、角色、物品等），deleteLastTurn 会处理 conversationHistory
@@ -5245,9 +5248,9 @@ async function retryStory() {
         _updateConversationHistory(_histForRetry.slice(0, -2));
     }
 
-    // 【P1 Swipe 持久化】恢复 swipes 备份（保留上一轮的 swipe 历史）
-    // deleteLastTurn 已把 turn 倒退到上一轮，addSwipe 时 turn 会 +1 回到当前轮，
-    // 此时 progress.swipes[当前turn] 仍是上一轮的版本数组，新版本会追加进去
+    // 【P2 单轮 Swipe】恢复 swipes 备份（保留当前轮的旧版本）
+    // deleteLastTurn 把 turn 倒退，但 swipe 是单轮结构不依赖 turn 索引，
+    // 直接写回备份即可。addSwipe 时 turn 已 +1 回到当前轮
     if (_swipesBackup && typeof StateManager !== 'undefined' && StateManager.set) {
         StateManager.set('progress.swipes', _swipesBackup, { silent: true });
     }
