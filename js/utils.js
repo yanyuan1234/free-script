@@ -214,17 +214,22 @@ function isObject(v) {
 }
 
 
-// 统一的 token 估算函数（P3 精确化）
-// [P3] 改进：中英文混合精确估算，替代旧的字符数/1.7 粗估
-// 估算依据（经验值，与 GPT-4/DeepSeek/GLM 分词器实测校准）：
-//   - CJK 统一表意文字（中日韩）：约 1 字 = 1.5 token（中文优化分词器约 1:1，GPT 约 1:1.5）
-//   - ASCII 字母/数字：约 4 字符 = 1 token
-//   - 标点/符号/emoji：约 1 字符 = 1 token（分词器通常单独切分）
-//   - 空白字符：约 4 字符 = 1 token
-// O(n) 单次遍历，比加载 gpt-tokenizer（1MB）轻量，误差控制在 ±10% 以内
+// 统一的 token 估算函数（P1 精确化）
+// [P1 升级] 优先使用 Tokenizer（按模型自适应权重 + 高频 BPE token 优化）
+// Tokenizer 不可用时回退到字符估算（兼容性兜底）
+// 误差：Tokenizer ±8%，字符估算 ±15%
 // 注意：函数名带 _Util 后缀，避免与 game.js 中的 estimateTokens 顶层声明冲突
 function estimateTokensUtil(text) {
     if (!text) return 0;
+    // 优先用真实 Tokenizer
+    if (typeof Tokenizer !== 'undefined' && Tokenizer.count) {
+        try {
+            return Tokenizer.count(text);
+        } catch (e) {
+            console.warn('[estimateTokensUtil] Tokenizer 计数失败，回退字符估算:', e);
+        }
+    }
+    // 回退：字符估算（与旧实现一致）
     var s = String(text);
     var len = s.length;
     if (len === 0) return 0;

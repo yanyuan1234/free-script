@@ -6530,6 +6530,42 @@ function triggerGrandSummary(mode) {
         }
     }
 }
+// 【P1 角色卡导出】导出主角为 SillyTavern v2 角色 JSON
+function exportPlayerCardV2() {
+    if (typeof CharacterCardExporter === 'undefined') {
+        UI.toast('角色卡导出模块未加载');
+        return;
+    }
+    try {
+        var card = CharacterCardExporter.exportPlayerAsV2();
+        var name = (card && card.data && card.data.name) ? card.data.name : 'player';
+        CharacterCardExporter.downloadJson(card, name + '_card_v2.json');
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('已导出 v2 角色卡');
+    } catch (e) {
+        console.error('[exportPlayerCardV2] 失败:', e);
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('导出失败: ' + (e.message || e));
+    }
+}
+// 【P1 角色卡导出】导出主角为 SillyTavern v3 角色 JSON（含世界书）
+function exportPlayerCardV3() {
+    if (typeof CharacterCardExporter === 'undefined') {
+        UI.toast('角色卡导出模块未加载');
+        return;
+    }
+    try {
+        var card = CharacterCardExporter.exportAsV3();
+        if (!card) {
+            UI.toast('导出失败：无法构建角色卡');
+            return;
+        }
+        var name = (card && card.data && card.data.name) ? card.data.name : 'player';
+        CharacterCardExporter.downloadJson(card, name + '_card_v3.json');
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('已导出 v3 角色卡（含世界书）');
+    } catch (e) {
+        console.error('[exportPlayerCardV3] 失败:', e);
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('导出失败: ' + (e.message || e));
+    }
+}
 async function exportSaves() {
     try {
 
@@ -6953,6 +6989,15 @@ async function renderSaveUI() {
         '<button class="pixel-btn big" data-action="triggerImportFile" style="flex:1">导入存档</button>' +
         '</div>' +
         '<div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:6px">导出为JSON文件，可在其他设备导入恢复</div>' +
+        '</div>';
+    // 【P1 角色卡导出】SillyTavern 兼容角色卡导出
+    html += '<div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--border)">' +
+        '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:8px;text-align:center">角 角色卡导出（SillyTavern 兼容）</div>' +
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="pixel-btn blue" data-action="exportPlayerCardV2" style="flex:1;min-width:45%">导出主角(v2)</button>' +
+        '<button class="pixel-btn blue" data-action="exportPlayerCardV3" style="flex:1;min-width:45%">导出主角(v3)</button>' +
+        '</div>' +
+        '<div style="font-size:10px;color:var(--text-tertiary);text-align:center;margin-top:6px">v2 标准格式 / v3 含世界书，可导入 SillyTavern/RisuAI</div>' +
         '</div>';
     ct.innerHTML = html;
 }

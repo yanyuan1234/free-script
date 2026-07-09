@@ -34,6 +34,8 @@
         <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' data: blob:; frame-src 'none'; object-src 'none';">
         <title>自由剧本 · FREE SCRIPT</title>
         <link rel="icon" type="image/svg+xml" href="favicon.svg">
+        <!-- 【P1 PWA】manifest 配置，支持添加到主屏 -->
+        <link rel="manifest" href="manifest.json">
         <!-- 字体：优先本地 Noto Serif SC，回退到系统衬线字体（移除不可用的 fonts.loli.net CDN） -->
         <link rel="stylesheet" href="css/base.css">
         <link rel="stylesheet" href="css/menu.css">
@@ -2848,7 +2850,9 @@
 【修复补丁 v3.0】Bug修复与性能优化 - 安全版本
 ============================================================================ -->
 
+    <script src="js/tokenizer.js" defer></script>
     <script src="js/utils.js" defer></script>
+    <script src="js/character-card-exporter.js" defer></script>
     <script src="js/state/schema.js" defer></script>
     <script src="js/state/state-manager.js" defer></script>
     <script src="js/state/mutators/bag-mutator.js" defer></script>
@@ -2882,6 +2886,7 @@
     <script src="js/init.js" defer></script>
     <script src="js/ai-contract/stscript-bridge.js" defer></script>
     <script src="js/version-badge.js" defer></script>
+    <script src="js/sw-register.js" defer></script>
 
 </body>
 </html>

@@ -1,0 +1,22 @@
+{
+    "name": "Free-Script AI 文游",
+    "short_name": "FreeScript",
+    "description": "仿 SillyTavern 的 AI 文字冒险游戏",
+    "start_url": "./",
+    "scope": "./",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#f5f5f0",
+    "theme_color": "#f5f5f0",
+    "lang": "zh-CN",
+    "icons": [
+        {
+            "src": "favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        }
+    ],
+    "categories": ["games", "entertainment"],
+    "display_override": ["standalone", "minimal-ui"]
+}
