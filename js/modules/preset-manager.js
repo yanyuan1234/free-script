@@ -40,26 +40,185 @@ var PresetManager = {
     // 初始化
     init: function() {
         this.load();
-        // 【已移除】不再注入内置预设（月读/果实/蛾摩拉），避免占用用户预设列表
+        // 注入官方内置预设（4 套：抒情/激进/平缓/标准）
+        // 只在用户没有同 builtinId 的预设时才注入，避免覆盖
+        this._injectBuiltInPresets();
         this.loadCurrentParams();
         this.bindEvents();
-        },
+    },
+
+    // 注入官方内置预设
+    // 设计：builtinId 匹配则跳过（保留用户克隆后的版本），builtinId 不匹配则不覆盖
+    // 旧版本残留的"_isBuiltin 但没 builtinId"的内置预设（早期月读/果实/蛾摩拉）会被清理
+    _injectBuiltInPresets: function() {
+        if (!window.BUILT_IN_PRESETS || !Array.isArray(window.BUILT_IN_PRESETS)) return;
+
+        // 1) 清理旧版残留（无 builtinId 的 _isBuiltin 预设）
+        var before = this.presets.length;
+        this.presets = this.presets.filter(function(p) {
+            return !(p && p._isBuiltin && !p.builtinId);
+        });
+        var cleaned = before - this.presets.length;
+
+        // 2) 注入新内置（已存在 builtinId 相同的则跳过）
+        var added = 0;
+        var existingIds = {};
+        this.presets.forEach(function(p) {
+            if (p && p.builtinId) existingIds[p.builtinId] = true;
+        });
+
+        for (var i = 0; i < window.BUILT_IN_PRESETS.length; i++) {
+            var bp = window.BUILT_IN_PRESETS[i];
+            if (existingIds[bp.builtinId]) continue;
+            this.presets.push(bp);
+            added++;
+        }
+
+        if (cleaned > 0 || added > 0) {
+            console.log('[PresetManager] 内置预设同步：清理 ' + cleaned + ' 个旧版，注入 ' + added + ' 个新版');
+            this.save();
+        }
+    },
+
+    // 把内置预设克隆为用户的"我的预设"（可改）
+    // 复用 parsePreset 把内置预设序列化到内存里，再走一次标准的预设创建流程
+    cloneAsMyPreset: function(builtinId) {
+        var source = window.getBuiltInPresetById ? window.getBuiltInPresetById(builtinId) : null;
+        if (!source) {
+            UI.toast('未找到内置预设：' + builtinId);
+            return;
+        }
+
+        // 深拷贝 source，避免污染内置
+        var cloned = JSON.parse(JSON.stringify(source));
+        // 改写标识：变成用户预设
+        delete cloned._isBuiltin;
+        delete cloned.builtinId;
+        cloned.name = source.name + ' · 我的版本';
+        cloned.description = '基于「' + source.name + '」克隆，可自由修改';
+        cloned.clonedFrom = builtinId;
+        cloned.clonedAt = Date.now();
+
+        // 加到预设列表最前面
+        this.presets.unshift(cloned);
+        if (this.presets.length > 30) this.presets = this.presets.slice(0, 30);
+        this.save();
+        this.renderPresetList();
+        UI.toast('已克隆为「' + cloned.name + '」，可自由修改');
+        // 自动加载克隆版本
+        try {
+            this.loadPreset(0);
+        } catch (e) {
+            console.warn('[PresetManager] 克隆后加载失败:', e);
+        }
+    },
+
+    // 显示内置预设选择器
+    showBuiltInPicker: function() {
+        if (!window.BUILT_IN_PRESETS) {
+            UI.toast('内置预设未加载');
+            return;
+        }
+
+        var cards = window.BUILT_IN_PRESETS.map(function(bp) {
+            var id = escapeHtml(bp.builtinId);
+            var name = escapeHtml(bp.name);
+            var desc = escapeHtml(bp.description || '');
+            var params = bp.params || {};
+            var tagParts = [];
+            tagParts.push('<span style="background:#8b5cf6;color:#fff;">Temp:' + params.temperature + '</span>');
+            tagParts.push('<span style="background:#6366f1;color:#fff;">TopP:' + params.top_p + '</span>');
+            tagParts.push('<span style="background:#64748b;color:#fff;">Max:' + (params.max_tokens || 4096) + '</span>');
+            var tagsHtml = '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">' +
+                tagParts.map(function(t) { return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;">' + t + '</span>'; }).join('') + '</div>';
+
+            return '<div class="pearl-card" style="padding:12px;margin-bottom:10px;border-left:3px solid var(--accent);">' +
+                '<div style="display:flex;justify-content:space-between;align-items:start;">' +
+                '<div style="flex:1;min-width:0;">' +
+                '<div style="font-size:14px;font-weight:600;margin-bottom:4px;">' + name + '</div>' +
+                '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:4px;line-height:1.5;">' + desc + '</div>' +
+                tagsHtml +
+                '</div>' +
+                '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;margin-left:10px;">' +
+                '<button class="btn-primary" data-builtin-pick="' + id + '" style="font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">直接使用</button>' +
+                '<button class="btn-secondary" data-builtin-clone="' + id + '" style="font-size:11px;padding:4px 10px;border-radius:6px;cursor:pointer;">克隆为我的</button>' +
+                '</div>' +
+                '</div>' +
+                '</div>';
+        }).join('');
+
+        var html =
+            '<div style="padding:16px;max-height:80vh;overflow-y:auto;">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px;">' +
+            '<b style="font-size:15px;">选择内置预设</b>' +
+            '<button class="circle-btn" onclick="UI.hideModal(this.closest(\'.modal-overlay\').id)" style="width:24px;height:24px;padding:0;">×</button>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:10px;line-height:1.5;">' +
+            '4 套官方精工预设，按"风格基调"分类（题材自适应古风/现代/任何世界观）。<br>' +
+            '<b>直接使用</b>：只读加载，玩家不可改 prompt。<br>' +
+            '<b>克隆为我的</b>：复制成你的预设，可自由修改。' +
+            '</div>' +
+            cards +
+            '</div>';
+
+        UI.createModal({ html: html });
+
+        // 事件委托
+        setTimeout(function() {
+            var overlay = document.querySelector('.modal-overlay:last-of-type');
+            if (!overlay) return;
+            overlay.addEventListener('click', function(e) {
+                var pickBtn = e.target.closest('[data-builtin-pick]');
+                if (pickBtn) {
+                    e.stopPropagation();
+                    var id = pickBtn.dataset.builtinPick;
+                    var bp = window.getBuiltInPresetById(id);
+                    if (bp) {
+                        // 把内置预设直接设为当前（不持久化到 presets 列表，因为是只读）
+                        // 方案：把内置预设先 unshift 到 presets 头部（_isBuiltin 标记）
+                        // 但 _injectBuiltInPresets 已经会注入，这里直接 find + load
+                        var idx = -1;
+                        for (var i = 0; i < PresetManager.presets.length; i++) {
+                            if (PresetManager.presets[i].builtinId === id) { idx = i; break; }
+                        }
+                        if (idx >= 0) {
+                            PresetManager.loadPreset(idx);
+                            UI.hideModal(overlay.id);
+                            UI.toast('已加载「' + bp.name + '」（只读，可随时克隆为我的）');
+                        } else {
+                            // 兜底：注入一次再加载
+                            PresetManager._injectBuiltInPresets();
+                            UI.toast('请重新选择');
+                        }
+                    }
+                    return;
+                }
+                var cloneBtn = e.target.closest('[data-builtin-clone]');
+                if (cloneBtn) {
+                    e.stopPropagation();
+                    PresetManager.cloneAsMyPreset(cloneBtn.dataset.builtinClone);
+                    UI.hideModal(overlay.id);
+                }
+            });
+        }, 50);
+    },
 
     // 从localStorage加载预设列表
     load: function() {
         try {
             var data = Storage.getJSON(Storage.KEYS.API_PRESETS, []);
             var arr = Array.isArray(data) ? data : [];
-            // 【已移除】清理旧版本残留的内置预设（月读/果实/蛾摩拉），避免继续显示在列表中
-            this.presets = arr.filter(function(p) { return p && !p._isBuiltin; });
+            // 过滤掉旧版"无 builtinId 的 _isBuiltin 残留"（早期月读/果实/蛾摩拉）
+            // 保留：有 builtinId 的新版内置 + 用户自己的预设
+            this.presets = arr.filter(function(p) { return p && !(p._isBuiltin && !p.builtinId); });
             if (this.presets.length !== arr.length) {
                 this.save();
             }
-            } catch(e) {
-                console.error('[APIPresetManager] 读取apiPresets失败:', e);
-                this.presets = [];
-            }
-        },
+        } catch(e) {
+            console.error('[APIPresetManager] 读取apiPresets失败:', e);
+            this.presets = [];
+        }
+    },
 
     // 保存预设列表
     save: function() {
@@ -291,7 +450,15 @@ var PresetManager = {
 
         if (this.presets.length === 0) {
             if (currentInfo) currentInfo.style.display = 'none';
-            container.innerHTML = '<div class="empty-state">暂无预设<br>点击「导入酒馆预设」或选择内置预设</div>';
+            container.innerHTML =
+                '<div class="empty-state" style="padding:24px 12px;">' +
+                '<div style="font-size:13px;margin-bottom:12px;color:var(--text-secondary);">暂无预设</div>' +
+                '<div style="display:flex;flex-direction:column;gap:8px;align-items:center;">' +
+                '<button class="btn-primary" onclick="PresetManager.showBuiltInPicker()" style="padding:8px 16px;border-radius:8px;cursor:pointer;">选择内置预设</button>' +
+                '<button class="btn-secondary" onclick="document.getElementById(\'presetFileInput\').click()" style="padding:6px 14px;border-radius:8px;cursor:pointer;font-size:11px;">导入酒馆预设</button>' +
+                '</div>' +
+                '<div style="font-size:10px;margin-top:10px;color:var(--text-tertiary);line-height:1.5;">4 套官方精工预设（抒情/激进/平缓/标准）<br>题材自适应古风/现代/任何世界观</div>' +
+                '</div>';
             return;
         }
 
