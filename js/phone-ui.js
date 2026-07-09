@@ -160,11 +160,8 @@ function _getConversationHistory() {
 function getConversationHistorySnapshot() {
     var hist = _getConversationHistory();
     // 深拷贝：防止快照引用被后续 mutate 污染（saveUndoState 场景关键）
-    if (typeof StateSchema !== 'undefined' && StateSchema.deepClone) {
-        return StateSchema.deepClone(hist);
-    }
-    // fallback：JSON 深拷贝（消息对象为纯数据，无函数/循环引用）
-    try { return JSON.parse(JSON.stringify(hist)); } catch (e) { return hist.slice(); }
+    // 【冗余审计 P1-6】统一用 safeDeepClone（原 typeof StateSchema + JSON.parse 两层 fallback）
+    return safeDeepClone(hist);
 }
 function _updateConversationHistory(newHist) {
     if (typeof StateManager !== 'undefined' && StateManager.set) {
@@ -1334,8 +1331,8 @@ function renderLogPage() {
         var _wMods = (gameState && gameState._worldModules) || [];
         var _dateKey = (new Date()).getDate();
         var _key = Object.keys(_presetApps).length + '|' + _wMods.length + '|' + _dateKey;
-        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderLogPage', _key)) return;
-        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderLogPage', _key);
+        // 【冗余审计 P1-8】统一用 shouldSkipPageRender（原两行 same+mark 重复模式）
+        if (shouldSkipPageRender('renderLogPage', _key)) return;
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var now = new Date();
     var dateEl = document.getElementById('logTopDate');
@@ -3294,8 +3291,8 @@ function renderPlayerPage() {
             inv: JSON.stringify((gameState.currentBag || []).map(function(b){return b.name;})),
             r: _getConversationHistory().length
         });
-        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderPlayerPage', cacheKey)) return;
-        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderPlayerPage', cacheKey);
+        // 【冗余审计 P1-8】统一用 shouldSkipPageRender（原两行 same+mark 重复模式）
+        if (shouldSkipPageRender('renderPlayerPage', cacheKey)) return;
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var data = gameState.playerData;
     var nameEl = document.getElementById('playerPageName');
@@ -3504,8 +3501,8 @@ function renderBag(items) {
         var bagKey = JSON.stringify(currentBag.map(function(it) {
             return [it.id || it.name, it.count || it.amount || 1, it.desc || '', it.rarity || '', it.equipped || false];
         }));
-        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderBag', bagKey)) return;
-        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderBag', bagKey);
+        // 【冗余审计 P1-8】统一用 shouldSkipPageRender（原两行 same+mark 重复模式）
+        if (shouldSkipPageRender('renderBag', bagKey)) return;
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     if (currentBag.length === 0) {
         container.innerHTML = renderSvgEmptyState(
@@ -3578,8 +3575,8 @@ function renderRecapPage() {
     try {
         var storiesProbe = getStoryList();
         var _key = storiesProbe.length + '|' + (storiesProbe.length ? storiesProbe[storiesProbe.length - 1].text.length : 0);
-        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderRecapPage', _key)) return;
-        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderRecapPage', _key);
+        // 【冗余审计 P1-8】统一用 shouldSkipPageRender（原两行 same+mark 重复模式）
+        if (shouldSkipPageRender('renderRecapPage', _key)) return;
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     // 联动：用记忆里的最近剧情摘要补全回顾
     var stories = getStoryList();
@@ -4986,7 +4983,7 @@ async function _generateEndingRender(stories) {
         // 旧代码截断到 15000 字，长游戏的后半段剧情 AI 看不到，结局生成质量差
         // 新策略：按 contextSize 的 60% 估算（留 40% 给 prompt 和输出），最少 10000 字
 
-        var _ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000);
+        var _ctxSize = getContextSizeSafe();
         var _maxEndingChars = Math.max(10000, Math.floor(_ctxSize * 0.6 * 1.7));
         if (allText.length > _maxEndingChars) allText = allText.substring(0, _maxEndingChars) + '\n\n...（后续内容省略）';
 
@@ -7698,8 +7695,8 @@ function renderNpcPage() {
             sigParts.push(_c.name + ':' + (_c.favorability || 0) + ':' + (_c.title || '') + ':' + (_c.relation || '') + ':' + (_c.desc || '').length + ':' + _detailsSig);
         }
         var _key = chars.length + '|' + totalFav + '|' + sigParts.join('|');
-        if (typeof RenderCache !== 'undefined' && RenderCache.same('renderNpcPage', _key)) return;
-        if (typeof RenderCache !== 'undefined') RenderCache.mark('renderNpcPage', _key);
+        // 【冗余审计 P1-8】统一用 shouldSkipPageRender（原两行 same+mark 重复模式）
+        if (shouldSkipPageRender('renderNpcPage', _key)) return;
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var container = document.getElementById('characterList');
     if (!container) return;

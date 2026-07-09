@@ -4998,15 +4998,8 @@ function buildAIRequestBody(messages, options, config) {
     // 不硬编码上限——某些模型支持输出 >50% 上下文长度（如 Gemini 2.0 Flash 输出 8192 / 输入 1M）
     // 只在 contextSize 已知且 max_tokens 明显超出时（>contextSize）才裁剪，避免必然的 400 错误
     if (filtered.max_tokens != null) {
-        var ctxSize = 0;
-        try {
-
-            if (typeof getContextSize === 'function') {
-                ctxSize = getContextSize();
-            } else if (typeof gameState !== 'undefined' && gameState && gameState.contextSize) {
-                ctxSize = Number(gameState.contextSize) || 0;
-            }
-        } catch (e) { /* gameState 可能未定义 */ }
+        // 【冗余审计 P1-5】用 getContextSizeSafe 替代 typeof + gameState fallback 重复模式
+        var ctxSize = getContextSizeSafe();
         if (ctxSize > 0) {
             var mt2 = Number(filtered.max_tokens);
             if (mt2 > ctxSize) {

@@ -89,9 +89,10 @@ var QuestSystem = {
         if (!QuestSystem._cachedGuidanceQuest) return;
         var q = QuestSystem._cachedGuidanceQuest;
         if (q.status !== QuestSystem.STATUS.ACTIVE) return;
-        var parts = (q.progress || '0/1').split('/');
-        var current = safeInt(parts[0], 0);
-        var total = safeInt(parts[1], 1);
+        // 【冗余审计 P1-7】用全局 parseProgressParts 替代内联 split
+        var pp = parseProgressParts(q.progress || '0/1');
+        var current = pp.current;
+        var total = pp.total;
         if (current < total) {
             current++;
             q.progress = current + '/' + total;
@@ -125,12 +126,11 @@ var QuestSystem = {
             });
     },
     parseProgress(p) {
+        // 【冗余审计 P1-7】基于全局 parseProgressParts 算百分比（原内联 split）
         if (!p) return 0;
-        var parts = p.split('/');
-        if (parts.length === 2) {
-            var c = safeInt(parts[0], 0),
-            t = safeInt(parts[1], 1);
-            return Math.min(100, Math.round((c / t) * 100));
+        var parts = parseProgressParts(p);
+        if (parts.total > 0) {
+            return Math.min(100, Math.round((parts.current / parts.total) * 100));
         }
     return 0;
     },
@@ -816,13 +816,9 @@ function renderQuests() {
         html += '</div>';
         // 进度条（只有进行中且有progress时显示）
         if (q.progress && !isDone) {
-            var parts = q.progress.split('/');
-            var percent = 0;
-            if (parts.length === 2) {
-                var cur = safeInt(parts[0], 0);
-                var total = safeInt(parts[1], 1);
-                percent = Math.min(100, Math.round(cur / total * 100));
-            }
+            // 【冗余审计 P1-7】用全局 parseProgressParts 替代内联 split
+            var pp = parseProgressParts(q.progress);
+            var percent = pp.total > 0 ? Math.min(100, Math.round(pp.current / pp.total * 100)) : 0;
             html += '<div class="quest-progress-row">';
             html +=
                 '<div class="quest-progress-bar"><div class="quest-progress-fill" style="width:' +

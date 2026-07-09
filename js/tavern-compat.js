@@ -146,7 +146,7 @@ _getSettings: function() {
         model: gs && gs.model ? gs.model : '',
         temperature: gs && typeof gs.temperature === 'number' ? gs.temperature : 0.7,
         maxTokens: gs && gs.maxTokens ? gs.maxTokens : 2000,
-        contextSize: (typeof getContextSize === 'function') ? getContextSize() : (gs && gs.contextSize ? gs.contextSize : 8000),
+        contextSize: getContextSizeSafe(),
         systemPrompt: gs && gs.systemPrompt ? gs.systemPrompt : '',
         jailbreakPrompt: gs && gs._jailbreakPrompt ? gs._jailbreakPrompt : ''
     };
@@ -2330,8 +2330,8 @@ var GameMemory = {
             }
 
 
-            var ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
-            if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
+            var ctxSize = getContextSizeSafe();
+            // 【冗余审计 P1-5】getContextSizeSafe 已保证返回有效正数，删除原 isNaN/<=0 重复校验
             var setupTokens = estimateTokensUtil(layers.fullSetup);
             var setupRatio = setupTokens / ctxSize;
 
@@ -3838,8 +3838,8 @@ var GameMemory = {
 
     _adaptBudget: function() {
 
-        var ctxSize = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
-        if (!ctxSize || isNaN(ctxSize) || ctxSize <= 0) ctxSize = 8000;
+        var ctxSize = getContextSizeSafe();
+        // 【冗余审计 P1-5】getContextSizeSafe 已保证返回有效正数，删除原 isNaN/<=0 重复校验
 
         // 原逻辑只留15%，在max_tokens较小时容易导致AI无输出空间
         // 字符/token比约1.7，所以 maxChars ≈ ctxSize * 0.70 * 1.7
@@ -4350,9 +4350,8 @@ Object.defineProperty(GameMemory, 'longTermMemory', {
         // 外部 `longTermMemory.characterTable[name] = {...}` 走实时引用能写入，绕过 GameMemory API（不调 _markLtmDirty），
         // 下次取 deepClone 字段仍是旧数据。
         // 修复后：所有字段统一 deepClone，写入必须走 GameMemory API。
-        var deepClone = (typeof StateSchema !== 'undefined' && StateSchema.deepClone)
-            ? StateSchema.deepClone
-            : function(o) { return JSON.parse(JSON.stringify(o)); };
+        // 【冗余审计 P1-6】用 safeDeepClone 替代局部 typeof + JSON.parse fallback
+        var deepClone = safeDeepClone;
         // _worldNotes 懒初始化（API addWorldNote 也会懒初始化，此处仅保证 getter 安全）
         if (!self._worldNotes) self._worldNotes = [];
         var result = {

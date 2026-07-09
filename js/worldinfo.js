@@ -1661,7 +1661,7 @@ var WorldInfo = {
 
     // maxTokens 通常只有 4096，而 contextSize 可达 128000，用错会导致世界书预算被严重低估
 
-    var contextLen = (typeof getContextSize === 'function') ? getContextSize() : ((typeof gameState !== 'undefined' && gameState.contextSize) ? gameState.contextSize : 8000);
+    var contextLen = getContextSizeSafe();
     activated = this.applyBudget(activated, contextLen);
 
     return activated;
@@ -2008,7 +2008,7 @@ var WorldInfo = {
         var budgetPercent = this.settings.tokenBudget != null ? this.settings.tokenBudget : 25;
         var budgetCap = this.settings.tokenBudgetCap || 0;
         // 估算总上下文token数（如果没有提供，默认8000）
-        var estimatedContextTokens = contextLength || 8000;
+        var estimatedContextTokens = contextLength || DEFAULT_CONTEXT_SIZE;
         // 计算实际预算token数
         var budget = Math.floor(estimatedContextTokens * (budgetPercent / 100));
         // 如果有硬上限且大于0，应用硬上限

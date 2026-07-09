@@ -4,19 +4,9 @@
 // ========================================
 const UndoMutator = {
     // 安全克隆：深拷贝（处理循环引用）
-    // 优先用 StateSchema.deepClone（过滤危险键，防原型污染）；
-    // 若含循环引用（deepClone 不支持），回退 structuredClone；
-    // structuredClone 不可用时回退 JSON
+    // 【冗余审计 P1-6】委托给全局 safeDeepClone（utils.js 定义，三层 fallback 统一）
     _safeClone(o) {
-        if (typeof StateSchema !== 'undefined' && StateSchema.deepClone) {
-            try { return StateSchema.deepClone(o); } catch (e) { /* 含循环引用，走 fallback */ }
-        }
-        if (typeof structuredClone === 'function') {
-            try { return structuredClone(o); } catch (e) { /* 循环引用，走 fallback */ }
-        }
-        try { return JSON.parse(JSON.stringify(o)); } catch (e) {
-            throw new Error('[UndoMutator] 深拷贝失败（含循环引用且无 JSON 兼容）：' + (e && e.message));
-        }
+        return safeDeepClone(o);
     },
 
     // 获取当前撤销栈（深拷贝）

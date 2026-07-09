@@ -159,6 +159,47 @@ function getContextSize() {
     return DEFAULT_CONTEXT_SIZE;
 }
 
+// 【冗余审计 P1-5】统一 getContextSize 调用入口
+// 原本 7+ 处重复 (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000)
+// 收敛为单点：utils.js 必然先加载，但保留 typeof 防御；fallback 直接用 DEFAULT_CONTEXT_SIZE
+// 调用方可直接信任返回值有效，无需再做 isNaN / <= 0 检查
+function getContextSizeSafe() {
+    return (typeof getContextSize === 'function') ? getContextSize() : DEFAULT_CONTEXT_SIZE;
+}
+
+// 【冗余审计 P1-7】统一 "current/total" 进度解析
+// 原本 4 处散落重复 String(progress).split('/') + safeInt + 兜底逻辑
+// 收敛为单点：返回 {current, total}，调用方按需取用
+// - quest-mutator._parseProgressParts 委托此函数
+// - systems.parseProgress 基于此算百分比
+// - systems.advanceGuidanceQuest / 渲染进度条 直接调用
+function parseProgressParts(progress) {
+    if (!progress) return { current: 0, total: 1 };
+    var parts = String(progress).split('/');
+    if (parts.length === 2) {
+        return { current: safeInt(parts[0], 0), total: safeInt(parts[1], 1) };
+    }
+    // 纯数字视为 current
+    var n = parseInt(progress);
+    return { current: isNaN(n) ? 0 : n, total: 1 };
+}
+
+// 【冗余审计 P1-6】统一 deepClone 调用入口
+// 原本 3 处散落重复 (typeof StateSchema !== 'undefined' && StateSchema.deepClone) ? ... : JSON.parse(JSON.stringify(...))
+// 收敛为单点：优先 StateSchema.deepClone（过滤危险键，防原型污染）→ structuredClone（支持循环引用）→ JSON.parse 兜底
+// utils.js 最先加载，定义时 StateSchema 未定义，但函数运行时调用 StateSchema 已存在
+function safeDeepClone(o) {
+    if (typeof StateSchema !== 'undefined' && StateSchema.deepClone) {
+        try { return StateSchema.deepClone(o); } catch (e) { /* 含循环引用，走 fallback */ }
+    }
+    if (typeof structuredClone === 'function') {
+        try { return structuredClone(o); } catch (e) { /* 循环引用，走 fallback */ }
+    }
+    try { return JSON.parse(JSON.stringify(o)); } catch (e) {
+        throw new Error('[safeDeepClone] 深拷贝失败（含循环引用且无 JSON 兼容）：' + (e && e.message));
+    }
+}
+
 function getContextScale() {
     // 【冗余审计 P0-4】scale 基准统一用常量（原硬编码 8000）
     return Math.max(0.5, getContextSize() / DEFAULT_CONTEXT_SIZE);

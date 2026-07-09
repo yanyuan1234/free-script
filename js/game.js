@@ -1492,7 +1492,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 聊天历史 → 从最旧开始淘汰，直到不超预算
         // 参考：https://sillytavern.wiki/usage/common-settings/
 
-        var contextSize = (typeof getContextSize === 'function') ? getContextSize() : ((gameState && gameState.contextSize) || 8000);
+        var contextSize = getContextSizeSafe();
         var maxTokens = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
         // 酒馆公式：输入预算 = 上下文大小 - 输出预留
         // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
@@ -2272,7 +2272,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 避免 accumulate 类型首次生成后 !hasType() 永久阻止后续兜底（与BUG-010同根）。
         try { ensureLogFallbacks(finalStory, data && data.world); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
         autoSave();
-        // 传入当前响应更新Token计数（estimateTokensUtil 内部按 1.7 字符/token 估算）
+        // 传入当前响应更新Token计数（estimateTokensUtil 优先用 Tokenizer 精确计数，回退字符估算）
         updateTokenCount(response);
     } catch (error) {
         TypewriterBuffer.stop();
@@ -2310,7 +2310,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 }
 function updateTokenCount(currentResponse) {
     if (!gameState.conversationHistory) return;
-    // 统一用 utils 里的 token 估算（1 token ≈ 1.7 字符，含中英文混合）
+    // 统一用 utils 里的 token 估算（优先 Tokenizer 精确计数，回退字符估算）
     var estimated = estimateTokensForMessagesUtil(gameState.conversationHistory);
     gameState.tokenCount = estimated;
 
@@ -2346,7 +2346,7 @@ function updateTokenCount(currentResponse) {
         if (gameState._lastInputTokens) {
             var inputDisplay = gameState._lastInputTokens > 1000 ? (gameState._lastInputTokens / 1000).toFixed(1) + 'k' : gameState._lastInputTokens;
 
-            var _ctxForDisplay = (typeof getContextSize === 'function') ? getContextSize() : (gameState.contextSize || 8000);
+            var _ctxForDisplay = getContextSizeSafe();
             var ctxDisplay = _ctxForDisplay > 1000 ? (_ctxForDisplay / 1000).toFixed(0) + 'k' : _ctxForDisplay;
             inputInfo = ' | 请求: ' + inputDisplay + '/' + ctxDisplay + ' (' + (gameState._lastContextUsage || 0) + '%)';
         }

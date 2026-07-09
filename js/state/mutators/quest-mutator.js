@@ -100,15 +100,9 @@ const QuestMutator = {
     },
 
     // 解析进度为 {current, total}
+    // 【冗余审计 P1-7】委托给全局 parseProgressParts（utils.js 定义，4 处统一调用）
     _parseProgressParts(progress) {
-        if (!progress) return { current: 0, total: 1 };
-        const parts = String(progress).split('/');
-        if (parts.length === 2) {
-            return { current: safeInt(parts[0], 0), total: safeInt(parts[1], 1) };
-        }
-        // 纯数字视为 current
-        const n = parseInt(progress);
-        return { current: isNaN(n) ? 0 : n, total: 1 };
+        return parseProgressParts(progress);
     },
 
     // 添加任务
