@@ -3525,6 +3525,11 @@ targetModule = { type: 'cards', title: '物品', items: theater.data?.items || p
 targetModule = { type: 'theater', title: '文字剧场', content: theater.html || theater.content, scenes: theater.data?.scenes, text: theater.data?.text };
 }
     }
+    // [E3修复] 统一净化 content 字段，避免 AI 返回的恶意 HTML 通过 innerHTML 渲染执行 XSS
+    // sanitizeHtml 使用白名单标签+属性，移除 <script>/on* 事件/危险 URL
+    if (targetModule && targetModule.content && typeof sanitizeHtml === 'function') {
+        targetModule.content = sanitizeHtml(targetModule.content);
+    }
     return targetModule;
 }
 

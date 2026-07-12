@@ -854,12 +854,19 @@ saveChat: function(){ console.log('[SillyTavern] saveChat: 游戏自动存档已
 saveChatConditional: function(){ console.log('[SillyTavern] saveChatConditional: 游戏自动存档已处理'); },
 generateRaw: function(prompt, options){
     console.log('[SillyTavern] generateRaw: 通过 sendAIRequest 发送');
-    if(typeof sendAIRequest === 'function') sendAIRequest(prompt);
-    return '';
+    // [P0-7修复] 返回 Promise 而非空字符串，让预设脚本能 await 结果
+    if(typeof sendAIRequest === 'function') {
+        return sendAIRequest(prompt);
+    }
+    return Promise.resolve('');
 },
 generateRawQuiet: function(prompt, options){
+    // [P0-8修复] 真正静默调用 AI，不返回空字符串
     console.log('[SillyTavern] generateRawQuiet: 静默生成');
-    return '';
+    if(typeof sendAIRequest === 'function') {
+        return sendAIRequest(prompt);
+    }
+    return Promise.resolve('');
 },
 getChatMetadata: function(){ return (gameState && gameState.chatMetadata) || {}; },
 setChatMetadata: function(key, value){

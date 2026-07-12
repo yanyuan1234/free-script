@@ -1519,14 +1519,14 @@ function _openPresetApp(tag) {
 
 // 渲染包含HTML/CSS的预设app（如ice、snow中的交互小剧场）
 function _renderPresetAppHTML(content, tag) {
-    // 【P2-72修复】安全处理：使用 sandbox iframe + sanitizeIframeHtml 隔离 AI 生成的内容
-    // sanitizeIframeHtml 只放行安全标签（包含 <style>），移除脚本和危险属性
+    // [P0-4修复] 安全处理：sandbox="" 完全隔离，不允许脚本执行
+    // 小剧场只需 HTML+CSS 渲染，不需要 JS。移除 allow-scripts 避免 XSS
     var wrapperClass = 'preset-app-content';
     if (tag === 'snow') wrapperClass += ' preset-app-snow';
     if (tag === 'ice') wrapperClass += ' preset-app-ice';
 
     var safeContent = (typeof sanitizeIframeHtml === 'function') ? sanitizeIframeHtml(content) : escapeHtml(content);
-    return '<iframe sandbox="allow-scripts" srcdoc="' + safeContent.replace(/"/g, '&quot;') + '" style="width:100%;border:none;min-height:200px;border-radius:8px;"></iframe>';
+    return '<iframe sandbox="" srcdoc="' + safeContent.replace(/"/g, '&quot;') + '" style="width:100%;border:none;min-height:200px;border-radius:8px;"></iframe>';
 }
 
 // 渲染纯文本/XML预设app内容
@@ -3142,8 +3142,7 @@ function renderDefaultPage(type) {
             // 修复：AI 返回的字段全部 escapeHtml，防止 XSS
             switch (mod.type) {
                 case 'text':
-
-                    // 但实际未 escape，与同文件 1823/1878/3107 处的 sibling 实现不一致（XSS 漏洞）
+                    // [P0-5确认] 已双重 escape（escapeHtml + parseMarkdown 内部再 escape），安全
                     inner = '<div style="font-size:14px;line-height:1.7;">' + parseMarkdown(escapeHtml(mod
                         .content || '')) + '</div>';
                     break;
