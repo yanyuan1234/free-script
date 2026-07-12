@@ -175,7 +175,30 @@ triggerSlash: function(commandStr) {
     var commands = commandStr.split('|');
     var chain = Promise.resolve('');
     commands.forEach(function(cmd) {
-        chain = chain.then(function(pipeValue) { self._pipeValue = pipeValue || ''; return self._executeSingleCommand(cmd.trim()); }).catch(function(err) { console.error('[斜杠命令] 操作失败:', err); });
+        chain = chain.then(function(pipeValue) {
+            self._pipeValue = pipeValue || '';
+            // [F2修复] 每条命令加 10 秒超时，防止挂起阻塞整个 Promise 链
+            return new Promise(function(resolve, reject) {
+                var settled = false;
+                var timer = setTimeout(function() {
+                    if (settled) return;
+                    settled = true;
+                    console.warn('[斜杠命令] 超时 (10s):', cmd.trim());
+                    resolve('');
+                }, 10000);
+                Promise.resolve(self._executeSingleCommand(cmd.trim())).then(function(v) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    resolve(v);
+                }).catch(function(e) {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timer);
+                    reject(e);
+                });
+            });
+        }).catch(function(err) { console.error('[斜杠命令] 操作失败:', err); });
     });
     return chain;
 },
@@ -524,7 +547,7 @@ on: function(event, cb) {
         this._eventListeners[event].push(cb);
     }
 },
-emit: function(event, data) { var l=this._eventListeners[event]; if(l && Array.isArray(l))l.forEach(function(cb){try{cb(data);}catch(e){console.error('[TavernHelper] listener error:',e);}}); },
+emit: function(event, data) { var l=this._eventListeners[event]; if(l && Array.isArray(l)){l.slice().forEach(function(cb){try{cb(data);}catch(e){console.error('[TavernHelper] listener error:',e);}});} },
 
 // 5. Quick Reply 按钮（增强版 - 支持酒馆完整字段）
 parseQuickReplies: function(data) {
@@ -887,7 +910,13 @@ eventSource: {
     on: function(e, cb){ TavernHelperCompat.on(e, cb); },
     emit: function(e, d){ TavernHelperCompat.emit(e, d); },
     once: function(e, cb){
-        var wrapper = function(d){ TavernHelperCompat._removeListener(e, wrapper); cb(d); };
+        var fired = false;
+        var wrapper = function(d){
+            if (fired) return;
+            fired = true;
+            TavernHelperCompat._removeListener(e, wrapper);
+            try { cb(d); } catch(ex) { console.error('[TavernHelper] once listener error:', ex); }
+        };
         TavernHelperCompat.on(e, wrapper);
     },
     removeListener: function(e, cb){ TavernHelperCompat._removeListener(e, cb); }
@@ -4143,6 +4172,9 @@ var GameMemory = {
 
         this._cachedInjection = null;
         this._cachedInjectionTurn = -1;
+        // [F4修复] clear 遗漏 _worldNotes 和 _ltmCache，导致新游戏开局残留旧世界笔记和陈旧 LTM 快照
+        this._worldNotes = [];
+        this._ltmCache = null;
         this._markLtmDirty();
     },
 

@@ -251,7 +251,11 @@ const StateSchema = {
             if (typeof oldSw === 'object' && !Array.isArray(oldSw) && oldSw !== null) {
                 if (!oldSw.versions) {
                     // 老格式：取当前 turn 对应的条目迁移，其余丢弃
+                    // [C1修复] curTurn 需同时检查 _stats.totalTurns（更老的存档用此字段）
                     var curTurn = (result.progress && typeof result.progress.turn === 'number') ? result.progress.turn : 0;
+                    if (curTurn === 0 && state._stats && typeof state._stats.totalTurns === 'number') {
+                        curTurn = state._stats.totalTurns;
+                    }
                     var entry = oldSw[String(curTurn)];
                     if (entry && Array.isArray(entry.versions)) {
                         result.progress.swipes = {
@@ -260,7 +264,22 @@ const StateSchema = {
                             turn: curTurn
                         };
                     } else {
-                        result.progress.swipes = { versions: [], current: -1, turn: curTurn };
+                        // [C1修复] 精确 turn 未命中时，取最大 turn key（最近一轮）作为兜底
+                        var maxKey = -1;
+                        Object.keys(oldSw).forEach(function(k) {
+                            var kn = parseInt(k, 10);
+                            if (!isNaN(kn) && kn > maxKey) maxKey = kn;
+                        });
+                        if (maxKey >= 0 && oldSw[String(maxKey)] && Array.isArray(oldSw[String(maxKey)].versions)) {
+                            var fallbackEntry = oldSw[String(maxKey)];
+                            result.progress.swipes = {
+                                versions: fallbackEntry.versions,
+                                current: (typeof fallbackEntry.current === 'number') ? fallbackEntry.current : 0,
+                                turn: maxKey
+                            };
+                        } else {
+                            result.progress.swipes = { versions: [], current: -1, turn: curTurn };
+                        }
                     }
                 }
                 // 新格式直接保留（含 versions 字段）

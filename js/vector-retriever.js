@@ -121,8 +121,8 @@ var VectorRetriever = {
         if (!text || !text.trim()) return null;
         var pipe = await this._loadPipeline();
         var output = await pipe(text, { pooling: 'mean', normalize: true });
-        // output.data 是 Float32Array
-        return output.data;
+        // [C3修复] 返回副本，避免 pipeline 复用内部 buffer 导致已缓存向量被后续调用覆盖
+        return new Float32Array(output.data);
     },
 
     // 余弦相似度（向量已 normalize，直接点积）
