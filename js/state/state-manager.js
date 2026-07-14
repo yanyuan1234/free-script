@@ -163,7 +163,8 @@ const StateManager = {
             const obj = {};
             for (let i = 0; i < value.length; i++) {
                 const c = value[i];
-                if (c && c.name) obj[c.name] = c;
+                // [P2-1修复] 深拷贝每个元素，避免镜像与源数组共享引用导致双向篡改
+                if (c && c.name) obj[c.name] = StateSchema.deepClone(c);
             }
             this._state[legacyName] = obj;
             return;

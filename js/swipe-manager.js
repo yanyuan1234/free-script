@@ -188,9 +188,10 @@ var SwipeManager = {
         // 找最后一条 assistant 消息
         for (var i = hist.length - 1; i >= 0; i--) {
             if (hist[i] && hist[i].role === 'assistant') {
-                // 创建新数组（避免 mutate 原数组，与 _updateConversationHistory 约定一致）
+                // [P2-2修复] 保留原消息的其他字段（如 timestamp/turn 等），仅更新 content
+                // 旧实现 { role, content } 会丢弃额外字段
                 var newHist = hist.slice();
-                newHist[i] = { role: 'assistant', content: content };
+                newHist[i] = Object.assign({}, hist[i], { content: content });
                 StateManager.set('progress.conversationHistory', newHist, { silent: true });
                 return;
             }

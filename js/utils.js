@@ -16,7 +16,11 @@ const DOMCache = {
     get(id, permanent) {
         if (permanent && this._permanent[id]) return this._permanent[id];
         const c = this._cache[id];
-        if (c && (Date.now() - c.t < this._maxAge)) return c.el;
+        if (c && (Date.now() - c.t < this._maxAge)) {
+            // [P2-4修复] 命中时刷新时间戳，实现 LRU 而非 FIFO，热点元素不被淘汰
+            c.t = Date.now();
+            return c.el;
+        }
         const el = document.getElementById(id);
         if (el) {
             if (permanent) this._permanent[id] = el;
