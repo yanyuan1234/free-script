@@ -3412,7 +3412,7 @@ function renderPlayerPage() {
     var dynHtml = '';
     if (data.stats && data.stats.length > 0) {
         data.stats.forEach(function(s) {
-            var numVal = parseInt(s.value);
+            var numVal = parseInt(s.value, 10);
             if (!isNaN(numVal) && numVal >= 0 && numVal <= 100) {
                 var isWarning = numVal < 30;
                 dynHtml += '<div class="player-field-rich ' + (isWarning ? 'player-field-warning' : '') + '">' +
@@ -5546,7 +5546,7 @@ function renderAPISettings() {
                 var group = this.dataset.group;
                 var cards = container.querySelectorAll('.api-card');
                 cards.forEach(function(card) {
-                    var idx = parseInt(card.dataset.apiIndex);
+                    var idx = parseInt(card.dataset.apiIndex, 10);
                     var cfg = LocalGameAPI._configs[idx];
                     if (group === 'all') {
                         card.style.display = '';
@@ -6245,7 +6245,7 @@ function saveGameSettings() {
 
     var storyLengthEl = document.getElementById('settingStoryLength');
     if (storyLengthEl) {
-        var len = parseInt(storyLengthEl.value);
+        var len = parseInt(storyLengthEl.value, 10);
         if (len && len >= 100) {
             if (typeof _syncMaxTokens === 'function') {
                 _syncMaxTokens(len);
@@ -6651,7 +6651,7 @@ async function handleImportFile(e) {
             if (overwrite) {
                 // 覆盖模式
                 for (var i = 0; i < slots.length; i++) {
-                    var slot = parseInt(slots[i]);
+                    var slot = parseInt(slots[i], 10);
                     if (!isNaN(slot) && saves[slots[i]]) {
                         await SaveDB.set(slot, saves[slots[i]]);
                     }
@@ -6661,7 +6661,7 @@ async function handleImportFile(e) {
                 // 合并模式
                 var imported = 0;
                 for (var j = 0; j < slots.length; j++) {
-                    var mSlot = parseInt(slots[j]);
+                    var mSlot = parseInt(slots[j], 10);
                     if (isNaN(mSlot) || !saves[slots[j]]) continue;
                     var existing = await SaveDB.get(mSlot);
                     if (!existing) {

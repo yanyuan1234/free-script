@@ -5509,14 +5509,14 @@ async function detectContextSize() {
     // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
     if (ctxSize === 0) {
         var kMatch = model.match(/(\d+)k/);
-        if (kMatch) ctxSize = parseInt(kMatch[1]) * 1024;
+        if (kMatch) ctxSize = parseInt(kMatch[1], 10) * 1024;
     }
 
     // 3c. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
     if (ctxSize === 0) {
         var numMatch = model.match(/[-_](\d{4,})/);
         if (numMatch) {
-            var num = parseInt(numMatch[1]);
+            var num = parseInt(numMatch[1], 10);
             if (num >= 2048) ctxSize = num;
         }
     }
@@ -5548,7 +5548,7 @@ async function detectContextSize() {
                 var probeText = (typeof probeResult === 'string') ? probeResult : (probeResult.content || '');
                 var numOnly = probeText.replace(/[^\d]/g, '');
                 if (numOnly) {
-                    var probeCtx = parseInt(numOnly);
+                    var probeCtx = parseInt(numOnly, 10);
                     if (probeCtx >= 2048 && probeCtx <= 10000000) {
                         ctxSize = probeCtx;
                         console.log('[Context检测] AI自报context: ' + ctxSize);

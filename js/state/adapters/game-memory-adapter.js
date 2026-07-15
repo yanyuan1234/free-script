@@ -11,19 +11,31 @@
 // （完整派生视图改造见 P2/P3：tables 改为 getter、运行时字段迁到 _runtime 字典）
 const GameMemoryAdapter = {
     _syncLock: false,
+    _subTokens: [],
 
     // 绑定：订阅 StateManager 变更，自动同步到 GameMemory
     bind() {
         var self = this;
-        StateManager.subscribe('entities.**', () => {
-            self.syncToGameMemory();
-        });
-        StateManager.subscribe('progress.**', () => {
-            self.syncToGameMemory();
-        });
-        StateManager.subscribe('time', () => {
-            self.syncToGameMemory();
-        });
+        // [P3修复] 保存 subscribe 返回的 token，配合 StateManager.unsubscribe 可在解绑时移除监听器
+        this._subTokens = [
+            StateManager.subscribe('entities.**', () => {
+                self.syncToGameMemory();
+            }),
+            StateManager.subscribe('progress.**', () => {
+                self.syncToGameMemory();
+            }),
+            StateManager.subscribe('time', () => {
+                self.syncToGameMemory();
+            })
+        ].filter(function(t) { return t !== null; });
+    },
+
+    // 解绑：移除所有监听器
+    unbind() {
+        if (this._subTokens && StateManager.unsubscribe) {
+            this._subTokens.forEach(function(t) { StateManager.unsubscribe(t); });
+        }
+        this._subTokens = [];
     },
 
     // StateManager -> GameMemory（MERGE 语义，保留运行时累积字段）

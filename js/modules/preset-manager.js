@@ -539,25 +539,25 @@ var PresetManager = {
         var detailEl = e.target.closest('.preset-detail-btn');
         if (detailEl) {
             e.stopPropagation();
-            self.openPresetDetail(parseInt(detailEl.dataset.idx));
+            self.openPresetDetail(parseInt(detailEl.dataset.idx, 10));
             return;
         }
     var loadEl = e.target.closest('[data-preset-load]');
     if (loadEl) {
         e.stopPropagation();
-        self.loadPreset(parseInt(loadEl.dataset.presetLoad));
+        self.loadPreset(parseInt(loadEl.dataset.presetLoad, 10));
         return;
     }
     var deleteEl = e.target.closest('.preset-delete-btn');
     if (deleteEl) {
         e.stopPropagation();
-        self.deletePreset(parseInt(deleteEl.dataset.idx));
+        self.deletePreset(parseInt(deleteEl.dataset.idx, 10));
         return;
     }
     // 点击卡片其他区域也加载
     var cardEl = e.target.closest('[data-preset-idx]');
     if (cardEl) {
-        self.loadPreset(parseInt(cardEl.dataset.presetIdx));
+        self.loadPreset(parseInt(cardEl.dataset.presetIdx, 10));
     }
     };
     },
@@ -1281,13 +1281,13 @@ var PresetManager = {
         // 点击内容区域查看详情
         var viewEl = e.target.closest('[data-prompt-view]');
         if (viewEl) {
-            self._viewPromptContent(parseInt(viewEl.dataset.promptView));
+            self._viewPromptContent(parseInt(viewEl.dataset.promptView, 10));
             return;
         }
     // 点击开关按钮
     var toggleEl = e.target.closest('.preset-prompt-toggle');
     if (toggleEl) {
-        self._togglePrompt(parseInt(toggleEl.dataset.idx));
+        self._togglePrompt(parseInt(toggleEl.dataset.idx, 10));
         return;
     }
     };

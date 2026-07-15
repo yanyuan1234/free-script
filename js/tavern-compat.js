@@ -477,7 +477,7 @@ _executeSingleCommand: function(cmdStr) {
         case 'load':
 
             if(typeof loadFromSlot === 'function') {
-                loadFromSlot(parseInt(argsStr.trim()) || 1);
+                loadFromSlot(parseInt(argsStr.trim(), 10) || 1);
             }
             result=''; break;
         default:
@@ -2598,7 +2598,7 @@ var GameMemory = {
                 var sortedEvents = bodyLines.slice().sort(function(a, b) {
                     var aImportance = (a.match(/重要度(\d+)/) || [0, 0])[1];
                     var bImportance = (b.match(/重要度(\d+)/) || [0, 0])[1];
-                    return parseInt(bImportance) - parseInt(aImportance);
+                    return parseInt(bImportance, 10) - parseInt(aImportance, 10);
                 });
                 return headerLine + '\n' + sortedEvents.join('\n');
 
@@ -6039,7 +6039,7 @@ if (!items.length) return '';
 // 支持权重 w:N
 const weighted = items.map(c => {
     const wm = c.match(/^w:(\d+):(.+)$/);
-    if (wm) return { weight: parseInt(wm[1]), text: wm[2] };
+    if (wm) return { weight: parseInt(wm[1], 10), text: wm[2] };
     return { weight: 1, text: c };
 });
 const total = weighted.reduce((s, w) => s + w.weight, 0);

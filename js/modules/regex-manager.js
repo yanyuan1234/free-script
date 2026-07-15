@@ -460,26 +460,26 @@ container.onclick = function(e) {
     var enableEl = e.target.closest('[data-regex-enable]');
     if (enableEl) {
         e.stopPropagation();
-        var i = parseInt(enableEl.dataset.regexEnable);
+        var i = parseInt(enableEl.dataset.regexEnable, 10);
         self._toggleScriptInGroup(i, true);
         return;
     }
 var disableEl = e.target.closest('[data-regex-disable]');
 if (disableEl) {
     e.stopPropagation();
-    var i = parseInt(disableEl.dataset.regexDisable);
+    var i = parseInt(disableEl.dataset.regexDisable, 10);
     self._toggleScriptInGroup(i, false);
     return;
 }
 var deleteEl = e.target.closest('[data-regex-delete]');
 if (deleteEl) {
     e.stopPropagation();
-    self._deleteScriptInGroup(parseInt(deleteEl.dataset.regexDelete));
+    self._deleteScriptInGroup(parseInt(deleteEl.dataset.regexDelete, 10));
     return;
 }
 var editEl = e.target.closest('[data-regex-edit]');
 if (editEl) {
-    self.editScript(parseInt(editEl.dataset.regexEdit));
+    self.editScript(parseInt(editEl.dataset.regexEdit, 10));
 }
 };
 },

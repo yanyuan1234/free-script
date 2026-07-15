@@ -136,7 +136,7 @@ const AIOutputSchema = {
                     name: String(m.name || m.speaker || m.character || '').trim(),
                     text: text,
                     emotion: String(m.emotion || m.mood || '').trim(),
-                    turn: typeof m.turn === 'number' ? m.turn : (parseInt(m.turn) || 0)
+                    turn: typeof m.turn === 'number' ? m.turn : (parseInt(m.turn, 10) || 0)
                 };
             }).filter(function(m) { return m && m.text; });
         }

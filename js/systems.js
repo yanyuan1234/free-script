@@ -49,7 +49,7 @@ var QuestSystem = {
         quests.forEach(function(q) {
             if (q && q.rewards && q.rewards.length > 0) {
                 q.rewards.forEach(function(r) {
-                    var amt = parseInt(r && r.amount);
+                    var amt = parseInt(r && r.amount, 10);
                     if (!isNaN(amt) && amt > 0) {
                         reference += amt;
                         rewardCount++;

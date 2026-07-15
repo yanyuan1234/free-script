@@ -589,7 +589,7 @@ var MacroEngine = {
         }
     // 纯数字视为 1dX
     if (/^\d+$/.test(formula)) {
-        return String(Math.floor(Math.random() * parseInt(formula)) + 1);
+        return String(Math.floor(Math.random() * parseInt(formula, 10)) + 1);
     }
     return '';
     },
@@ -800,7 +800,7 @@ var MacroEngine = {
     text = text.replace(/\{\{time_UTC([-+]\d+)\}\}/gi, function(_, offset) {
         var d = new Date();
         var utc = d.getTime() + d.getTimezoneOffset() * 60000;
-        var target = new Date(utc + parseInt(offset) * 3600000);
+        var target = new Date(utc + parseInt(offset, 10) * 3600000);
         return String(target.getHours()).padStart(2, '0') + ':' + String(target.getMinutes()).padStart(2, '0');
         });
 
@@ -863,7 +863,7 @@ var MacroEngine = {
     text = text.replace(/\{\{uppercase\s*::\s*([^}]+?)\}\}/gi, function(_, t) { return (t||'').toUpperCase(); });
     text = text.replace(/\{\{lowercase\s*::\s*([^}]+?)\}\}/gi, function(_, t) { return (t||'').toLowerCase(); });
     text = text.replace(/\{\{strlen\s*::\s*([^}]+?)\}\}/gi, function(_, t) { return String((t||'').length); });
-    text = text.replace(/\{\{substring\s*::\s*([^:]+?)\s*::\s*(\d+)\s*::\s*(\d+)\s*\}\}/gi, function(_, t, s, e) { return (t||'').substring(parseInt(s), parseInt(e)); });
+    text = text.replace(/\{\{substring\s*::\s*([^:]+?)\s*::\s*(\d+)\s*::\s*(\d+)\s*\}\}/gi, function(_, t, s, e) { return (t||'').substring(parseInt(s, 10), parseInt(e, 10)); });
     text = text.replace(/\{\{replace\s*::\s*([^:]+?)\s*::\s*([^:]+?)\s*::\s*([^}]*?)\}\}/gi, function(_, t, f, r) { return (t||'').split(f).join(r); });
 
     // 数学运算宏
