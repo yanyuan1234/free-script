@@ -5236,20 +5236,33 @@ function _restoreGameRender() {
 async function retryStory() {
     // [P1 Swipe] 重新生成保留多版本：旧版本存入 SwipeManager，新版本追加
     var _histForRetry = _getConversationHistory();
-    if (isWaiting || _histForRetry.length < 3) return;
-    var lastUserMsg = _histForRetry[_histForRetry.length - 2];
+    if (isWaiting) return;
+
+    // 从历史末尾往前找最后一条 user 消息（不假设位置）
+    var lastUserMsg = null;
+    for (var i = _histForRetry.length - 1; i >= 0; i--) {
+        if (_histForRetry[i] && _histForRetry[i].role === 'user') {
+            lastUserMsg = _histForRetry[i];
+            break;
+        }
+    }
     if (!lastUserMsg) return;
+
+    // 判断是否需要回滚：如果最后一条是 assistant（正常回合），需要 deleteLastTurn
+    // 如果最后一条是 user（AI 失败后无回复），不需要回滚，直接重发
+    var _lastMsg = _histForRetry[_histForRetry.length - 1];
+    var _needRollback = _lastMsg && _lastMsg.role === 'assistant';
 
     // 【P2 单轮 Swipe】备份当前 progress.swipes（单轮结构）
     // deleteLastTurn 会把 swipes 恢复到上一轮快照状态（空），
     // retry 需要保留当前轮的旧版本让新版本追加，所以先备份后恢复
     var _swipesBackup = null;
-    if (typeof StateManager !== 'undefined' && StateManager.get) {
+    if (_needRollback && typeof StateManager !== 'undefined' && StateManager.get) {
         _swipesBackup = StateManager.get('progress.swipes') || null;
     }
 
     // 标记 SwipeManager 进入 retry 模式（生成成功后 addSwipe 会追加而非重置）
-    if (typeof SwipeManager !== 'undefined') {
+    if (_needRollback && typeof SwipeManager !== 'undefined') {
         SwipeManager.setRetrying(true);
         // 确保 SwipeManager 内存有当前轮的旧版本（供 addSwipe 追加）
         if (SwipeManager._swipes.length === 0) {
@@ -5258,14 +5271,16 @@ async function retryStory() {
     }
 
     // 先回滚状态（turn计数、角色、物品等），deleteLastTurn 会处理 conversationHistory
-    if (typeof deleteLastTurn === 'function') {
-        try { deleteLastTurn(); } catch (e) {
-            console.error('[retryStory] 回滚失败:', e);
-            if (typeof SwipeManager !== 'undefined') SwipeManager.setRetrying(false);
+    if (_needRollback) {
+        if (typeof deleteLastTurn === 'function') {
+            try { deleteLastTurn(); } catch (e) {
+                console.error('[retryStory] 回滚失败:', e);
+                if (typeof SwipeManager !== 'undefined') SwipeManager.setRetrying(false);
+            }
+        } else {
+            // fallback: 只删历史（删除最后 user+assistant 对）
+            _updateConversationHistory(_histForRetry.slice(0, -2));
         }
-    } else {
-        // fallback: 只删历史
-        _updateConversationHistory(_histForRetry.slice(0, -2));
     }
 
     // 【P2 单轮 Swipe】恢复 swipes 备份（保留当前轮的旧版本）

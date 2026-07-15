@@ -5,7 +5,7 @@
 
 // 【冗余审计 P0-4】统一 max_tokens / context 默认值常量，消除 20+ 处硬编码
 // 所有 fallback 用此常量，避免 8000/8192 混用导致行为不一致
-const DEFAULT_MAX_TOKENS = 8192;
+const DEFAULT_MAX_TOKENS = 16384;
 const DEFAULT_CONTEXT_SIZE = 8192;
 
 const DOMCache = {

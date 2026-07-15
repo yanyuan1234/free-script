@@ -3570,36 +3570,20 @@ function renderChoices(choices) {
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
 
 
-    // 【ISSUE-013 优化】原版行为：选项单击只填充到输入框并 focus，玩家需再手动点发送。
-    // 优化：单击填充+focus（保留二次编辑能力），双击直接发送（提升交互流畅度）。
-    // 同时在填充后显示"按 Enter 发送"提示，降低操作门槛。
+    // 选项点击即发送（提升交互流畅度，无需双击或手动按发送）
     var btns = container.querySelectorAll('.option-btn[data-choice-text]');
     btns.forEach(function(btn) {
-        var _lastClickTime = 0;
         btn.addEventListener('click', function() {
             var text = this.getAttribute('data-choice-text');
             var input = document.getElementById('customAction');
             if (!input) return;
-            var now = Date.now();
-            // 双击检测（350ms 内连续点击视为双击）
-            if (now - _lastClickTime < 350) {
-                // 双击：直接发送
-                _lastClickTime = 0;
-                input.value = text;
-                input.disabled = false;
-                if (typeof sendAIRequest === 'function' && !isWaiting) {
-                    sendAIRequest(text);
-                }
-            } else {
-                // 单击：填充到输入框，等玩家确认/修改后手动发送
-                _lastClickTime = now;
-                input.value = text;
-                input.disabled = false;
+            input.value = text;
+            input.disabled = false;
+            if (typeof sendAIRequest === 'function' && !isWaiting) {
+                sendAIRequest(text);
+            } else if (typeof UI !== 'undefined' && UI.toast) {
+                UI.toast('AI 正在生成中，请稍候');
                 input.focus();
-                // 提示玩家可以直接发送
-                if (typeof UI !== 'undefined' && UI.toast) {
-                    UI.toast('已填入，按 Enter 发送或双击选项直接发送');
-                }
             }
         });
     });
@@ -3788,7 +3772,7 @@ SaveMigrator.register(1, function(parsed) {
     if (typeof parsed.customStyle === 'undefined') parsed.customStyle = '';
     if (typeof parsed.systemPrompt === 'undefined') parsed.systemPrompt = '';
     if (typeof parsed.tokenCount === 'undefined') parsed.tokenCount = 0;
-    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = 8192;
+    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = 16384;
     if (typeof parsed.streamFailCount === 'undefined') parsed.streamFailCount = 0;
     if (!parsed.gameTime) parsed.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
     if (typeof parsed._jailbreakPrompt === 'undefined') parsed._jailbreakPrompt = '';

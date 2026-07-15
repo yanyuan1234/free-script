@@ -1209,9 +1209,9 @@ var GameMemory = {
         var self = this;
 
         StateManager.transaction(function() {
-            StateManager.set('world.setupText', refined.blob || refined.worldSetting || '', { silent: true });
-            StateManager.set('world.userPrompt', refined.worldSetting || '', { silent: true });
-            StateManager.set('world.theme', Array.isArray(refined.themes) ? refined.themes.join(',') : (refined.themes || ''), { silent: true });
+            StateManager.set('world.setupText', refined.blob || refined.worldSetting || '', { silent: true, allowReadOnly: true });
+            StateManager.set('world.userPrompt', refined.worldSetting || '', { silent: true, allowReadOnly: true });
+            StateManager.set('world.theme', Array.isArray(refined.themes) ? refined.themes.join(',') : (refined.themes || ''), { silent: true, allowReadOnly: true });
 
             if (refined.protagonist && typeof refined.protagonist === 'object') {
                 StateManager.set('entities.player', refined.protagonist, { silent: true });

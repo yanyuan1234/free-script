@@ -353,6 +353,21 @@ const ResponseParser = {
             return result;
         }
 
+        // 策略1b：策略1失败时，转义字符串内的原始控制字符
+        // AI 常在 story 字段输出裸换行(\n)而非转义(\\n)，导致 JSON.parse 失败
+        // 逐字符扫描，仅在字符串内部转义控制字符，保留 JSON 结构字符不变
+        if (inString) {
+            var sanitized1b = this._escapeControlCharsInStrings(candidate);
+            if (sanitized1b !== candidate) {
+                result = this._tryDirectJSON(sanitized1b);
+                if (result) {
+                    result._truncatedRepaired = true;
+                    console.log('[ResponseParser] JSON 截断修复成功（转义字符串内控制字符）');
+                    return result;
+                }
+            }
+        }
+
         // 策略2【修复 BUG-B】：从最后一个顶层逗号开始往前逐个回退截断
         // 每个截断点丢弃该逗号后的不完整顶层字段，保留前面已完整的顶层字段
         // （如 story/title/choices），优先保留含 story 的最大前缀
@@ -360,6 +375,11 @@ const ResponseParser = {
             const cutPos = topLevelCommas[j];
             candidate = raw.slice(start, cutPos) + '}';
             result = this._tryDirectJSON(candidate);
+            if (!result) {
+                // 转义字符串内裸控制字符后重试
+                var sanitized2 = this._escapeControlCharsInStrings(candidate);
+                if (sanitized2 !== candidate) result = this._tryDirectJSON(sanitized2);
+            }
             if (result) {
                 result._truncatedRepaired = true;
                 return result;
@@ -373,7 +393,11 @@ const ResponseParser = {
             if (inString) candidate += '"';
             for (let i = 0; i < bracketDepth; i++) candidate += ']';
             for (let i = 0; i < depth; i++) candidate += '}';
-            const result2 = this._tryDirectJSON(candidate);
+            let result2 = this._tryDirectJSON(candidate);
+            if (!result2) {
+                var sanitized3 = this._escapeControlCharsInStrings(candidate);
+                if (sanitized3 !== candidate) result2 = this._tryDirectJSON(sanitized3);
+            }
             if (result2) {
                 result2._truncatedRepaired = true;
                 return result2;
@@ -453,6 +477,36 @@ const ResponseParser = {
         return { storyText: cleaned };
     },
 
+
+    // 转义 JSON 字符串值内的裸控制字符
+    // AI 输出的 story 字段常含裸 \n \r \t（实际换行而非转义序列），JSON.parse 拒绝
+    // 本方法逐字符扫描，仅在字符串内部将控制字符转为转义序列，不影响 JSON 结构
+    _escapeControlCharsInStrings(str) {
+        if (!str || typeof str !== 'string') return str;
+        var result = '';
+        var inStr = false;
+        var escape = false;
+        for (var i = 0; i < str.length; i++) {
+            var ch = str[i];
+            if (escape) {
+                result += ch;
+                escape = false;
+                continue;
+            }
+            if (inStr) {
+                if (ch === '\\') { result += ch; escape = true; continue; }
+                if (ch === '"') { result += ch; inStr = false; continue; }
+                if (ch === '\n') { result += '\\n'; continue; }
+                if (ch === '\r') { result += '\\r'; continue; }
+                if (ch === '\t') { result += '\\t'; continue; }
+                result += ch;
+            } else {
+                if (ch === '"') { inStr = true; }
+                result += ch;
+            }
+        }
+        return result;
+    },
 
     _findMatching(str, open, close, start) {
         let depth = 0;

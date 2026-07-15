@@ -66,7 +66,9 @@ const StateManager = {
         }
         // 强制只读约束：world.* 域初始化后不可写（除非显式 allowReadOnly）
         if (StateSchema.isReadOnly(path) && !options.allowReadOnly) {
-            console.warn('[StateManager] 只读路径拒绝写入:', path);
+            // 预期行为：world.* 在初始化后只读，外部尝试写入时静默跳过
+            // 降为 debug 级别避免控制台噪音（init 阶段外的写入尝试均属正常防御）
+            if (console.debug) console.debug('[StateManager] 只读路径跳过写入:', path);
             return false;
         }
         const oldValue = this._getRaw(path);

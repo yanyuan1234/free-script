@@ -23,7 +23,7 @@ const StateSchema = {
                 genre: '',
                 pureTextMode: false,
                 generateChoices: true,
-                maxTokens: 8192,
+                maxTokens: 16384,
                 contextSize: DEFAULT_CONTEXT_SIZE,
                 temperature: 0.7
             },

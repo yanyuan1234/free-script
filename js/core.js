@@ -5376,16 +5376,34 @@ async function callAI(messages, options = {}) {
     }
 
     try {
-        return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
-            var config = LocalGameAPI._configs[slotIdx];
-            var url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
-            var body = buildAIRequestBody(messages, options, config);
-            if (options.stream) {
-                return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
-            } else {
-                return await executeAINormal(url, body, config.apiKey, localAC.signal);
+        // 429 速率限制自动重试（指数退避：5s → 10s，最多 2 次）
+        var _maxRetries429 = 2;
+        var _attempt429 = 0;
+        while (true) {
+            try {
+                return await LocalGameAPI.tryWithFallback(async function(slotIdx) {
+                    var config = LocalGameAPI._configs[slotIdx];
+                    var url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
+                    var body = buildAIRequestBody(messages, options, config);
+                    if (options.stream) {
+                        return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
+                    } else {
+                        return await executeAINormal(url, body, config.apiKey, localAC.signal);
+                    }
+                });
+            } catch (e429) {
+                var _msg429 = (e429 && e429.message) ? String(e429.message) : '';
+                var _is429 = /HTTP 429/.test(_msg429) || (e429 && e429.status === 429);
+                if (!_is429 || _attempt429 >= _maxRetries429) throw e429;
+                _attempt429++;
+                var _waitMs = 5000 * Math.pow(2, _attempt429 - 1);
+                console.warn('[callAI] 429 速率限制，' + _waitMs / 1000 + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')');
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('速率限制，' + _waitMs / 1000 + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')');
+                }
+                await new Promise(function(resolve) { setTimeout(resolve, _waitMs); });
             }
-        });
+        }
     } catch (e) {
         // 【JSON Schema 降级机制】检测 schema 相关的 400 错误，自动降级重试一次
         // 常见错误关键词：response_format / json_schema / schema / strict / invalid

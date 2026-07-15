@@ -150,7 +150,7 @@
             top_k: 50,
             frequency_penalty: 0.3,
             presence_penalty: 0.1,
-            max_tokens: 8192,
+            max_tokens: 16384,
             max_context: 32000
         },
         prompts: [
@@ -215,7 +215,7 @@
             top_k: 60,
             frequency_penalty: 0.4,
             presence_penalty: 0.2,
-            max_tokens: 8192,
+            max_tokens: 16384,
             max_context: 32000
         },
         prompts: [
@@ -288,7 +288,7 @@
             top_k: 40,
             frequency_penalty: 0.2,
             presence_penalty: 0.1,
-            max_tokens: 8192,
+            max_tokens: 16384,
             max_context: 32000
         },
         prompts: [
@@ -355,7 +355,7 @@
             top_k: 50,
             frequency_penalty: 0.3,
             presence_penalty: 0.1,
-            max_tokens: 8192,
+            max_tokens: 16384,
             max_context: 32000
         },
         prompts: [
