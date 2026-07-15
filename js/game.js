@@ -3788,7 +3788,7 @@ SaveMigrator.register(1, function(parsed) {
     if (typeof parsed.customStyle === 'undefined') parsed.customStyle = '';
     if (typeof parsed.systemPrompt === 'undefined') parsed.systemPrompt = '';
     if (typeof parsed.tokenCount === 'undefined') parsed.tokenCount = 0;
-    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = 4096;
+    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = 8192;
     if (typeof parsed.streamFailCount === 'undefined') parsed.streamFailCount = 0;
     if (!parsed.gameTime) parsed.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
     if (typeof parsed._jailbreakPrompt === 'undefined') parsed._jailbreakPrompt = '';
