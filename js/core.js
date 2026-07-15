@@ -2677,8 +2677,10 @@ var GameTimeSystem = {
         var timeEl = document.getElementById('gameTimeText');
         if (timeEl) {
             var formatted = this.formatTime();
-            // 如果没有时间数据，显示默认文本
-            timeEl.textContent = formatted || '--';
+            // 【ISSUE-012 修复】原代码无时间数据时显示 '--'，但 parseFromAI 的"游戏开始"
+            // 兜底只在 AI 回复后生效。游戏刚启动或 JSON 截断导致 parseFromAI 抛错时，
+            // gameState.gameTime 始终为空。改为显示"游戏开始"而非 '--'。
+            timeEl.textContent = formatted || '游戏开始';
         }
     // 标题栏显示章节标题，不显示时间（时间已经在顶部显示）
     // var titleTimeEl = document.getElementById('storySceneTitle');
@@ -5619,9 +5621,11 @@ async function detectContextSize() {
     // 兜底：默认 32K（【P1修复BUG-002】从 8192 提升到 32000）
     // 旧值 8192 远低于现代模型实际容量（多数 64K-128K），导致智能上下文裁剪过早淘汰历史消息。
     // 32000 是较保守的中间值，既能覆盖多数模型的实际需求，又不会因高估导致上下文超限。
+    // 【ISSUE-010 说明】contextSize 是"输入窗口"预算，与 max_tokens（输出预算）是不同参数。
+    // 兜底 32000 不影响输出预算（由预设 max_tokens 决定），两者不存在"不匹配"问题。
     if (ctxSize === 0) {
         ctxSize = 32000;
-        console.log('[Context检测] 所有探测均失败，使用兜底值 32000（旧值 8192 已废弃）');
+        console.log('[Context检测] 所有探测均失败，使用兜底值 32000（此为输入窗口预算，不影响输出max_tokens）');
     }
 
     gameState.contextSize = ctxSize;
@@ -5915,7 +5919,9 @@ async function initializeGame() {
             if (!_smPlayer.age && gameState.protagonistSetup.mcAge) _smPlayer.age = gameState.protagonistSetup.mcAge;
         }
         if (typeof StateManager !== 'undefined' && StateManager.set) {
-            if (_smPlayerName) StateManager.set('world.playerName', _smPlayerName, { silent: true });
+            // 【ISSUE-009 修复】world.* 域强制只读，需显式 allowReadOnly 才能写入
+            // 原代码未带 allowReadOnly，导致写入被拒、控制台告警，且"未命名"修复实际无效
+            if (_smPlayerName) StateManager.set('world.playerName', _smPlayerName, { silent: true, allowReadOnly: true });
             if (_smPlayer.name) StateManager.set('entities.player', _smPlayer, { silent: true });
         }
         // 同步到 gameState.playerData，让 renderPlayerPage 能立即显示主角信息

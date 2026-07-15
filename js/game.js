@@ -1114,7 +1114,14 @@ async function sendAIRequest(userMessage, isInit = false) {
                     gameState.conversationHistory[0].content = rebuiltPrompt;
                 }
             } catch(e) {
-                console.warn('[修复] 重建系统提示词失败:', e);
+                // 【ISSUE-008 修复】原 console.warn('...:', e) 在 e 为非 Error 对象时只打印 {}，
+                // 无法定位根因。改为打印完整 message + stack。
+                var _promptErrInfo = (e instanceof Error)
+                    ? (e.message + '\n' + (e.stack || ''))
+                    : ('非 Error 对象: ' + (typeof e) + ' -> ' + (function() {
+                        try { return JSON.stringify(e); } catch(_) { return String(e); }
+                    })());
+                console.warn('[修复] 重建系统提示词失败:', _promptErrInfo);
             }
 
             var recent = (gameState.conversationHistory || []).slice(1).slice(-MAX_HISTORY);
@@ -3563,17 +3570,36 @@ function renderChoices(choices) {
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
 
 
-    // 原版行为：选项点击只填充到输入框并 focus，玩家可继续修改后再手动发送
-    // 新版改为直接 sendAIRequest 剥夺了玩家对选项的二次编辑能力
+    // 【ISSUE-013 优化】原版行为：选项单击只填充到输入框并 focus，玩家需再手动点发送。
+    // 优化：单击填充+focus（保留二次编辑能力），双击直接发送（提升交互流畅度）。
+    // 同时在填充后显示"按 Enter 发送"提示，降低操作门槛。
     var btns = container.querySelectorAll('.option-btn[data-choice-text]');
     btns.forEach(function(btn) {
+        var _lastClickTime = 0;
         btn.addEventListener('click', function() {
             var text = this.getAttribute('data-choice-text');
             var input = document.getElementById('customAction');
-            if (input) {
+            if (!input) return;
+            var now = Date.now();
+            // 双击检测（350ms 内连续点击视为双击）
+            if (now - _lastClickTime < 350) {
+                // 双击：直接发送
+                _lastClickTime = 0;
+                input.value = text;
+                input.disabled = false;
+                if (typeof sendAIRequest === 'function' && !isWaiting) {
+                    sendAIRequest(text);
+                }
+            } else {
+                // 单击：填充到输入框，等玩家确认/修改后手动发送
+                _lastClickTime = now;
                 input.value = text;
                 input.disabled = false;
                 input.focus();
+                // 提示玩家可以直接发送
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('已填入，按 Enter 发送或双击选项直接发送');
+                }
             }
         });
     });
