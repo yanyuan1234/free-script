@@ -455,7 +455,7 @@ var AchievementSystem = {
                 if (match) {
                     var field = match[1];
                     var op = match[2];
-                    var val = parseInt(match[3]);
+                    var val = parseInt(match[3], 10);
                     var statVal = stats[field] || 0;
                     switch (op) {
                         case '>=': np = Math.min(val, statVal); break;

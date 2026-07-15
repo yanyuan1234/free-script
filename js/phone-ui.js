@@ -3887,7 +3887,7 @@ function showPresetSaveList(preset) {
                 }).catch(function(e) {
                     console.error('加载预设存档失败:', e);
                     UI.toast('加载存档失败', 'error');
-                }).catch(function(err) { console.error('[预设系统] 操作失败:', err); });
+                });
             });
         } else {
             // 无存档，显示空状态
@@ -3901,7 +3901,7 @@ function showPresetSaveList(preset) {
         console.error('查询存档失败:', e);
         listBody.innerHTML =
             '<div style="text-align:center;padding:40px;color:var(--text-secondary);">加载失败，请重试</div>';
-    }).catch(function(err) { console.error('[预设系统] 操作失败:', err); });
+    });
 }
 
 // ========================================
@@ -4165,6 +4165,12 @@ function bindEvents() {
     }
 
     function _startForgeSetup(blob) {
+        // [P2修复] 防重入：锻造过程涉及多次 AI 调用，重复点击会并发触发
+        if (_startForgeSetup._processing) {
+            UI.toast('正在锻造中，请稍候');
+            return;
+        }
+        _startForgeSetup._processing = true;
         _lastForgeBlob = blob;
         UI.showModal('forgePreviewModal');
         _updateForgeProgress(1, 3, 'extraction');
@@ -4172,6 +4178,7 @@ function bindEvents() {
         if (typeof EnhancedMemory === 'undefined' || !EnhancedMemory.forgeSetup) {
             UI.toast('锻造功能未加载');
             UI.hideModal('forgePreviewModal');
+            _startForgeSetup._processing = false;
             return;
         }
 
@@ -4189,6 +4196,8 @@ function bindEvents() {
             console.error('[SetupForgeUI]', err);
             UI.toast('锻造失败：' + (err && err.message ? err.message : '未知错误'));
             UI.hideModal('forgePreviewModal');
+        }).finally(function() {
+            _startForgeSetup._processing = false;
         });
     }
 

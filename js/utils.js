@@ -184,7 +184,7 @@ function parseProgressParts(progress) {
         return { current: safeInt(parts[0], 0), total: safeInt(parts[1], 1) };
     }
     // 纯数字视为 current
-    var n = parseInt(progress);
+    var n = parseInt(progress, 10);
     return { current: isNaN(n) ? 0 : n, total: 1 };
 }
 

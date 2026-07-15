@@ -107,6 +107,17 @@ const StateManager = {
         return token;
     },
 
+    // [P2修复] 取消订阅，移除指定 token 的监听器，避免内存泄漏
+    unsubscribe(token) {
+        if (token === null || token === undefined) return false;
+        const idx = this._listeners.findIndex(function(l) { return l.token === token; });
+        if (idx !== -1) {
+            this._listeners.splice(idx, 1);
+            return true;
+        }
+        return false;
+    },
+
     // 事务：批量变更，结束时统一通知
 
     transaction(fn) {

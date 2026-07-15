@@ -6055,7 +6055,7 @@ return weighted[weighted.length - 1].text;
 _processRoll(text) {
 // {{roll:d20}} {{roll:d6}} {{roll:d100}}
 return text.replace(/\{\{roll:d(\d+)\}\}/gi, (_, sides) => {
-    return String(Math.floor(Math.random() * parseInt(sides)) + 1);
+    return String(Math.floor(Math.random() * parseInt(sides, 10)) + 1);
 });
 },
 

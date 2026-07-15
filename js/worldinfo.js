@@ -684,6 +684,8 @@ var WorldInfo = {
             this.currentView = 'books';
             this.currentBookId = null;
         }
+    // [P2修复] 删除书时清理正则缓存
+    this._regexCache = {};
     this.save();
     this.renderCurrentView();
     UI.toast('书已删除');
@@ -1191,6 +1193,8 @@ var WorldInfo = {
             }
         } catch (e) { console.warn('[WorldInfo] 清理记忆锚点失败:', e); }
         delete book.entries[uid];
+        // [P2修复] 删除条目时清理正则缓存，避免已删条目的正则残留导致内存泄漏和匹配幽灵条目
+        this._regexCache = {};
         this.save();
         UI.hideModal('wiEntryModal');
         this.renderCurrentView();
