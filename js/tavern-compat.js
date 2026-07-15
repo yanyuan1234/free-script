@@ -2688,6 +2688,7 @@ var GameMemory = {
     },
 
     _buildPermanentFactsSection: function() {
+        var self = this;
         var lines = [];
         var pf = this.permanentFacts;
 

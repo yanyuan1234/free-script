@@ -2446,6 +2446,9 @@ var TypewriterBuffer = {
             this._cachedCompletedKey = completedKey;
             this._cachedCompletedHtml = (completedKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(completedKey) : '';
             this._currentParaEl = null;  // 强制重建当前段落元素
+            // 【打字机重复修复】段落切换时必须清空 _lastCleanedPara 缓存，
+            // 否则新段落会复用旧段落的清理结果，导致旧段落文本重复显示在新段落中
+            this._lastCleanedPara = '';
             storyEl.innerHTML = this._cachedCompletedHtml;
         }
 
@@ -5629,6 +5632,11 @@ async function detectContextSize() {
     }
 
     gameState.contextSize = ctxSize;
+    // 【Token预算修复】同步写入 StateManager，否则 getContextSize() 优先读 StateManager
+    // 会返回旧默认值 8192，导致检测到的 200K 上下文无法被利用，输入预算被错误钳制
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('world.contextSize', ctxSize, { silent: true, allowReadOnly: true });
+    }
     console.log('[Context检测] 最终结果(' + model + '): ' + ctxSize);
     return ctxSize;
 }

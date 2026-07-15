@@ -3715,7 +3715,9 @@ function buildSaveData(customName, useCache) {
 
     // 缓存序列化结果（读档时会清除这些缓存字段）
     if (gameState) {
-        gameState._lastSaveTurn = currentTurns;
+        // 【P0修复】currentTurns 未定义导致 buildSaveData 抛 ReferenceError，存档完全不可用
+        // 正确变量名是 gameState.currentTurn
+        gameState._lastSaveTurn = gameState.currentTurn || 0;
         gameState._lastSaveState = saveData.state;
         gameState._lastSaveMemoryData = saveData.memoryData;
     }

@@ -1082,10 +1082,18 @@ function getStoryList() {
             var raw = m.content || '';
             var title = '';
             var story = raw;
+            // 【回顾标签修复】AI 返回可能被 ```json ... ``` 代码块包裹，
+            // 原代码只检查 charAt(0)==='{' 导致解析失败，按钮显示原始 JSON。
+            // 先剥离 markdown 代码块标记再解析。
+            var _stripped = raw.trim();
+            if (_stripped.indexOf('```') === 0) {
+                // 移除开头的 ```json 或 ``` 及结尾的 ```
+                _stripped = _stripped.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+            }
             // 1. 尝试解析 JSON 格式的历史消息
-            if (raw && typeof raw === 'string' && raw.trim().charAt(0) === '{') {
+            if (_stripped && typeof _stripped === 'string' && _stripped.trim().charAt(0) === '{') {
                 try {
-                    var parsed = JSON.parse(raw);
+                    var parsed = JSON.parse(_stripped);
                     if (parsed && typeof parsed === 'object') {
                         title = parsed.title || parsed.sceneTitle || parsed.scene || '';
                         story = parsed.story || parsed.storyText || parsed.content || '';
