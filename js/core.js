@@ -5377,6 +5377,7 @@ async function callAI(messages, options = {}) {
 
     try {
         // 429 速率限制自动重试（指数退避：5s → 10s，最多 2 次）
+        // 用户取消（localAC.abort）时立即停止重试，抛 AbortError 给上层
         var _maxRetries429 = 2;
         var _attempt429 = 0;
         while (true) {
@@ -5392,6 +5393,8 @@ async function callAI(messages, options = {}) {
                     }
                 });
             } catch (e429) {
+                // 用户取消时立即停止重试
+                if (localAC.signal.aborted) throw e429;
                 var _msg429 = (e429 && e429.message) ? String(e429.message) : '';
                 var _is429 = /HTTP 429/.test(_msg429) || (e429 && e429.status === 429);
                 if (!_is429 || _attempt429 >= _maxRetries429) throw e429;
@@ -5401,7 +5404,20 @@ async function callAI(messages, options = {}) {
                 if (typeof UI !== 'undefined' && UI.toast) {
                     UI.toast('速率限制，' + _waitMs / 1000 + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')');
                 }
-                await new Promise(function(resolve) { setTimeout(resolve, _waitMs); });
+                // 等待期间监听 abort 事件，用户取消时提前唤醒
+                await new Promise(function(resolve) {
+                    var _timer = setTimeout(resolve, _waitMs);
+                    localAC.signal.addEventListener('abort', function() {
+                        clearTimeout(_timer);
+                        resolve();
+                    }, { once: true });
+                });
+                // 等待结束后再次检查：用户取消则抛 AbortError
+                if (localAC.signal.aborted) {
+                    var _abortErr = new Error('用户取消请求');
+                    _abortErr.name = 'AbortError';
+                    throw _abortErr;
+                }
             }
         }
     } catch (e) {

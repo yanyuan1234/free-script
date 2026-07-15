@@ -356,15 +356,15 @@ const ResponseParser = {
         // 策略1b：策略1失败时，转义字符串内的原始控制字符
         // AI 常在 story 字段输出裸换行(\n)而非转义(\\n)，导致 JSON.parse 失败
         // 逐字符扫描，仅在字符串内部转义控制字符，保留 JSON 结构字符不变
-        if (inString) {
-            var sanitized1b = this._escapeControlCharsInStrings(candidate);
-            if (sanitized1b !== candidate) {
-                result = this._tryDirectJSON(sanitized1b);
-                if (result) {
-                    result._truncatedRepaired = true;
-                    console.log('[ResponseParser] JSON 截断修复成功（转义字符串内控制字符）');
-                    return result;
-                }
+        // 注意：不依赖 inString 守卫——即使截断发生在字段名位置，已完整输出的 story
+        // 字段也可能含裸换行导致策略1失败，需要转义重试
+        var sanitized1b = this._escapeControlCharsInStrings(candidate);
+        if (sanitized1b !== candidate) {
+            result = this._tryDirectJSON(sanitized1b);
+            if (result) {
+                result._truncatedRepaired = true;
+                console.log('[ResponseParser] JSON 截断修复成功（转义字符串内控制字符）');
+                return result;
             }
         }
 
