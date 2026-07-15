@@ -2042,14 +2042,33 @@ var GameMemory = {
 
         // 远层：10轮以前，提取关键句（不截断单句，选择最重要的句子）
         if (totalTurns > 10) {
+            // 【优化】旧实现用正则关键词 /(约定|承诺|获得|失去|死亡|突破|发现|决定|重要|关键|转折)/
+            // 但 AI 文游里这些词命中率低，且会漏掉 AI 自己标记的关键事件。
+            // 改为：优先用 gameState.keyEvents 子串匹配（与 _compressConversation 一致，line 2463），
+            //       回退到正则关键词（保留旧逻辑兜底，避免 keyEvents 为空时 far 层全空）。
+            var _keyEventStrs = (typeof gameState !== 'undefined' && Array.isArray(gameState.keyEvents)) ? gameState.keyEvents : [];
+            var _hasKeyEvents = _keyEventStrs.length > 0;
             var farTurns = turns.slice(0, totalTurns - 10);
             self._summaryLayers.far = farTurns.map(function(t) {
                 var text = ((t && t.user) || '') + ((t && t.assistant) || '');
-                // 提取关键句（含关键词的句子，保留完整语义）
                 var sentences = text.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 5; });
-                var keySentences = sentences.filter(function(s) {
-                    return /(约定|承诺|获得|失去|死亡|突破|发现|决定|重要|关键|转折)/.test(s);
-                });
+                var keySentences = [];
+                // 优先：keyEvents 子串匹配（取 6 字以上避免误命中）
+                if (_hasKeyEvents) {
+                    keySentences = sentences.filter(function(s) {
+                        for (var i = 0; i < _keyEventStrs.length; i++) {
+                            var ev = String(_keyEventStrs[i] || '').trim();
+                            if (ev.length >= 6 && s.indexOf(ev) !== -1) return true;
+                        }
+                        return false;
+                    });
+                }
+                // 回退：正则关键词（旧逻辑兜底）
+                if (keySentences.length === 0) {
+                    keySentences = sentences.filter(function(s) {
+                        return /(约定|承诺|获得|失去|死亡|突破|发现|决定|重要|关键|转折)/.test(s);
+                    });
+                }
                 if (keySentences.length === 0 && sentences.length > 0) keySentences = [sentences[sentences.length - 1]];
                 return keySentences.map(function(s) { return s.trim(); }).join('；');
             }).filter(function(s) { return s && s.length > 0; });
@@ -3549,6 +3568,17 @@ var GameMemory = {
     },
 
 
+    // ─────────────────────────────────────────────────────────────
+    // 永久事实区 3 个核心写入入口的分工（避免维护时混淆）：
+    //   addWorldAnchor(type, content, source, turn)  —— "添加型"：若无则添加，含 NPC 同名覆盖 + token 上限裁剪
+    //                                                    调用方：setup 提取 / worldSnapshot / 承诺提取 / UI 手动添加
+    //   upsertPermanentFact(category, fact)          —— "合并型"：按名字段去重合并旧条目（冒号拆分合并）
+    //                                                    调用方：AI 响应处理（worldPlaces/npcProfiles/promises/settings）
+    //   setPermanentFact(category, fact)             —— "覆盖型"：单条替换（语义=最新值覆盖）
+    //                                                    调用方：AI 响应处理（pcIdentity）
+    // 三者语义不同，不可合并。UI 层 saveNewPermanentFact/savePermanentFact 是薄封装。
+    // addPermanentFact 是 addWorldAnchor 的语义化 alias（新代码推荐用 alias，旧调用方保持兼容）。
+    // ─────────────────────────────────────────────────────────────
     addWorldAnchor: function(type, content, source, createdTurn) {
         var self = this;
         var typeMap = _FACT_OLDTYPE_TO_NEWKEY;
@@ -3621,6 +3651,16 @@ var GameMemory = {
 
         self._markLtmDirty();
         return anchor;
+    },
+
+    // addPermanentFact：addWorldAnchor 的语义化 alias
+    // 新代码推荐用此名（参数用 camelCase category），旧调用方保持 addWorldAnchor 兼容
+    // 参数：category ∈ ['pcIdentity','settings','worldRules','npcProfiles','promises','worldPlaces']
+    addPermanentFact: function(category, fact, source, createdTurn) {
+        var oldTypeMap = _FACT_NEWKEY_TO_OLDTYPE;
+        var oldType = oldTypeMap[category] || category;
+        var content = (fact && typeof fact === 'object') ? fact.content : fact;
+        return this.addWorldAnchor(oldType, content, source || (fact && fact.source), createdTurn || (fact && fact.createdTurn));
     },
 
     removeWorldAnchorsBySource: function(sourcePrefix) {
