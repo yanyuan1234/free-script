@@ -1449,7 +1449,24 @@ var SaveDB = {
             if (data === null || data === undefined) store.delete(key);
             else store.put(data, key);
             tx.oncomplete = function() { resolve(); };
-            tx.onerror = function() { reject(tx.error || new Error('IDB set error')); };
+            tx.onerror = function() {
+                // 【ISSUE-002 修复】tx.error 在事务被 abort 时可能为 null，
+                // reject(null) 会导致上游 catch 拿到 null 序列化为 {}，无法定位根因。
+                // 确保始终 reject 一个 Error 对象。
+                var err = tx.error;
+                if (!(err instanceof Error)) {
+                    err = new Error('IDB set error (key=' + key + ', tx.error=' + (tx.error ? String(tx.error) : 'null') + ')');
+                }
+                reject(err);
+            };
+            // 【ISSUE-002 修复】tx.onabort 也需要处理，事务被中止时 onerror 不一定触发
+            tx.onabort = function() {
+                var err = tx.error;
+                if (!(err instanceof Error)) {
+                    err = new Error('IDB set aborted (key=' + key + ')');
+                }
+                reject(err);
+            };
         });
     },
     async get(slot) {
@@ -1507,8 +1524,13 @@ var SaveDB = {
     async set(slot, data) {
         await this.init();
         // 多版本备份：写入前先轮转备份链
+        // 【ISSUE-002 修复】_rotateBackup 失败不应阻塞主写入，用 try-catch 隔离
         if (data !== null && data !== undefined) {
-            await this._rotateBackup(slot);
+            try {
+                await this._rotateBackup(slot);
+            } catch (rotateErr) {
+                console.warn('[SaveDB] 备份轮转失败，继续主写入:', rotateErr);
+            }
         }
         // 附加校验和，便于读档时检测静默损坏
         var dataToWrite = (data === null || data === undefined) ? data : this._attachChecksum(data);
@@ -2361,6 +2383,7 @@ var TypewriterBuffer = {
         this._queueIdx = 0;
         this.displayed = '';
         this._lastRendered = '';
+        this._lastCleanedPara = '';
         this.onComplete = null;
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';
@@ -2428,13 +2451,24 @@ var TypewriterBuffer = {
 
         // 当前段落：增量更新（极快）
         if (this._currentParaChars) {
-            // 打字机 tick 期间只做基本装饰标签移除（与原 formatStory 行为一致）
+            // 【性能修复】打字机 tick 期间对每 tick 增长的文本跑 _cleanUnrecognizedTags 正则链，
+            // 2000 字时每 50ms 一次 O(n) 扫描累计成主线程阻塞。
+            // 改为节流：仅当段落长度变化超过阈值或遇到潜在标签起点（'<'）时才清理，
+            // 其余 tick 直接复用上一次清理结果。
             var currentText = this._currentParaChars;
-            if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._cleanUnrecognizedTags) {
-                currentText = RuntimeBridge._cleanUnrecognizedTags(currentText);
-            } else if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._reDecorTagsTyping) {
-                RuntimeBridge._reDecorTagsTyping.lastIndex = 0;
-                currentText = currentText.replace(RuntimeBridge._reDecorTagsTyping, '');
+            var _needsClean = !this._lastCleanedPara ||
+                currentText.length - this._lastCleanedPara.length >= 16 ||
+                (currentText.charAt(currentText.length - 1) === '<');
+            if (_needsClean) {
+                if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._cleanUnrecognizedTags) {
+                    currentText = RuntimeBridge._cleanUnrecognizedTags(currentText);
+                } else if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._reDecorTagsTyping) {
+                    RuntimeBridge._reDecorTagsTyping.lastIndex = 0;
+                    currentText = currentText.replace(RuntimeBridge._reDecorTagsTyping, '');
+                }
+                this._lastCleanedPara = currentText;
+            } else {
+                currentText = this._lastCleanedPara || currentText;
             }
             if (!this._currentParaEl || this._currentParaEl.parentNode !== storyEl) {
                 // 创建新段落元素，复用同一节点直到本段结束
@@ -4640,7 +4674,16 @@ async function autoSave() {
             if (typeof SaveDB !== 'undefined') {
 
                 // 修复：data 为 null 时跳过本次写入，保留上一次的有效自动存档
-                var _autoSaveData = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('', true) : null;
+                var _autoSaveData = null;
+                try {
+                    _autoSaveData = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('', true) : null;
+                } catch (buildErr) {
+                    // buildSaveData 内部访问 gameState 字段可能抛错（如 _stats 未初始化）
+                    // 包装为 Error 并打印完整信息，避免被序列化为空对象 {}
+                    var _wrappedBuild = (buildErr instanceof Error) ? buildErr : new Error('buildSaveData 抛出非 Error: ' + String(buildErr));
+                    console.error('[自动保存] buildSaveData 失败:', _wrappedBuild.message, _wrappedBuild.stack || _wrappedBuild);
+                    _autoSaveData = null;
+                }
                 if (_autoSaveData !== null && _autoSaveData !== undefined) {
 
                     await SaveDB.set(0, _autoSaveData);
@@ -4657,14 +4700,27 @@ async function autoSave() {
                 }, 300);
             }
     } catch (e) {
-    console.error('[自动保存] 保存失败:', e);
+    // 【ISSUE-002 修复】原 console.error('...:', e) 在 e 为非 Error 对象（如 Promise reject 的普通对象）
+    // 时只打印 {}，无法定位根因。改为打印完整信息：message + stack + JSON。
+    var _errInfo = (e instanceof Error)
+        ? (e.message + '\n' + (e.stack || ''))
+        : ('非 Error 对象: ' + (typeof e) + ' -> ' + (function() {
+            try { return JSON.stringify(e); } catch(_) { return String(e); }
+        })());
+    console.error('[自动保存] 保存失败:', _errInfo);
     // 失败时也隐藏指示器
     var dot2 = document.getElementById('autoSaveDot');
     if (dot2) dot2.style.display = 'none';
 }
         }, 'autoSave');
         } catch (_outerErr) {
-            console.error('[自动保存] 外层异常:', _outerErr);
+            // 【ISSUE-002 修复】外层异常同样打印完整信息，避免 {} 空对象
+            var _outerInfo = (_outerErr instanceof Error)
+                ? (_outerErr.message + '\n' + (_outerErr.stack || ''))
+                : ('非 Error 对象: ' + (typeof _outerErr) + ' -> ' + (function() {
+                    try { return JSON.stringify(_outerErr); } catch(_) { return String(_outerErr); }
+                })());
+            console.error('[自动保存] 外层异常:', _outerInfo);
             var _dot3 = document.getElementById('autoSaveDot');
             if (_dot3) _dot3.style.display = 'none';
         }

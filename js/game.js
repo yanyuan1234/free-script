@@ -431,6 +431,24 @@ function _slimAssistantMessage(content) {
     return content;
 }
 
+// 【ISSUE-001 修复】获取实际生效的输出 token 空间
+// 根因：提示词里的"输出空间"用 gameState.maxTokens（默认 8192），
+// 但 API 实际下发的 max_tokens 来自预设 presetParams.max_tokens（内置预设 4096）。
+// AI 按提示词写 8192 token 长文本，到 4096 被 API 截断 → JSON 不完整。
+// 修复：提示词告知 AI 的空间必须取"实际能下发的值"，即两者较小值，避免 AI 写超预算。
+function getEffectiveMaxTokens() {
+    var gsMax = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
+    var presetMax = 0;
+    if (typeof PresetManager !== 'undefined' && PresetManager.getParams) {
+        var pp = PresetManager.getParams();
+        presetMax = (pp && pp.max_tokens) || 0;
+    }
+    // 预设值有效时取较小值；预设值无效（0/缺失）时用 gameState 值
+    var effective = (presetMax > 0) ? Math.min(gsMax, presetMax) : gsMax;
+    // 下限保护：JSON 模式至少需要 2048 才能容纳 story+choices+player 等结构
+    return Math.max(effective, 2048);
+}
+
 function buildSystemPrompt(includeFormatRules) {
     if (includeFormatRules === undefined) includeFormatRules = true;
 
@@ -522,7 +540,7 @@ function buildSystemPrompt(includeFormatRules) {
             gameTime: (gameState && gameState.gameTime) || {},
             pureTextMode: !!(gameState && gameState.pureTextMode),
             generateChoices: !(gameState && gameState.generateChoices === false),
-            maxTokens: (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS,
+            maxTokens: getEffectiveMaxTokens(),
             worldTerms: _terms,
             turn: turn
         };
@@ -539,7 +557,7 @@ function buildSystemPrompt(includeFormatRules) {
 
 // 格式锚点（硬性要求，始终存在）
 function _buildFormatAnchor() {
-    var _maxTokensForAnchor = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
+    var _maxTokensForAnchor = getEffectiveMaxTokens();
     var _hasChoicesForAnchor = gameState && gameState.generateChoices;
     var _pureTextMode = gameState && gameState.pureTextMode;
     if (_pureTextMode) {
@@ -571,7 +589,7 @@ function _buildFormatRules(gs, _t, turn) {
     var hasChoices = gs.generateChoices;
     // 第4轮优化：从原版 backup/index.html 回填字段级规则，避免 AI 输出字段缺失或语义冲突
     // 关键修正：keyEvents 从"至少1条"改为"0-3条可空"（原版语义，避免强迫AI编造事件污染记忆）
-    var _maxTokens = (gs && gs.maxTokens) || DEFAULT_MAX_TOKENS;
+    var _maxTokens = getEffectiveMaxTokens();
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
         + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
@@ -3110,14 +3128,17 @@ function _cleanUnrecognizedTags(text) {
     if (!text || typeof text !== 'string') return text;
     // 允许的 HTML/Markdown 标签白名单（保留基础格式）
     var allowedTags = /^(<\/?(b|i|u|em|strong|span|div|p|br|hr|h[1-6]|blockquote|code|pre|a|img|ul|ol|li|table|tr|td|th|thead|tbody|sup|sub|small|big|font|strike|s)\b)/i;
+    // 【性能修复】原正则 /<([a-zA-Z_][a-zA-Z0-9_]*)\b[^>]*>[\s\S]*?$/gm 配合 gm 标志，
+    // 对每个行尾做 [\s\S]*? 回溯，文本越长 O(n²) 越严重，2000 字时每 tick（50ms）阻塞主线程。
+    // 改为两步线性扫描：先用简单正则移除孤立开标签，再单独处理行尾未闭合标签。
     return text
         // 孤立控制指令（如 /ic、/sys）
         .replace(/\/(ic|sys|imp|story|nar|raw|nocb|dpo|cfg)\b/gi, '')
-        // 未闭合的 <gi、<giggle 等残留片段
-        .replace(/<gi\b[^>]*>[\s\S]*?(<\/gi>|$)/gi, '')
+        // 未闭合的 <gi、<giggle 等残留片段（仅匹配到行尾，避免跨段回溯）
+        .replace(/<gi\b[^>]*>[^\n]*/gi, '')
         .replace(/<\/gi>/gi, '')
-        // 其他未闭合的开标签（到行尾或段尾）
-        .replace(/<([a-zA-Z_][a-zA-Z0-9_]*)\b[^>]*>[\s\S]*?$/gm, '')
+        // 行尾未闭合的开标签：仅匹配到该行行尾，不跨行（[\s\S]*?$ 改 [^\n]*）
+        .replace(/<([a-zA-Z_][a-zA-Z0-9_]*)\b[^>]*>[^\n]*/g, '')
         // 通用未知标签：保留白名单内的，其他移除
         .replace(/<\/?[a-zA-Z_][a-zA-Z0-9_]*\b[^>]*>/g, function(tag) {
             return allowedTags.test(tag) ? tag : '';
