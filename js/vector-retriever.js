@@ -73,9 +73,12 @@ var VectorRetriever = {
         if (this._status === 'loading') {
             // 已在加载中，轮询等待
             return new Promise((resolve, reject) => {
+                var elapsed = 0;
                 var wait = setInterval(() => {
+                    elapsed += 200;
                     if (this._status === 'ready') { clearInterval(wait); resolve(this._pipeline); }
                     else if (this._status === 'error') { clearInterval(wait); reject(new Error('模型加载失败')); }
+                    else if (elapsed > 60000) { clearInterval(wait); reject(new Error('模型加载超时(60s)')); }
                 }, 200);
             });
         }

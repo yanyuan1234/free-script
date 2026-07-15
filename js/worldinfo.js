@@ -383,16 +383,18 @@ var WorldInfo = {
                 if (e && e.enabled !== false) enabledEntryCount++;
             }
 
-        html += '<div class="pearl-card" style="padding:12px;cursor:pointer;opacity:' + (book.enabled ? '1' : '0.5') + ';border-left:3px solid ' + (book.enabled ? 'var(--success)' : 'var(--danger)') + ';" data-wi-book-id="' + book.id + '">' +
+        // [P3修复] book.id 来自导入的世界书，转义防 data-* 属性注入
+        var safeBookId = escapeHtml(String(book.id));
+        html += '<div class="pearl-card" style="padding:12px;cursor:pointer;opacity:' + (book.enabled ? '1' : '0.5') + ';border-left:3px solid ' + (book.enabled ? 'var(--success)' : 'var(--danger)') + ';" data-wi-book-id="' + safeBookId + '">' +
         '<div style="display:flex;justify-content:space-between;align-items:start;">' +
         '<div style="flex:1;min-width:0;">' +
         '<div style="font-size:14px;font-weight:600;margin-bottom:4px;">' + escapeHtml(book.name || '未命名') + '</div>' +
         '<div style="font-size:11px;color:var(--text-tertiary);">' + entryCount + ' 条（已启用 ' + enabledEntryCount + '）</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;align-items:center;">' +
-        '<span class="wi-book-enable" data-wi-enable-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:' + (book.enabled ? 'var(--success)' : 'transparent') + ';color:' + (book.enabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (book.enabled ? 'font-weight:500;' : '') + '" title="启用此书">启用</span>' +
-        '<span class="wi-book-disable" data-wi-disable-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:' + (!book.enabled ? 'var(--danger)' : 'transparent') + ';color:' + (!book.enabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!book.enabled ? 'font-weight:500;' : '') + '" title="禁用此书">禁用</span>' +
-        '<span class="wi-book-delete" data-wi-delete-id="' + book.id + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此书">删除</span>' +
+        '<span class="wi-book-enable" data-wi-enable-id="' + safeBookId + '" style="font-size:11px;padding:3px 8px;background:' + (book.enabled ? 'var(--success)' : 'transparent') + ';color:' + (book.enabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (book.enabled ? 'font-weight:500;' : '') + '" title="启用此书">启用</span>' +
+        '<span class="wi-book-disable" data-wi-disable-id="' + safeBookId + '" style="font-size:11px;padding:3px 8px;background:' + (!book.enabled ? 'var(--danger)' : 'transparent') + ';color:' + (!book.enabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!book.enabled ? 'font-weight:500;' : '') + '" title="禁用此书">禁用</span>' +
+        '<span class="wi-book-delete" data-wi-delete-id="' + safeBookId + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此书">删除</span>' +
         '</div>' +
         '</div>' +
         '</div>';
@@ -566,18 +568,20 @@ var WorldInfo = {
             ? '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:4px;">' + tags.map(function(t) { return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;">' + t + '</span>'; }).join('') + '</div>'
             : '';
 
-            html += '<div class="pearl-card" style="padding:10px;cursor:pointer;opacity:' + (disabled ? '0.5' : '1') + ';border-left:3px solid ' + (disabled ? 'var(--danger)' : 'var(--success)') + ';" data-wi-uid="' + uid + '">' +
+            // [P3修复] uid 来自导入的世界书，转义防 data-* 属性注入
+            var safeUid = escapeHtml(String(uid));
+            html += '<div class="pearl-card" style="padding:10px;cursor:pointer;opacity:' + (disabled ? '0.5' : '1') + ';border-left:3px solid ' + (disabled ? 'var(--danger)' : 'var(--success)') + ';" data-wi-uid="' + safeUid + '">' +
             '<div style="display:flex;justify-content:space-between;align-items:start;">' +
-            '<div style="flex:1;min-width:0;" data-wi-edit="' + uid + '">' +
+            '<div style="flex:1;min-width:0;" data-wi-edit="' + safeUid + '">' +
             '<div style="font-size:13px;font-weight:600;margin-bottom:2px;">' + escapeHtml(comment || keywords[0] || '未命名') + '</div>' +
             '<div style="font-size:11px;color:var(--text-tertiary);margin-bottom:4px;">关键词: ' + escapeHtml(keywords.join(', ')) + '</div>' +
             '<div style="font-size:11px;color:var(--text-secondary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(contentPreview) + '</div>' +
             tagsHtml +
             '</div>' +
             '<div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px;align-items:center;">' +
-            '<span class="wi-entry-enable" data-wi-entry-enable="' + uid + '" style="font-size:11px;padding:3px 8px;background:' + (!disabled ? 'var(--success)' : 'transparent') + ';color:' + (!disabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!disabled ? 'font-weight:500;' : '') + '" title="启用此条目">启用</span>' +
-            '<span class="wi-entry-disable" data-wi-entry-disable="' + uid + '" style="font-size:11px;padding:3px 8px;background:' + (disabled ? 'var(--danger)' : 'transparent') + ';color:' + (disabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (disabled ? 'font-weight:500;' : '') + '" title="禁用此条目">禁用</span>' +
-            '<span class="wi-entry-delete" data-wi-entry-delete="' + uid + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此条目">删除</span>' +
+            '<span class="wi-entry-enable" data-wi-entry-enable="' + safeUid + '" style="font-size:11px;padding:3px 8px;background:' + (!disabled ? 'var(--success)' : 'transparent') + ';color:' + (!disabled ? '#fff' : 'var(--success)') + ';border:1px solid var(--success);border-radius:6px;cursor:pointer;white-space:nowrap;' + (!disabled ? 'font-weight:500;' : '') + '" title="启用此条目">启用</span>' +
+            '<span class="wi-entry-disable" data-wi-entry-disable="' + safeUid + '" style="font-size:11px;padding:3px 8px;background:' + (disabled ? 'var(--danger)' : 'transparent') + ';color:' + (disabled ? '#fff' : 'var(--danger)') + ';border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;' + (disabled ? 'font-weight:500;' : '') + '" title="禁用此条目">禁用</span>' +
+            '<span class="wi-entry-delete" data-wi-entry-delete="' + safeUid + '" style="font-size:11px;padding:3px 8px;background:var(--bg);color:var(--danger);border:1px solid var(--danger);border-radius:6px;cursor:pointer;white-space:nowrap;" title="删除此条目">删除</span>' +
             '</div>' +
             '</div>' +
             '</div>';
@@ -1055,8 +1059,8 @@ var WorldInfo = {
         entry.enabled = document.getElementById('wiEntryEnabled').checked;
         delete entry.disable;
         delete entry.disabled;
-        entry.order = parseInt(document.getElementById('wiEntryOrder').value) || 100;
-        entry.probability = parseInt(document.getElementById('wiEntryProbability').value);
+        entry.order = parseInt(document.getElementById('wiEntryOrder').value, 10) || 100;
+        entry.probability = parseInt(document.getElementById('wiEntryProbability').value, 10);
         if (isNaN(entry.probability) || entry.probability == null) entry.probability = 100;
 
         // 下拉框
@@ -1072,7 +1076,7 @@ var WorldInfo = {
         if (depthEl) entry.depth = safeInt(depthEl.value, 4);
         var scanDepthEl = document.getElementById('wiEditScanDepth');
         if (scanDepthEl) {
-            var sdv = parseInt(scanDepthEl.value);
+            var sdv = parseInt(scanDepthEl.value, 10);
             entry.scanDepth = isNaN(sdv) ? null : sdv;
         }
 
@@ -1096,17 +1100,17 @@ var WorldInfo = {
         var stickyEl = document.getElementById('wiEditSticky');
         if (stickyEl) {
             var sv = stickyEl.value.trim();
-            entry.sticky = sv !== '' ? parseInt(sv) : null;
+            entry.sticky = sv !== '' ? parseInt(sv, 10) : null;
         }
     var cooldownEl = document.getElementById('wiEditCooldown');
     if (cooldownEl) {
         var cv = cooldownEl.value.trim();
-        entry.cooldown = cv !== '' ? parseInt(cv) : null;
+        entry.cooldown = cv !== '' ? parseInt(cv, 10) : null;
     }
     var delayEl = document.getElementById('wiEditDelay');
     if (delayEl) {
         var dv = delayEl.value.trim();
-        entry.delay = dv !== '' ? parseInt(dv) : null;
+        entry.delay = dv !== '' ? parseInt(dv, 10) : null;
     }
 
     // triggers触发器保存与验证
@@ -1295,7 +1299,7 @@ var WorldInfo = {
             };
         var exportPosition = positionReverseMap[pos] || pos;
         return {
-            id: parseInt(uid) || entry.uid || 0,
+            id: parseInt(uid, 10) || entry.uid || 0,
             key: entry.key || [],
             keysecondary: entry.keysecondary || [],
             comment: entry.comment || '',

@@ -823,7 +823,7 @@ function renderQuests() {
             html +=
                 '<div class="quest-progress-bar"><div class="quest-progress-fill" style="width:' +
                 percent + '%"></div></div>';
-            html += '<span class="quest-progress-text">' + q.progress + '</span>';
+            html += '<span class="quest-progress-text">' + escapeHtml(String(q.progress)) + '</span>';
             html += '</div>';
         }
         // 提示

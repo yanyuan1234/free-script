@@ -1446,11 +1446,14 @@ function _renderPresetApps() {
 
     container.style.display = 'grid';
     container.innerHTML = apps.map(function(app) {
-        return '<div class="preset-item preset-app-dynamic" data-preset-app="' + app.tag + '" ' +
+        // [P3修复] app.tag/color 来自预设配置，转义防属性注入；color 用白名单限制为 hex/命名色
+        var safeTag = escapeHtml(String(app.tag));
+        var safeColor = /^[#a-zA-Z][a-zA-Z0-9,\s\-\(\)#]*$/.test(String(app.color)) ? app.color : '#888888';
+        return '<div class="preset-item preset-app-dynamic" data-preset-app="' + safeTag + '" ' +
             'role="button" tabindex="0" style="cursor:pointer;">' +
-            '<div class="preset-icon-box" style="background:' + app.color + '15;border:1px solid ' + app.color + '30;">' +
+            '<div class="preset-icon-box" style="background:' + safeColor + '15;border:1px solid ' + safeColor + '30;">' +
             '<span style="font-size:24px;">' + escapeHtml(app.icon) + '</span></div>' +
-            '<div class="preset-name" style="font-size:11px;color:' + app.color + ';">' + escapeHtml(app.name) + '</div>' +
+            '<div class="preset-name" style="font-size:11px;color:' + safeColor + ';">' + escapeHtml(app.name) + '</div>' +
             '</div>';
     }).join('');
 

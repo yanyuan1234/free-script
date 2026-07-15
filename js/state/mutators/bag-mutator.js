@@ -119,7 +119,7 @@ const BagMutator = {
 
         const rawCount = raw.count !== undefined ? raw.count : raw.qty;
         if (rawCount !== undefined) {
-            const parsed = parseInt(rawCount);
+            const parsed = parseInt(rawCount, 10);
             if (!isNaN(parsed) && parsed > 0) count = parsed;
         }
         const unit = raw.unit || '个';

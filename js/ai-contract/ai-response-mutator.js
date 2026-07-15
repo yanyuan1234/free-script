@@ -301,7 +301,8 @@ const AIResponseMutator = {
     _applyCurrency(data) {
         if (data.currency === undefined && data.money === undefined && data.gold === undefined) return;
         const currency = data.currency !== undefined ? data.currency : (data.money !== undefined ? data.money : data.gold);
-        const num = parseInt(currency);
+        // [P2修复] 用 parseFloat 代替 parseInt，保留小数（如 100.50）；并支持 number 类型直传
+        const num = typeof currency === 'number' ? currency : parseFloat(String(currency));
         if (isNaN(num)) return;
         if (typeof CurrencyMutator !== 'undefined' && CurrencyMutator.set) {
             CurrencyMutator.set(num, { silent: true });

@@ -529,8 +529,8 @@ _evaluateCondition: function(condition) {
     }
     // 字符串比较
     switch(op) {
-        case '==': return leftVal == rightVal;
-        case '!=': return leftVal != rightVal;
+        case '==': return leftVal === rightVal;
+        case '!=': return leftVal !== rightVal;
         case '>': return leftVal > rightVal;
         case '>=': return leftVal >= rightVal;
         case '<': return leftVal < rightVal;
@@ -1601,7 +1601,10 @@ var GameMemory = {
                     edit.content = innerContent;
                 }
             } else if (type === 'time') {
-                if (attrs.day) self.gameClock.day = parseInt(attrs.day) || self.gameClock.day;
+                if (attrs.day) {
+                    var _day = parseInt(attrs.day, 10);
+                    if (!isNaN(_day) && _day > 0) self.gameClock.day = _day;
+                }
                 if (attrs.period) self.gameClock.period = attrs.period;
                 self.gameClock.lastUpdateTurn = self.currentTurn;
             }
@@ -5038,7 +5041,7 @@ var MemoryManagerUI = {
     saveCharacter: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
         var char = gm.tables.characters[oldName] || {};
-        var _newCharData = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
+        var _newCharData = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value, 10) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
 
 
         // 旧实现先改 gm.tables 再调 Mutator，若 Mutator 失败 gm 已被污染（gm.tables[oldName] 已删除、
@@ -5118,7 +5121,7 @@ var MemoryManagerUI = {
 
     saveNewCharacter: function() {
         var gm = window.GameMemory; var name = document.getElementById('addCharName').value.trim(); if (!name) { UI.toast && UI.toast('请输入角色名称'); return; }
-        var _newCharData = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
+        var _newCharData = { name: name, title: document.getElementById('addCharTitle').value.trim(), relation: document.getElementById('addCharRelation').value.trim(), mood: '', location: '', outfit: '', favorability: parseInt(document.getElementById('addCharFav').value, 10) || 0, status: '', history: [], gameTime: gm.getGameTimeStr(), accessCount: 0, lastChangedTurn: gm.currentTurn, locked: false };
 
 
         if (typeof CharacterMutator !== 'undefined' && CharacterMutator.mergeCharacters) {
@@ -5176,7 +5179,7 @@ var MemoryManagerUI = {
     saveItem: function(oldName) {
         var gm = window.GameMemory; var newName = document.getElementById('editItemName').value.trim(); if (!newName) return;
         var item = gm.tables.items[oldName] || {};
-        var _newItemData = { name: newName, qty: parseInt(document.getElementById('editItemQty').value) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
+        var _newItemData = { name: newName, qty: parseInt(document.getElementById('editItemQty').value, 10) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
 
 
         // 旧实现先改 gm.tables.items 再调 _syncItemsToBag，若同步失败 gm 已被污染
@@ -5308,7 +5311,7 @@ var MemoryManagerUI = {
 
     saveNewItem: function() {
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { UI.toast && UI.toast('请输入物品名称'); return; }
-        var _newItemData = { name: name, qty: parseInt(document.getElementById('addItemQty').value) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value) || 1 }] };
+        var _newItemData = { name: name, qty: parseInt(document.getElementById('addItemQty').value, 10) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value, 10) || 1 }] };
 
 
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
@@ -5563,7 +5566,7 @@ var MemoryManagerUI = {
 
     saveNewEvent: function() {
         var gm = window.GameMemory; var content = document.getElementById('addEventContent').value.trim(); if (!content) { UI.toast && UI.toast('请输入事件内容'); return; }
-        var importance = parseInt(document.getElementById('addEventImportance').value) || 5;
+        var importance = parseInt(document.getElementById('addEventImportance').value, 10) || 5;
 
         // 旧代码直接 gm.events.push + 手动 slice(-50) + _syncEventsToKeyEvents，绕过去重逻辑
         var added = gm.addImportantEvent({ content: content, importance: importance });

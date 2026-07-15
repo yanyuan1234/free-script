@@ -1483,7 +1483,7 @@ var SaveDB = {
                     if (cursor) {
                         var key = cursor.key;
                         if (typeof key === 'string' && key.startsWith('slot_')) {
-                            var slotNum = parseInt(key.replace('slot_', ''));
+                            var slotNum = parseInt(key.replace('slot_', ''), 10);
                             if (!isNaN(slotNum) && !SaveDB._isBackupSlot(slotNum)) {
                                 all[slotNum] = cursor.value;
                             }
@@ -1649,8 +1649,8 @@ var SaveDB = {
             if (raw) {
                 var saves = JSON.parse(raw);
                 for (let slot in saves) {
-                    if (saves.hasOwnProperty(slot) && saves[slot] && !this._isBackupSlot(parseInt(slot))) {
-                        await this.set(parseInt(slot), saves[slot]);
+                    if (saves.hasOwnProperty(slot) && saves[slot] && !this._isBackupSlot(parseInt(slot, 10))) {
+                        await this.set(parseInt(slot, 10), saves[slot]);
                         migrated++;
                     }
                 }
@@ -1720,7 +1720,7 @@ var SaveDB = {
         var result = {};
         for (let k in all) {
             if (all.hasOwnProperty(k)) {
-                var slotNum = parseInt(k);
+                var slotNum = parseInt(k, 10);
                 if (!isNaN(slotNum) && !this._isBackupSlot(slotNum)) {
                     result[k] = all[k];
                 }
