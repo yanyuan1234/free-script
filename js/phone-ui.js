@@ -6897,6 +6897,24 @@ async function renameSave(slot) {
     }
 }
 
+// 【ISSUE-004 修复】"记录"按钮入口：跳转到日志页查看游戏记录
+// 原 phone-ui.js:4019 调用 showGameStats() 但函数未定义，导致 ReferenceError。
+// 语义：menuTopStar 已绑定"加载存档"，"记录"按钮应查看游戏日志/回顾。
+function showGameStats() {
+    try {
+        if (typeof UI !== 'undefined' && UI.showPage) {
+            UI.showPage('logPage');
+        }
+        // 延迟渲染，等页面切换完成
+        if (typeof renderLogPage === 'function') {
+            requestAnimationFrame(function() { renderLogPage(); });
+        }
+    } catch (e) {
+        console.error('[showGameStats] 跳转日志页失败:', e);
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('打开记录失败');
+    }
+}
+
 // 自动存档函数（简化版）
 async function openSaveLoadModal() {
     var body = document.getElementById('saveLoadBody');

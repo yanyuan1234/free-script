@@ -289,16 +289,30 @@ function _generateAutoChoices(storyText, lastChoices) {
     if (!storyText || storyText.trim().length === 0) return null;
     // 提取story末段（最后200字）
     var lastSegment = storyText.slice(-300);
-    // 找出现次数最多的角色名（>=2字中文名）
+    // 【ISSUE-005 修复】NPC 名提取改进：
+    // 原正则 向([\u4e00-\u9fa5]{2,4}) 会把"走向灰石测试"里的"灰石测试"当人名。
+    // 改为：优先用「人名」引号包裹；其次 人名+道/说/问+冒号；最后"向XX+对话/动作动词"。
+    // 并排除明显是事件/地点/事物的词（测试/考试/学院/殿堂等）。
+    var _NON_PERSON_WORDS = /测试|考试|学院|宗门|门派|殿堂|阁楼|任务|剧情|事件|战斗|修炼|境界|灵力|法力|修为|功法|秘境/;
     var npcNameMatch = lastSegment.match(/「([\u4e00-\u9fa5]{2,4})」/) ||
-                       lastSegment.match(/([\u4e00-\u9fa5]{2,4})[道说问][：:]/) ||
-                       lastSegment.match(/向([\u4e00-\u9fa5]{2,4})/);
+                       lastSegment.match(/([\u4e00-\u9fa5]{2,4})[道说问][：:]/);
     var npcName = npcNameMatch ? npcNameMatch[1] : null;
+    // 兜底：向XX+询问/说话/坦白 等动词，且 XX 不在非人物词表里
+    if (!npcName) {
+        var _dirMatch = lastSegment.match(/向([\u4e00-\u9fa5]{2,4})(?:询问|说话|坦白|道别|打招呼|点头|微笑|解释|请教)/);
+        if (_dirMatch && _dirMatch[1] && !_NON_PERSON_WORDS.test(_dirMatch[1])) {
+            npcName = _dirMatch[1];
+        }
+    }
     // 提取地点关键词
     var locationMatch = lastSegment.match(/([^，。\s]{2,8}(?:殿|阁|场|院|山|宫|楼|台|谷|门|府|城|林|堂|室|道|路))/);
     var location = locationMatch ? locationMatch[1] : null;
-    // 检测场景类型
-    var isBattle = /(攻击|战斗|剑|刀|雷|火|法术|灵力)/.test(lastSegment);
+    // 【ISSUE-005 修复】战斗场景判定收窄：
+    // 原正则 /(攻击|战斗|剑|刀|雷|火|法术|灵力)/ 中"灵力"在魔法学院日常文本
+    // （如"灵力测试""灵力运转"）误命中，把社交场景判成战斗。
+    // 改为：必须出现战斗动作动词（挥剑/刺来/劈/砍/射击/施法攻击等），
+    // 单纯出现"灵力/法术/剑"等名词不算战斗。
+    var isBattle = /(挥(剑|刀|棒|拳)|刺(来|向|去)|劈(向|下|来)|砍(向|来)|射击|施法攻击|闪避|格挡|招架|猛击|冲杀|厮杀|交手|对峙|暴起|偷袭)/.test(lastSegment);
     var isDialogue = /「[^」]+」/.test(lastSegment) && npcName;
     var isInvestigation = /(秘密|线索|真相|发现|研究|探索)/.test(lastSegment);
 
@@ -2310,6 +2324,27 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             } catch (rollbackErr) {
                 console.error('[sendAIRequest] 状态回滚失败:', rollbackErr);
+            }
+        }
+        // 【ISSUE-006 修复】API 失败后恢复用户自定义输入
+        // 原 btnSendAction/customAction keypress 在调用 sendAIRequest 前就清空了 input.value，
+        // 失败后用户输入彻底丢失。这里在失败时把用户输入恢复到输入框，方便重试。
+        // 排除：isInit（初始化）和 continueStory 的固定 prompt（[Continue...] 或预设 nudge）
+        if (userMessage && !isInit) {
+            var _isContinuePrompt = (userMessage === '[Continue your last message...]');
+            // continueStory 会设置 gameState._continuePrefill，标记当前是"继续剧情"
+            var _isContinueMode = !!(gameState && gameState._continuePrefill);
+            if (!_isContinuePrompt && !_isContinueMode) {
+                try {
+                    var _inputEl = document.getElementById('customAction');
+                    if (_inputEl && typeof UI !== 'undefined' && UI.toast) {
+                        _inputEl.value = userMessage;
+                        _inputEl.disabled = false;
+                        UI.toast('请求失败，输入已保留，可重试');
+                    }
+                } catch (restoreErr) {
+                    console.warn('[sendAIRequest] 恢复用户输入失败:', restoreErr);
+                }
             }
         }
         var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
