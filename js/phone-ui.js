@@ -766,8 +766,10 @@ function openDiaryDatePicker() {
             // d 来自 AI 返回的日记数据，可能含恶意字符
             // 【J修复】统一用 escapeAttr（转义 \ ' " < > \n \r），替代 escapeHtml+手动单引号转义
 
-            var safeD = escapeAttr(d);
-            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" role="button" tabindex="0" data-action="diaryJumpToDate" data-args=\'' + JSON.stringify([d]) + '\'>' + escapeHtml(d) + '</div>';
+            // 【J修复-补全】safeD 之前定义却未使用，data-args 仍用裸 JSON.stringify，单引号未转义构成 XSS
+            // 修复：用 escapeAttr(JSON.stringify(...)) 整体转义，保证单引号/反斜杠都被处理
+            var safeD = escapeAttr(JSON.stringify([d]));
+            return '<div style="padding:12px 16px;border-bottom:1px solid #f5f5f5;cursor:pointer;font-size:14px;" role="button" tabindex="0" data-action="diaryJumpToDate" data-args=\'' + safeD + '\'>' + escapeHtml(d) + '</div>';
         }).join('') +
         '</div>';
     UI.createModal({ id: 'diaryDatePicker', html: listHtml, persistent: false });
@@ -2637,7 +2639,7 @@ function renderDiaryPage() {
                 }
                 var mentionTag = mentionCount > 0 ?
                     '<span style="display:inline-flex;align-items:center;gap:2px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-left:6px;font-weight:500;">@ 提到你 ×' + mentionCount + '</span>' : '';
-                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" role="button" tabindex="0" data-action="viewNpcDiary" data-args=\'' + JSON.stringify([npcName]) + '\'>' +
+                return '<div class="character-card pearl-card" style="cursor:pointer;margin-bottom:8px;' + (mentionCount > 0 ? 'background:linear-gradient(90deg,#e8f3ff 0%,#fff 60%);border-left:3px solid #1a73e8;' : '') + '" role="button" tabindex="0" data-action="viewNpcDiary" data-args=\'' + escapeAttr(JSON.stringify([npcName])) + '\'>' +
                     '<div class="avatar avatar-md" style="background:' + av + ';color:#fff;">' + escapeHtml(npcName.charAt(0)) + '</div>' +
                     '<div class="char-info">' +
                     '<div class="char-name">' + escapeHtml(npcName) + mentionTag + '</div>' +
@@ -5892,10 +5894,14 @@ function showApiDetail(slot) {
                 UI.toast('测试失败: ' + translateError(e.message || '未知错误'));
             }
         } finally {
-            newTestBtn.textContent = '测试连接';
-            newTestBtn.disabled = false;
-            newCancelBtn.style.display = 'none';
-            newTestBtn._testAbortCtrl = null;
+            // 【CP-08 补全】finally 块也需 null 守卫：newCancelBtn 可能为 null（按钮不在 DOM 时）
+            // 旧实现缺守卫，null.style.display 抛 TypeError 会中断 finally，导致 newTestBtn 状态未恢复
+            if (newTestBtn) {
+                newTestBtn.textContent = '测试连接';
+                newTestBtn.disabled = false;
+                newTestBtn._testAbortCtrl = null;
+            }
+            if (newCancelBtn) newCancelBtn.style.display = 'none';
         }
     });
     // 绑定取消测试按钮
@@ -7736,7 +7742,7 @@ function renderNpcPage() {
             tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
 
             var firstChar = (c.name && typeof c.name === 'string') ? c.name.charAt(0) : '?';
-            return '<div class="character-card pearl-card" role="button" tabindex="0" data-action="openNpcDetail" data-args=\'' + JSON.stringify([sn]) + '\'>' +
+            return '<div class="character-card pearl-card" role="button" tabindex="0" data-action="openNpcDetail" data-args=\'' + escapeAttr(JSON.stringify([c.name])) + '\'>' +
                 '<div class="avatar avatar-md"><span>' + escapeHtml(firstChar) + '</span></div>' +
                 '<div class="char-info">' +
                 '<div class="char-name">' + escapeHtml(c.name) + '</div>' +

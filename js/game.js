@@ -4154,9 +4154,10 @@ async function requestNpcReply(playerText) {
                 if (i === replies.length - 1) {
                     if (choices.length > 0) {
 
-                        // 改为 data-action 委托；参数用 JSON.stringify 安全嵌入 data-args，无需手动 escapeAttr
+                        // 改为 data-action 委托；参数用 escapeAttr(JSON.stringify(...)) 整体转义后嵌入单引号属性
+                        // 【与 phone-ui.js 统一】单引号属性 + escapeAttr（转义 \ ' " < > \n \r）
                         var choicesHtml = choices.map(function(ch) {
-                            return '<button class="npc-chat-choice" type="button" data-action="selectNpcChatChoice" data-args="' + escapeHtml(JSON.stringify([ch])) + '">' + escapeHtml(ch) + '</button>';
+                            return '<button class="npc-chat-choice" type="button" data-action="selectNpcChatChoice" data-args=\'' + escapeAttr(JSON.stringify([ch])) + '\'>' + escapeHtml(ch) + '</button>';
                         }).join('');
                         document.getElementById('npcChatChoices').innerHTML =
                             choicesHtml;

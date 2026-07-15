@@ -2216,7 +2216,11 @@ var WorldInfo = {
                     var depth = item.depth || 4;
                     if (!gameState._depthPrompts[depth]) gameState._depthPrompts[depth] = [];
                     // 按 identifier 去重注册
-                    var _id = 'worldInfo_depth_' + depth + '_' + (item.comment || item.name || Math.random().toString(36).slice(2,8));
+                    // 【J修复】旧实现用 item.comment || item.name || Math.random() 兜底，但世界书条目
+                    // comment/name 常为空 → 走 Math.random() → 每轮 id 都不同 → 永远不命中已注册项
+                    // 后果：同一 depth 累积重复条目，每轮 AI 调用 prompt 膨胀
+                    // 修复：改用 item.uid（worldinfo.js:2171 已保证传入，且全局唯一稳定）
+                    var _id = 'worldInfo_depth_' + depth + '_uid' + item.uid;
                     var _existing = gameState._depthPrompts[depth].findIndex(function(e) { return e.identifier === _id; });
                     var _entry = {
                         enabled: true,
