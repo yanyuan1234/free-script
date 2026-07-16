@@ -608,6 +608,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
+        + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
         + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary/chat/forum","title":"标题","content":"内容","items":[]}], '
         + '"bag": [{"name":"物品名","count":1,"desc":"描述","rarity":"普通/精良/珍稀/传说","usable":false,"effect":"","equippable":false,"equipped":false,"slot":"weapon/armor/accessory/head"}], '
@@ -2148,6 +2149,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 对最终story文本也应用输出端正则，确保与流式显示一致
         if (typeof RegexManager !== 'undefined') {
             finalStory = RegexManager.apply(finalStory, 'output');
+        }
+        // 【P1-5 修复】保存最新 AI 回复到 _lastAIReply，供未来扩展（如宏引用、调试、续写参考）
+        // 原实现仅声明 _lastAIReply: null 但从未写入，导致字段恒为 null
+        if (gameState) {
+            gameState._lastAIReply = finalStory;
         }
         // 先设置 onComplete 回调（在 push 之前，防止时序竞争）
         TypewriterBuffer.onComplete = function() {

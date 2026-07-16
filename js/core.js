@@ -5220,8 +5220,10 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
     // 原值 64KB 在推理模型场景下会截断 JSON 末尾（思考过程+JSON 输出可达 50-150KB）
     // 提高到 256KB 可覆盖 99% 推理模型输出，避免 JSON 花括号不匹配
+    // 【P1-3 修复】256KB 在长思考链+长剧情场景仍会溢出，提升到 1MB 覆盖极端情况
+    // 注：rawBody 仅在 SSE 解析失败（!ctx.fullText）时作兜底，不影响正常流式解析路径
     var rawBody = '';
-    var RAW_BODY_MAX = 256 * 1024;
+    var RAW_BODY_MAX = 1024 * 1024;  // 1MB
     var rawBodyTruncated = false;
 
     // 【第5轮优化】分层 idle 超时（参考业界 SSE 看门狗最佳实践）
@@ -5256,7 +5258,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
                 rawBody = rawBody.slice(-RAW_BODY_MAX);
                 if (!rawBodyTruncated) {
                     rawBodyTruncated = true;
-                    console.warn('[callAI] rawBody 超过 256KB，改为滚动保留最近 256KB 用于兜底');
+                    console.warn('[callAI] rawBody 超过 1MB，改为滚动保留最近 1MB 用于兜底');
                 }
             }
         sseBuffer += chunk;
