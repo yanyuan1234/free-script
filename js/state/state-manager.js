@@ -31,6 +31,31 @@ const StateManager = {
         console.log('[StateManager] 初始化完成，版本:', this._state.meta.version);
     },
 
+    // 【P0-3 修复】重新接管已有的 gameState 对象（引用重建）
+    // 与 init() 的区别：
+    //   - 不调用 normalizeState（避免返回新对象导致引用再次断裂）
+    //   - 不清空 _listeners（保留 GameMemoryAdapter 等订阅，避免同步链失效）
+    //   - 仅重置事务状态（旧事务已随旧 _state 失效）
+    // 适用场景：resetRuntimeState('full') 内 gameState 被重新赋值后，
+    //   StateManager._state 仍指向旧对象，需调用此方法重新绑定到新 gameState。
+    attachState(state) {
+        if (!state || typeof state !== 'object') {
+            console.warn('[StateManager] attachState 拒绝空/非对象参数');
+            return false;
+        }
+        this._state = state;
+        // 保持全局引用一致：window.gameState 与 this._state 必须指向同一对象
+        if (typeof window !== 'undefined') {
+            window.gameState = this._state;
+        }
+        // 仅重置事务状态（旧事务随旧 _state 失效），保留 _listeners
+        this._inTransaction = false;
+        this._pendingChanges = [];
+        this._transactionBackup = null;
+        console.log('[StateManager] attachState 完成，引用已重建');
+        return true;
+    },
+
     // 获取完整深拷贝快照
     snapshot() {
         return StateSchema.deepClone(this._state);

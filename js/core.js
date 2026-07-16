@@ -2202,6 +2202,13 @@ function resetRuntimeState(scope) {
     if (scope === 'full') {
         gameState = createDefaultGameState();
 
+        // 【P0-3 修复】gameState 被重新赋值为新对象后，StateManager._state 仍指向旧对象，
+        // 导致引用断裂：StateManager.set 写入旧对象，UI 读 gameState（新对象）拿到空数据。
+        // 必须在 _ensureDataLinkage 之前调用 attachState 重建引用，保证后续数据联动基于正确对象。
+        if (typeof StateManager !== 'undefined' && StateManager.attachState) {
+            StateManager.attachState(gameState);
+        }
+
         // 重新建立 gameState 与 GameMemory tables 之间的引用别名
         if (typeof _ensureDataLinkage === 'function') {
             try { _ensureDataLinkage(); } catch (e) { console.warn('[resetRuntimeState] 数据联动失败:', e); }
