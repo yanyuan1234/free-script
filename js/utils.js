@@ -6,7 +6,10 @@
 // 【冗余审计 P0-4】统一 max_tokens / context 默认值常量，消除 20+ 处硬编码
 // 所有 fallback 用此常量，避免 8000/8192 混用导致行为不一致
 const DEFAULT_MAX_TOKENS = 16384;
-const DEFAULT_CONTEXT_SIZE = 8192;
+// P1 修复 BUG-004 残留：原值 8192 与 core.js detectContextSize 兜底 32000 不一致
+// 在 getContextSizeSafe() fallback 时会返回过小的 8192 导致上下文预算计算错误
+// 统一为 32000，与 detectContextSize 内部兜底值一致
+const DEFAULT_CONTEXT_SIZE = 32000;
 
 const DOMCache = {
     _cache: {},

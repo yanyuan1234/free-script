@@ -1090,6 +1090,11 @@ function getStoryList() {
                 // 移除开头的 ```json 或 ``` 及结尾的 ```
                 _stripped = _stripped.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
             }
+            // P1 修复 BUG-003：剥离"好的"、"我们"等中文前缀，让 JSON.parse 能成功
+            // 原版 parseAIResponse 用 _findMatching 找第一个 { 隐式吞掉前缀，
+            // 新版 _tryDirectJSON 不找 {，导致 "好的{...}" 直接失败。
+            // 这里用 OutputSanitizer.sanitizeJSON 的等价逻辑移除前缀
+            _stripped = _stripped.replace(/^[^\{\[]*?(\{|\[)/, '$1');
             // 1. 尝试解析 JSON 格式的历史消息
             if (_stripped && typeof _stripped === 'string' && _stripped.trim().charAt(0) === '{') {
                 try {

@@ -239,6 +239,19 @@ const ResponseParser = {
             }
             if (r && typeof r === 'object') return r;
         } catch (e) {}
+        // P0 修复 R3：尾逗号/多逗号修复（原版 safeJSONParse 已有，新版拆分时丢失）
+        // AI 输出 {"a":1,} 或 [1,2,,3] 时，JSON.parse 会失败，这里修复后重试
+        // 注意：不在此处替换控制字符（会破坏 story 内换行），由 _escapeControlCharsInStrings 专门处理
+        try {
+            const s = raw.trim();
+            let fx = s
+                .replace(/,(\s*[}\]])/g, '$1')                // 尾逗号
+                .replace(/,(\s*,)+/g, ',')                    // 多逗号压成单逗号
+                .replace(/\[\s*,+/g, '[')                     // 数组开头多逗号
+                .replace(/,\s*\]/g, ']');                     // 数组结尾多逗号
+            const r = JSON.parse(fx);
+            if (r && typeof r === 'object') return r;
+        } catch (e2) {}
         return null;
     },
 
@@ -302,7 +315,75 @@ const ResponseParser = {
             attempts++;
         }
 
+        // P0 修复 R2：所有整体 JSON.parse 失败后，用 extract* 逐字段状态机抢救
+        // 原版 robustParse 在 JSON 整体失败时调用 extractStr/Arr/Obj/ObjArr 逐字段提取，
+        // 新版拆分时此能力丢失（extract* 变成死代码）。这里接回主流程。
+        // 场景：choices 数组缺 ]、bag 内对象缺逗号、story 字段被截断但其他字段完整
+        const rescued = this._extractFieldsFromRaw(raw);
+        if (rescued) {
+            console.log('[ResponseParser] robust 逐字段提取成功，挽救了部分结构化数据');
+            return rescued;
+        }
+
         return null;
+    },
+
+    // 逐字段从原始文本提取结构化数据（原版 robustParse 等价能力恢复）
+    // 当整体 JSON.parse 失败时，逐字段用状态机/正则提取 story/choices/player/characters/bag 等
+    _extractFieldsFromRaw(raw) {
+        if (!raw || typeof raw !== 'string') return null;
+        const r = {};
+        let hasAny = false;
+
+        // story 字段（字符串，最重要的字段）
+        const story = this.extractStr(raw, 'story', '');
+        if (story) { r.story = story; hasAny = true; }
+
+        // title 字段
+        const title = this.extractStr(raw, 'title', '');
+        if (title) { r.title = title; hasAny = true; }
+
+        // contextSummary 字段
+        const ctxSum = this.extractStr(raw, 'contextSummary', '');
+        if (ctxSum) { r.contextSummary = ctxSum; hasAny = true; }
+
+        // player 对象
+        const player = this.extractObj(raw, 'player', null);
+        if (player && typeof player === 'object') { r.player = player; hasAny = true; }
+
+        // gameTime 对象
+        const gameTime = this.extractObj(raw, 'gameTime', null);
+        if (gameTime && typeof gameTime === 'object') { r.gameTime = gameTime; hasAny = true; }
+
+        // hud 对象
+        const hud = this.extractObj(raw, 'hud', null);
+        if (hud && typeof hud === 'object') { r.hud = hud; hasAny = true; }
+
+        // 字符串数组字段：choices / characters / bag / quests / relationships / locations / world / npcMessages / memoryUpdates / keyEvents
+        const arrFields = ['choices', 'characters', 'bag', 'quests', 'relationships',
+                           'locations', 'world', 'npcMessages', 'memoryUpdates', 'keyEvents'];
+        for (let i = 0; i < arrFields.length; i++) {
+            const key = arrFields[i];
+            // choices/characters/bag/quests 等是对象数组，用 extractObjArr
+            // keyEvents 是字符串数组，用 extractArr
+            if (key === 'keyEvents') {
+                const arr = this.extractArr(raw, key, []);
+                if (arr && arr.length > 0) { r[key] = arr; hasAny = true; }
+            } else {
+                const arr = this.extractObjArr(raw, key, []);
+                if (arr && arr.length > 0) { r[key] = arr; hasAny = true; }
+            }
+        }
+
+        // currency（数字）单独处理
+        const curMatch = raw.match(/"currency"\s*:\s*(-?\d+(?:\.\d+)?)/);
+        if (curMatch) { r.currency = Number(curMatch[1]); hasAny = true; }
+
+        // currencyName（字符串）
+        const curName = this.extractStr(raw, 'currencyName', '');
+        if (curName) { r.currencyName = curName; hasAny = true; }
+
+        return hasAny ? r : null;
     },
 
 
@@ -573,7 +654,10 @@ const ResponseParser = {
         const m = raw.match(re);
         if (!m) return defaultVal !== undefined ? defaultVal : [];
         const startIdx = m.index + m[0].length;
-        const end = this._findMatching(raw, '[', ']', startIdx);
+        // P0 修复 R2 配套：_findMatching 的 start 参数应指向 open 字符位置
+        // 原 startIdx 是 [ 之后位置，导致 _findMatching 立即返回（depth=0）
+        // 修正为 startIdx - 1（即 [ 的位置）
+        const end = this._findMatching(raw, '[', ']', startIdx - 1);
         if (end === -1) return defaultVal !== undefined ? defaultVal : [];
         const arrStr = raw.slice(startIdx - 1, end + 1);
         try {
@@ -590,7 +674,8 @@ const ResponseParser = {
         const m = raw.match(re);
         if (!m) return defaultVal !== undefined ? defaultVal : {};
         const startIdx = m.index + m[0].length;
-        const end = this._findMatching(raw, '{', '}', startIdx);
+        // P0 修复 R2 配套：同 extractArr，start 指向 open 字符位置
+        const end = this._findMatching(raw, '{', '}', startIdx - 1);
         if (end === -1) return defaultVal !== undefined ? defaultVal : {};
         const objStr = raw.slice(startIdx - 1, end + 1);
         try {
@@ -607,7 +692,8 @@ const ResponseParser = {
         const m = raw.match(re);
         if (!m) return defaultVal !== undefined ? defaultVal : [];
         const startIdx = m.index + m[0].length;
-        const end = this._findMatching(raw, '[', ']', startIdx);
+        // P0 修复 R2 配套：同 extractArr，start 指向 open 字符位置
+        const end = this._findMatching(raw, '[', ']', startIdx - 1);
         if (end === -1) return defaultVal !== undefined ? defaultVal : [];
         // 在 [ ... ] 区间内扫描每个 { ... } 配对
         const inner = raw.slice(startIdx, end);

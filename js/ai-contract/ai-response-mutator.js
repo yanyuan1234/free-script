@@ -84,21 +84,17 @@ const AIResponseMutator = {
     },
 
     // 统一写入所有字段
-
-    // 触发 apply() 外层 StateManager.transaction 的快照回滚。
     //
-    // 设计权衡：
-    // - 旧 best-effort（P0 修复 BUG-006 时引入）让单 mutator 失败只跳过该步骤，
-    //   避免全量回滚导致所有数据丢失。但副作用是 transaction 回滚机制被永久架空：
-    //   apply 内部永不抛异常 → apply() 的 try-catch 永远走 success 分支，
-    //   即使 90% 的 mutator 失败也返回 success: true。
-    // - 现恢复"全有或全无"语义：任一 mutator 抛错 → transaction 回滚到 apply 前快照 →
-    //   apply() 返回 { success: false } → 调用方（game.js:1731-1742）走 deleteLastTurn
-    //   兜底路径，本轮 AI 输出整体被拒绝，玩家可重新生成。
-    // - 此为更严格的契约：要么全部写入成功，要么全部回滚，避免"半写入"状态污染 StateManager。
+    // 设计权衡（P0 修复 R4/BUG-C）：
+    // - best-effort 语义：单步 mutator 失败只 console.warn + 跳过，不冒泡触发 transaction 回滚
+    // - 原因：原 all-or-nothing 设计在 _applyKeyEvents（gm 不可用时 throw）等单点失败时
+    //   会全量回滚已成功写入的 characters/bag/quests，导致玩家看到 0 角色/0 物品/0 任务
+    //   实测 8 个 state 文件 keyEvents 与 relationships 持续为 0 即此问题
+    // - 仅 storyAndTitle（核心字段）失败时才整体返回 success:false
+    // - transaction 仍保留（用于批量 notify），但单步失败不触发回滚
     _applyAll(data, result, options, mems) {
         const steps = [
-            { name: 'storyAndTitle',    fn: () => this._applyStoryAndTitle(data) },
+            { name: 'storyAndTitle',    fn: () => this._applyStoryAndTitle(data), critical: true },
             { name: 'turn',             fn: () => this._applyTurn(data) },
             { name: 'player',           fn: () => this._applyPlayer(data) },
             { name: 'characters',       fn: () => this._applyCharacters(data) },
@@ -126,10 +122,23 @@ const AIResponseMutator = {
             // 之前 game.js:1684 在事务外调用 _applyMemsToGameState，失败不回滚
             { name: 'mems',             fn: () => this._applyMems(mems) }
         ];
-        // 串行执行所有 mutator，任一抛错即冒泡到 apply() 的 try-catch（被 StateManager.transaction 包裹）
-        // → transaction 回滚 → apply 返回 { success: false, error }
+        // best-effort 执行：单步失败只 warn 跳过，不冒泡触发 transaction 回滚
+        // 仅 critical 步骤失败才整体失败
+        const failedSteps = [];
         for (let i = 0; i < steps.length; i++) {
-            steps[i].fn();
+            const step = steps[i];
+            try {
+                step.fn();
+            } catch (e) {
+                const msg = e && e.message ? e.message : String(e);
+                console.warn('[AIResponseMutator] 步骤 ' + step.name + ' 失败，跳过：' + msg);
+                failedSteps.push(step.name);
+                if (step.critical) {
+                    // 仅核心步骤（storyAndTitle）失败才视为整体失败
+                    throw e;
+                }
+                // 非核心步骤：继续执行后续步骤，保留已成功写入的数据
+            }
         }
 
         // 解决问题：BUG-006 全量回滚后所有结构化数据丢失，UI 显示"0角色/0物品/0任务"
@@ -138,6 +147,9 @@ const AIResponseMutator = {
             this._validatePersistence(data, result);
         } catch (e) {
             console.warn('[AIResponseMutator] 数据持久化校验本身失败:', e && e.message ? e.message : e);
+        }
+        if (failedSteps.length > 0) {
+            result.warnings = (result.warnings || []).concat(['部分步骤告警: ' + failedSteps.join(', ')]);
         }
         result.changes = this._collectChanges();
     },
@@ -239,8 +251,43 @@ const AIResponseMutator = {
         if (aiName && lockedName && aiName !== lockedName) {
             console.warn('[AIResponseMutator] AI 尝试覆盖主角名 "' + lockedName + '" 为 "' + aiName + '"，已拦截');
         }
+        // P1 修复 BUG-D：物品名污染检测
+        // 实测 AI 偶尔把 bag 中物品名误填到 player.name（如"写有线索的便条"）
+        // 仅当未锁名时才需要此检测（已锁名则上面已拦截）
+        let finalName = lockedName || aiName || '主角';
+        if (!lockedName && aiName) {
+            // 检测 aiName 是否疑似物品名：
+            // 1. 与 data.bag 中任一物品名匹配
+            // 2. 与 entities.bag（已有库存）中任一物品名匹配
+            // 3. 名字特征检测：物品名通常含描述性词（"便条"/"信"/"剑"/"衣"等）
+            var isItemName = false;
+            if (Array.isArray(data.bag)) {
+                for (var bi = 0; bi < data.bag.length; bi++) {
+                    if (data.bag[bi] && data.bag[bi].name === aiName) { isItemName = true; break; }
+                }
+            }
+            if (!isItemName) {
+                var existingBag = StateManager.get('entities.bag') || [];
+                if (Array.isArray(existingBag)) {
+                    for (var bj = 0; bj < existingBag.length; bj++) {
+                        if (existingBag[bj] && existingBag[bj].name === aiName) { isItemName = true; break; }
+                    }
+                }
+            }
+            if (!isItemName) {
+                // 名字特征：物品描述性词
+                if (/(便条|纸张|信件|信纸|剑|刀|弓|杖|衣|袍|靴|帽|戒指|项链|护符|药剂|药水|书|卷轴|地图)$/.test(aiName)
+                    || /^(一张|一把|一件|一本|一卷|一个|一条)/.test(aiName)) {
+                    isItemName = true;
+                }
+            }
+            if (isItemName) {
+                console.warn('[AIResponseMutator] AI 返回主角名 "' + aiName + '" 疑似物品名污染，已拒绝，保留默认名');
+                finalName = current.name || '主角';
+            }
+        }
         const normalized = {
-            name: lockedName || aiName || '主角',
+            name: finalName,
             identity: String(player.identity || current.identity || '').trim(),
 
             // 避免 AI 返回空 stats（或默认空数组）清空已生成的属性

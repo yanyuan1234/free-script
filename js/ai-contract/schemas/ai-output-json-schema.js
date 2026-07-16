@@ -5,68 +5,57 @@
 //   - 本文件: 标准 JSON Schema draft-07，传给 API 做 strict 约束
 // ========================================
 // 设计原则：
-// 1. 只约束核心结构（story + title + choices + gameTime + keyEvents）
-//    其他字段用 additionalProperties: true 让 AI 自由发挥，避免 schema 过严导致生成失败
-// 2. strict:true 要求所有 properties 都在 required 里，且不能有 additionalProperties:true
-//    （OpenAI strict 模式限制）因此实际 strict schema 比"宽松 schema"字段更少
-// 3. 提供 getStrictSchema() 和 getLooseSchema() 两套：
-//    - strict: 给支持 strict 的 API（DeepSeek/通义/OpenAI/Claude）用，字段最小集
-//    - loose: 给只支持 json_object 的 API 用，不约束字段
+// 1. strict schema 必须覆盖 prompt-builder.js / game.js _buildFormatRules 要求的全部字段
+//    否则 additionalProperties:false 会禁止 AI 输出 characters/items/quests 等
+//    导致游戏状态系统（角色/物品/任务）完全失效（P0 修复 R1/BUG-B）
+// 2. strict:true 要求所有 properties 都在 required 里，且 additionalProperties:false
+//    （OpenAI strict 模式限制）因此所有字段都标记 required，AI 每轮必须返回（空时返回空数组）
+// 3. 提供 getStrictSchema() 和 getJsonObjectSchema() 两套：
+//    - strict: 给支持 strict 的 API（DeepSeek/通义/OpenAI）用，字段全集
+//    - json_object: 给只支持 json_object 的 API 用，不约束字段
 // ========================================
 
 const AIOutputJSONSchema = {
 
-    // strict 模式 schema（字段最小集，所有字段 required，无 additionalProperties）
+    // strict 模式 schema（字段全集，所有字段 required，无 additionalProperties）
     // OpenAI strict 模式硬性要求：properties 里所有字段必须在 required 数组里
+    // P0 修复 R1/BUG-B：补齐 characters/bag/quests/relationships/locations/world/npcMessages/
+    // memoryUpdates/currency/currencyName/contextSummary/hud，与 prompt 要求对齐
+    // 否则 additionalProperties:false 会禁止 AI 输出这些字段，导致状态系统失效
     getStrictSchema() {
         return {
             type: 'object',
             properties: {
                 story: {
                     type: 'string',
-                    description: '叙事正文，用\\n换行，对话用「」包裹，第二人称"你"叙事'
+                    description: '叙事正文，用\\n换行，对话用「」包裹，第二人称"你"叙事。必须是JSON第一个字段'
                 },
                 title: {
                     type: 'string',
-                    description: '本回合章节标题，简短'
+                    description: '本回合章节标题，4-8字简短'
                 },
                 choices: {
                     type: 'array',
-                    description: '玩家可选的选项列表，2-4个',
+                    description: '玩家可选的选项列表，恰好3个',
                     items: {
                         type: 'object',
                         properties: {
-                            id: { type: 'string', description: '选项标识' },
-                            text: { type: 'string', description: '选项文本' }
+                            id: { type: 'string', description: '选项标识 A/B/C' },
+                            text: { type: 'string', description: '选项文本，10-25字' }
                         },
                         required: ['id', 'text'],
                         additionalProperties: false
                     }
                 },
-                gameTime: {
-                    type: 'object',
-                    description: '游戏内时间',
-                    properties: {
-                        date: { type: 'string', description: '日期，如"第3天"' },
-                        time: { type: 'string', description: '时刻，如"卯时"' },
-                        period: { type: 'string', description: '时段：morning/afternoon/evening/night' }
-                    },
-                    required: ['date', 'time', 'period'],
-                    additionalProperties: false
-                },
-                keyEvents: {
-                    type: 'array',
-                    description: '本回合关键事件，字符串数组',
-                    items: { type: 'string' }
-                },
                 player: {
                     type: 'object',
-                    description: '主角状态',
+                    description: '主角状态（玩家唯一操控角色）',
                     properties: {
-                        name: { type: 'string' },
-                        identity: { type: 'string' },
+                        name: { type: 'string', description: '主角姓名，必须严格等于主角姓名' },
+                        identity: { type: 'string', description: '身份' },
                         stats: {
                             type: 'array',
+                            description: '主角属性',
                             items: {
                                 type: 'object',
                                 properties: {
@@ -80,9 +69,184 @@ const AIOutputJSONSchema = {
                     },
                     required: ['name', 'identity', 'stats'],
                     additionalProperties: false
+                },
+                characters: {
+                    type: 'array',
+                    description: 'NPC列表（禁止包含主角）。已知角色即使本回合未出场也要保留',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string', description: 'NPC名（不加括号备注）' },
+                            title: { type: 'string', description: '头衔' },
+                            relation: { type: 'string', description: '与主角关系' },
+                            favorability: { type: 'number', description: '好感度 -100到100' },
+                            desc: { type: 'string', description: '简述' }
+                        },
+                        required: ['name', 'title', 'relation', 'favorability', 'desc'],
+                        additionalProperties: false
+                    }
+                },
+                bag: {
+                    type: 'array',
+                    description: '主角背包物品',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string' },
+                            count: { type: 'number' },
+                            desc: { type: 'string' },
+                            rarity: { type: 'string', description: '普通/精良/珍稀/传说' },
+                            usable: { type: 'boolean' },
+                            effect: { type: 'string' },
+                            equippable: { type: 'boolean' },
+                            equipped: { type: 'boolean' },
+                            slot: { type: 'string', description: 'weapon/armor/accessory/head' }
+                        },
+                        required: ['name', 'count', 'desc', 'rarity', 'usable', 'effect', 'equippable', 'equipped', 'slot'],
+                        additionalProperties: false
+                    }
+                },
+                quests: {
+                    type: 'array',
+                    description: '任务列表，每回合至少1个进行中任务',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            title: { type: 'string' },
+                            type: { type: 'string', description: '主线/支线/隐藏' },
+                            status: { type: 'string', description: '进行中/已完成/失败' },
+                            progress: { type: 'string', description: '当前/总数' },
+                            hint: { type: 'string' }
+                        },
+                        required: ['title', 'type', 'status', 'progress', 'hint'],
+                        additionalProperties: false
+                    }
+                },
+                relationships: {
+                    type: 'array',
+                    description: '关系网，上限10条',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            from: { type: 'string', description: '主角用"主角"二字' },
+                            type: { type: 'string', description: '暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一' },
+                            to: { type: 'string' },
+                            desc: { type: 'string' }
+                        },
+                        required: ['from', 'type', 'to', 'desc'],
+                        additionalProperties: false
+                    }
+                },
+                locations: {
+                    type: 'array',
+                    description: '本回合涉及的关键地点',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string' },
+                            desc: { type: 'string' }
+                        },
+                        required: ['name', 'desc'],
+                        additionalProperties: false
+                    }
+                },
+                world: {
+                    type: 'array',
+                    description: '世界模块，与剧情联动',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            type: { type: 'string', description: 'text/list/ranking/key_value/cards/comments/moments/mail/shop/diary/chat/forum' },
+                            title: { type: 'string' },
+                            content: { type: 'string' },
+                            items: { type: 'array', items: {} }
+                        },
+                        required: ['type', 'title', 'content', 'items'],
+                        additionalProperties: false
+                    }
+                },
+                npcMessages: {
+                    type: 'array',
+                    description: 'NPC即时闲聊消息（正式通知用mail）',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            name: { type: 'string' },
+                            text: { type: 'string' },
+                            emotion: { type: 'string' }
+                        },
+                        required: ['name', 'text', 'emotion'],
+                        additionalProperties: false
+                    }
+                },
+                memoryUpdates: {
+                    type: 'array',
+                    description: '永久记忆维护，无变更时返回空数组',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            op: { type: 'string', description: 'add/replace/delete' },
+                            category: { type: 'string', description: 'pcIdentity/settings/worldRules/npcProfiles/promises/worldPlaces' },
+                            content: { type: 'string' },
+                            reason: { type: 'string' }
+                        },
+                        required: ['op', 'category', 'content', 'reason'],
+                        additionalProperties: false
+                    }
+                },
+                currency: {
+                    type: 'number',
+                    description: '当前金钱数量，必须准确反映剧情变化'
+                },
+                currencyName: {
+                    type: 'string',
+                    description: '货币名称（修仙用灵石，现代用元，古代用银两等）'
+                },
+                contextSummary: {
+                    type: 'string',
+                    description: '本回合剧情摘要，100-200字'
+                },
+                gameTime: {
+                    type: 'object',
+                    description: '游戏内时间',
+                    properties: {
+                        date: { type: 'string', description: '日期，如"第3天"' },
+                        time: { type: 'string', description: '时刻，如"卯时"' },
+                        period: { type: 'string', description: '时段：morning/afternoon/evening/night' },
+                        weather: { type: 'string', description: '晴/阴/雨/雪' },
+                        era: { type: 'string', description: '时代/年号' }
+                    },
+                    required: ['date', 'time', 'period', 'weather', 'era'],
+                    additionalProperties: false
+                },
+                keyEvents: {
+                    type: 'array',
+                    description: '本回合关键事件，0-3条，无重要事件时返回空数组',
+                    items: { type: 'string' }
+                },
+                hud: {
+                    type: 'object',
+                    description: 'HUD显示数据，最多4个',
+                    properties: {
+                        items: {
+                            type: 'array',
+                            items: {
+                                type: 'object',
+                                properties: {
+                                    label: { type: 'string' },
+                                    value: { type: 'string' },
+                                    icon: { type: 'string' }
+                                },
+                                required: ['label', 'value', 'icon'],
+                                additionalProperties: false
+                            }
+                        }
+                    },
+                    required: ['items'],
+                    additionalProperties: false
                 }
             },
-            required: ['story', 'title', 'choices', 'gameTime', 'keyEvents', 'player'],
+            required: ['story', 'title', 'choices', 'player', 'characters', 'bag', 'quests', 'relationships', 'locations', 'world', 'npcMessages', 'memoryUpdates', 'currency', 'currencyName', 'contextSummary', 'gameTime', 'keyEvents', 'hud'],
             additionalProperties: false,
             // strict:true 是 OpenAI/DeepSeek 的扩展字段，要求模型严格遵守 schema
             strict: true

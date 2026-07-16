@@ -13,15 +13,75 @@
 const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought', 'final', 'inner_thoughts', 'reflection', 'assistantfinal'];
 const OutputSanitizer = {
     THINKING_TAGS: THINKING_TAGS,
+    // P0 修复 BUG-A：裸思考文本检测模式
+    // AI 偶尔不包裹 <think> 标签直接输出思考过程（"我需要..."、"用户选择了..."、"选择A的后果..."等）
+    // 这些元话语不属于剧情正文，需要剥离
+    // 策略：按段落（\n\n 或 \n）分割，删除匹配元话语模式的段落
+    // 注意：只删除整段（避免误删剧情对话中"我需要"等正常语句）
+    _BARE_THINKING_PATTERNS: [
+        /^用户选择了?\s*选项/,
+        /^玩家选择了?\s*选项/,
+        /^用户选择了?.*推进/,
+        /^玩家选择了?.*推进/,
+        /^选择[A-D一二三四五六七八九]\s*[的之后]/,
+        /^选择[A-D一二三四五六七八九]\s*果/,
+        /^当前状态/,
+        /^当前情况/,
+        /^我需要/,
+        /^我必须/,
+        /^接下来我/,
+        /^我打算/,
+        /^分析[:：]/,
+        /^考虑[:：]/,
+        /^思路[:：]/,
+        /^策略[:：]/,
+        /^步骤[:：]/,
+        /^\d+[\.\、]\s*(描述|推进|设置|生成|引入|安排)/,
+        /^- (描述|推进|设置|生成|引入|安排)/
+    ],
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
         let s = text;
         s = this.stripThinking(s);
         s = this.stripHTMLAndCursors(s);
+        // stripBareThinking 必须在 stripHTMLAndCursors 之后：
+        // HTML 标签（如 <p>）会影响段落分割，先剥 HTML 才能正确按 \n\n 分段
+        s = this.stripBareThinking(s);
         s = this.stripJSONArtifacts(s);
         s = s.replace(/[\u0000-\u0008\u000b-\u000c\u000e-\u001f]+/g, ' ');
         s = s.replace(/\n{3,}/g, '\n\n');
         return s.trim();
+    },
+
+    // 剥离裸思考文本（无标签包裹的思考过程）
+    // 仅当文本以多段元话语开头时才剥离，避免误删正常剧情
+    stripBareThinking(text) {
+        if (!text || typeof text !== 'string') return '';
+        // 按双换行分段
+        const paras = text.split(/\n\n+/);
+        if (paras.length === 0) return text;
+
+        // 检测开头连续多少段是思考内容
+        let thinkEnd = 0;
+        let matchCount = 0;
+        for (let i = 0; i < paras.length; i++) {
+            const para = paras[i].trim();
+            if (!para) { thinkEnd = i + 1; continue; }
+            // 取第一行（段落可能多行，只看开头）
+            const firstLine = para.split(/\n/)[0].trim();
+            const isThinking = this._BARE_THINKING_PATTERNS.some(function(re) { return re.test(firstLine); });
+            if (isThinking) {
+                thinkEnd = i + 1;
+                matchCount++;
+            } else {
+                break;
+            }
+        }
+        // 至少 2 段匹配才剥离（避免误删单段"我需要..."的剧情对话）
+        if (matchCount >= 2 && thinkEnd < paras.length) {
+            return paras.slice(thinkEnd).join('\n\n').trim();
+        }
+        return text;
     },
 
     sanitizeJSON(raw) {

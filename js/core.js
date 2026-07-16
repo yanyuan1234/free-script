@@ -2257,8 +2257,8 @@ var TypewriterBuffer = {
     isTyping: false,
     timer: null,
 
-    // 进一步通过 textContent 增量更新当前段落避免每 tick 整个 innerHTML 重建
-    baseSpeed: 50,
+    // P1 修复 R5：baseSpeed 改回 25（原版值），新版误改为 50 导致打字速度减半
+    baseSpeed: 25,
     onComplete: null,
     _visibilityHandler: null,
     _completedParagraphs: [],
@@ -5074,14 +5074,36 @@ function buildAIRequestBody(messages, options, config) {
         }
     }
 
-    // 不硬编码上限——某些模型支持输出 >50% 上下文长度（如 Gemini 2.0 Flash 输出 8192 / 输入 1M）
-    // 只在 contextSize 已知且 max_tokens 明显超出时（>contextSize）才裁剪，避免必然的 400 错误
+    // P1 修复 BUG-006：max_tokens 裁剪应基于"剩余可用 token"而非 contextSize 本身
+    // 原逻辑：max_tokens = min(max_tokens, contextSize)
+    //   错误：当输入已占用 80% context 时，max_tokens 仍可能=ctxSize 导致输出超限
+    // 正确：max_tokens = min(max_tokens, contextSize - inputTokens - 100)  // 100 留安全余量
+    // 最低保证 500 输出空间，避免 max_tokens 过小导致回复被截断
     if (filtered.max_tokens != null) {
-        // 【冗余审计 P1-5】用 getContextSizeSafe 替代 typeof + gameState fallback 重复模式
         var ctxSize = getContextSizeSafe();
         if (ctxSize > 0) {
             var mt2 = Number(filtered.max_tokens);
-            if (mt2 > ctxSize) {
+            // 估算输入 tokens：累加 messages 中各 message content 长度
+            var inputTokens = 0;
+            if (Array.isArray(messages)) {
+                for (var mi = 0; mi < messages.length; mi++) {
+                    var msg = messages[mi];
+                    if (!msg) continue;
+                    var content = msg.content || '';
+                    if (typeof content === 'string') {
+                        inputTokens += (typeof estimateTokensUtil === 'function')
+                            ? estimateTokensUtil(content)
+                            : Math.ceil(content.length / 4);
+                    }
+                }
+            }
+            var effectiveMax = ctxSize - inputTokens - 100; // 留 100 tokens 安全余量
+            if (effectiveMax < 500) effectiveMax = 500;     // 最低保证 500 输出空间
+            if (mt2 > effectiveMax) {
+                console.warn('[API] max_tokens(' + mt2 + ') 超过剩余空间(' + effectiveMax + ' = ctx ' + ctxSize + ' - input ' + inputTokens + ' - 100)，已裁剪');
+                filtered.max_tokens = effectiveMax;
+            } else if (mt2 > ctxSize) {
+                // 兜底：max_tokens 绝对不能超过 contextSize
                 console.warn('[API] max_tokens(' + mt2 + ') 超过 contextSize(' + ctxSize + ')，已裁剪');
                 filtered.max_tokens = ctxSize;
             }
