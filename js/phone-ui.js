@@ -1082,35 +1082,51 @@ function getStoryList() {
             var raw = m.content || '';
             var title = '';
             var story = raw;
-            // 【回顾标签修复】AI 返回可能被 ```json ... ``` 代码块包裹，
-            // 原代码只检查 charAt(0)==='{' 导致解析失败，按钮显示原始 JSON。
-            // 先剥离 markdown 代码块标记再解析。
-            var _stripped = raw.trim();
-            if (_stripped.indexOf('```') === 0) {
-                // 移除开头的 ```json 或 ``` 及结尾的 ```
-                _stripped = _stripped.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
-            }
-            // P1 修复 BUG-003：剥离"好的"、"我们"等中文前缀，让 JSON.parse 能成功
-            // 原版 parseAIResponse 用 _findMatching 找第一个 { 隐式吞掉前缀，
-            // 新版 _tryDirectJSON 不找 {，导致 "好的{...}" 直接失败。
-            // 这里用 OutputSanitizer.sanitizeJSON 的等价逻辑移除前缀
-            _stripped = _stripped.replace(/^[^\{\[]*?(\{|\[)/, '$1');
-            // 1. 尝试解析 JSON 格式的历史消息
-            if (_stripped && typeof _stripped === 'string' && _stripped.trim().charAt(0) === '{') {
+
+            // P3 修复 R6：用 ResponseParser.parse（5 层兜底）替代单步 JSON.parse
+            // 原版 parseAIResponse 有 4 步兜底（直接 JSON → 代码块 → 状态机 → 正则），
+            // 新版 getStoryList 只做单步 JSON.parse，对畸形/截断历史数据会 fallback 到原文。
+            // 改用 ResponseParser.parse 后，能复用主流程的完整解析能力（含尾逗号修复、
+            // 逐字段抢救、截断修复等），对回顾页历史数据鲁棒性大幅提升。
+            if (typeof ResponseParser !== 'undefined' && ResponseParser.parse) {
                 try {
-                    var parsed = JSON.parse(_stripped);
-                    if (parsed && typeof parsed === 'object') {
-                        title = parsed.title || parsed.sceneTitle || parsed.scene || '';
-                        story = parsed.story || parsed.storyText || parsed.content || '';
+                    var parseResult = ResponseParser.parse(raw);
+                    if (parseResult && parseResult.success) {
+                        // 优先用 data.title 和 data.story（已 normalize）
+                        if (parseResult.data && typeof parseResult.data === 'object') {
+                            title = parseResult.data.title || parseResult.data.sceneTitle || parseResult.data.scene || '';
+                            story = parseResult.data.story || parseResult.data.storyText || parseResult.data.content || '';
+                        }
+                        // 若 data 字段为空，用 storyText（_tryPlainText 等场景）
+                        if (!story && parseResult.storyText) story = parseResult.storyText;
                     }
-                } catch (e) { /* 非 JSON 或解析失败，保留原文 */ }
+                } catch (e) { /* 解析失败，保留原文兜底 */ }
             }
-            // 2. 检测 AI 思考内容（BUG-04 残留 / 历史污染数据）
+
+            // 兜底：若 ResponseParser 不可用或解析失败，走单步 JSON.parse（原逻辑）
+            if (!story || story === raw) {
+                var _stripped = raw.trim();
+                if (_stripped.indexOf('```') === 0) {
+                    _stripped = _stripped.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/, '');
+                }
+                _stripped = _stripped.replace(/^[^\{\[]*?(\{|\[)/, '$1');
+                if (_stripped && _stripped.trim().charAt(0) === '{') {
+                    try {
+                        var parsed = JSON.parse(_stripped);
+                        if (parsed && typeof parsed === 'object') {
+                            title = title || parsed.title || parsed.sceneTitle || parsed.scene || '';
+                            story = parsed.story || parsed.storyText || parsed.content || '';
+                        }
+                    } catch (e) { /* 非 JSON 或解析失败，保留原文 */ }
+                }
+            }
+
+            // 检测 AI 思考内容（BUG-04 残留 / 历史污染数据）
             if (_isThinkingContent(story)) {
                 story = '【本回合 AI 回复异常，内容已隐藏】';
                 title = title || '— 解析失败 —';
             }
-            // 3. 兜底：如果 story 为空但 raw 有内容（如纯文本模式），用 raw
+            // 兜底：如果 story 为空但 raw 有内容（如纯文本模式），用 raw
             if (!story && raw) story = raw;
             return { text: story || '', title: title || '', time: m.time || '', index: idx };
         });
@@ -5820,11 +5836,34 @@ function showApiDetail(slot) {
     // 显示错误日志
     var errorListEl = document.getElementById('apiErrorList');
     if (errorListEl) {
+        // P2 修复 BUG-005：检测 slot 是否处于超时锁定状态，并在错误列表顶部显示恢复提示
+        var lockHintHtml = '';
+        if (typeof LocalGameAPI !== 'undefined' && typeof LocalGameAPI.isSlotTimeoutRecent === 'function'
+            && LocalGameAPI.isSlotTimeoutRecent(slot)) {
+            // 计算剩余恢复时间（5 分钟锁定）
+            var _failedKey = slot + '|' + (cfg && cfg.model ? cfg.model : '');
+            var _failedEntry = LocalGameAPI._failedModels && LocalGameAPI._failedModels[_failedKey];
+            var _remainSec = 0;
+            if (_failedEntry && _failedEntry.time) {
+                var _elapsed = Math.floor((Date.now() - _failedEntry.time) / 1000);
+                _remainSec = Math.max(0, 300 - _elapsed); // 5 分钟 = 300 秒
+            }
+            var _remainStr = _remainSec > 0 ? (_remainSec + ' 秒后自动恢复') : '即将自动恢复';
+            lockHintHtml = '<div class="pearl-card" style="padding:12px;border-left:3px solid #f39c12;margin-bottom:8px;">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;">' +
+                '<div style="font-size:13px;color:#f39c12;">' +
+                '<strong>API 配置已被临时锁定</strong><br>' +
+                '<span style="font-size:12px;">原因：近期请求超时。' + _remainStr + '。</span>' +
+                '</div>' +
+                '<button id="btnUnlockApi_' + slot + '" style="padding:6px 12px;background:#f39c12;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;">立即解锁</button>' +
+                '</div></div>';
+        }
+
         var errorLogs = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot === slot && !l.success;
         }).slice(-10).reverse();
         if (errorLogs.length > 0) {
-            errorListEl.innerHTML = errorLogs.map(function(log) {
+            errorListEl.innerHTML = lockHintHtml + errorLogs.map(function(log) {
                 var timeStr = _formatLogTime(log.time, 'full');
                 return '<div class="pearl-card" style="padding:12px;border-left:3px solid #e74c3c;">' +
                     '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:6px;">' +
@@ -5832,8 +5871,31 @@ function showApiDetail(slot) {
                     '<div style="font-size:13px;color:#e74c3c;word-break:break-all;">' + escapeHtml(log
                         .error || '未知错误') + '</div></div>';
             }).join('');
+        } else if (lockHintHtml) {
+            // 无错误日志但有锁定提示
+            errorListEl.innerHTML = lockHintHtml;
         } else {
             errorListEl.innerHTML = renderEmptyState('暂无错误记录');
+        }
+
+        // 绑定"立即解锁"按钮
+        var _unlockBtn = document.getElementById('btnUnlockApi_' + slot);
+        if (_unlockBtn) {
+            var _onUnlock = function() {
+                // 清除该 slot 的所有超时锁定记录
+                if (LocalGameAPI._failedModels) {
+                    Object.keys(LocalGameAPI._failedModels).forEach(function(k) {
+                        if (k.indexOf(slot + '|') === 0) {
+                            delete LocalGameAPI._failedModels[k];
+                        }
+                    });
+                    if (typeof LocalGameAPI.save === 'function') LocalGameAPI.save();
+                }
+                UI.toast('已解锁该 API 配置，可立即重试');
+                // 重新渲染错误列表
+                renderApiDetail(slot);
+            };
+            _unlockBtn.addEventListener('click', _onUnlock);
         }
     }
 

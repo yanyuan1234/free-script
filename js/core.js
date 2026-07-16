@@ -5215,15 +5215,39 @@ var _SSE_SEP = /\r?\n\r?\n/;
 
 
 async function executeAIStream(url, body, apiKey, signal, onChunk) {
-    var res = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify(body),
-        signal: signal
-    });
+    // P3 修复 BUG-007 真正缺口：fetch 阶段加 30s connect 超时
+    // 原版完全无超时，新版 idle 看门狗只在 reader.read() 后才生效，
+    // 若 fetch 在 DNS/TCP/TLS 阶段挂起（如 DeepSeek-V4-Pro 实测挂起 226-409 秒），
+    // idle 看门狗不触发，需等 10 分钟总超时。这里加 30s fetch 阶段超时
+    var CONNECT_TIMEOUT_MS = 30 * 1000;
+    var _connectTimer = null;
+    var _connectAC = null;
+    if (typeof AbortController !== 'undefined') {
+        _connectAC = new AbortController();
+        _connectTimer = TimerManager.setTimeout('aiConnectTimeout', function() {
+            try { _connectAC.abort(new Error('API 连接超时（30秒未建立连接）')); }
+            catch (e) {}
+        }, CONNECT_TIMEOUT_MS);
+        // 若外部 signal 已 abort，同步触发 connect AC
+        if (signal) {
+            if (signal.aborted) _connectAC.abort(signal.reason);
+            else signal.addEventListener('abort', function() { _connectAC.abort(signal.reason); }, { once: true });
+        }
+    }
+    var res;
+    try {
+        res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiKey
+            },
+            body: JSON.stringify(body),
+            signal: _connectAC ? _connectAC.signal : signal
+        });
+    } finally {
+        if (_connectTimer) TimerManager.clearTimeout('aiConnectTimeout');
+    }
     if (!res.ok) {
 
         // 旧实现用 extractErrorMessage 提取 errData.error.message 后会丢弃 "API错误: 429"，
@@ -5338,15 +5362,35 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
 
 async function executeAINormal(url, body, apiKey, signal) {
-    var res = await fetch(url, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + apiKey
-        },
-        body: JSON.stringify(body),
-        signal: signal
-    });
+    // P3 修复 BUG-007 真正缺口：fetch 阶段加 30s connect 超时（与 executeAIStream 一致）
+    var CONNECT_TIMEOUT_MS = 30 * 1000;
+    var _connectTimer = null;
+    var _connectAC = null;
+    if (typeof AbortController !== 'undefined') {
+        _connectAC = new AbortController();
+        _connectTimer = TimerManager.setTimeout('aiConnectTimeout', function() {
+            try { _connectAC.abort(new Error('API 连接超时（30秒未建立连接）')); }
+            catch (e) {}
+        }, CONNECT_TIMEOUT_MS);
+        if (signal) {
+            if (signal.aborted) _connectAC.abort(signal.reason);
+            else signal.addEventListener('abort', function() { _connectAC.abort(signal.reason); }, { once: true });
+        }
+    }
+    var res;
+    try {
+        res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiKey
+            },
+            body: JSON.stringify(body),
+            signal: _connectAC ? _connectAC.signal : signal
+        });
+    } finally {
+        if (_connectTimer) TimerManager.clearTimeout('aiConnectTimeout');
+    }
     if (!res.ok) {
 
         var errMsg = 'HTTP ' + res.status;
@@ -6003,17 +6047,25 @@ async function initializeGame() {
 
         // 收集主角设定
 
-        // 此前这里用 gameState.protagonistSetup = {} 重置后再从 DOM 元素 id="mcName" 读取——
-        // 但 HTML 中输入框 id 是 "setupPlayerName"（非 "mcName"），导致重置后读取永远为空，
-        // 主角名丢失，个人页显示"未命名"。改为：仅在未预填时才从 DOM 收集，并同步 playerName。
+        // P2 修复 BUG-008 残留：原 mcFields 用旧 id（mcName/mcGender 等），但 HTML 实际 id 是
+        // setupPlayerName/setupPlayerGender 等（见 index.html）。读 DOM 永远为空，导致 fallback 失效。
+        // 改用 HTML 实际 id 映射到 protagonistSetup 旧 key（保留旧 key 兼容下游读取）。
         if (!gameState.protagonistSetup || Object.keys(gameState.protagonistSetup).length === 0) {
             gameState.protagonistSetup = {};
-            var mcFields = ['mcName', 'mcGender', 'mcAge', 'mcIdentity', 'mcPersonality', 'mcAppearance',
-                'mcAbility', 'mcExtra'
-            ];
-            mcFields.forEach(function(id) {
-                var el = document.getElementById(id);
-                if (el && el.value.trim()) gameState.protagonistSetup[id] = el.value.trim();
+            // key: protagonistSetup 的 key（兼容下游），value: HTML 元素实际 id
+            var mcFields = {
+                mcName: 'setupPlayerName',
+                mcGender: 'setupPlayerGender',
+                mcAge: 'setupPlayerAge',
+                mcIdentity: 'setupPlayerIdentity',
+                mcPersonality: 'setupPlayerPersonality',
+                mcAppearance: 'setupPlayerAppearance',
+                mcAbility: 'setupPlayerAbility',
+                mcExtra: 'setupPlayerExtra'
+            };
+            Object.keys(mcFields).forEach(function(k) {
+                var el = document.getElementById(mcFields[k]);
+                if (el && el.value && el.value.trim()) gameState.protagonistSetup[k] = el.value.trim();
             });
         }
 

@@ -22,19 +22,31 @@ const TimeMutator = {
 
             // 防止 AI 返回不一致时间导致剧情时间倒流（如 R5 09:30→08:45）
             // 仅当当前状态存在且新时间更早时拦截；同时间或更晚时间正常更新
-
-            if (!options.skipMonotonicCheck) {
+            // P2 修复 D3：增加 allowBackward 选项，支持穿越/回忆类剧情显式允许时间回退
+            // skipMonotonicCheck: 完全跳过校验（内部使用，如初始化）
+            // allowBackward: 仅跳过"回退拦截"但保留日志（剧情场景使用，如穿越）
+            if (!options.skipMonotonicCheck && !options.allowBackward) {
                 try {
                     if (typeof StateManager !== 'undefined' && StateManager.get) {
                         var current = StateManager.get('time');
                         if (current && this._isEarlier(normalized, current)) {
-                            console.warn('[TimeMutator] 拒绝时间回退：当前 ' + JSON.stringify(current) + ' → 新 ' + JSON.stringify(normalized) + '，保持原时间');
+                            console.warn('[TimeMutator] 拒绝时间回退：当前 ' + JSON.stringify(current) + ' → 新 ' + JSON.stringify(normalized) + '，保持原时间。如为穿越/回忆剧情，请传 { allowBackward: true }');
                             return false;
                         }
                     }
                 } catch (e) {
                     console.warn('[TimeMutator] 时间单调性校验异常（忽略，继续更新）:', e && e.message);
                 }
+            } else if (options.allowBackward) {
+                // 显式允许回退，仅记录日志便于排查
+                try {
+                    if (typeof StateManager !== 'undefined' && StateManager.get) {
+                        var cur = StateManager.get('time');
+                        if (cur && this._isEarlier(normalized, cur)) {
+                            console.log('[TimeMutator] 允许时间回退（allowBackward）：' + JSON.stringify(cur) + ' → ' + JSON.stringify(normalized));
+                        }
+                    }
+                } catch (e) {}
             }
             return StateManager.set('time', normalized, options);
         },
