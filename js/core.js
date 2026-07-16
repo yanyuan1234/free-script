@@ -2632,8 +2632,13 @@ var GameTimeSystem = {
             if (data.gameTime.weather) resolved.weather = data.gameTime.weather;
             if (data.gameTime.era) resolved.era = data.gameTime.era;
         }
-        // 兜底：没有gameTime或全部为空时，从story中提取
-        if ((!resolved.date && !resolved.time && !resolved.period) && data && data.story) {
+        // 兜底：AI 未返回 gameTime 字段时，从 story 中提取时间信息
+        // 【P2-3 修复】原条件 (!resolved.date && !resolved.time && !resolved.period) 永远为 false，
+        // 因为 resolved.period 从上一回合 current.period 初始化，永远非空，
+        // 导致 story 兜底永远不会触发，时间卡在初始值不更新。
+        // 修正为：AI 未显式返回 gameTime 字段时即走 story 兜底，让"第二天清晨"等剧情时间能被提取。
+        var _aiReturnedGameTime = !!(data && data.gameTime);
+        if (!_aiReturnedGameTime && data && data.story) {
             var extracted = this._extractTimeFromStory(data.story);
             if (extracted) {
                 if (extracted.date) resolved.date = extracted.date;

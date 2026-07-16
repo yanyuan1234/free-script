@@ -1176,6 +1176,30 @@ var GameMemory = {
                     if (state.currentPass === 1) {
                         state.extraction = parsed.data;
                         state.refined = parsed.data;
+                        // 【P2-6 修复】字段完整性校验：AI 可能返回部分字段但缺 protagonist/openingScene
+                        // 原实现仅校验 parsed.success，不校验字段非空，导致主角和场景显示"未提取"
+                        // 修复：缺失时从 blob（玩家输入设定）补充，而非留空
+                        var _blob = state.blob || '';
+                        // protagonist 补充：检查是否为空对象或缺 name
+                        if (!parsed.data.protagonist || typeof parsed.data.protagonist !== 'object'
+                            || Object.keys(parsed.data.protagonist).length === 0
+                            || !parsed.data.protagonist.name) {
+                            var _pName = '';
+                            // 从 blob 中提取主角名（常见模式："主角叫XX"/"我是XX"/"名叫XX"）
+                            var _nameMatch = _blob.match(/(?:主角[叫是]|我[叫是是]|名叫|名为)([\u4e00-\u9fa5]{2,6})/);
+                            if (_nameMatch) _pName = _nameMatch[1];
+                            parsed.data.protagonist = parsed.data.protagonist || {};
+                            if (_pName) parsed.data.protagonist.name = _pName;
+                            console.warn('[SetupForge] protagonist 缺失，从 blob 补充: name=' + (_pName || '(未匹配)'));
+                        }
+                        // openingScene 补充：检查是否为空字符串
+                        if (!parsed.data.openingScene || !String(parsed.data.openingScene).trim()) {
+                            // 用 blob 的前 300 字作为开场场景（至少有内容显示，而非"未提取"）
+                            parsed.data.openingScene = _blob.slice(0, 300) + (_blob.length > 300 ? '...' : '');
+                            console.warn('[SetupForge] openingScene 缺失，从 blob 补充（前300字）');
+                        }
+                        state.extraction = parsed.data;
+                        state.refined = parsed.data;
                     } else if (state.currentPass === 2) {
                         state.critique = parsed.data;
                     } else {
