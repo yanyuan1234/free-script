@@ -5214,7 +5214,16 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
             var apiMsg = extractErrorMessage(errData.error || errData, '');
             if (apiMsg) errMsg = errMsg + ': ' + apiMsg;
         } catch (e) { console.warn('[API] 错误响应解析失败:', e); }
-        throw new Error(errMsg);
+        var _err = new Error(errMsg);
+        // 【P3-1 修复】给 Error 挂 status 属性，让上层 e429.status === 429 判定可命中
+        // （原实现抛裸 Error，e429.status 永远 undefined，只能靠 message 正则）
+        _err.status = res.status;
+        // 【P3-1 修复】429 速率限制时读取 Retry-After 响应头，供上层动态调整等待时间
+        if (res.status === 429) {
+            var _retryAfter = res.headers.get('Retry-After');
+            if (_retryAfter) _err.retryAfter = _retryAfter;
+        }
+        throw _err;
     }
 
     var reader = res.body.getReader();
@@ -5324,7 +5333,14 @@ async function executeAINormal(url, body, apiKey, signal) {
             var apiMsg = extractErrorMessage(errData.error || errData, '');
             if (apiMsg) errMsg = errMsg + ': ' + apiMsg;
         } catch (e) { /* 忽略 */ }
-        throw new Error(errMsg);
+        // 【P3-1 修复】与 executeAIStream 一致：挂 status 属性 + 读取 Retry-After 头
+        var _errN = new Error(errMsg);
+        _errN.status = res.status;
+        if (res.status === 429) {
+            var _retryAfterN = res.headers.get('Retry-After');
+            if (_retryAfterN) _errN.retryAfter = _retryAfterN;
+        }
+        throw _errN;
     }
     var data = await res.json();
 
@@ -5413,8 +5429,25 @@ async function callAI(messages, options = {}) {
                 var _is429 = /HTTP 429/.test(_msg429) || (e429 && e429.status === 429);
                 if (!_is429 || _attempt429 >= _maxRetries429) throw e429;
                 _attempt429++;
+                // 【P3-1 修复】优先使用 Retry-After 响应头动态调整等待时间
+                // Retry-After 可以是秒数（"30"）或 HTTP 日期格式
+                // 无 Retry-After 时回退到指数退避（5s → 10s）
                 var _waitMs = 5000 * Math.pow(2, _attempt429 - 1);
-                console.warn('[callAI] 429 速率限制，' + _waitMs / 1000 + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')');
+                if (e429 && e429.retryAfter) {
+                    var _ra = e429.retryAfter;
+                    // 尝试解析为秒数
+                    var _raSec = parseInt(_ra, 10);
+                    if (!isNaN(_raSec) && String(_raSec) === String(_ra).trim()) {
+                        _waitMs = Math.min(Math.max(_raSec * 1000, 1000), 60000);  // 1s-60s
+                    } else {
+                        // HTTP 日期格式（较少见），用 Date.parse 计算剩余毫秒
+                        var _raTime = Date.parse(_ra);
+                        if (!isNaN(_raTime)) {
+                            _waitMs = Math.min(Math.max(_raTime - Date.now(), 1000), 60000);
+                        }
+                    }
+                }
+                console.warn('[callAI] 429 速率限制，' + (_waitMs / 1000) + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')' + (e429 && e429.retryAfter ? ' [Retry-After: ' + e429.retryAfter + ']' : ''));
                 if (typeof UI !== 'undefined' && UI.toast) {
                     UI.toast('速率限制，' + _waitMs / 1000 + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')');
                 }

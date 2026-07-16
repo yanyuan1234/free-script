@@ -4814,7 +4814,19 @@ var MemoryManagerUI = {
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">游戏时间</div><div style="font-size:20px;font-weight:600;">' + escapeHtml(gm.getGameTimeStr()) + '</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">永久事实</div><div style="font-size:20px;font-weight:600;">' + totalAnchors + ' 条</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">进行中约定</div><div style="font-size:20px;font-weight:600;">' + pendingQuests + ' 待办</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + gm.currentTurn + '</div></div>'
+            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + (function() {
+                // 【P3-3 修复】统一从 StateManager.progress.turn 读取回合数，与顶部场景标签一致
+                // 原实现用 gm.currentTurn，与 progress.turn 是两套独立计数器：
+                //   - gm.currentTurn 在 processMessage 内 ++（tavern-compat.js:1568）
+                //   - progress.turn 在 sendAIRequest 后段 StateManager.set +1（game.js:2213）
+                // 两者递增点间隔约 200 行，中间有 if(!gameState) return 早返回点，
+                // 导致 gm.currentTurn 已 +1 但 progress.turn 未 +1，记忆页与顶部标签显示不一致。
+                if (typeof StateManager !== 'undefined' && StateManager.get) {
+                    var _turn = StateManager.get('progress.turn');
+                    if (_turn !== undefined && _turn !== null) return _turn;
+                }
+                return gm.currentTurn;
+            })() + '</div></div>'
             + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title">新功能状态</div><div style="display:flex;gap:16px;flex-wrap:wrap;">'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'

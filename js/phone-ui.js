@@ -3469,7 +3469,17 @@ function renderPlayerPage() {
                 '</div>';
         }).join('');
         } else {
-            relNetEl.innerHTML = '<p class="text-soft" style="font-size:13px;">暂无关系记录</p>';
+            // 【P3-2 修复】原实现无条件显示"暂无关系记录"，与上方角色关系摘要形成视觉矛盾：
+            // 上方用 allCharacters 渲染角色关系（非空），下方用 relationships 渲染关系网（空），
+            // 两者数据源不同可同时显示矛盾内容。
+            // 修复：当 relationships 为空但 allCharacters 有角色时，提示"关系数据待 AI 生成"
+            // 避免与上方摘要矛盾；仅当 allCharacters 也为空时才显示"暂无关系记录"
+            var _charCount = Object.keys(gameState.allCharacters || {}).length;
+            if (_charCount > 0) {
+                relNetEl.innerHTML = '<p class="text-soft" style="font-size:13px;">已遇见 ' + _charCount + ' 个角色，关系图谱待 AI 生成</p>';
+            } else {
+                relNetEl.innerHTML = '<p class="text-soft" style="font-size:13px;">暂无关系记录</p>';
+            }
         }
     }
 
