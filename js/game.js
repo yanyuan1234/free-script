@@ -972,6 +972,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     RuntimeState.streamModeLocked = false;
     RuntimeState.streamMode = null;
     TypewriterBuffer.stop();
+    // 【NEW-003 修复】新一轮请求开始时清掉等待提示（避免上一轮残留）
+    _clearStreamWaitingHint();
 
     // [P1 Swipe] 非 retry 模式的新对话：重置 swipe 数组
     // retry 模式下 SwipeManager._isRetrying=true，保留旧版本，让 addSwipe 追加
@@ -3033,6 +3035,8 @@ function onStreamChunk(delta, fullText) {
     if (story && story.length > 0) {
         RuntimeState.streamMode = 'json';
         RuntimeState.streamModeLocked = true;
+        // story 字段到达，清掉等待提示（如有）
+        _clearStreamWaitingHint();
         if (typeof RegexManager !== 'undefined') {
             story = RegexManager.apply(story, 'output');
         }
@@ -3042,21 +3046,51 @@ function onStreamChunk(delta, fullText) {
         // 若响应以 { 开头（JSON模式），坚持等待story字段；否则才降级为纯文本
         var isLikelyJSON = /^\s*\{/.test(streamBuffer);
         if (isLikelyJSON) {
-            // JSON模式 but story 字段尚未到达，只记录调试日志，不锁定
+            // 【NEW-003 修复】JSON模式但 story 字段尚未到达，显示"AI正在构思..."提示
+            // story 字段到达后会被 _clearStreamWaitingHint + TypewriterBuffer.push 覆盖
             if (streamBuffer.length > 200) {
                 console.warn('[onStreamChunk] JSON模式但 story 字段延迟出现，缓冲区长度:', streamBuffer.length);
             }
+            _showStreamWaitingHint();
             return;
         }
         // 非JSON响应才锁定为纯文本模式
         RuntimeState.streamMode = 'plaintext';
         RuntimeState.streamModeLocked = true;
+        _clearStreamWaitingHint();
         if (typeof RegexManager !== 'undefined') {
             TypewriterBuffer.push(RegexManager.apply(streamBuffer, 'output'));
         } else {
             TypewriterBuffer.push(streamBuffer);
         }
     }
+}
+
+// 【NEW-003 修复】流式等待 story 字段时的剧情区提示
+// 不污染 TypewriterBuffer（避免与 story 内容冲突），直接操作 DOM
+var _streamWaitingHintShown = false;
+function _showStreamWaitingHint() {
+    if (_streamWaitingHintShown) return;
+    _streamWaitingHintShown = true;
+    try {
+        var storyEl = document.getElementById('storyText');
+        if (!storyEl) return;
+        // 已有内容则不覆盖（流式中途切回等待的情况）
+        if (storyEl.textContent && storyEl.textContent.trim().length > 0) return;
+        var hint = document.createElement('div');
+        hint.id = 'streamWaitingHint';
+        hint.className = 'stream-waiting-hint';
+        hint.innerHTML = '<span class="hint-dot"></span><span class="hint-text">AI 正在构思剧情...</span>';
+        storyEl.appendChild(hint);
+    } catch (e) {}
+}
+function _clearStreamWaitingHint() {
+    if (!_streamWaitingHintShown) return;
+    _streamWaitingHintShown = false;
+    try {
+        var hint = document.getElementById('streamWaitingHint');
+        if (hint) hint.remove();
+    } catch (e) {}
 }
 
 // ========================================

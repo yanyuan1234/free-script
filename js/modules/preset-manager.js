@@ -319,7 +319,14 @@ var PresetManager = {
             this.currentParams.stream = streamToggle.classList.contains('checked');
         }
         // 同步游戏设置的流式开关
+        var _prevUseStream = gameState.useStream !== false;
         gameState.useStream = this.currentParams.stream !== false;
+        // 【NEW-005 修复】手动切换流式开关时重置失败计数
+        // 避免连续失败 2 次后即使手动重新开启也无法恢复流式
+        if (_prevUseStream !== gameState.useStream) {
+            gameState.streamFailCount = 0;
+            console.log('[流式开关] 用户切换流式模式，重置失败计数');
+        }
 
         this.saveCurrentParams();
 

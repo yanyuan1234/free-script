@@ -523,6 +523,37 @@
     padding-right: 4px
 }
 
+/* 【NEW-003 修复】流式等待 story 字段时的提示 */
+.stream-waiting-hint {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 20px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    text-indent: 0;
+    opacity: .8;
+    animation: stream-hint-fade .4s ease;
+}
+.stream-waiting-hint .hint-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: stream-hint-pulse 1.2s ease-in-out infinite;
+}
+.stream-waiting-hint .hint-text {
+    font-weight: 500;
+}
+@keyframes stream-hint-pulse {
+    0%, 100% { opacity: .35; transform: scale(.85); }
+    50% { opacity: 1; transform: scale(1.15); }
+}
+@keyframes stream-hint-fade {
+    from { opacity: 0; }
+    to { opacity: .8; }
+}
+
 .story-text .dialogue {
     color: var(--dialogue-color);
     font-weight: 400;

@@ -1062,6 +1062,11 @@ var LocalGameAPI = {
     setCurrentSlot(slot) {
         this._currentSlot = slot;
         this.save();
+        // 【NEW-004 修复】切换 API 配置（可能换模型）时清除 Schema 降级标志
+        // 避免上次降级残留 60 秒影响新模型的 strict 尝试
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState._jsonSchemaDowngrade = null;
+        }
     },
     setAutoRotate(val) {
         this._autoRotate = val;
@@ -2282,6 +2287,29 @@ var TypewriterBuffer = {
         // 确保 queue 和 displayed 已初始化，防止 undefined 错误
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
+
+        // 【NEW-007 修复】长文本自动跳过打字机动画
+        // 长 text 每 tick 都执行 escapeHtml + innerHTML 累积开销大，>2000 字浏览器卡顿
+        // 触发条件：本次 push 总长度超过阈值且打字机还没开始（首次推送）
+        // 已开始的打字机不受影响（避免中途切换造成视觉跳跃）
+        var _LONG_TEXT_THRESHOLD = 2000;
+        if (typeof newText === 'string' && newText.length > _LONG_TEXT_THRESHOLD &&
+            this.displayed.length === 0 && !this.isTyping) {
+            // 直接渲染完整文本，跳过逐字动画
+            this.displayed = newText;
+            this.queue = newText;
+            this._queueIdx = newText.length;
+            this._currentParaChars = newText;
+            this._completedParagraphs = [];
+            this.render();
+            try { _hideSkipButton(); } catch (e) {}
+            if (this.onComplete) {
+                var cb = this.onComplete;
+                this.onComplete = null;
+                cb();
+            }
+            return;
+        }
 
         var newSuffix = newText.substring(this.displayed.length);
 
@@ -5742,9 +5770,21 @@ async function detectContextSize() {
 
     // 3a. 已知模型硬编码表（优先于正则，避免模型名不带数字时漏判）
     //     如 "auto"、"glm-4-flash" 等不带上下文数字标识的模型
-    if (ctxSize === 0 && _KNOWN_MODEL_CONTEXT[model]) {
-        ctxSize = _KNOWN_MODEL_CONTEXT[model];
-        console.log('[Context检测] 来自硬编码模型表: ' + ctxSize);
+    // 【NEW-006 修复】改用 includes 匹配，兼容 API 返回带前缀的模型名
+    //   如 "deepseek/deepseek-v4-flash"、"provider:gpt-4o" 等场景
+    //   精确匹配会回退到正则，可能取到错误的 32k/8192
+    if (ctxSize === 0) {
+        var _matchedKey = null;
+        for (var _k in _KNOWN_MODEL_CONTEXT) {
+            if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
+                _matchedKey = _k;
+                break;
+            }
+        }
+        if (_matchedKey) {
+            ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
+            console.log('[Context检测] 来自硬编码模型表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
+        }
     }
 
     // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
