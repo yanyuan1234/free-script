@@ -5345,6 +5345,23 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         console.warn('[callAI] 推理模型仅返回思考链（' + ctx.reasoningText.length + ' 字符）未返回剧情正文，可能是 max_tokens 过小被思考链吃光');
     }
 
+    // 思维链折叠面板接入：把流式累积的 reasoningText 透出到全局，供 sendAIRequest 接入 renderCotPanel
+    // 流式模式下 reasoning_content 走 ctx.reasoningText 累积，但 callAI 只返回正文，reasoning 被丢弃。
+    // 这里挂到全局变量 window._lastReasoningText，让上层渲染时能取到（与 gameState._lastCotContent 并行）
+    if (ctx.reasoningText && ctx.reasoningText.trim()) {
+        try {
+            if (typeof window !== 'undefined') {
+                window._lastReasoningText = ctx.reasoningText;
+            }
+        } catch (e) {}
+    } else {
+        try {
+            if (typeof window !== 'undefined') {
+                window._lastReasoningText = '';
+            }
+        } catch (e) {}
+    }
+
     // 兜底：SSE 解析为空时再尝试从 rawBody 提取
     if (!ctx.fullText && rawBody) {
         return parseAIResponseFallback(rawBody);
@@ -5418,10 +5435,20 @@ async function executeAINormal(url, body, apiKey, signal) {
         var _content = (typeof _nmsg.content === 'string') ? _nmsg.content : '';
         var _reasoning = (typeof _nmsg.reasoning_content === 'string') ? _nmsg.reasoning_content
                        : (typeof _nmsg.reasoning === 'string') ? _nmsg.reasoning : '';
-        if (_content) return _content;
+        if (_content) {
+            // 正常返回 content；同时若有 reasoning 也透出，供 CoT 面板展示
+            if (_reasoning) {
+                try { if (typeof window !== 'undefined') window._lastReasoningText = _reasoning; } catch (e) {}
+            } else {
+                try { if (typeof window !== 'undefined') window._lastReasoningText = ''; } catch (e) {}
+            }
+            return _content;
+        }
 
         if (_reasoning) {
             console.warn('[executeAINormal] content 为空，回退使用 reasoning_content（' + _reasoning.length + ' 字符）');
+            // 回退场景：reasoning 作为正文返回，但同时也透出供面板（用户能看到自己读的就是思考链）
+            try { if (typeof window !== 'undefined') window._lastReasoningText = _reasoning; } catch (e) {}
             return _reasoning;
         }
 
@@ -5451,6 +5478,8 @@ async function callAI(messages, options = {}) {
     if (typeof gameState !== 'undefined' && gameState && gameState.aiTimeoutMs && gameState.aiTimeoutMs > 0) {
         _timeoutMs = gameState.aiTimeoutMs;
     }
+    // 清空上一次的 reasoning 透出值，避免上一轮残留进入本轮 CoT 面板
+    try { if (typeof window !== 'undefined') window._lastReasoningText = ''; } catch (e) {}
     var localAC = new AbortController();
     TimerManager.setTimeout('aiRequestTimeout', function() {
         try { localAC.abort(new Error('AI请求超时（' + Math.round(_timeoutMs / 60000) + '分钟）')); }

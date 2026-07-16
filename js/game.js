@@ -1743,6 +1743,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         // <thinking>...</thinking>, <ECoT>...</ECoT>, 💭...💭
         // 💭...💭, <cot>...</cot>, <reasoning>...</reasoning>
         // <chain_of_thought>...</chain_of_thought>
+        //
+        // 【增强】同时支持推理模型的 reasoning_content 字段（DeepSeek-R1 / Kimi / auto 等）
+        // 流式模式由 core.js executeAIStream 累积到 window._lastReasoningText，
+        // 非流式由 executeAINormal 透出。这里把"标签式 CoT"+"字段式 reasoning"合并渲染。
         var cotMatches = [];
         var cleanStoryText = storyText;
         // 提取所有COT内容
@@ -1757,17 +1761,41 @@ async function sendAIRequest(userMessage, isInit = false) {
                 cotMatches.push(cotContent);
             }
         }
+        // 合并标签式 CoT 和 reasoning_content 字段透出值
+        var _reasoningFromField = '';
+        try {
+            if (typeof window !== 'undefined' && window._lastReasoningText) {
+                _reasoningFromField = String(window._lastReasoningText).trim();
+            }
+        } catch (e) {}
+        var _hasAnyCot = cotMatches.length > 0 || _reasoningFromField.length > 0;
         // 从storyText中移除COT标签（不显示给用户）
         if (cotMatches.length > 0) {
             cleanStoryText = storyText.replace(_reCotTags, '').trim();
             // 保存原始内容（含COT）供 {{original}} 宏使用
             if (gameState) gameState._lastOriginalContent = storyText;
-            // 保存COT内容供调试查看
-            if (gameState) gameState._lastCotContent = cotMatches.join('\n---\n');
-            console.log('[COT] 提取到思维链内容:', cotMatches.length, '段');
+        }
+        // 合并所有思维链内容供调试查看 / 面板展示
+        if (_hasAnyCot) {
+            var _allCotParts = cotMatches.slice();
+            if (_reasoningFromField) _allCotParts.push(_reasoningFromField);
+            var _mergedCot = _allCotParts.join('\n---\n');
+            if (gameState) gameState._lastCotContent = _mergedCot;
+            console.log('[COT] 提取到思维链内容:', cotMatches.length, '段标签 +', _reasoningFromField ? 1 : 0, '段 reasoning_content');
             // 【P2 CoT 面板】渲染到可折叠面板
+            // 受设置项 showCotPanel 控制（默认开启，可在设置中关闭）
             if (typeof renderCotPanel === 'function') {
-                renderCotPanel(gameState._lastCotContent);
+                var _showCot = true;
+                try {
+                    if (typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === false) {
+                        _showCot = false;
+                    }
+                } catch (e) {}
+                if (_showCot) {
+                    renderCotPanel(_mergedCot);
+                } else {
+                    renderCotPanel('');
+                }
             }
         } else {
             // 无 CoT 内容时隐藏面板
