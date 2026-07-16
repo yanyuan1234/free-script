@@ -974,6 +974,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     TypewriterBuffer.stop();
     // 【NEW-003 修复】新一轮请求开始时清掉等待提示（避免上一轮残留）
     _clearStreamWaitingHint();
+    // 【NEW-007 修复】重置流式增量提取状态
+    _resetStreamExtractor();
 
     // [P1 Swipe] 非 retry 模式的新对话：重置 swipe 数组
     // retry 模式下 SwipeManager._isRetrying=true，保留旧版本，让 addSwipe 追加
@@ -1672,6 +1674,29 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
+        // 【方案C】JSON Schema 解析失败时，尝试 StateTagParser 解析 <state> 块
+        // 兼容 auto 路由模型等不支持 response_format 的场景
+        // StateTagParser 从故事末尾的 <state>...</state> 块提取角色/物品/任务等结构化数据
+        if (!parseResult.success && typeof StateTagParser !== 'undefined' && StateTagParser.parse) {
+            var _stateResult = StateTagParser.parse(response);
+            if (_stateResult.success) {
+                console.log('[StateTagParser] 成功解析 <state> 块，提取到',
+                    (_stateResult.data.characters || []).length, '个角色,',
+                    (_stateResult.data.bag || []).length, '个物品,',
+                    (_stateResult.data.quests || []).length, '个任务');
+                // 用 StateTagParser 的结果覆盖 parseResult
+                parseResult = {
+                    data: _stateResult.data,
+                    storyText: _stateResult.storyText,
+                    mems: [],
+                    truncated: false,
+                    success: true  // 有结构化数据，标记成功让 AIResponseMutator 处理
+                };
+                data = parseResult.data;
+                storyText = parseResult.storyText;
+            }
+        }
+
 
         // （direct JSON → code block → robust + 状态机 → <mem> tags → plain text）
         // 原 robustParse 与 ResponseParser._tryRobustJSON 重复，删除后此处不再需要二次兜底。
@@ -1811,6 +1836,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _cotTags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
             ? OutputSanitizer.THINKING_TAGS : [];
         cleanStoryText = cleanStoryText.replace(new RegExp('<(?:' + _cotTags.join('|') + ')>[\\s\\S]*$', 'gi'), '').trim();
+        // 【NEW-014 修复】清理未闭合的角色内心独白标签：<角色名：...> 未找到 > 时转为纯文本
+        // AI 尝试生成 <角色名：心理活动> 但被 max_tokens 截断，末尾残留 <xxx：
+        // 方案：行尾/文末的 <后跟非标准标签名+：且无 > 闭合的，移除 <
+        cleanStoryText = cleanStoryText.replace(/<([^>:\s<>]{1,20}：[^<>]*)$/gm, function(_m, inner) {
+            // 保留内心独白内容，只去掉孤立的 <
+            return inner;
+        }).trim();
         // 用清理后的文本替换storyText
         if (cleanStoryText !== storyText) {
             storyText = cleanStoryText;
@@ -2987,6 +3019,67 @@ function extractStoryStreaming(text) {
 }
 
 
+// 【NEW-007 修复】流式增量提取状态（O(1) per chunk，不再 O(n) 全缓冲区扫描）
+// 每轮请求开始时由 _resetStreamExtractor 重置
+var _streamStoryStartIdx = -1;     // "story":" 之后的位置，-1 表示尚未找到
+var _streamScanPos = 0;            // 增量扫描位置（JSON 转义状态机）
+var _streamInEscape = false;      // 是否处于转义状态
+var _streamStoryClosed = false;    // story 字段是否已闭合（遇到未转义 "）
+var _streamExtractedStory = '';    // 已提取的 story 内容（未做 RegexManager.apply）
+var _streamLastPushedLen = 0;      // 上次推送给打字机的 story 长度（避免重复 push）
+var _streamPlaintextMode = false;  // 纯文本模式（非 JSON 响应）
+
+function _resetStreamExtractor() {
+    _streamStoryStartIdx = -1;
+    _streamScanPos = 0;
+    _streamInEscape = false;
+    _streamStoryClosed = false;
+    _streamExtractedStory = '';
+    _streamLastPushedLen = 0;
+    _streamPlaintextMode = false;
+}
+
+// 【NEW-007 修复】增量提取 story 字段值（O(delta) per chunk）
+// 从 _streamScanPos 继续扫描 streamBuffer，只处理新增部分
+function _extractStoryIncremental() {
+    if (_streamStoryClosed) return _streamExtractedStory;  // 已闭合，不再变化
+    while (_streamScanPos < streamBuffer.length) {
+        var ch = streamBuffer[_streamScanPos];
+        if (_streamInEscape) {
+            switch (ch) {
+                case 'n': _streamExtractedStory += '\n'; break;
+                case '"': _streamExtractedStory += '"'; break;
+                case '\\': _streamExtractedStory += '\\'; break;
+                case 't': _streamExtractedStory += '\t'; break;
+                case 'r': _streamExtractedStory += '\r'; break;
+                case 'b': _streamExtractedStory += '\b'; break;
+                case 'f': _streamExtractedStory += '\f'; break;
+                case 'u':
+                    var hexStr = streamBuffer.substring(_streamScanPos + 1, _streamScanPos + 5);
+                    if (/^[0-9a-fA-F]{4}$/.test(hexStr)) {
+                        _streamExtractedStory += String.fromCharCode(parseInt(hexStr, 16));
+                        _streamScanPos += 4;
+                    } else {
+                        _streamExtractedStory += '\\' + ch;
+                    }
+                    break;
+                default: _streamExtractedStory += ch;
+            }
+            _streamInEscape = false;
+        } else if (ch === '\\') {
+            _streamInEscape = true;
+        } else if (ch === '"') {
+            _streamStoryClosed = true;
+            _streamScanPos++;
+            break;  // story 字段闭合
+        } else {
+            _streamExtractedStory += ch;
+        }
+        _streamScanPos++;
+    }
+    return _streamExtractedStory;
+}
+
 // 流式模式锁定语义：一旦确定模式（json/plaintext），不再切换，避免每帧正则扫描。
 
 function onStreamChunk(delta, fullText) {
@@ -3002,67 +3095,61 @@ function onStreamChunk(delta, fullText) {
     }
     // streamBuffer为空时跳过后续处理
     if (!streamBuffer) return;
-    // 模式锁定后直接走对应路径，避免每帧都做正则扫描
-    if (RuntimeState.streamModeLocked) {
-        if (RuntimeState.streamMode === 'plaintext') {
-            // 纯文本模式：直接推送到打字机（应用输出端正则，与原版一致）
-            if (typeof RegexManager !== 'undefined') {
-                TypewriterBuffer.push(RegexManager.apply(streamBuffer, 'output'));
-            } else {
-                TypewriterBuffer.push(streamBuffer);
-            }
-            return;
-        }
-        // JSON 模式：继续提取 story 字段
 
-        // 维护者易误读为两个独立变量。此处改名为 lockedStory 明确语义。
-        var lockedStory = extractStoryStreaming(streamBuffer);
-        if (lockedStory && lockedStory.length > 0) {
-            // 原版每次 chunk 都应用正则，确保打字过程和最终显示一致
-            if (typeof RegexManager !== 'undefined') {
-                lockedStory = RegexManager.apply(lockedStory, 'output');
-            }
-            TypewriterBuffer.push(lockedStory);
-        } else if (streamBuffer.length > 200) {
+    // 【NEW-007 修复】增量提取，O(delta) per chunk，不再全缓冲区扫描
+    // RegexManager.apply 移到流结束后（parseAIResponse），避免 O(n) 正则替换 × N chunks = O(n²)
 
-            // 旧代码静默丢弃内容，用户可能看到空白剧情却不知原因
-            console.warn('[onStreamChunk] JSON 模式但 story 提取失败，缓冲区长度:', streamBuffer.length);
+    // 纯文本模式：直接增量推送（只推新增部分，打字机自己处理增量）
+    if (_streamPlaintextMode) {
+        // 【方案C】隐藏 <state> 块（不显示给用户，仅用于状态提取）
+        // state 块在故事末尾，流式期间检测到 <state> 就截断显示
+        var _stateStart = streamBuffer.indexOf('<state>');
+        var _displayText = _stateStart >= 0 ? streamBuffer.substring(0, _stateStart).trimEnd() : streamBuffer;
+        if (_displayText.length !== _streamLastPushedLen) {
+            TypewriterBuffer.push(_displayText);
+            _streamLastPushedLen = _displayText.length;
         }
         return;
     }
-    // 未锁定模式：尝试 JSON 提取
-    var story = extractStoryStreaming(streamBuffer);
-    if (story && story.length > 0) {
-        RuntimeState.streamMode = 'json';
-        RuntimeState.streamModeLocked = true;
-        // story 字段到达，清掉等待提示（如有）
-        _clearStreamWaitingHint();
-        if (typeof RegexManager !== 'undefined') {
-            story = RegexManager.apply(story, 'output');
-        }
-        TypewriterBuffer.push(story);
-    } else if (streamBuffer.length > 50) {
 
-        // 若响应以 { 开头（JSON模式），坚持等待story字段；否则才降级为纯文本
-        var isLikelyJSON = /^\s*\{/.test(streamBuffer);
-        if (isLikelyJSON) {
-            // 【NEW-003 修复】JSON模式但 story 字段尚未到达，显示"AI正在构思..."提示
-            // story 字段到达后会被 _clearStreamWaitingHint + TypewriterBuffer.push 覆盖
-            if (streamBuffer.length > 200) {
-                console.warn('[onStreamChunk] JSON模式但 story 字段延迟出现，缓冲区长度:', streamBuffer.length);
+    // JSON 模式：增量提取 story 字段
+    if (_streamStoryStartIdx === -1) {
+        // 还未定位 story 起始，尝试定位
+        var match = streamBuffer.match(/"story"\s*:\s*"/);
+        if (match) {
+            _streamStoryStartIdx = match.index + match[0].length;
+            _streamScanPos = _streamStoryStartIdx;
+            _clearStreamWaitingHint();
+        } else {
+            // story 尚未出现，判断是否 JSON
+            if (streamBuffer.length > 50) {
+                var isLikelyJSON = /^\s*\{/.test(streamBuffer);
+                if (isLikelyJSON) {
+                    // JSON 模式但 story 字段未到，显示等待提示
+                    if (streamBuffer.length > 200) {
+                        console.warn('[onStreamChunk] JSON模式 story 字段延迟出现，缓冲区:', streamBuffer.length);
+                    }
+                    _showStreamWaitingHint();
+                    return;
+                }
+                // 非 JSON 响应，切换纯文本模式
+                _streamPlaintextMode = true;
+                RuntimeState.streamMode = 'plaintext';
+                RuntimeState.streamModeLocked = true;
+                _clearStreamWaitingHint();
+                TypewriterBuffer.push(streamBuffer);
+                _streamLastPushedLen = streamBuffer.length;
             }
-            _showStreamWaitingHint();
             return;
         }
-        // 非JSON响应才锁定为纯文本模式
-        RuntimeState.streamMode = 'plaintext';
-        RuntimeState.streamModeLocked = true;
-        _clearStreamWaitingHint();
-        if (typeof RegexManager !== 'undefined') {
-            TypewriterBuffer.push(RegexManager.apply(streamBuffer, 'output'));
-        } else {
-            TypewriterBuffer.push(streamBuffer);
-        }
+    }
+
+    // 已定位 story 起始，增量提取
+    var story = _extractStoryIncremental();
+    if (story && story.length > 0 && story.length !== _streamLastPushedLen) {
+        // 只在有新增时 push（TypewriterBuffer 内部自动取增量）
+        TypewriterBuffer.push(story);
+        _streamLastPushedLen = story.length;
     }
 }
 

@@ -173,20 +173,33 @@ const PromptBuilder = {
         // format：输出格式要求
         // [优化#9] 单一数据源原则：
         // - JSON 模式：ctx.formatRules 由 game.js _buildFormatRules 传入完整字段规则，直接 return
-        // - 纯文本模式：<mem> 标签详细规则在此处（JSON 模式用 memoryUpdates 字段，由 memoryContract section 负责）
+        // - 纯文本模式：<state> 块 + <mem> 标签（<state> 是主要状态提取方式，<mem> 用于记忆更新）
         // - "直接输出JSON/纯文本"的顶层约束由 identity（最高规则）+ formatAnchor（补充要求）负责
+        // 【方案C】纯文本模式用 <state> 块替代 JSON Schema，兼容所有模型（含 auto 路由）
         this.registerSection('format', function(ctx) {
             if (ctx.skipDefaultFormat) return '';
             if (ctx.formatRules) return ctx.formatRules;
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
             if (pureText) {
                 return '【输出要求·纯文本模式】\n' +
-                    '直接输出纯文本剧情，不要任何JSON包裹，不要```json```代码块，不要"{"或"}"符号。\n' +
-                    '状态变化用<mem>标签：\n' +
+                    '直接输出纯文本剧情，不要任何JSON包裹，不要```json```代码块，不要"{"或"}"符号。\n\n' +
+                    '【状态块·必填】在剧情末尾输出 <state>...</state> 块，包含本回合的状态变更：\n' +
+                    '<state>\n' +
+                    '<char>角色名|关系/称谓|心情|当前位置</char>\n' +
+                    '<item>物品名|数量|单位|稀有度|描述</item>\n' +
+                    '<quest>任务名|active或resolved或broken</quest>\n' +
+                    '<time>第几天|时段(早晨/上午/中午/下午/傍晚/夜晚/深夜)</time>\n' +
+                    '<choice>选项文本</choice>\n' +
+                    '<title>场景标题</title>\n' +
+                    '<rel>角色A|角色B|关系类型</rel>\n' +
+                    '</state>\n' +
+                    '说明：\n' +
+                    '- 每种标签可出现多次（多个角色/物品/任务/选项）\n' +
+                    '- 只输出本回合发生变更的条目，未变化的不用重复\n' +
+                    '- 字段用 | 分隔，可留空（如 <char>莉亚||开心|教室</char>）\n' +
+                    '- 故事文本在 <state> 块之前，<state> 块不会被玩家看到\n\n' +
+                    '【记忆更新·可选】需要永久记住的事实用 <mem> 标签：\n' +
                     '- 事件：<mem type="event" action="add">事件描述</mem>\n' +
-                    '- 物品：<mem type="item" name="物品名" qty="1" action="add"/>\n' +
-                    '- 角色：<mem type="character" name="角色名" field="favorability" value="70"/>\n' +
-                    '- 任务：<mem type="quest" action="add">任务描述</mem>\n' +
                     '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
                     '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）';
             }

@@ -2288,11 +2288,10 @@ var TypewriterBuffer = {
         if (typeof this.queue !== 'string') this.queue = '';
         if (typeof this.displayed !== 'string') this.displayed = '';
 
-        // 【NEW-007 修复】长文本自动跳过打字机动画
-        // 长 text 每 tick 都执行 escapeHtml + innerHTML 累积开销大，>2000 字浏览器卡顿
-        // 触发条件：本次 push 总长度超过阈值且打字机还没开始（首次推送）
-        // 已开始的打字机不受影响（避免中途切换造成视觉跳跃）
-        var _LONG_TEXT_THRESHOLD = 2000;
+        // 【NEW-013 修复】长文本自动跳过打字机动画
+        // 阈值从 2000 提升到 4000：2000 过低导致正常长度的故事（1500-3000字）也跳过动画
+        // 4000 字以上才跳过，兼顾性能与体验。同时参考 SillyTavern 的 document.hasFocus 优化
+        var _LONG_TEXT_THRESHOLD = 4000;
         if (typeof newText === 'string' && newText.length > _LONG_TEXT_THRESHOLD &&
             this.displayed.length === 0 && !this.isTyping) {
             // 直接渲染完整文本，跳过逐字动画
@@ -2308,6 +2307,17 @@ var TypewriterBuffer = {
                 this.onComplete = null;
                 cb();
             }
+            return;
+        }
+
+        // 【NEW-013 修复】标签页不可见时跳过逐字渲染（参考 SillyTavern document.hasFocus）
+        // 用户切到其他标签页时，逐字动画是纯 CPU 浪费，直接渲染到末尾
+        if (typeof document !== 'undefined' && document.hidden && this.isTyping) {
+            this.displayed = newText;
+            this.queue = newText;
+            this._queueIdx = newText.length;
+            this._currentParaChars = newText;
+            this.render();
             return;
         }
 
@@ -3228,9 +3238,11 @@ if (Object.keys(theaterContent).length > 0) {
 
     // [T1-P1-2] 兜底：data 缺失时构造最小骨架，让 AIResponseMutator 等下游
     // 不因 data==null 而跳过（之前 data=null 时仅 storyText 有值，Mutator.apply 走空路径）
+    // 【NEW-008 修复】标记 _isDefaultSkeleton，parseAIResponse 返回时据此判断 success=false
     if (!data && storyText && typeof AIOutputSchema !== 'undefined' && AIOutputSchema.getDefaultOutput) {
         const _skeleton = AIOutputSchema.getDefaultOutput();
         _skeleton.story = storyText;
+        _skeleton._isDefaultSkeleton = true;  // 标记为空骨架，不是真正的结构化数据
         data = _skeleton;
     }
 
@@ -3240,9 +3252,14 @@ if (Object.keys(theaterContent).length > 0) {
         mems: mems,
         truncated: _truncated,
 
-        // 原 parseAIResponse 不返回 success，导致 game.js:1712 的 parseResult.success 永远 undefined，
-        // AIResponseMutator.apply 从不执行（状态层是死代码）。
-        success: !!(data || storyText)
+        // 【NEW-008 修复】success 语义：仅当结构化数据真正解析成功时才为 true
+        // - ResponseParser 返回 success=true（Level 0-3 真 JSON）：尊重该值
+        // - ResponseParser 返回 success=false（Level 4 纯文本）：标记 false，让 legacy 提取路径执行
+        // - data 是空骨架（getDefaultOutput + 仅 storyText）：标记 false，避免空数据被当成功写入
+        // - storyText 存在但 data 为 null：false（纯文本无结构化数据）
+        // 原实现 success=!!(data||storyText) 导致纯文本 fallback 也返回 true，
+        // AIResponseMutator 把空骨架当成功数据写入，tables 全空却 currentTurn 递增
+        success: !!(parsedByContract && parsedByContract.success === true && data && !data._isDefaultSkeleton)
     };
 }
 // 返回 { valid: Boolean, missing: Array, storyField: String }
@@ -5553,7 +5570,14 @@ async function callAI(messages, options = {}) {
                 // 用户取消时立即停止重试
                 if (localAC.signal.aborted) throw e429;
                 var _msg429 = (e429 && e429.message) ? String(e429.message) : '';
-                var _is429 = /HTTP 429/.test(_msg429) || (e429 && e429.status === 429);
+                // 【NEW-011 修复】扩展限流检测：429 状态码 + ResourceExhausted + rate_limit/quota 关键词
+                // Google Gemini 风格的 ResourceExhausted 可能以 503 或其他状态码返回
+                var _is429 = /HTTP 429/.test(_msg429) ||
+                    (e429 && e429.status === 429) ||
+                    /ResourceExhausted/i.test(_msg429) ||
+                    /rate_?limit/i.test(_msg429) ||
+                    /quota/i.test(_msg429) ||
+                    /request limit reached/i.test(_msg429);
                 if (!_is429 || _attempt429 >= _maxRetries429) throw e429;
                 _attempt429++;
                 // 【P3-1 修复】优先使用 Retry-After 响应头动态调整等待时间

@@ -97,13 +97,30 @@ const ResponseParser = {
             return result;
         }
 
+        // 【方案C】Level 3.5: <state> 块解析（StateTagParser）
+        // 纯文本模式下的主要状态提取方式，兼容 auto 路由模型等不支持 JSON Schema 的场景
+        // 从故事末尾的 <state>...</state> 块提取角色/物品/任务等结构化数据
+        if (typeof StateTagParser !== 'undefined' && StateTagParser.parse) {
+            const stateResult = StateTagParser.parse(effectiveReply);
+            if (stateResult.success) {
+                result.success = true;
+                result.data = stateResult.data;
+                result.fallbackLevel = 3.5;
+                result.storyText = stateResult.storyText;
+                result.warnings.push('parsed from <state> block');
+                return result;
+            }
+        }
+
         // Level 4: plain text fallback
+        // 【NEW-008 修复】纯文本兜底不算"解析成功"，success=false 让上层走 legacy 提取路径
+        // 否则 AIResponseMutator 会把空骨架当成功数据写入，tables 全空却 currentTurn 递增
         const plain = this._tryPlainText(effectiveReply);
-        result.success = !!plain.storyText;
+        result.success = false;  // 纯文本不是结构化数据，标记失败
         result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(plain) : plain;
         result.fallbackLevel = 4;
         result.storyText = plain.storyText;
-        result.warnings.push('parsed as plain text');
+        result.warnings.push('parsed as plain text (no structured data)');
         return result;
     },
 
