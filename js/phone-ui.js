@@ -1213,10 +1213,30 @@ var PresetAppManager = (function() {
         }
 
         // 特殊处理：<style> 标签（文中可视化 ice）
-        var styleRegex = /<style[\s>][\s\S]*?<\/style>\s*<div[\s>][\s\S]*?<\/div>/gi;
-        var styleMatches = text.match(styleRegex);
-        if (styleMatches && !newApps['ice']) {
-            newApps['ice'] = styleMatches.join('\n');
+        // 【第九轮 P0 根因修复】原 styleRegex 含双 [\s\S]*? 串联，AI 输出多个 <style> 块但 <div> 配对缺失时
+        // 触发 O(k²×n) 灾难性回溯——这正是第八轮复审"二次生成冻结 215s+"的真正根因。
+        // parseFromText 在 stripDecorTags 之前调用（game.js:3629 在 3634 之前），
+        // 第八轮只修复了 stripDecorTags 内的 _reStyleDiv，遗漏了此处 parseFromText 内的 inline 正则。
+        // 修复策略：拆成两步——先匹配所有 <style> 块（线性），再在每个 style 块后有限窗内查找配对 <div>。
+        var _iceStyleRe = /<style[\s>][\s\S]*?<\/style>/gi;
+        var _iceDivRe = /<div[\s>][\s\S]*?<\/div>/i;
+        var _iceBlocks = [];
+        // 用 safeRegexExecAll 包装 style 块匹配（软超时 + 计时日志）
+        var _styleMatches = (typeof safeRegexExecAll !== 'undefined')
+            ? safeRegexExecAll(_iceStyleRe, text, { tag: 'parseFromText._iceStyleRe', timeoutMs: 2000 })
+            : (function() { _iceStyleRe.lastIndex = 0; var arr = []; var m; while ((m = _iceStyleRe.exec(text)) !== null) arr.push(m); return arr; })();
+        for (var _si2 = 0; _si2 < _styleMatches.length; _si2++) {
+            var _styleItem = _styleMatches[_si2][0];
+            var _styleEndIdx = _styleMatches[_si2].index + _styleItem.length;
+            // 在 style 块后 200 字符窗口内查找配对 <div>...</div>（限窗搜索，避免全文回溯）
+            var _window = text.substring(_styleEndIdx, _styleEndIdx + 200);
+            var _divMatch = _window.match(_iceDivRe);
+            if (_divMatch) {
+                _iceBlocks.push(_styleItem + _window.substring(0, _divMatch.index + _divMatch[0].length));
+            }
+        }
+        if (_iceBlocks.length > 0 && !newApps['ice']) {
+            newApps['ice'] = _iceBlocks.join('\n');
         }
 
         // 更新存储
@@ -1244,7 +1264,8 @@ var PresetAppManager = (function() {
     var _decorTagsRegex = new RegExp(
         '<(' + _decorTagNames.join('|').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
         ')[\\s>][\\s\\S]*?<\\/\\1>', 'gi');
-    var _reStyleDiv = /<style[\s>][\s\S]*?<\/style>\s*<div[\s>][\s\S]*?<\/div>/gi;
+    // 【第九轮清理】删除死变量 _reStyleDiv（双 [\s\S]*? 串联危险正则，未被使用但易混淆）
+    // 第八轮 stripDecorTags 已改用下方两个独立正则 + safeRegexApply 包装
     // 【根因修复 2】_reStyleDiv 含双 [\s\S]*? 串联，AI 输出多个 <style> 块但无配对 <div> 时
     // 触发 O(k²×n) 灾难性回溯，单次调用可卡数十秒到数百秒。
     // 拆成两个独立正则，各自只有单个 [\s\S]*?，回溯复杂度降为 O(k×n)。
