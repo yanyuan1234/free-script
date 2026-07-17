@@ -1001,3 +1001,123 @@ function safeGetItem(key, fallback) {
     }
 }
 if (typeof window !== 'undefined') window.safeGetItem = safeGetItem;
+
+// ========================================
+// 【第八轮复审 BUG-001 P0 修复 7.1+7.2】安全正则包装器
+// 背景：第八轮复审确认二次生成仍冻结 215s+，根因是内部正则（_reStyleBlock/_reDivBlock/
+//   _reCotTags/_reDecorTags/_processScopedConditionals）无超时保护。
+// RegexManager 的 2s/5s 超时仅覆盖用户正则脚本，内部正则不受保护。
+//
+// 双层保护机制：
+// 1. 回调超时检测：把字符串替换等价为回调替换，每 256 次匹配后检查时间，超时则抛出异常中断
+//    —— 应对"匹配数量极大但非灾难性回溯"场景（可中断）
+// 2. 整体耗时日志：包装整个 replace 调用，超过 logThreshold 时打印 [SafeRegex] 耗时日志
+//    —— 应对"灾难性回溯"场景（单次 exec 内部 C++ 层回溯，回调无法中断，但日志可定位）
+//
+// 已知限制：String.replace 的回调在正则引擎 C++ 层运行时无法中断灾难性回溯，
+//   此 wrapper 主要价值是：(a) 中断"大量匹配"耗时；(b) 通过日志定位灾难性回溯来源。
+//   真正的根因解决需将正则移入 Worker（第七/八轮报告 7.3 建议）。
+// ========================================
+
+/**
+ * 安全正则替换包装器
+ * @param {RegExp} regex 正则对象（建议带 gi 标志）
+ * @param {string} text 待处理文本
+ * @param {string|Function} [replacement=''] 替换字符串或函数
+ * @param {object} [opts] 选项
+ *   - {number} timeoutMs=2000 单次调用软超时（超时则返回原文）
+ *   - {string} tag='' 日志标签（建议传正则名，如 '_reStyleBlock'）
+ *   - {number} logThreshold=100 超过此毫秒数才打印耗时日志
+ * @returns {string} 处理后文本；超时或异常时返回原文
+ */
+function safeRegexApply(regex, text, replacement, opts) {
+    if (text == null || typeof text !== 'string' || text.length === 0) return text;
+    if (!regex || !(regex instanceof RegExp)) return text;
+
+    opts = opts || {};
+    var timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 2000;
+    var tag = opts.tag || (regex.source || '').substring(0, 60);
+    var logThreshold = opts.logThreshold != null ? opts.logThreshold : 100;
+
+    if (replacement === undefined) replacement = '';
+    if (regex.global) regex.lastIndex = 0;
+
+    var startTime = Date.now();
+    var matchCount = 0;
+    var timedOut = false;
+
+    // 把字符串替换转换为回调替换，以便在每次匹配后检查时间
+    var origReplFn = (typeof replacement === 'function') ? replacement : null;
+    var replStr = (typeof replacement === 'string') ? replacement : '';
+    var wrappedRepl = function() {
+        matchCount++;
+        // 每 256 次匹配检查一次时间（避免每次匹配都 Date.now() 的开销）
+        if ((matchCount & 255) === 0 && Date.now() - startTime > timeoutMs) {
+            timedOut = true;
+            throw new Error('SAFE_REGEX_TIMEOUT_CALLBACK');
+        }
+        return origReplFn ? origReplFn.apply(this, arguments) : replStr;
+    };
+
+    try {
+        var result = text.replace(regex, wrappedRepl);
+        var elapsed = Date.now() - startTime;
+        if (elapsed >= logThreshold) {
+            console.log('[SafeRegex] 耗时 ' + elapsed + 'ms (tag=' + tag
+                + ', inLen=' + text.length + ', matches=' + matchCount + ')');
+        }
+        return result;
+    } catch (e) {
+        var elapsedErr = Date.now() - startTime;
+        if (timedOut || (e && e.message === 'SAFE_REGEX_TIMEOUT_CALLBACK')) {
+            console.warn('[SafeRegex] 超时返回原文, tag=' + tag
+                + ', elapsed=' + elapsedErr + 'ms/' + timeoutMs + 'ms'
+                + ', matches=' + matchCount + ', inLen=' + text.length);
+            return text;
+        }
+        console.warn('[SafeRegex] 异常 tag=' + tag
+            + ', err=' + (e && e.message ? e.message : String(e))
+            + ', elapsed=' + elapsedErr + 'ms');
+        return text;
+    }
+}
+if (typeof window !== 'undefined') window.safeRegexApply = safeRegexApply;
+
+/**
+ * 安全 exec 循环：收集所有匹配（替代 while (regex.exec(text)) 模式）
+ * 注意：exec 循环本身是线性 O(matches)，但单次 exec 内部可能灾难性回溯。
+ * 此函数提供：(a) 每 256 次匹配的软超时；(b) 整体耗时日志用于定位慢 exec。
+ * @param {RegExp} regex 正则对象（必须带 g 标志）
+ * @param {string} text 待匹配文本
+ * @param {object} [opts] 选项 { timeoutMs=2000, tag='', logThreshold=100 }
+ * @returns {Array<Array>} 匹配项数组（每个元素是 exec 的返回值）；超时返回已收集的部分
+ */
+function safeRegexExecAll(regex, text, opts) {
+    if (!text || typeof text !== 'string' || !regex || !regex.global) return [];
+    opts = opts || {};
+    var timeoutMs = opts.timeoutMs != null ? opts.timeoutMs : 2000;
+    var tag = opts.tag || (regex.source || '').substring(0, 60);
+    var logThreshold = opts.logThreshold != null ? opts.logThreshold : 100;
+
+    regex.lastIndex = 0;
+    var startTime = Date.now();
+    var matches = [];
+    var m;
+    while ((m = regex.exec(text)) !== null) {
+        matches.push(m);
+        if ((matches.length & 255) === 0 && Date.now() - startTime > timeoutMs) {
+            console.warn('[SafeRegex.exec] 超时(' + (Date.now() - startTime) + 'ms/' + timeoutMs
+                + 'ms), tag=' + tag + ', matches=' + matches.length);
+            break;
+        }
+        // 防御零宽匹配导致 lastIndex 不前进
+        if (m.index === regex.lastIndex) regex.lastIndex++;
+    }
+    var elapsed = Date.now() - startTime;
+    if (elapsed >= logThreshold) {
+        console.log('[SafeRegex.exec] 耗时 ' + elapsed + 'ms (tag=' + tag
+            + ', inLen=' + text.length + ', matches=' + matches.length + ')');
+    }
+    return matches;
+}
+if (typeof window !== 'undefined') window.safeRegexExecAll = safeRegexExecAll;

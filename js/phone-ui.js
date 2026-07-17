@@ -1272,14 +1272,18 @@ var PresetAppManager = (function() {
 
         // 移除 <style>...</style><div>...</div> 块（ice组件）
         // 【根因修复 2】原 _reStyleDiv 双 [\s\S]*? 串联改为两步独立替换，避免灾难性回溯
-        _reStyleBlock.lastIndex = 0;
-        result = result.replace(_reStyleBlock, '');
-        _reDivBlock.lastIndex = 0;
-        result = result.replace(_reDivBlock, '');
+        // 【第八轮 7.1+7.2】用 safeRegexApply 包装：软超时 2s（超时返回原文）+ 计时日志定位慢正则
+        result = (typeof safeRegexApply !== 'undefined')
+            ? safeRegexApply(_reStyleBlock, result, '', { tag: '_reStyleBlock', timeoutMs: 2000 })
+            : (_reStyleBlock.lastIndex = 0, result.replace(_reStyleBlock, ''));
+        result = (typeof safeRegexApply !== 'undefined')
+            ? safeRegexApply(_reDivBlock, result, '', { tag: '_reDivBlock', timeoutMs: 2000 })
+            : (_reDivBlock.lastIndex = 0, result.replace(_reDivBlock, ''));
 
 
-        _decorTagsRegex.lastIndex = 0;
-        result = result.replace(_decorTagsRegex, '');
+        result = (typeof safeRegexApply !== 'undefined')
+            ? safeRegexApply(_decorTagsRegex, result, '', { tag: '_decorTagsRegex', timeoutMs: 2000 })
+            : (_decorTagsRegex.lastIndex = 0, result.replace(_decorTagsRegex, ''));
 
         // 移除导演手记注释 <!-- ... -->
         _reComment.lastIndex = 0;

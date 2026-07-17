@@ -953,15 +953,27 @@ var MacroEngine = {
         // 改为 maxIterations=15（实际嵌套深度极少超过 10）+ 强制闭合标签必须有斜杠。
         var maxIterations = 15;
         var iterations = 0;
+        // 【第八轮 7.1+7.2】总循环计时 + 单次 replace 软超时（5s 总 / 2s 单次）
+        // 当 AI 输出畸形 {{if}} 嵌套时，单次 replace 的双 [\s\S]*? 仍可能回溯
+        var _loopStartTime = Date.now();
+        var _LOOP_TOTAL_TIMEOUT_MS = 5000;
 
         while (iterations < maxIterations) {
+            // 总循环超时保护
+            if (Date.now() - _loopStartTime > _LOOP_TOTAL_TIMEOUT_MS) {
+                console.warn('[SafeRegex] _processScopedConditionals 总循环超时('
+                    + (Date.now() - _loopStartTime) + 'ms/' + _LOOP_TOTAL_TIMEOUT_MS
+                    + 'ms), iterations=' + iterations + ', inLen=' + (text ? text.length : 0));
+                break;
+            }
             var newText = text;
+            var _iterStartTime = Date.now();
 
             // 使用非贪婪匹配先处理最内层的 {{if}}...{{/if}}
             // 【根因修复 3】闭合标签强制要求斜杠（移除 \/?），避免 {{if}} 被误判为闭合标签
-            newText = text.replace(
-            /\{\{\s*if\s+([\s\S]*?)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/gi,
-            function(match, condition, body) {
+            // 【第八轮 7.1+7.2】用 safeRegexApply 包装：单次 replace 软超时 2s + 计时日志
+            var _ifRegex = /\{\{\s*if\s+([\s\S]*?)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/gi;
+            var _condCallback = function(match, condition, body) {
                 // 在body中查找同级的{{else}}（跳过嵌套的{{if}}）
                 var elseIdx = -1;
                 var depth = 0;
@@ -969,45 +981,68 @@ var MacroEngine = {
                 var lowerBody = body.toLowerCase();
                 while (pos < lowerBody.length) {
                     var ifPos = lowerBody.indexOf('{{if', pos);
-                        var endIfPos = lowerBody.indexOf('{{/if', pos);
-                            var elsePos = lowerBody.indexOf('{{else', pos);
-                                if (endIfPos === -1) break;
-                                var nearest = endIfPos;
-                                if (ifPos !== -1 && ifPos < nearest) nearest = ifPos;
-                                if (elsePos !== -1 && elsePos < nearest) nearest = elsePos;
-                                if (nearest === ifPos) { depth++; pos = ifPos + 5; }
-                                else if (nearest === endIfPos) {
-                                    if (depth > 0) { depth--; pos = endIfPos + 5; }
-                                    else break;
-                                    } else if (nearest === elsePos && depth === 0) {
-                                    elseIdx = elsePos; pos = elsePos + 7;
-                                    } else { pos = nearest + 5; }
-                                }
+                    var endIfPos = lowerBody.indexOf('{{/if', pos);
+                    var elsePos = lowerBody.indexOf('{{else', pos);
+                    if (endIfPos === -1) break;
+                    var nearest = endIfPos;
+                    if (ifPos !== -1 && ifPos < nearest) nearest = ifPos;
+                    if (elsePos !== -1 && elsePos < nearest) nearest = elsePos;
+                    if (nearest === ifPos) { depth++; pos = ifPos + 5; }
+                    else if (nearest === endIfPos) {
+                        if (depth > 0) { depth--; pos = endIfPos + 5; }
+                        else break;
+                    } else if (nearest === elsePos && depth === 0) {
+                        elseIdx = elsePos; pos = elsePos + 7;
+                    } else { pos = nearest + 5; }
+                }
 
-                            var trueContent, falseContent;
-                            if (elseIdx >= 0) {
-                                trueContent = body.substring(0, elseIdx);
-                                falseContent = body.substring(elseIdx + 7); // 跳过 '{{else'
-                                    var elseEnd = falseContent.indexOf('}}');
-                                if (elseEnd >= 0) falseContent = falseContent.substring(elseEnd + 2);
-                                } else {
-                                trueContent = body;
-                                falseContent = '';
-                            }
+                var trueContent, falseContent;
+                if (elseIdx >= 0) {
+                    trueContent = body.substring(0, elseIdx);
+                    falseContent = body.substring(elseIdx + 7); // 跳过 '{{else'
+                    var elseEnd = falseContent.indexOf('}}');
+                    if (elseEnd >= 0) falseContent = falseContent.substring(elseEnd + 2);
+                } else {
+                    trueContent = body;
+                    falseContent = '';
+                }
 
-                            condition = condition.trim();
-                            var isTrue = self._evaluateCondition(condition);
-                            return isTrue ? trueContent : falseContent;
-                        }
-                        );
+                condition = condition.trim();
+                var isTrue = self._evaluateCondition(condition);
+                return isTrue ? trueContent : falseContent;
+            };
+            // 优先用 safeRegexApply 包装（utils.js 已加载时）；否则回退到原生 replace
+            if (typeof safeRegexApply !== 'undefined') {
+                newText = safeRegexApply(_ifRegex, text, _condCallback, {
+                    tag: '_processScopedConditionals#' + iterations,
+                    timeoutMs: 2000,
+                    logThreshold: 200
+                });
+            } else {
+                _ifRegex.lastIndex = 0;
+                newText = text.replace(_ifRegex, _condCallback);
+            }
+            // 单次迭代超时检测（safeRegexApply 超时已返回原文，这里检测异常耗时）
+            var _iterElapsed = Date.now() - _iterStartTime;
+            if (_iterElapsed > 2000) {
+                console.warn('[SafeRegex] _processScopedConditionals#' + iterations
+                    + ' 单次耗时 ' + _iterElapsed + 'ms (inLen=' + (text ? text.length : 0) + ')');
+            }
 
-                        if (newText === text) break;
-                        text = newText;
-                        iterations++;
-                    }
+            if (newText === text) break;
+            text = newText;
+            iterations++;
+        }
 
-                return text;
-            },
+        // 总耗时日志（超过 200ms 才打印，避免正常路径噪音）
+        var _totalElapsed = Date.now() - _loopStartTime;
+        if (_totalElapsed >= 200) {
+            console.log('[SafeRegex] _processScopedConditionals 总耗时 ' + _totalElapsed
+                + 'ms (iterations=' + iterations + ', inLen=' + (text ? text.length : 0) + ')');
+        }
+
+        return text;
+    },
 
         /**
         * 评估条件表达式

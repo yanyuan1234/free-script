@@ -1510,7 +1510,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                     }
                 }
                 if (!isLastAssistant) {
-                    msg.content = msg.content.replace(_reDecorTags, '');
+                    // 【第八轮 7.1+7.2】用 safeRegexApply 包装：软超时 2s + 计时日志定位慢正则
+                    msg.content = (typeof safeRegexApply !== 'undefined')
+                        ? safeRegexApply(_reDecorTags, msg.content, '', { tag: '_reDecorTags(history)', timeoutMs: 2000 })
+                        : (_reDecorTags.lastIndex = 0, msg.content.replace(_reDecorTags, ''));
                 }
             }
         });
@@ -1858,10 +1861,18 @@ async function sendAIRequest(userMessage, isInit = false) {
         var cotMatches = [];
         var cleanStoryText = storyText;
         // 提取所有COT内容
-
-        _reCotTags.lastIndex = 0;  // 重置全局正则的 lastIndex（exec 复用必须重置）
-        var cotMatch;
-        while ((cotMatch = _reCotTags.exec(storyText)) !== null) {
+        // 【第八轮 7.1+7.2】用 safeRegexExecAll 包装 exec 循环：软超时 2s + 计时日志定位慢正则
+        // 注意：exec 内部的灾难性回溯在 C++ 层无法中断，但日志可定位
+        var _cotExecMatches = (typeof safeRegexExecAll !== 'undefined')
+            ? safeRegexExecAll(_reCotTags, storyText, { tag: '_reCotTags.exec', timeoutMs: 2000 })
+            : (function() {
+                _reCotTags.lastIndex = 0;
+                var arr = []; var m;
+                while ((m = _reCotTags.exec(storyText)) !== null) arr.push(m);
+                return arr;
+            })();
+        for (var _ci = 0; _ci < _cotExecMatches.length; _ci++) {
+            var cotMatch = _cotExecMatches[_ci];
             // 捕获组2: XML标签格式 <thinking>...</thinking>（组1=标签名, 组3=闭合标签名）
             // 捕获组4: 💭...💭 格式
             var cotContent = (cotMatch[2] || cotMatch[4] || '').trim();
@@ -1879,7 +1890,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _hasAnyCot = cotMatches.length > 0 || _reasoningFromField.length > 0;
         // 从storyText中移除COT标签（不显示给用户）
         if (cotMatches.length > 0) {
-            cleanStoryText = storyText.replace(_reCotTags, '').trim();
+            // 【第八轮 7.1+7.2】用 safeRegexApply 包装 replace：软超时 2s + 计时日志
+            cleanStoryText = (typeof safeRegexApply !== 'undefined')
+                ? safeRegexApply(_reCotTags, storyText, '', { tag: '_reCotTags.replace', timeoutMs: 2000 })
+                : (_reCotTags.lastIndex = 0, storyText.replace(_reCotTags, ''));
+            cleanStoryText = cleanStoryText.trim();
             // 保存原始内容（含COT）供 {{original}} 宏使用
             if (gameState) gameState._lastOriginalContent = storyText;
         }
@@ -3624,7 +3639,11 @@ function formatStory(text) {
         // 打字机tick期间：移除装饰标签和 giggle 标签
 
         _reDecorTagsTyping.lastIndex = 0;
-        text = text.replace(_reDecorTagsTyping, '');
+        // 【第八轮 7.1+7.2】用 safeRegexApply 包装：软超时 2s + 计时日志定位慢正则
+        // 注意：打字机 tick 是热路径（每 25ms 调用），但单次文本很短，wrapper 开销可忽略
+        text = (typeof safeRegexApply !== 'undefined')
+            ? safeRegexApply(_reDecorTagsTyping, text, '', { tag: '_reDecorTagsTyping(tick)', timeoutMs: 2000, logThreshold: 200 })
+            : text.replace(_reDecorTagsTyping, '');
         _reGiggleStrip.lastIndex = 0;
         _reGiggleCNStrip.lastIndex = 0;
         _reGiggleUnclosedStrip.lastIndex = 0;
