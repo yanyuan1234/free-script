@@ -7,14 +7,14 @@ const StateTagParser = {
     // <state>...</state> 块匹配（大小写不敏感，允许多行）
     _reStateBlock: /<state>([\s\S]*?)<\/state>/i,
 
-    // 各子标签匹配（贪婪，取最后一个匹配——覆盖语义）
-    _reChar: /<char>([^<]*)<\/char>/gi,
-    _reItem: /<item>([^<]*)<\/item>/gi,
-    _reQuest: /<quest>([^<]*)<\/quest>/gi,
-    _reTime: /<time>([^<]*)<\/time>/i,
-    _reChoice: /<choice>([^<]*)<\/choice>/gi,
-    _reTitle: /<title>([^<]*)<\/title>/i,
-    _reRel: /<rel>([^<]*)<\/rel>/gi,
+    // 各子标签匹配（非贪婪，支持内容中含 '<' 字符）
+    _reChar: /<char>([\s\S]*?)<\/char>/gi,
+    _reItem: /<item>([\s\S]*?)<\/item>/gi,
+    _reQuest: /<quest>([\s\S]*?)<\/quest>/gi,
+    _reTime: /<time>([\s\S]*?)<\/time>/i,
+    _reChoice: /<choice>([\s\S]*?)<\/choice>/gi,
+    _reTitle: /<title>([\s\S]*?)<\/title>/i,
+    _reRel: /<rel>([\s\S]*?)<\/rel>/gi,
 
     // 从原始 AI 回复中提取 <state> 块并解析
     // 返回 { success, storyText, data, stateBlock }

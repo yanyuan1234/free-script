@@ -5772,6 +5772,85 @@ function updateApiCurrentBadge() {
     }
 }
 
+// [M-1] 新增分组标签（不触发全量 renderAPISettings）
+function _appendApiGroupTab(name) {
+    var groupTabs = document.getElementById('apiGroupTabs');
+    if (!groupTabs) return;
+    var gSafe = escapeHtml(name);
+    var btn = document.createElement('button');
+    btn.className = 'tag-btn api-group-tab';
+    btn.dataset.group = gSafe;
+    btn.dataset.groupName = gSafe;
+    btn.textContent = gSafe;
+    groupTabs.appendChild(btn);
+    _bindApiGroupTabEvents(btn);
+}
+
+// 绑定单个分组标签的点击筛选与双击删除事件
+function _bindApiGroupTabEvents(btn) {
+    var groupTabs = document.getElementById('apiGroupTabs');
+    var container = document.getElementById('apiListContainer');
+    if (!groupTabs || !container) return;
+    btn.addEventListener('click', function() {
+        groupTabs.querySelectorAll('.tag-btn').forEach(function(b) {
+            b.classList.remove('active');
+        });
+        btn.classList.add('active');
+        var group = btn.dataset.group;
+        container.querySelectorAll('.api-card').forEach(function(card) {
+            var idx = parseInt(card.dataset.apiIndex, 10);
+            var cfg = LocalGameAPI._configs[idx];
+            if (group === 'all') {
+                card.style.display = '';
+            } else if (group === 'ungrouped') {
+                card.style.display = (!cfg || !cfg.group) ? '' : 'none';
+            } else {
+                card.style.display = (cfg && cfg.group === group) ? '' : 'none';
+            }
+        });
+    });
+    if (btn.classList.contains('api-group-tab')) {
+        btn.addEventListener('dblclick', function() {
+            var groupName = btn.dataset.groupName;
+            if (!groupName) return;
+            UI.confirm('删除分组', '确定要删除分组"' + groupName + '"吗？该分组下的API将变为未分组。').then(function(ok) {
+                if (!ok) return;
+                LocalGameAPI.deleteGroup(groupName);
+                renderAPISettings();
+                UI.toast('分组已删除');
+            });
+        });
+    }
+}
+
+// [M-1] 新增 API 卡片（不触发全量 renderAPISettings）
+function _appendApiCard(slot) {
+    var container = document.getElementById('apiListContainer');
+    if (!container) return;
+    // 如果当前是空状态，先清空
+    if (container.querySelector('.empty-state')) {
+        container.innerHTML = '';
+    }
+    var cfg = LocalGameAPI._configs[slot];
+    if (!cfg) return;
+    var wrapper = document.createElement('div');
+    wrapper.innerHTML = _buildApiCardHtml(cfg, slot);
+    var card = wrapper.firstElementChild;
+    container.appendChild(card);
+}
+
+// [M-1] 删除 API 卡片（不触发全量 renderAPISettings）
+function _removeApiCard(slot) {
+    var container = document.getElementById('apiListContainer');
+    if (!container) return;
+    var card = container.querySelector('.api-card[data-api-index="' + slot + '"]');
+    if (card) card.remove();
+    // 如果删完了，渲染空状态
+    if (LocalGameAPI._configs.length === 0) {
+        container.innerHTML = renderEmptyState('暂无API配置');
+    }
+}
+
 function showApiDetail(slot) {
     var newCancelBtn = document.getElementById('btnCancelTestApi');
     var cfg = LocalGameAPI._configs[slot];
@@ -6081,7 +6160,8 @@ function showApiDetail(slot) {
         });
         LocalGameAPI.save();
         UI.hideModal('apiDetailModal');
-        renderAPISettings();
+        // [M-1] 复制只是追加一行，走局部更新
+        _appendApiCard(LocalGameAPI._configs.length - 1);
         UI.toast('已复制，可修改模型名');
     });
 
@@ -6296,7 +6376,8 @@ function showCreateApiModal() {
         });
         LocalGameAPI.save();
         UI.hideModal('createApiModal');
-        renderAPISettings();
+        // [M-1] 新增只是追加一行，走局部更新
+        _appendApiCard(LocalGameAPI._configs.length - 1);
         UI.toast('API已创建');
     });
 
@@ -6373,7 +6454,8 @@ function showCreateGroupModal() {
         LocalGameAPI._groups.push(name);
         LocalGameAPI.save();
         UI.hideModal('createGroupModal');
-        renderAPISettings();
+        // [M-1] 新增分组只追加一个 tab，不必重绘全部卡片
+        _appendApiGroupTab(name);
         UI.toast('分组已创建');
     });
 }
