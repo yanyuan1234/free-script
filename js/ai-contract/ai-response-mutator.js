@@ -54,6 +54,14 @@ const _PERSISTENCE_RULES = [
 ];
 
 const AIResponseMutator = {
+    // 【ISSUE-E1 修复】已知字段白名单，json_object 降级模式下 AI 可能输出多余字段，
+    // 此白名单确保只处理 schema 定义的 18 个字段，忽略未知字段避免覆盖状态
+    _KNOWN_FIELDS: {
+        story: 1, title: 1, choices: 1, player: 1, characters: 1, bag: 1,
+        quests: 1, relationships: 1, locations: 1, world: 1, npcMessages: 1,
+        memoryUpdates: 1, currency: 1, currencyName: 1, contextSummary: 1,
+        gameTime: 1, keyEvents: 1, hud: 1
+    },
     // 应用解析结果到状态
     apply(parsed, options) {
         options = options || {};
@@ -61,7 +69,20 @@ const AIResponseMutator = {
             console.warn('[AIResponseMutator] 解析未成功，跳过状态写入');
             return { success: false, changes: [] };
         }
-        const data = parsed.data || {};
+        const rawData = parsed.data || {};
+        // 【ISSUE-E1 修复】过滤未知字段，只保留白名单内的 18 个字段
+        const data = {};
+        var _unknownFields = [];
+        for (var _k in rawData) {
+            if (this._KNOWN_FIELDS[_k]) {
+                data[_k] = rawData[_k];
+            } else {
+                _unknownFields.push(_k);
+            }
+        }
+        if (_unknownFields.length > 0) {
+            console.warn('[AIResponseMutator] 忽略未知字段:', _unknownFields.join(', '));
+        }
         const mems = parsed.mems || [];
         var self = this;
         const result = { success: true, changes: [] };

@@ -435,15 +435,47 @@ function _slimAssistantMessage(content) {
         if (trimmed.charAt(0) !== '{') return content;
         var data = JSON.parse(trimmed);
         if (data && data.story) {
-            // 只保留story和title，其余结构化数据由记忆系统维护，不需要重复发送
+            // 【ISSUE-A1 修复】保留所有18字段名（骨架），但精简值
+            // 原问题：只保留{title,story,choices}3字段，AI通过in-context learning
+            // 模仿历史格式只输出3字段，导致player/characters/bag等15字段不更新
+            // 修复：保留完整字段结构让AI模仿输出18字段，但精简值减少token占用
             var slim = {};
+            // 完整保留的字段（核心叙事内容）
             if (data.title) slim.title = data.title;
             slim.story = data.story;
-            // 保留choices（玩家可能需要参考旧选项）
             if (data.choices && data.choices.length > 0) slim.choices = data.choices;
+            // 精简保留的字段（保留结构但减少细节）
+            if (data.player) {
+                slim.player = { name: data.player.name || '', identity: data.player.identity || '' };
+            } else { slim.player = { name: '', identity: '' }; }
+            // 数组类字段：保留name等关键字段，丢弃desc等长文本
+            slim.characters = (Array.isArray(data.characters) ? data.characters : []).slice(0, 5).map(function(c) {
+                return { name: c.name || '', relation: c.relation || '' };
+            });
+            slim.bag = (Array.isArray(data.bag) ? data.bag : []).slice(0, 8).map(function(b) {
+                return { name: b.name || '', count: b.count || 1 };
+            });
+            slim.quests = (Array.isArray(data.quests) ? data.quests : []).slice(0, 5).map(function(q) {
+                return { title: q.title || '', status: q.status || '' };
+            });
+            // 轻量字段：保留值或空占位
+            slim.relationships = [];
+            slim.locations = (Array.isArray(data.locations) ? data.locations : []).slice(0, 3).map(function(l) {
+                return { name: l.name || '' };
+            });
+            slim.world = [];
+            slim.npcMessages = [];
+            slim.memoryUpdates = [];
+            slim.currency = (typeof data.currency === 'number') ? data.currency : 0;
+            slim.currencyName = data.currencyName || '金币';
+            slim.contextSummary = data.contextSummary || '';
+            slim.gameTime = data.gameTime || {};
+            slim.keyEvents = (Array.isArray(data.keyEvents) ? data.keyEvents : []).slice(0, 2);
+            slim.hud = data.hud || {};
             var result = JSON.stringify(slim);
-            // 只有确实节省了空间才使用瘦身版
-            if (result.length < content.length * 0.7) {
+            // 【ISSUE-A2 修复】阈值从0.7放宽到0.9，更积极地瘦身
+            // 18字段骨架比3字段稍大，但仍远小于完整JSON（省略desc/outfit等长文本）
+            if (result.length < content.length * 0.9) {
                 return result;
             }
         }
@@ -1156,7 +1188,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 【Token优化】聊天历史智能瘦身：旧AI回复只保留story字段
             // AI回复是JSON格式，每条约2000字(1176 tokens)，其中story约500字(294 tokens)
             // 保留最近3轮完整JSON，更早的只保留story，节省约60%历史token
-            var SLIM_THRESHOLD = 6; // 最近3轮(6条消息)保留完整JSON
+            // 【ISSUE-C2 修复】SLIM_THRESHOLD 动态适应 summaryThreshold：
+            // summaryThreshold > 0 时，瘦身范围与摘要范围一致，避免逻辑冗余
+            var summaryThreshold = (gameState && gameState.summaryThreshold) || 0;
+            var SLIM_THRESHOLD = summaryThreshold > 0 ? summaryThreshold * 2 : 6;
             if (recent.length > SLIM_THRESHOLD) {
                 var slimStart = recent.length - SLIM_THRESHOLD;
                 for (let _si = 0; _si < slimStart; _si++) {
@@ -1173,7 +1208,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 【月读智慧】摘要阈值：超过此轮数的旧对话只发送摘要，节省token
             // 来自月读预设的"6楼外只发摘要"策略
-            var summaryThreshold = (gameState && gameState.summaryThreshold) || 0;
+            // 【ISSUE-C2 修复】summaryThreshold 已在上方声明，此处复用
             if (summaryThreshold > 0 && recent.length > summaryThreshold * 2) {
                 // 保留最近N轮的完整对话，旧对话用摘要替代
                 var keepCount = summaryThreshold * 2; // 每轮=1 user + 1 assistant
@@ -1560,11 +1595,16 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         var contextSize = getContextSizeSafe();
         var maxTokens = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
+        // 【ISSUE-B1 修复】max_tokens 不能超过 contextSize，否则 API 会拒绝或截断
+        // 修复前：maxTokens=32768 但 contextSize=32000，导致预算计算失真
+        maxTokens = Math.min(maxTokens, contextSize);
         // 酒馆公式：输入预算 = 上下文大小 - 输出预留
         // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
         // 预留不足会导致AI输出到一半被截断，JSON解析失败，残余`\n\n`被当纯文本渲染
         // 策略：宁可输入端紧凑一点，也要保证AI能输出完整JSON
-        var reservedForOutput = Math.min(maxTokens, Math.max(3000, Math.floor(contextSize * 0.45)));
+        // 【ISSUE-B1 修复】输出预留上限由 maxTokens 改为 contextSize * 0.45，
+        // 避免 maxTokens 远大于 contextSize 时预留过多导致输入预算不足
+        var reservedForOutput = Math.min(Math.max(3000, Math.floor(contextSize * 0.45)), Math.floor(contextSize * 0.6));
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessagesUtil(messages);
         if (currentTokens > maxInputTokens) {
@@ -1627,6 +1667,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
             if (removedCount > 0) {
                 console.log('[智能上下文] 淘汰了 ' + removedCount + ' 条历史消息，当前 ' + currentTokens + ' tokens');
+            }
+            // 【ISSUE-C1 修复】裁剪后仍超预算时，统计 system 注入占比并警告
+            // depth 0-5 的 system 注入（世界书/预设）是 permanent tokens 不会被裁剪，
+            // 长期游戏可能累积过多导致可用上下文不足
+            if (currentTokens > maxInputTokens) {
+                var _systemTokens = 0;
+                for (let _si2 = 0; _si2 < chatHistoryStart; _si2++) {
+                    if (messages[_si2] && messages[_si2].content) {
+                        _systemTokens += estimateTokensUtil(messages[_si2].content) + 4;
+                    }
+                }
+                console.warn('[智能上下文] 裁剪后仍超预算: ' + currentTokens + '/' + maxInputTokens
+                    + '，system 注入约占 ' + _systemTokens + ' tokens（'
+                    + Math.round(_systemTokens / maxInputTokens * 100) + '%），建议精简世界书/预设');
             }
         }
 
@@ -2092,8 +2146,15 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             // 旧代码把 data 当第二个参数传入，导致 gameData 始终为空，地点/事件/角色无法提取
 
-            var assistantContent = storyText && String(storyText).trim() ? String(storyText) : response;
-            EnhancedMemory.processMessage('assistant', assistantContent, data || {});
+            // 【ISSUE-B2 修复】storyText 为空时（JSON 解析失败），response 是完整 JSON 字符串，
+            // 直接传给 processMessage 会从 JSON 字段名/值中误提取地点/事件/角色，污染记忆系统。
+            // 修复：storyText 为空时跳过记忆提取，避免误提取
+            var assistantContent = storyText && String(storyText).trim() ? String(storyText) : '';
+            if (assistantContent) {
+                EnhancedMemory.processMessage('assistant', assistantContent, data || {});
+            } else {
+                console.warn('[EnhancedMemory] storyText 为空，跳过记忆提取避免从 JSON 误提取');
+            }
         }
         // 成就系统检查
         if (typeof AchievementSystem !== 'undefined' && AchievementSystem.checkAchievements) {
@@ -2367,7 +2428,22 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState.pureTextMode) {
             historyAssistantContent = storyText || response;
         } else {
-            historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
+            // 【ISSUE-D1 修复】检测 response 是否是完整 JSON（以 { 开头且以 } 结尾）
+            // 截断的半截 JSON 存入历史会污染下一轮（AI 模仿截断格式输出不完整 JSON）
+            var _responseTrimmed = response ? response.trim() : '';
+            var _isCompleteJSON = _responseTrimmed.charAt(0) === '{' && _responseTrimmed.endsWith('}');
+            if (_isCompleteJSON) {
+                historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
+            } else if (_responseTrimmed.charAt(0) === '{') {
+                // 以 { 开头但未以 } 结尾 = 截断的 JSON
+                // 用 storyText（已提取的部分）替代，避免半截 JSON 污染历史
+                console.warn('[sendAIRequest] 检测到截断 JSON，用 storyText 替代存入历史');
+                historyAssistantContent = (storyText && storyText.trim())
+                    ? storyText
+                    : '【本轮生成中断，已跳过存储。请重新生成。】';
+            } else {
+                historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
+            }
         }
 
         // ResponseParser 失败时，response/storyText 可能是 AI 的推理过程（"用户现在选择了..."）
@@ -3211,7 +3287,9 @@ function _showStreamWaitingHint() {
         var hint = document.createElement('div');
         hint.id = 'streamWaitingHint';
         hint.className = 'stream-waiting-hint';
-        hint.innerHTML = '<span class="hint-dot"></span><span class="hint-text">AI 正在构思剧情...</span>';
+        // 【ISSUE-F1 修复】优化提示文案，让用户了解 AI 正在生成结构化数据
+        // 当 AI 不按字段顺序输出（story 不在首位）时，用户知道正在生成状态数据
+        hint.innerHTML = '<span class="hint-dot"></span><span class="hint-text">AI 正在生成剧情与状态数据...</span>';
         storyEl.appendChild(hint);
     } catch (e) {}
 }
