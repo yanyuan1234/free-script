@@ -2099,9 +2099,14 @@ async function sendAIRequest(userMessage, isInit = false) {
             GameTimeSystem.updateUI();
         }
 
-        // AI 没有返回章节标题时，用用户设定作为兜底标题
-        if (gameState && !StateManager.get('progress.sceneTitle') && gameState.userPrompt) {
-            var fallbackTitle = gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : '');
+        // AI 没有返回章节标题时，用回合数作为兜底标题
+        // 【BUG-002 深度修复】原逻辑用 userPrompt.substring(0,20) 作兜底标题，
+        // 但当 JSON 后处理冻结导致 JSON 截断时 data 为 null，标题块（line 1993）被跳过，
+        // 此处兜底会把标题设为用户原始输入（"我想玩西方奇幻游戏..."），误导用户以为标题未更新。
+        // 改为用"第 N 回合"作兜底，语义清晰且不会被误认为 AI 标题。
+        if (gameState && !StateManager.get('progress.sceneTitle')) {
+            var _fbTurn = StateManager ? (StateManager.get('progress.turn') || 0) : ((gameState._stats && gameState._stats.totalTurns) || 0);
+            var fallbackTitle = '第 ' + (_fbTurn + 1) + ' 回合';
             updateSceneTitle(fallbackTitle);
             if (typeof StateManager !== 'undefined' && StateManager.set) {
                 StateManager.set('progress.sceneTitle', fallbackTitle, { silent: true });
@@ -2151,7 +2156,21 @@ async function sendAIRequest(userMessage, isInit = false) {
             // 修复：storyText 为空时跳过记忆提取，避免误提取
             var assistantContent = storyText && String(storyText).trim() ? String(storyText) : '';
             if (assistantContent) {
-                EnhancedMemory.processMessage('assistant', assistantContent, data || {});
+                // 【BUG-001 深度修复】将记忆提取延迟到下一 tick 执行。
+                // processMessage 内部串行执行 10+ 步骤（parseAIEditTags/_extractImportantInfo/
+                // _updateTables/_updateSummaryLayers/_updateDormantStatus...），且每步会遍历全部
+                // 角色/物品/事件，内部多次调用 saveToStorage（同步 JSON.stringify 整个 GameMemory）。
+                // 这是后处理链中最重的操作，但记忆提取不需要在故事显示前完成，延迟不影响用户体验。
+                // 闭包捕获必要变量，避免后续代码修改 data/storyText 影响延迟执行
+                var _memContent = assistantContent;
+                var _memData = data || {};
+                setTimeout(function() {
+                    try {
+                        EnhancedMemory.processMessage('assistant', _memContent, _memData);
+                    } catch (e) {
+                        console.warn('[EnhancedMemory] 延迟记忆提取失败:', e && e.message);
+                    }
+                }, 0);
             } else {
                 console.warn('[EnhancedMemory] storyText 为空，跳过记忆提取避免从 JSON 误提取');
             }
@@ -2215,7 +2234,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                             .filter(function(evt) { return evt && typeof evt === 'string' && evt.trim().length > 0; })
                             .map(function(evt) { return { content: evt.trim(), importance: 7 }; });
                         if (_keyEventObjs.length > 0) {
-                            try { _gm.addImportantEvents(_keyEventObjs); } catch (e) { console.warn('[keyEvents]', e); }
+                            // 【BUG-001 深度修复】延迟到下一 tick，避免 O(n·m) 去重 + 同步 saveToStorage 阻塞主线程
+                            var _evtsToAdd = _keyEventObjs;
+                            setTimeout(function() {
+                                try { _gm.addImportantEvents(_evtsToAdd); } catch (e) { console.warn('[keyEvents]', e); }
+                            }, 0);
                         }
                     }
 
@@ -2310,6 +2333,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 console.warn('[sendAIRequest] RegexManager.apply 异常，跳过:', e && e.message);
             }
         }
+        // 【BUG-001 深度修复】在 RegexManager.apply 与 formatStory 之间插入让步点。
+        // 两个重正则操作紧挨执行会堆积 30-60 秒同步任务（RegexManager 全量正则 + formatStory
+        // 6+ 正则 + DOM 查询），中间让步一次让浏览器有机会响应交互和绘制。
+        await new Promise(function(r) { setTimeout(r, 0); });
         // 【P1-5 修复】保存最新 AI 回复到 _lastAIReply，供未来扩展（如宏引用、调试、续写参考）
         // 原实现仅声明 _lastAIReply: null 但从未写入，导致字段恒为 null
         if (gameState) {
@@ -2408,7 +2435,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                         .filter(function(evt) { return evt && evt.trim().length > 0; })
                         .map(function(evt) { return { content: evt.trim(), importance: 7 }; });
                     if (_keyEventObjs2.length > 0) {
-                        try { _gm2.addImportantEvents(_keyEventObjs2); } catch (e) { console.warn('[pushKeyEvents] 兜底同步失败:', e); }
+                        // 【BUG-001 深度修复】延迟到下一 tick，避免 O(n·m) 去重 + 同步 saveToStorage 阻塞主线程
+                        var _evtsToAdd2 = _keyEventObjs2;
+                        setTimeout(function() {
+                            try { _gm2.addImportantEvents(_evtsToAdd2); } catch (e) { console.warn('[pushKeyEvents] 兜底同步失败:', e); }
+                        }, 0);
                     }
                 }
             }
@@ -2502,8 +2533,14 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 避免 accumulate 类型首次生成后 !hasType() 永久阻止后续兜底（与BUG-010同根）。
         try { ensureLogFallbacks(finalStory, data && data.world); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
         autoSave();
-        // 传入当前响应更新Token计数（estimateTokensUtil 优先用 Tokenizer 精确计数，回退字符估算）
-        updateTokenCount(response);
+        // 【BUG-001 深度修复】延迟 token 计数到下一 tick。
+        // updateTokenCount 内部调用 estimateTokensForMessagesUtil 迭代整个 conversationHistory
+        // （最多 200 条消息），是后处理链末尾的重操作。token 计数仅用于 UI 显示，不影响故事渲染，
+        // 延迟执行可避免与前面的 autoSave 叠加阻塞主线程。
+        var _tokenResp = response;
+        setTimeout(function() {
+            try { updateTokenCount(_tokenResp); } catch (e) { console.warn('[updateTokenCount] 延迟执行失败:', e); }
+        }, 0);
     } catch (error) {
         TypewriterBuffer.stop();
         // 清理 AbortController
