@@ -133,6 +133,12 @@ var StreamBridge = (function() {
                 console.warn('[StreamBridge] FALLBACK 解析失败:', e);
                 fallbackResult = msg.rawBody || '';
             }
+            // 透传 reasoning 文本，与 DONE 路径保持一致
+            try {
+                if (typeof window !== 'undefined') {
+                    window._lastReasoningText = msg.reasoningText || '';
+                }
+            } catch (e) {}
             _cleanupRequest(msg.requestId);
             req.resolve(fallbackResult);
         }

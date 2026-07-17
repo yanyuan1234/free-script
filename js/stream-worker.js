@@ -247,9 +247,10 @@ async function _executeStream(requestId, url, body, apiKey) {
         _workerCtx.postMessage({
             type: 'FALLBACK',
             requestId: requestId,
-            rawBody: rawBody
+            rawBody: rawBody,
+            reasoningText: ctx.reasoningText || ''
         });
-        return { needFallback: true, rawBody: rawBody };
+        return { needFallback: true, rawBody: rawBody, reasoningText: ctx.reasoningText || '' };
     }
 
     if (!ctx.fullText && !ctx.streamError) {

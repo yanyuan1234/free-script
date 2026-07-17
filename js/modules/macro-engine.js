@@ -642,6 +642,18 @@ var MacroEngine = {
         return gameState.userPrompt || '';
     },
 
+    // 获取当前模型名（与 SillyTavern {{model}} 对齐）
+    getModel: function() {
+        if (typeof LocalGameAPI !== 'undefined' && LocalGameAPI.getCurrentConfig) {
+            var cfg = LocalGameAPI.getCurrentConfig();
+            if (cfg && cfg.model) return cfg.model;
+        }
+        if (typeof gameState !== 'undefined' && gameState && gameState._lastModelName) {
+            return gameState._lastModelName;
+        }
+        return '';
+    },
+
     // 获取最后一条用户消息
     getLastUserMessage: function() {
         if (typeof gameState === 'undefined' || !gameState) return '';
@@ -856,6 +868,11 @@ var MacroEngine = {
         if (diff < 86400000) return Math.floor(diff / 3600000) + 'h';
         return Math.floor(diff / 86400000) + 'd';
         });
+
+    // {{model}} - 当前正在使用的模型名（酒馆角色卡/预设常用）
+    text = text.replace(/\{\{model\}\}/gi, function() {
+        return env.model || self.getModel();
+    });
 
     // ===== 补全酒馆常用宏 =====
 
