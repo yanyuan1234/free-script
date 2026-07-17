@@ -31,7 +31,7 @@
             移除 'unsafe-eval' 将直接破坏预设脚本执行功能；如未来重构为 Web Worker + blob URL
             方案可彻底移除此放宽项，但需异步代理沙箱 API，风险较高，暂不实施。
         -->
-        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' data: blob:; frame-src 'none'; object-src 'none';">
+        <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src *; media-src 'self' data: blob:; frame-src 'none'; object-src 'none';">
         <title>自由剧本 · FREE SCRIPT</title>
         <link rel="icon" type="image/svg+xml" href="favicon.svg">
         <!-- 【P1 PWA】manifest 配置，支持添加到主屏 -->

@@ -2081,6 +2081,11 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 时间系统：从AI返回的JSON中解析gameTime字段（纯文本模式下 data 为 null 也尝试更新UI）
 
+        // 【BUG-001 深度修复】在 18 字段 UI 渲染（renderBag/renderQuests/renderRelationships/
+        // renderWorldModules）与时间系统/标题/选项之间插入让步点。
+        // 18 字段 UI 渲染会触发 StateManager 订阅者批量更新 DOM，紧接的时间解析 + 标题更新 +
+        // 选项生成（含 _generateAutoChoices 正则）会堆积同步任务。让步一次让浏览器绘制 UI。
+        await new Promise(function(r) { setTimeout(r, 0); });
         if (typeof GameTimeSystem !== 'undefined') {
             var _preGameTime = StateManager ? StateManager.get('progress.preAIState.gameTime') : (gameState && gameState._preAIState && gameState._preAIState.gameTime);
             if (_aiTitleReset && _preGameTime) {
@@ -2141,6 +2146,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         if (data && data.choices && gameState) {
+        // 【BUG-001 深度修复】在选项渲染后、记忆提取/snapshot/快照前插入让步点。
+        // 选项渲染（renderChoices）+ _generateAutoChoices 正则会累积同步任务，
+        // 紧接的记忆提取（虽已延迟）+ 货币系统 + keyEvents + snapshot 也会堆积。
+        // 让步一次让选项 UI 先绘制。
+        await new Promise(function(r) { setTimeout(r, 0); });
             gameState._lastChoices = data.choices.map(function(c) {
                 return typeof c === 'string' ? c : (c && c.text) || '';
             });
@@ -2548,6 +2558,25 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 确保异常路径也调用 hideStoryLoading
         hideStoryLoading();
 
+        // 【BUG-002 深度修复】异常路径也更新标题。
+        // 后处理链中任何异常（JSON.parse 失败、正则回溯等）会导致 try 块中断，
+        // line 2107 的正常兜底不会执行。此处补一个异常路径兜底，确保标题不停留在
+        // line 1012 设置的 userPrompt（"我想玩西方奇幻游戏..."）。
+        // 条件与正常路径一致：gameState 存在且 sceneTitle 未被设置过有效值
+        try {
+            if (gameState && typeof StateManager !== 'undefined' && StateManager.get) {
+                var _curSceneTitle = StateManager.get('progress.sceneTitle');
+                if (!_curSceneTitle) {
+                    var _errTurn = StateManager.get('progress.turn') || 0;
+                    var _errFallbackTitle = '第 ' + (_errTurn + 1) + ' 回合';
+                    updateSceneTitle(_errFallbackTitle);
+                    if (StateManager.set) {
+                        StateManager.set('progress.sceneTitle', _errFallbackTitle, { silent: true });
+                    }
+                }
+            }
+        } catch (titleErr) { /* 忽略标题兜底失败 */ }
+
         // 若 AIResponseMutator 已执行（写入了 StateManager 并推进回合），但后续流程抛异常，
         // 需要从 _undoHistory 恢复到请求前的状态，避免状态不一致（回合已推进但剧情未追加）
         if (_aiMutatorApplied && gameState._undoHistory && gameState._undoHistory.length > 0) {
@@ -2584,8 +2613,17 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【BUG-005 修复】用户主动取消（AbortError）时，保留已显示的故事文本，
         // 不调用 showError（其内部在 storyText 无内容时会覆盖 innerHTML，导致已显示文本被清除），
         // 取消按钮已显示 toast，此处仅记录日志
-        if (error && error.name === 'AbortError') {
-            console.log('[sendAIRequest] 用户取消生成（AbortError）');
+        // 【BUG-009 修复】扩展取消识别：
+        //   1. 标准 AbortError (error.name === 'AbortError')
+        //   2. fetch 流中断抛出的 "BodyStreamBuffer was aborted"（非标准 AbortError 实例）
+        //   3. signal.aborted 标志（用户已 abort，但错误对象未标识 AbortError）
+        // 这三种情况都视为用户主动取消，不显示错误提示
+        var _isUserAbort = (error && error.name === 'AbortError')
+            || (error && error.aborted === true)
+            || (error && error.message && /BodyStreamBuffer was aborted|aborted/i.test(error.message))
+            || (window._currentAbort && window._currentAbort.signal && window._currentAbort.signal.aborted);
+        if (_isUserAbort) {
+            console.log('[sendAIRequest] 用户取消生成（AbortError/BodyStreamBuffer）');
         } else {
             var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
             // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
