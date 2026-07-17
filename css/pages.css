@@ -334,7 +334,11 @@
     border-bottom: 1px solid var(--border);
     font-size: 12px;
     color: var(--text-secondary);
-    flex-shrink: 0
+    flex-shrink: 0;
+    /* 【BUG-008 修复】创建独立定位上下文，避免打字机 tick 引发的 storyText reflow
+       导致按钮 box model 在 CDP 自动化测试中无法计算（"Could not compute box model"） */
+    position: relative;
+    z-index: 10
 }
 
 .gen-control.active {

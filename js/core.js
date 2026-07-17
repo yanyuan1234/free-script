@@ -1093,6 +1093,13 @@ var LocalGameAPI = {
         }
         const totalSlots = this._configs.length;
         let attemptedCount = 0;
+        // 【BUG-004 修复】预统计真正可用的配置数（有 baseUrl + apiKey），
+        // 避免 _configs 数组中存在空占位 slot 时，"尝试下一个"条件误判
+        var totalUsable = 0;
+        for (let i = 0; i < totalSlots; i++) {
+            var _c = this._configs[i];
+            if (_c && _c.baseUrl && _c.apiKey) totalUsable++;
+        }
         // 轮换顺序：当前 slot 起循环，失败标记仅作 UI 提醒，不影响轮换顺序
         var orderedSlots = [];
         for (let i = 0; i < totalSlots; i++) {
@@ -1116,12 +1123,16 @@ var LocalGameAPI = {
             // 注意：不再自动跳过"近期失败"的模型——失败只是 UI 提醒，玩家想用就能用
             // 如果某个模型一直挂，玩家会在 UI 上看到 ⚠️ 提醒，自然会换或调整
             attemptedCount++;
+            // 【BUG-004 修复】用可用配置序号（attemptedCount）而非数组下标 (slotIdx+1) 显示，
+            // 避免 _configs 中存在空占位 slot 时显示"配置 2 失败"（实际只有1个可用配置）
+            // 优先使用配置名称，无名称时回退到"配置 N"
+            var cfgLabel = cfg.name || ('配置 ' + attemptedCount);
             try {
                 const result = await this._retrySingleRequest(requestFn, slotIdx, 0, MAX_RETRIES, RETRY_DELAY_BASE);
                 this._logRequest(slotIdx, true, '', Date.now() - startTs);
                 if (attempt > 0 && slotIdx !== this._currentSlot) {
                     this.setCurrentSlot(slotIdx);
-                    UI.toast('已自动切换到配置 ' + (slotIdx + 1));
+                    UI.toast('已自动切换到 ' + cfgLabel);
                 }
                 return result;
             } catch (e) {
@@ -1129,14 +1140,14 @@ var LocalGameAPI = {
                 this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
                 // 失败标记记录原因，超时模型会在短期内被跳过
                 this._markModelFailed(slotIdx, errMsg);
-                console.warn('配置 ' + (slotIdx + 1) + ' (' + cfg.model + ') 调用失败:', errMsg);
+                console.warn(cfgLabel + ' (' + cfg.model + ') 调用失败:', errMsg);
 
-                failReasons.push('配置' + (slotIdx + 1) + '(' + (cfg.model || '?') + '): ' + errMsg);
+                failReasons.push(cfgLabel + '(' + (cfg.model || '?') + '): ' + errMsg);
                 // 超时错误给出明确提示
                 if (/timeout|timed out|超时/i.test(errMsg)) {
-                    UI.toast('配置 ' + (slotIdx + 1) + ' 请求超时，已临时跳过');
-                } else if (attemptedCount < totalSlots && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
-                    UI.toast('配置 ' + (slotIdx + 1) + ' 失败，尝试下一个...');
+                    UI.toast(cfgLabel + ' 请求超时，已临时跳过');
+                } else if (attemptedCount < totalUsable && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
+                    UI.toast(cfgLabel + ' 失败，尝试下一个...');
                 }
             }
         }

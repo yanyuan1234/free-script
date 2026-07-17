@@ -5,7 +5,10 @@
 
 // 【冗余审计 P0-4】统一 max_tokens / context 默认值常量，消除 20+ 处硬编码
 // 所有 fallback 用此常量，避免 8000/8192 混用导致行为不一致
-const DEFAULT_MAX_TOKENS = 16384;
+// 【BUG-003 修复】从 16384 提升到 32768：JSON Schema 有 18 个 required 字段
+// 故事正文（500-2000 字）+ 18 字段（角色/物品/任务/关系等）合计可能超过 16K tokens
+// 提升到 32K 给足余量，避免 max_tokens 截断导致 JSON 解析失败
+const DEFAULT_MAX_TOKENS = 32768;
 // P1 修复 BUG-004 残留：原值 8192 与 core.js detectContextSize 兜底 32000 不一致
 // 在 getContextSizeSafe() fallback 时会返回过小的 8192 导致上下文预算计算错误
 // 统一为 32000，与 detectContextSize 内部兜底值一致

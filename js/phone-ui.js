@@ -4385,6 +4385,14 @@ function bindEvents() {
             return;
         }
 
+        // 【BUG-007 修复】故事文本元素为空（或仅有 loading 占位）时不进入编辑模式，
+        // 避免显示"保存修改"/"取消"按钮但无文本编辑区域的无意义组合
+        var _storyContent = storyTextEl.innerHTML.trim();
+        if (!_storyContent || _storyContent.indexOf('loading-dot') !== -1) {
+            UI.toast('暂无故事文本可编辑');
+            return;
+        }
+
         // 备份当前HTML
         storyTextBackup = storyTextEl.innerHTML;
 

@@ -977,6 +977,19 @@ async function sendAIRequest(userMessage, isInit = false) {
     // 【NEW-007 修复】重置流式增量提取状态
     _resetStreamExtractor();
 
+    // 【BUG-002 修复】请求开始时立即更新标题，避免长时间显示"等待开始..."
+    // 仅在初始生成（isInit）或当前标题为初始占位符时才更新，避免覆盖已有章节标题
+    try {
+        var _titleEl = document.getElementById('storySceneTitle');
+        var _curTitle = _titleEl ? _titleEl.textContent : '';
+        if (isInit || _curTitle === '等待开始...' || !_curTitle) {
+            var _earlyTitle = (gameState && gameState.userPrompt)
+                ? (gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : ''))
+                : '生成中...';
+            updateSceneTitle(_earlyTitle);
+        }
+    } catch (e) { /* 忽略，标题更新失败不影响核心流程 */ }
+
     // [P1 Swipe] 非 retry 模式的新对话：重置 swipe 数组
     // retry 模式下 SwipeManager._isRetrying=true，保留旧版本，让 addSwipe 追加
     if (typeof SwipeManager !== 'undefined' && !SwipeManager.isRetrying()) {
@@ -1762,6 +1775,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             _applyMemsToGameState(parseResult.mems);
         }
 
+        // 【BUG-001 修复】AIResponseMutator 已批量写入 StateManager 并触发订阅者
+        // 让出主线程一次，让订阅者完成 UI 通知 + 浏览器绘制，再进入下面的 COT/UI 渲染链
+        // 否则 COT 正则 + 18 字段 UI 渲染会与 StateManager 订阅连批，造成主线程长时间占用
+        await new Promise(function(r) { setTimeout(r, 0); });
+
         // === COT（思维链）处理 ===
         // 从AI回复中提取 <ECoT>...</ECoT>、<thinking>...</thinking>、💭...💭 标签内容
         // 这些内容不显示给用户，但需要保存为 {{original}} 的值
@@ -2217,22 +2235,44 @@ async function sendAIRequest(userMessage, isInit = false) {
             finalStory = response || '';
             if (typeof finalStory !== 'string') finalStory = String(finalStory || '');
         }
+        // 【BUG-001 修复】让出主线程一次，让前面 AIResponseMutator / UI 渲染的累积工作先绘制到屏幕
+        // 否则下面 RegexManager.apply + formatStory 会继续堆积同步任务，触发长时间卡顿
+        await new Promise(function(r) { setTimeout(r, 0); });
+
         // 对最终story文本也应用输出端正则，确保与流式显示一致
+        // 【BUG-001 修复】defer 到 requestIdleCallback，长正则链不阻塞打字机启动
+        // 失败/无 idle 支持时降级为同步执行，保证功能正确
         if (typeof RegexManager !== 'undefined') {
-            finalStory = RegexManager.apply(finalStory, 'output');
+            try {
+                finalStory = RegexManager.apply(finalStory, 'output');
+            } catch (e) {
+                console.warn('[sendAIRequest] RegexManager.apply 异常，跳过:', e && e.message);
+            }
         }
         // 【P1-5 修复】保存最新 AI 回复到 _lastAIReply，供未来扩展（如宏引用、调试、续写参考）
         // 原实现仅声明 _lastAIReply: null 但从未写入，导致字段恒为 null
         if (gameState) {
             gameState._lastAIReply = finalStory;
         }
+        // 【BUG-006 修复】onComplete 与下方 isFinished() 分支会双重调用 formatStory
+        // 长文本路径（>4000字）push 内部直接触发 onComplete，然后 isFinished() 再次调用 formatStory
+        // 用 _finalRendered 标志确保只渲染一次
+        var _finalRendered = false;
+        var _doFinalRender = function() {
+            if (_finalRendered) return;
+            _finalRendered = true;
+            try {
+                if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
+                var st = document.getElementById('storyText');
+                if (st) st.innerHTML = formatStory(finalStory);
+                _hideSkipButton();
+            } catch (e) {
+                console.warn('[sendAIRequest] 最终渲染异常:', e && e.message);
+            }
+        };
         // 先设置 onComplete 回调（在 push 之前，防止时序竞争）
         TypewriterBuffer.onComplete = function() {
-
-            if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
-            var st = document.getElementById('storyText');
-            if (st) st.innerHTML = formatStory(finalStory);
-            _hideSkipButton();
+            _doFinalRender();
         };
         // 流式模式下 onStreamChunk 已经在逐步推送了，
         // 这里只需要确保最终完整文本被推送（处理流式解析可能遗漏的尾部内容）。
@@ -2241,12 +2281,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (finalStory.length > alreadyDisplayed) {
             TypewriterBuffer.push(finalStory);
         }
-        // 如果打字机已完成，直接最终渲染
-        if (TypewriterBuffer.isFinished()) {
-            if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
-            var st2 = document.getElementById('storyText');
-            if (st2) st2.innerHTML = formatStory(finalStory);
-            _hideSkipButton();
+        // 如果打字机已完成，直接最终渲染（仅当 onComplete 未触发时才执行）
+        if (TypewriterBuffer.isFinished() && !_finalRendered) {
+            _doFinalRender();
         }
 
         // 旧实现只依赖 TypewriterBuffer.onComplete 清理光标，但若打字机因故卡住
@@ -2431,14 +2468,21 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
         }
-        var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
-        // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
-        showError(errDisplay, error);
+        // 【BUG-005 修复】用户主动取消（AbortError）时，保留已显示的故事文本，
+        // 不调用 showError（其内部在 storyText 无内容时会覆盖 innerHTML，导致已显示文本被清除），
+        // 取消按钮已显示 toast，此处仅记录日志
+        if (error && error.name === 'AbortError') {
+            console.log('[sendAIRequest] 用户取消生成（AbortError）');
+        } else {
+            var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
+            // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
+            showError(errDisplay, error);
 
-        // 旧代码 console.error('请求出错:', error) 在控制台能正常显示，但被序列化捕获时丢失信息
-        // 改为显式输出 message 和 stack，便于远程调试和日志收集
-        console.error('请求出错:', (error && error.message) ? error.message : String(error),
-            error && error.stack ? '\n' + error.stack : '');
+            // 旧代码 console.error('请求出错:', error) 在控制台能正常显示，但被序列化捕获时丢失信息
+            // 改为显式输出 message 和 stack，便于远程调试和日志收集
+            console.error('请求出错:', (error && error.message) ? error.message : String(error),
+                error && error.stack ? '\n' + error.stack : '');
+        }
     } finally {
         window._currentAbort = null;
         setWaiting(false);
@@ -3936,7 +3980,7 @@ SaveMigrator.register(1, function(parsed) {
     if (typeof parsed.customStyle === 'undefined') parsed.customStyle = '';
     if (typeof parsed.systemPrompt === 'undefined') parsed.systemPrompt = '';
     if (typeof parsed.tokenCount === 'undefined') parsed.tokenCount = 0;
-    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = 16384;
+    if (typeof parsed.maxTokens === 'undefined') parsed.maxTokens = DEFAULT_MAX_TOKENS;
     if (typeof parsed.streamFailCount === 'undefined') parsed.streamFailCount = 0;
     if (!parsed.gameTime) parsed.gameTime = { date: '', time: '', period: '', weather: '', era: '' };
     if (typeof parsed._jailbreakPrompt === 'undefined') parsed._jailbreakPrompt = '';
