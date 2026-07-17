@@ -8,19 +8,29 @@
 //
 
 // -----------------------------------------------
-// 本文件 5500+ 行混合 13 个职责域：
-//   1.  数据同步（_sync*/_push*）
-//   2.  UI 弹窗/导航/模态（UI 对象）
-//   3.  API Key 混淆（_obfuscateKey 等）
-//   4.  API 配置与重试（LocalGameAPI）
-//   5.  IndexedDB 存档（SaveDB）
-//   6.  题材库（THEME_LIBRARY）
-//   7.  全局状态工厂（createDefaultGameState/ensureGameStateFields/resetRuntimeState/RuntimeState）
-//   8.  打字机（TypewriterBuffer）
-//   9.  时间系统（GameTimeSystem）
-//   10. JSON 解析 + 小剧场映射（extractStr/parseXxxContent/_mapTheaterByKey）
-//   11. 错误翻译/HTML 净化（translateError/_cleanUnrecognizedTags）
-//   12. AI 请求构建（callAI/sendAIRequest）
+// 本文件 6250+ 行混合 13 个职责域（拆分规划，按行号定位）：
+//   1.  数据同步（_sync*/_push*）                L42-371
+//   2.  UI 弹窗/导航/模态（UI 对象）              L386-907
+//   3.  API Key 混淆（_obfuscateKey 等）          L912-967
+//   4.  API 配置与重试（LocalGameAPI）            L967-1407
+//   5.  IndexedDB 存档（SaveDB）                  L1411-1810
+//   6.  题材库（THEME_LIBRARY）                   L1815-1994
+//   7.  全局状态工厂（createDefaultGameState 等）  L1999-2265
+//   8.  打字机（TypewriterBuffer）                L2269-2591
+//   9.  时间系统（GameTimeSystem）                L2626-2760
+//   10. JSON 解析 + 小剧场映射（extractStr 等）   L2764-4085
+//   11. 错误翻译/HTML 净化（translateError 等）   L4091-4440
+//   12. AI 请求构建（callAI/executeAIStream）     L4902-5437
+//   13. 模型上下文检测（_KNOWN_MODEL_CONTEXT）    L5701-5920
+//
+// 【架构升级进度 2026-07-17】
+// ✅ 流式解析已移至 Web Worker（stream-worker.js + stream-bridge.js）
+//    - callAI 优先调用 StreamBridge.executeAIStreamViaWorker
+//    - Worker 不可用时自动降级到 executeAIStream（本文件保留）
+//    - SSE 解析 + JSON.parse + 文本累加全部在 Worker 线程，主线程只接收节流后的 CHUNK
+// ⏳ core.js 拆分：本次仅做行号定位（见上），物理拆分待后续按需进行
+//    拆分原则：每个职责域抽到独立文件，core.js 保留 facade 重导出，保持全局名兼容
+//    风险控制：translateError 等闭包耦合函数需要先重构才能拆分，避免机械拆分引入回归
 //
 
 //   - core.js 不再直接调用 game.js 函数，统一走 RuntimeBridge.xxx()
@@ -5572,7 +5582,28 @@ async function callAI(messages, options = {}) {
                     var url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
                     var body = buildAIRequestBody(messages, options, config);
                     if (options.stream) {
-                        return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
+                        // 【架构升级】优先通过 Web Worker 执行流式解析，避免主线程被 SSE 解析 + JSON.parse 占满。
+                        // 长回答（50-150KB）时主线程保持响应，用户可随时点击取消/其他按钮。
+                        // Worker 不可用时自动降级到原 executeAIStream（主线程解析）。
+                        if (typeof StreamBridge !== 'undefined' && StreamBridge.isAvailable()) {
+                            try {
+                                return await StreamBridge.executeAIStreamViaWorker(url, body, config.apiKey, localAC.signal, options.onChunk);
+                            } catch (wErr) {
+                                // WORKER_UNAVAILABLE 或 Worker 运行时错误：降级到主线程
+                                if (wErr && wErr.message === 'WORKER_UNAVAILABLE') {
+                                    console.warn('[callAI] Worker 不可用，降级到主线程流式解析');
+                                } else if (wErr && wErr.name === 'AbortError') {
+                                    // 用户取消，不降级，直接抛出
+                                    throw wErr;
+                                } else {
+                                    console.warn('[callAI] Worker 流式失败，降级到主线程:', wErr && wErr.message);
+                                }
+                                // 降级到原 executeAIStream（主线程同步解析）
+                                return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
+                            }
+                        } else {
+                            return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
+                        }
                     } else {
                         return await executeAINormal(url, body, config.apiKey, localAC.signal);
                     }
