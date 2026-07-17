@@ -1011,6 +1011,9 @@ async function sendAIRequest(userMessage, isInit = false) {
 
     // 【BUG-002 修复】请求开始时立即更新标题，避免长时间显示"等待开始..."
     // 仅在初始生成（isInit）或当前标题为初始占位符时才更新，避免覆盖已有章节标题
+    // 【BUG-002 深度修复】早期标题只更新 DOM，不写 StateManager。
+    // 但若上次请求失败导致 StateManager 中残留了 userPrompt 作为 sceneTitle，
+    // 需要在此清除，确保本次请求的兜底逻辑（line 2107 / catch 块）能正确触发。
     try {
         var _titleEl = document.getElementById('storySceneTitle');
         var _curTitle = _titleEl ? _titleEl.textContent : '';
@@ -1019,6 +1022,12 @@ async function sendAIRequest(userMessage, isInit = false) {
                 ? (gameState.userPrompt.trim().substring(0, 20) + (gameState.userPrompt.length > 20 ? '...' : ''))
                 : '生成中...';
             updateSceneTitle(_earlyTitle);
+            // 【BUG-002 深度修复】清除 StateManager 中可能残留的 sceneTitle，
+            // 让后续兜底逻辑（!StateManager.get('progress.sceneTitle')）能正确触发。
+            // 注意：updateSceneTitle 只改 DOM 不改 StateManager，所以这里手动清除。
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('progress.sceneTitle', '', { silent: true });
+            }
         }
     } catch (e) { /* 忽略，标题更新失败不影响核心流程 */ }
 
@@ -2112,6 +2121,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && !StateManager.get('progress.sceneTitle')) {
             var _fbTurn = StateManager ? (StateManager.get('progress.turn') || 0) : ((gameState._stats && gameState._stats.totalTurns) || 0);
             var fallbackTitle = '第 ' + (_fbTurn + 1) + ' 回合';
+            console.log('[BUG-002] 正常路径标题兜底触发, sceneTitle was empty, 设置为:', fallbackTitle);
             updateSceneTitle(fallbackTitle);
             if (typeof StateManager !== 'undefined' && StateManager.set) {
                 StateManager.set('progress.sceneTitle', fallbackTitle, { silent: true });
@@ -2569,10 +2579,13 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (!_curSceneTitle) {
                     var _errTurn = StateManager.get('progress.turn') || 0;
                     var _errFallbackTitle = '第 ' + (_errTurn + 1) + ' 回合';
+                    console.log('[BUG-002] 异常路径标题兜底触发, sceneTitle was empty, 设置为:', _errFallbackTitle);
                     updateSceneTitle(_errFallbackTitle);
                     if (StateManager.set) {
                         StateManager.set('progress.sceneTitle', _errFallbackTitle, { silent: true });
                     }
+                } else {
+                    console.log('[BUG-002] 异常路径标题兜底未触发, sceneTitle 已有值:', _curSceneTitle);
                 }
             }
         } catch (titleErr) { /* 忽略标题兜底失败 */ }
@@ -3478,10 +3491,15 @@ var _reCotTags = (function() {
         ? OutputSanitizer.THINKING_TAGS
         : [];
     var alt = tags.join('|');
-    return new RegExp('(?:<(' + alt + ')\\b[^>]*>)([\\s\\S]+?)(?:</(' + alt + ')\\s*>)|💭([\\s\\S]+?)💭', 'gi');
+    // 【根因修复 4】原正则起止标签名不强制匹配（<thinking>...</reasoning> 也匹配），
+    // AI 流式输出常产生未闭合 <thinking>，导致 [\s\S]+? 扫到文末，O(k×n) 回溯。
+    // 改用反向引用 \1 强制起止同名，未闭合标签不再触发跨段扫描。
+    return new RegExp('(?:<(' + alt + ')\\b[^>]*>)([\\s\\S]+?)</\\1\\s*>|💭([\\s\\S]+?)💭', 'gi');
 })();
 // decorTags：装饰性标签清理（giggle/ice/snow/echo/danmu/branches/prologue 等）
-var _reDecorTags = /<(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+// 【根因修复 5】原正则起止标签名不强制匹配，未闭合标签触发 O(k×n) 回溯。
+// 改用捕获组 + 反向引用 \1 强制起止同名。
+var _reDecorTags = /<(giggle|ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/\1>/gi;
 // _reInitialSceneMarkers：初始场景标识（第一章/苏醒/开始/序幕等）
 var _reInitialSceneMarkers = /第\s*1\s*[章回]|第一章|第1回|初始|开始|苏醒|醒来|开局|起点|序幕|序章/;
 // _reCnTwoChars：连续 2 个中文字符（_looksLikeInitialScene 内联正则）
@@ -3503,7 +3521,7 @@ var _reGiggleCNStrip = /【giggle】[\s\S]*?【\/giggle】/gi;
 var _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi;
 var _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi;
 var _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi;
-var _reDecorTagsTyping = /<(?:ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/(?:ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)>/gi;
+var _reDecorTagsTyping = /<(ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/\1>/gi;
 
 // 检测标题是否疑似初始场景（用于防御 AI  confused 回退）
 function _looksLikeInitialScene(title, userPrompt) {

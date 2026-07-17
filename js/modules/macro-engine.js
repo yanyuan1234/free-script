@@ -948,16 +948,19 @@ var MacroEngine = {
     */
     _processScopedConditionals: function(text) {
         const self = this;
-        var maxIterations = 50;
+        // 【根因修复 3】原 maxIterations=50 + 正则 \/? 让 {{if}} 误判为闭合标签，
+        // 导致每次循环只消解一层嵌套。未闭合 {{if}} 时全文扫描 50 次 = O(50×n)。
+        // 改为 maxIterations=15（实际嵌套深度极少超过 10）+ 强制闭合标签必须有斜杠。
+        var maxIterations = 15;
         var iterations = 0;
 
         while (iterations < maxIterations) {
             var newText = text;
 
             // 使用非贪婪匹配先处理最内层的 {{if}}...{{/if}}
-            // 然后通过while循环逐步处理外层
+            // 【根因修复 3】闭合标签强制要求斜杠（移除 \/?），避免 {{if}} 被误判为闭合标签
             newText = text.replace(
-            /\{\{\s*if\s+([\s\S]*?)\s*\}\}([\s\S]*?)\{\{\s*\/?\s*if\s*\}\}/gi,
+            /\{\{\s*if\s+([\s\S]*?)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/gi,
             function(match, condition, body) {
                 // 在body中查找同级的{{else}}（跳过嵌套的{{if}}）
                 var elseIdx = -1;

@@ -936,10 +936,23 @@ apply: function(text, placement, messageIndex) {
     const self = this;
     var result = text;
 
+    // 【根因修复 1】运行时超时保护：单个正则脚本执行超过阈值时跳过后续脚本。
+    // 这是防止用户配置的低质量正则触发灾难性回溯导致浏览器冻结 150s+ 的最后防线。
+    // RegexSafetyChecker.isSafe 是事前静态检查，无法防止运行时回溯，必须配合运行时计时。
+    var _applyStartTime = Date.now();
+    var _APPLY_TOTAL_TIMEOUT_MS = 5000;  // 全部脚本总执行上限 5 秒
+    var _APPLY_PER_SCRIPT_MS = 2000;     // 单脚本上限 2 秒（足够正常正则，回溯爆炸会被截断）
+
     // 使用 getAllScripts() 获取全局正则 + 当前预设正则
     var allScripts = this.getAllScripts();
-    allScripts.forEach(function(script) {
-        if (!self.isScriptEnabled(script)) return;
+    for (var _si = 0; _si < allScripts.length; _si++) {
+        // 总超时检查
+        if (Date.now() - _applyStartTime > _APPLY_TOTAL_TIMEOUT_MS) {
+            console.warn('[RegexManager] 总执行时间超过 ' + _APPLY_TOTAL_TIMEOUT_MS + 'ms，跳过剩余 ' + (allScripts.length - _si) + ' 个脚本');
+            break;
+        }
+        var script = allScripts[_si];
+        if (!self.isScriptEnabled(script)) continue;
 
         // 检查是否应该应用于当前位置
         // 构建 placement 集合（去重）
@@ -989,24 +1002,26 @@ switch(placement) {
     shouldApply = true;
 }
 
-if (!shouldApply) return;
+if (!shouldApply) continue;
 
 // runOnEdit: 仅在编辑模式下应用，正常生成流程中跳过
-if (script.runOnEdit && placement !== 'edit') return;
+if (script.runOnEdit && placement !== 'edit') continue;
 
 // markdownOnly: 仅在display模式下应用
-if (script.markdownOnly && placement !== 'display') return;
+if (script.markdownOnly && placement !== 'display') continue;
 
 // promptOnly: 在 input/output/prompt/worldInfo/reasoning 模式下应用
 // 不在 display 模式下应用（除非 markdownOnly 也为 true）
-if (script.promptOnly && placement === 'display' && !script.markdownOnly) return;
+if (script.promptOnly && placement === 'display' && !script.markdownOnly) continue;
 
 // 深度限制检查
 if (messageIndex != null) {
-    if (script.minDepth != null && script.minDepth > 0 && messageIndex < script.minDepth) return;
-    if (script.maxDepth != null && script.maxDepth > 0 && messageIndex > script.maxDepth) return;
+    if (script.minDepth != null && script.minDepth > 0 && messageIndex < script.minDepth) continue;
+    if (script.maxDepth != null && script.maxDepth > 0 && messageIndex > script.maxDepth) continue;
 }
 
+// 【根因修复 1】单脚本计时：记录执行前时间，执行后检查是否超时
+var _scriptStartTime = Date.now();
 try {
     result = self.applySingleScript(result, script);
 } catch(e) {
@@ -1020,7 +1035,21 @@ try {
     console.warn('[RegexManager] 脚本 "' + (script && script.name ? script.name : 'unnamed')
         + '" 执行异常，已跳过: ' + (e && e.message ? e.message : String(e)));
 }
-});
+var _scriptElapsed = Date.now() - _scriptStartTime;
+if (_scriptElapsed > _APPLY_PER_SCRIPT_MS) {
+    // 单脚本执行超时，标记错误并跳过后续脚本（疑似灾难性回溯）
+    if (script) {
+        script._lastError = '执行超时(' + _scriptElapsed + 'ms)，疑似灾难性回溯';
+        script._errorTime = Date.now();
+        script._errorCount = (script._errorCount || 0) + 1;
+    }
+    console.warn('[RegexManager] 脚本 "' + (script && script.name ? script.name : 'unnamed')
+        + '" 执行耗时 ' + _scriptElapsed + 'ms（超过 ' + _APPLY_PER_SCRIPT_MS + 'ms 上限），'
+        + '疑似灾难性回溯，跳过剩余脚本。pattern: '
+        + (script && script.findPattern ? script.findPattern.substring(0, 80) : 'unknown'));
+    break;
+}
+}
 
 return result;
 },

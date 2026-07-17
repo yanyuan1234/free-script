@@ -1240,10 +1240,16 @@ var PresetAppManager = (function() {
     // 将所有 XML 标签对合并为一个正则，避免 20+ 次独立的 replace 调用
     var _decorTagNames = ['gossip_rules', 'snow_rules', '激活群组', 'NSFW设计',
         'tableThink', 'tableEdit', 'horae', 'horaeevent', 'image', 'imgthink', '文生图', 'details'];
+    // 【根因修复 5】原正则起止标签名不强制匹配，改用捕获组 + 反向引用 \1 强制同名
     var _decorTagsRegex = new RegExp(
-        '<(?:' + _decorTagNames.join('|').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
-        ')[\\s>][\\s\\S]*?<\\/(?:' + _decorTagNames.join('|').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')>', 'gi');
+        '<(' + _decorTagNames.join('|').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') +
+        ')[\\s>][\\s\\S]*?<\\/\\1>', 'gi');
     var _reStyleDiv = /<style[\s>][\s\S]*?<\/style>\s*<div[\s>][\s\S]*?<\/div>/gi;
+    // 【根因修复 2】_reStyleDiv 含双 [\s\S]*? 串联，AI 输出多个 <style> 块但无配对 <div> 时
+    // 触发 O(k²×n) 灾难性回溯，单次调用可卡数十秒到数百秒。
+    // 拆成两个独立正则，各自只有单个 [\s\S]*?，回溯复杂度降为 O(k×n)。
+    var _reStyleBlock = /<style[\s>][\s\S]*?<\/style>/gi;
+    var _reDivBlock = /<div[\s>][\s\S]*?<\/div>/gi;
     var _reComment = /<!--[\s\S]*?-->/g;
     var _rePollinations = /https?:\/\/gen\.pollinations\.ai\/image\/[^\s<>"']+/gi;
     var _reImageHash = /image###[\s\S]*?###/gi;
@@ -1265,8 +1271,11 @@ var PresetAppManager = (function() {
         });
 
         // 移除 <style>...</style><div>...</div> 块（ice组件）
-        _reStyleDiv.lastIndex = 0;
-        result = result.replace(_reStyleDiv, '');
+        // 【根因修复 2】原 _reStyleDiv 双 [\s\S]*? 串联改为两步独立替换，避免灾难性回溯
+        _reStyleBlock.lastIndex = 0;
+        result = result.replace(_reStyleBlock, '');
+        _reDivBlock.lastIndex = 0;
+        result = result.replace(_reDivBlock, '');
 
 
         _decorTagsRegex.lastIndex = 0;
