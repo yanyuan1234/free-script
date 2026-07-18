@@ -71,7 +71,8 @@ var PresetManager = {
             var bp = window.BUILT_IN_PRESETS[i];
             if (existingIds[bp.builtinId]) continue;
             // 深拷贝，避免共享引用导致跨预设状态串改（公共段被多套预设共享）
-            var clone = JSON.parse(JSON.stringify(bp));
+            // 复用 utils.js 的 safeDeepClone（含 __proto__/constructor/prototype 危险键过滤）
+            var clone = safeDeepClone(bp);
             // 解析正则脚本为引擎内部格式（findRegex→findPattern, placement→applyInput/applyOutput）
             // 否则 RegexManager.apply 读 findPattern 为 undefined，正则静默失效
             if (clone.regexScripts && clone.regexScripts.length > 0 && typeof RegexManager !== 'undefined' && RegexManager.parseSingleRegex) {
@@ -100,7 +101,7 @@ var PresetManager = {
         }
 
         // 深拷贝 source，避免污染内置
-        var cloned = JSON.parse(JSON.stringify(source));
+        var cloned = safeDeepClone(source);
         // 改写标识：变成用户预设
         delete cloned._isBuiltin;
         delete cloned.builtinId;

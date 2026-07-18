@@ -20,7 +20,9 @@ var testFiles = [
     'state/currency-mutator.test.js',
     'state/quest-mutator.test.js',
     'state/relationship-mutator.test.js',
-    'state/time-mutator.test.js'
+    'state/time-mutator.test.js',
+    // P1 修复回归
+    'p1-verification.test.js'
 ];
 
 var failures = 0;

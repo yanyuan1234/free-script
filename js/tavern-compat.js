@@ -785,7 +785,6 @@ _executeScriptCode: function(code, sourceName) {
 
 // 7. 主入口
 loadFromPreset: function(presetData) {
-    console.log('[TavernHelper] 正在加载酒馆助手兼容层...');
     this._initToastr();
     var th = presetData.tavern_helper||presetData.extensions_tavern_helper||null;
     if(th){
@@ -933,8 +932,6 @@ TavernHelperCompat._removeListener = function(event, cb){
     }
 };
 }
-
-console.log('[TavernHelper] 酒馆助手兼容层已加载 (SillyTavern API 已补全)');
 
 // 自初始化：确保即使 initApp 在定义之前执行，init 也能被调用
 if (typeof initApp !== 'undefined' && initApp._initialized) {
@@ -2405,17 +2402,8 @@ var GameMemory = {
                     var jsonMatch = content.match(/\{[\s\S]*\}/);
                     if (jsonMatch) jsonStr = jsonMatch[0];
 
-                    var parsed;
-                    try { parsed = JSON.parse(jsonStr); } catch(jsonErr) {
-                        // 尝试修复常见JSON问题：尾随逗号、单引号
-                        try {
-                            var fixed = jsonStr.replace(/,\s*([}\]])/g, '$1').replace(/'/g, '"');
-                            parsed = JSON.parse(fixed);
-                        } catch(fixErr) {
-                            console.warn('[设定解析] JSON解析失败，无法修复:', jsonErr);
-                            return;
-                        }
-                    }
+                    // 复用 core.js 的 parseJSONHelper（含 ResponseParser 尾逗号 / 单引号修复等 5 层兜底）
+                    var parsed = parseJSONHelper(jsonStr);
                     if (!isObject(parsed)) {
                         console.warn('[设定解析] AI返回JSON解析结果非对象');
                         return;
@@ -6624,7 +6612,8 @@ return prompts.map(p => {
     // trimStrings（月读格式：额外要trim的字符串）
     if (script.trimStrings && Array.isArray(script.trimStrings)) {
         for (const ts of script.trimStrings) {
-            if (ts) text = text.replace(new RegExp(this._escapeRegex(ts), 'g'), '');
+            // 复用 core.js 的全局 escapeRegExp，避免重复实现
+            if (ts) text = text.replace(new RegExp(escapeRegExp(ts), 'g'), '');
         }
     }
 
@@ -6634,10 +6623,6 @@ return prompts.map(p => {
     }
 
     return text.replace(regex, replaceStr);
-    },
-
-    _escapeRegex(s) {
-        return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
     };
 
