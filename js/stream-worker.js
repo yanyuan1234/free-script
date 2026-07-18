@@ -53,10 +53,11 @@ function _parseSSEEventText(eventText, ctx) {
         var content = (typeof delta.content === 'string') ? delta.content : '';
         var reasoningChunk = (typeof delta.reasoning_content === 'string') ? delta.reasoning_content
                           : (typeof delta.reasoning === 'string') ? delta.reasoning : '';
-        // 模型把正文放 reasoning_content 时回退取 reasoning_content 作正文
-        if (!content && reasoningChunk) {
-            content = reasoningChunk;
-        } else if (reasoningChunk) {
+        // FIX-C1：不再把 reasoning_content/reasoning 回退为正文。对于该 API，reasoning 字段
+        // 是模型思考链；若 content 为空则意味着模型未输出正文。回退会导致完整 CoT 泄漏到
+        // story UI。参考原版单 HTML 只读取 delta.content，这里保持一致：正文只取 content，
+        // reasoning 仅用于折叠面板/调试。
+        if (reasoningChunk) {
             ctx.reasoningText += reasoningChunk;
         }
         ctx.fullText += content;

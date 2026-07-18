@@ -5203,16 +5203,13 @@ function parseSSEEventText(eventText, ctx) {
         if (!json.choices || !json.choices[0]) continue;
         var delta = json.choices[0].delta || {};
 
-        // 该模型把正文放在 reasoning_content 中，content 为 null。
-        // 策略：优先取 content；content 为空时回退到 reasoning_content。
+        // FIX-C1：正文只取 delta.content，reasoning 只用于折叠面板/调试。
+        // 参考原版单 HTML 仅读取 delta.content；将 reasoning_content/reasoning 回退为正文
+        // 会导致推理模型（如 stepfun-ai/step-3.7-flash）把完整思考链灌入 story UI。
         var content = (typeof delta.content === 'string') ? delta.content : '';
         var reasoningChunk = (typeof delta.reasoning_content === 'string') ? delta.reasoning_content
                           : (typeof delta.reasoning === 'string') ? delta.reasoning : '';
-        // Cloudflare Workers AI Kimi: content 为空但 reasoning_content 有内容 → 正文在 reasoning_content 中
-        if (!content && reasoningChunk) {
-            content = reasoningChunk;
-        } else if (reasoningChunk) {
-            // 真正的思考链，统计但不进入正文
+        if (reasoningChunk) {
             ctx.reasoningText += reasoningChunk;
         }
         ctx.fullText += content;
@@ -5245,9 +5242,9 @@ function parseAIResponseFallback(rawBody) {
                            : (typeof _msg.reasoning === 'string') ? _msg.reasoning : '';
             if (_content) return _content;
 
+            // FIX-C1：非流式整体 JSON 同样不把 reasoning 当正文回退。
             if (_reasoning) {
-                console.warn('[parseAIResponseFallback] content 为空，回退 reasoning_content（' + _reasoning.length + ' 字符）');
-                return _reasoning;
+                console.warn('[parseAIResponseFallback] content 为空但存在 reasoning_content，仅记录，不将其作为正文');
             }
             if (jsonData.usage) return '';
             return rawBody;
@@ -5411,7 +5408,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
 
     if (!ctx.fullText && ctx.reasoningText) {
-        console.warn('[callAI] 推理模型仅返回思考链（' + ctx.reasoningText.length + ' 字符）未返回剧情正文，可能是 max_tokens 过小被思考链吃光');
+        console.warn('[callAI] 模型仅返回思考链（' + ctx.reasoningText.length + ' 字符）未返回正文；该模型不适合此游戏或当前参数导致 content 为空');
     }
 
     // 思维链折叠面板接入：把流式累积的 reasoningText 透出到全局，供 sendAIRequest 接入 renderCotPanel
@@ -5515,11 +5512,11 @@ async function executeAINormal(url, body, apiKey, signal) {
             return _content;
         }
 
+        // FIX-C1：与原版单 HTML 保持一致，不再把 reasoning_content 当正文回退。
+        // reasoning 仅用于 CoT 面板展示；content 为空时说明模型未输出正文。
         if (_reasoning) {
-            console.warn('[executeAINormal] content 为空，回退使用 reasoning_content（' + _reasoning.length + ' 字符）');
-            // 回退场景：reasoning 作为正文返回，但同时也透出供面板（用户能看到自己读的就是思考链）
+            console.warn('[executeAINormal] content 为空，忽略 reasoning_content（' + _reasoning.length + ' 字符），不将其作为正文');
             try { if (typeof window !== 'undefined') window._lastReasoningText = _reasoning; } catch (e) {}
-            return _reasoning;
         }
 
         // 旧代码返回 ''，上游 parseAIResponse 兜底显示"AI未返回剧情内容"，用户不知道是模型问题
