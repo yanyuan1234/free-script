@@ -167,6 +167,27 @@ const ResponseParser = {
     //   <analysis>...</analysis>    部分模型
     // 处理策略：先剥离配对的思考块；若只有开标签没有闭标签（如思考过程末尾被截断），
     // 则保留开标签之后的内容（可能是 JSON），删除开标签及之前的全部思考文本。
+    extractThinking(raw) {
+        if (!raw || typeof raw !== 'string') return '';
+        var tags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer && OutputSanitizer.THINKING_TAGS)
+            ? OutputSanitizer.THINKING_TAGS.filter(function(t) { return t !== 'final' && t !== 'assistantfinal'; })
+            : ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought', 'inner_thoughts', 'reflection'];
+        var parts = [];
+        for (var i = 0; i < tags.length; i++) {
+            var tag = tags[i];
+            var re = new RegExp('<' + tag + '\\b[^>]*>([\\s\\S]*?)</' + tag + '\\s*>', 'gi');
+            var m;
+            while ((m = re.exec(raw)) !== null) {
+                parts.push(m[1].trim());
+            }
+        }
+        // emoji 包围（非标签）
+        var emojiRe = /💭([\s\S]*?)💭/g;
+        var em;
+        while ((em = emojiRe.exec(raw)) !== null) parts.push(em[1].trim());
+        if (parts.length === 0) return '';
+        return parts.join('\n\n---\n\n');
+    },
     _stripThinkingTokens(raw) {
         if (!raw || typeof raw !== 'string') return raw;
         var s = raw;

@@ -466,9 +466,9 @@
 
 /* [P2 CoT] 思维链折叠面板 */
 .cot-panel {
-    margin: 4px 0 8px;
+    margin: 4px 0 6px;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
     background: var(--bg-alt, rgba(0,0,0,0.03));
     overflow: hidden;
 }
@@ -477,40 +477,41 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 6px 10px;
+    padding: 5px 10px;
     background: none;
     border: none;
     color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
     text-align: left;
+    min-height: 28px;
 }
 .cot-toggle:hover {
     background: rgba(0,0,0,0.04);
 }
 .cot-toggle .cot-icon {
-    font-size: 14px;
+    font-size: 13px;
 }
 .cot-toggle .cot-label {
     flex: 1;
 }
 .cot-toggle .cot-arrow {
     transition: transform .2s;
-    font-size: 16px;
+    font-size: 14px;
     opacity: .6;
 }
 .cot-toggle[aria-expanded="true"] .cot-arrow {
     transform: rotate(90deg);
 }
 .cot-content {
-    padding: 8px 12px 10px;
+    padding: 6px 10px 8px;
     font-size: 12px;
-    line-height: 1.7;
+    line-height: 1.65;
     color: var(--text-tertiary);
     white-space: pre-wrap;
     word-break: break-word;
     border-top: 1px dashed var(--border);
-    max-height: 300px;
+    max-height: 180px;
     overflow-y: auto;
     font-family: var(--font-mono, monospace);
 }

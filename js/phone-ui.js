@@ -4267,6 +4267,102 @@ function showPresetSaveList(preset) {
 }
 
 // ========================================
+// 思维链折叠面板 + 打字机
+// ========================================
+var CotTypewriter = {
+    queue: '',
+    displayed: '',
+    timer: null,
+    isTyping: false,
+    cursorId: 'cotCursor',
+    speed: 10,
+    start: function(text) {
+        this.stop();
+        this.queue = text || '';
+        this.displayed = '';
+        this.isTyping = true;
+        this._tick();
+    },
+    stop: function() {
+        this.isTyping = false;
+        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        this._removeCursor();
+    },
+    skip: function() {
+        if (!this.isTyping && !this.queue) return;
+        this.displayed = (this.displayed || '') + this.queue;
+        this.queue = '';
+        this.isTyping = false;
+        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        this._render(true);
+    },
+    isFinished: function() { return !this.isTyping && !this.queue; },
+    _removeCursor: function() {
+        var c = document.getElementById(this.cursorId);
+        if (c && c.parentNode) c.parentNode.removeChild(c);
+    },
+    _render: function(finished) {
+        var el = document.getElementById('cotContent');
+        if (!el) return;
+        var text = this.displayed;
+        if (!finished && this.isTyping) {
+            text += '<span id="' + this.cursorId + '" style="display:inline-block;width:2px;height:1em;background:var(--text-secondary);vertical-align:text-bottom;margin-left:2px;animation:blink 1s step-end infinite;"></span>';
+        }
+        el.innerHTML = escapeHtml(text);
+        if (finished) this._removeCursor();
+    },
+    _tick: function() {
+        if (!this.isTyping) return;
+        if (!this.queue) {
+            this.isTyping = false;
+            this._render(true);
+            return;
+        }
+        var chunk = 1;
+        if (this.queue.length > 30 && /[\u4e00-\u9fa5]/.test(this.queue.charAt(0))) {
+            // 中文长句稍微加快：每 2 个字符一跳，仍保留打字机感
+            chunk = 2;
+        }
+        this.displayed += this.queue.substring(0, chunk);
+        this.queue = this.queue.substring(chunk);
+        this._render();
+        var delay = this.speed;
+        var lastChar = this.displayed.charAt(this.displayed.length - 1);
+        if (/[，。！？、；：]/.test(lastChar)) delay += 45;
+        else if (/[.!?;:]/.test(lastChar)) delay += 35;
+        var self = this;
+        this.timer = setTimeout(function() { self._tick(); }, delay);
+    }
+};
+
+function showCotPanel(text) {
+    var panel = document.getElementById('cotPanel');
+    var content = document.getElementById('cotContent');
+    var toggle = document.getElementById('cotToggle');
+    if (!panel || !content) return;
+    if (!text || !text.trim()) { hideCotPanel(); return; }
+    panel.style.display = '';
+    content.style.display = 'none';
+    if (toggle) toggle.setAttribute('aria-expanded', 'false');
+    CotTypewriter.start(text);
+}
+
+function hideCotPanel() {
+    var panel = document.getElementById('cotPanel');
+    if (panel) panel.style.display = 'none';
+    CotTypewriter.stop();
+}
+
+function toggleCotPanel() {
+    var content = document.getElementById('cotContent');
+    var toggle = document.getElementById('cotToggle');
+    if (!content) return;
+    var expanded = content.style.display !== 'none';
+    content.style.display = expanded ? 'none' : '';
+    if (toggle) toggle.setAttribute('aria-expanded', String(!expanded));
+}
+
+// ========================================
 // 第12层: 页面初始化和事件
 // ========================================
 // 通用事件绑定助手：元素不存在时安全跳过（避免 TypeError 连锁中断后续绑定）
@@ -4402,7 +4498,7 @@ function bindEvents() {
         });
     }
 
-    // 状态栏里的「跳过」按钮（紧挨取消）—— 直接复用 TypewriterBuffer.skip()
+    // 状态栏里的「跳过」按钮（紧挨取消）—— 复用 TypewriterBuffer.skip()，同时跳过思维链打字机
     // 显示/隐藏由 core.js 的 _showSkipButton / _hideSkipButton 统一控制
     var genSkipBtn = document.getElementById('genSkipBtn');
     if (genSkipBtn) {
@@ -4412,9 +4508,21 @@ function bindEvents() {
                 if (typeof TypewriterBuffer !== 'undefined') {
                     TypewriterBuffer.skip();
                 }
+                if (typeof CotTypewriter !== 'undefined') {
+                    CotTypewriter.skip();
+                }
             } catch (e) {
                 console.warn('[GenSkipBtn] 跳过失败:', e);
             }
+        });
+    }
+
+    // 思维链折叠按钮
+    var cotToggle = document.getElementById('cotToggle');
+    if (cotToggle) {
+        cotToggle.addEventListener('click', function(ev) {
+            ev.stopPropagation();
+            toggleCotPanel();
         });
     }
 

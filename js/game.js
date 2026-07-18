@@ -1038,6 +1038,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     RuntimeState.streamModeLocked = false;
     RuntimeState.streamMode = null;
     TypewriterBuffer.stop();
+    if (typeof hideCotPanel === 'function') hideCotPanel();
+    else { var _cotPanel = document.getElementById('cotPanel'); if (_cotPanel) _cotPanel.style.display = 'none'; }
     // 【NEW-003 修复】新一轮请求开始时清掉等待提示（避免上一轮残留）
     _clearStreamWaitingHint();
     // 【NEW-007 修复】重置流式增量提取状态
@@ -1790,6 +1792,16 @@ async function sendAIRequest(userMessage, isInit = false) {
         var parseResult = parseAIResponse(response);
         var data = parseResult.data;
         var storyText = parseResult.storyText;
+
+        // [CoT] 提取并展示思维链（需在 stripThinking 之前从原始响应里拿）
+        var cotMode = (StateManager ? StateManager.get('settings.cotMode') : '') || '';
+        if (cotMode === 'enabled') {
+            var cotText = (typeof ResponseParser !== 'undefined' && ResponseParser.extractThinking) ? ResponseParser.extractThinking(response) : '';
+            if (cotText && typeof showCotPanel === 'function') showCotPanel(cotText);
+            else if (typeof hideCotPanel === 'function') hideCotPanel();
+        } else if (typeof hideCotPanel === 'function') {
+            hideCotPanel();
+        }
 
         // 【方案C】JSON Schema 解析失败时，尝试 StateTagParser 解析 <state> 块
         // 兼容 auto 路由模型等不支持 response_format 的场景
