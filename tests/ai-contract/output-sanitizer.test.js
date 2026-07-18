@@ -29,4 +29,14 @@ if (cleanedStory.indexOf('然后choices') !== -1) throw new Error('sanitizeStory
 if (cleanedStory.indexOf('林墨攥着退婚文书') === -1) throw new Error('sanitizeStory removed real story: ' + JSON.stringify(cleanedStory));
 console.log('sanitizeStory leaked design-thoughts test passed, cleaned length:', cleanedStory.length);
 
+// BUG-A2-1：线上实际泄漏文本（单换行、"用户现在要"、"首先，主角"等）
+var leakedStory2 = '用户现在要开始修仙被退婚的废材开局，首先得符合要求，第一回合的title要符合修仙术语。\n首先，主角的名字，先起个符合修仙的，比如叫林墨？对，身份是青云宗外门弟子，被退婚的废材。\n然后开局场景，时间的话，第一回合设定在青云宗外门。\n然后心声音的话，要写NPC的。\n然后choices的话，三个选项，要符合行动。\n\n林墨攥着退婚文书，系统的提示音在脑海中响起。';
+var cleanedStory2 = OutputSanitizer.sanitizeStory(leakedStory2);
+if (cleanedStory2.indexOf('用户现在要') !== -1) throw new Error('sanitizeStory leaked user-now-wants');
+if (cleanedStory2.indexOf('首先，主角的名字') !== -1) throw new Error('sanitizeStory leaked first-name');
+if (cleanedStory2.indexOf('然后开局场景') !== -1) throw new Error('sanitizeStory leaked then-scene');
+if (cleanedStory2.indexOf('然后choices') !== -1) throw new Error('sanitizeStory leaked then-choices-2');
+if (cleanedStory2.indexOf('林墨攥着退婚文书') === -1) throw new Error('sanitizeStory removed real story 2: ' + JSON.stringify(cleanedStory2));
+console.log('sanitizeStory online leaked text test passed, cleaned length:', cleanedStory2.length);
+
 console.log('OutputSanitizer tests passed');

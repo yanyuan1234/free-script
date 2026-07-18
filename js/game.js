@@ -2392,7 +2392,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
         if (finalStory.length < _rawFinalStory.length) {
+            // 必须同时清空 displayed，否则 TypewriterBuffer.push 会从脏文本末尾继续，
+            // 导致清洗后的文本无法覆盖已显示的推理内容。
             TypewriterBuffer.stop();
+            TypewriterBuffer.displayed = '';
+            TypewriterBuffer.queue = '';
         }
         // 【BUG-001 修复】让出主线程一次，让前面 AIResponseMutator / UI 渲染的累积工作先绘制到屏幕
         // 否则下面 RegexManager.apply + formatStory 会继续堆积同步任务，触发长时间卡顿
