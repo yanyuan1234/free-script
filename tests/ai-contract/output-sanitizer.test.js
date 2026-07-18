@@ -52,4 +52,18 @@ if (cleanedStory3.indexOf('第1段：') !== -1) throw new Error('sanitizeStory l
 if (cleanedStory3.indexOf('真正的剧情') === -1) throw new Error('sanitizeStory removed real story 3: ' + JSON.stringify(cleanedStory3));
 console.log('sanitizeStory full design-thoughts test passed, cleaned length:', cleanedStory3.length);
 
+// BUG-A4：模型用英文输出完整 CoT（"Here's a thinking process:"），story 字段被规划过程填满
+var leakedStory4 = "Here's a thinking process:\n\n1. Analyze User Input:\n\n- User says: \"请开始游戏，描述开局场景。\"\n\n- This is the first turn (Round 0/1). I need to set up the initial state.\n\n- Core Setting: Cultivation/Xianxia, rejected fiancée trash protagonist.\n\n- Output Format: Strict JSON, starting with `{`. No prefixes.\n\n2. Draft Construction - Mental Refinement (Iterative):\n\n*Setting the Scene:* Protagonist is a \"trash\" in a cultivation clan.\n\nProtagonist Name: 林尘 (Lin Chen) - standard, fits well.\n\n*Stats:* 灵根 (Spiritual Root): 杂灵根/废灵根 (F).\n\nSystem: 天道逆袭系统 (Heavenly Counterattack System).\n\nOpening Event: Engagement broken off by 苏清雪.\n\nParagraph Structure (Target: 15-17 paras, 180-320 chars each): I need to carefully count.\n\nNarrative Flow:\n\n1. Describe the desolate courtyard, morning mist, damp walls.\n\n2. Flashback/context of the engagement broken off yesterday.\n\n(I will expand each paragraph to meet the 180-320 char requirement strictly.)\n\nLet's draft carefully, monitoring length and structure.\n\nParagraph 1: 晨雾如纱，缠绕着青岚宗最偏僻的断崖小院。斑驳的青砖墙面上爬满了暗绿色的苔藓，几缕漏风的窗棂在微风中发出轻微的吱呀声。\n\n(~288 chars) Good.\n\n*Paragraph 2:* 「林尘，你我之间的婚约，本就是长辈一时兴起定下的娃娃亲。」苏清雪的声音依旧清冷如泉，却字字如刀。\n\n(~286 chars) Good.\n\n*Paragraph 3:* 「这是补偿你的三百下品灵石，收好便离开吧。」侍女将木盒重重搁在石桌上，发出沉闷的声响。\n\nParagraph 4: 苏清雪的睫毛微不可察地颤动了一下，似乎没料到他会如此干脆。她原本准备好的说教与施舍姿态瞬间落空。";
+var cleanedStory4 = OutputSanitizer.sanitizeStory(leakedStory4);
+if (cleanedStory4.indexOf("Here's a thinking process") !== -1) throw new Error('sanitizeStory leaked english-thinking');
+if (cleanedStory4.indexOf('Analyze User Input') !== -1) throw new Error('sanitizeStory leaked analyze-user-input');
+if (cleanedStory4.indexOf('Core Setting:') !== -1) throw new Error('sanitizeStory leaked core-setting');
+if (cleanedStory4.indexOf('Narrative Flow:') !== -1) throw new Error('sanitizeStory leaked narrative-flow');
+if (cleanedStory4.indexOf('Paragraph Structure') !== -1) throw new Error('sanitizeStory leaked paragraph-structure');
+if (cleanedStory4.indexOf('(~288 chars)') !== -1) throw new Error('sanitizeStory leaked chars-comment');
+if (cleanedStory4.indexOf('Paragraph 1:') !== -1) throw new Error('sanitizeStory leaked paragraph-1-marker');
+if (cleanedStory4.indexOf('晨雾如纱') === -1) throw new Error('sanitizeStory removed real chinese story 4: ' + JSON.stringify(cleanedStory4));
+if (cleanedStory4.indexOf('苏清雪的睫毛') === -1) throw new Error('sanitizeStory removed paragraph 4 story: ' + JSON.stringify(cleanedStory4));
+console.log('sanitizeStory english-thinking test passed, cleaned length:', cleanedStory4.length);
+
 console.log('OutputSanitizer tests passed');

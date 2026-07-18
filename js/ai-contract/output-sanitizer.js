@@ -108,7 +108,36 @@ const OutputSanitizer = {
         /^这意味着[:：]/,
         /^我需要确保[:：]/,
         /^player\.name/,
-        /^player\.stats/
+        /^player\.stats/,
+        // BUG-A4：模型用英文输出完整 CoT 时的常见元话语
+        /^Here's a thinking process:/i,
+        /^Here's a step-by-step thinking process:/i,
+        /^Thinking process:/i,
+        /^Step-by-step thinking:/i,
+        /^Analyze User Input:/i,
+        /^Draft Construction/i,
+        /^Mental Refinement/i,
+        /^Narrative Flow:/i,
+        /^Paragraph Structure/i,
+        /^Opening Event:/i,
+        /^Protagonist Name:/i,
+        /^System:/i,
+        /^\*Stats:\*/i,
+        /^Specific Rules:/i,
+        /^Output Format:/i,
+        /^Player Preferences:/i,
+        /^Language\/Terms:/i,
+        /^Core Setting:/i,
+        /^Word count:/i,
+        /^Perspective:/i,
+        /^- This is the first turn/i,
+        /^- User says:/i,
+        /^- \w+ says:/i,
+        /^- `\w+` must be/i,
+        /^- `\w+`:/i,
+        /^\(I will expand/i,
+        /^Let's draft/i,
+        /^Good\.?$/i
     ],
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
@@ -129,8 +158,48 @@ const OutputSanitizer = {
     stripBareThinking(text) {
         if (!text || typeof text !== 'string') return '';
         // 按换行分段（模型常把设计思路用单换行连接，不能只按双换行）
-        const paras = text.split(/\n+/);
+        let paras = text.split(/\n+/);
         if (paras.length === 0) return text;
+
+        // BUG-A4：模型有时用英文输出完整 CoT（"Here's a thinking process:"）。
+        // 先对每段做前缀清洗，把 "Paragraph N:" / "*Paragraph N:*" / "(~288 chars)"
+        // 等规划标记去掉，保留后面的叙事正文。
+        paras = paras.map(function(para) {
+            return para
+                .replace(/^(?:\*Paragraph\s+\d+:\*|Paragraph\s+\d+[:：])\s*/i, '')
+                .replace(/^[（(]~?\d+\s*chars[）)]\s*/i, '');
+        });
+
+        // 英文强信号：一旦检测到模型以英文思考框架开头，直接跳到第一个中文叙事段落
+        const ENGLISH_THINKING_SIGNALS = [
+            /^Here's a thinking process:/i,
+            /^Here's a step-by-step thinking process:/i,
+            /^Thinking process:/i,
+            /^Step-by-step thinking:/i,
+            /^Analyze User Input:/i,
+            /^Draft Construction/i,
+            /^Mental Refinement/i
+        ];
+        if (ENGLISH_THINKING_SIGNALS.some(function(re) { return re.test(paras[0].trim()); })) {
+            var startIdx = -1;
+            for (var k = 1; k < paras.length; k++) {
+                var p = paras[k].trim();
+                if (!p) continue;
+                var chineseCount = (p.match(/[\u4e00-\u9fa5]/g) || []).length;
+                // 找到第一个以中文为主的段落，视为叙事起点
+                if (chineseCount >= 30) { startIdx = k; break; }
+            }
+            if (startIdx === -1) return '';
+            // 从叙事起点继续过滤所有匹配思考模式的段落（去掉夹杂的英文元评论）
+            var self = this;
+            var filtered = paras.slice(startIdx).filter(function(para) {
+                var p2 = para.trim();
+                if (!p2) return true;
+                var firstLine = p2.split(/\n/)[0].trim();
+                return !self._BARE_THINKING_PATTERNS.some(function(re) { return re.test(firstLine); });
+            });
+            return filtered.join('\n\n').trim();
+        }
 
         // 强信号模式：只要文本以这些开头，极大概率是模型把设计思路写进了 story
         const STRONG_THINKING_PATTERNS = [
