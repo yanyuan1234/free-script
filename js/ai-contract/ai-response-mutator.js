@@ -534,6 +534,7 @@ const AIResponseMutator = {
     // [P0] 应用 AI 主动声明的 memoryUpdates（增/改/删永久事实）
     // AI 通过 JSON 的 memoryUpdates 字段显式表达对永久事实区的变更意图
     // 放在 _applyPermanentFacts（被动收割）之后执行，AI 显式意图优先级更高
+    // [Mufy 三层记忆] 支持 layer 字段：shortTerm / longTerm / milestone
     _applyMemoryUpdates(data) {
         if (typeof EnhancedMemory === 'undefined') return;
         const updates = data.memoryUpdates;
@@ -542,11 +543,39 @@ const AIResponseMutator = {
         const turn = (typeof StateManager !== 'undefined' && StateManager.get)
             ? (StateManager.get('progress.turn') || 0)
             : 0;
-        const stats = { add: 0, replace: 0, delete: 0, skipped: 0 };
+        const stats = { add: 0, replace: 0, delete: 0, shortTerm: 0, milestone: 0, skipped: 0 };
 
         for (let i = 0; i < updates.length; i++) {
             const u = updates[i];
             if (!u || !u.category) { stats.skipped++; continue; }
+
+            const layer = u.layer || 'longTerm';
+
+            // [Mufy] shortTerm：进入短期记忆池，满 10 条自动归档为长期记忆
+            if (layer === 'shortTerm') {
+                if (!u.content) { stats.skipped++; continue; }
+                if (typeof EnhancedMemory.addShortTermMemory === 'function') {
+                    const result = EnhancedMemory.addShortTermMemory(u.content, turn);
+                    if (result && result.archived) stats.add++; // 归档也算一次长期记忆写入
+                    else stats.shortTerm++;
+                } else {
+                    stats.skipped++;
+                }
+                continue;
+            }
+
+            // [Mufy] milestone：关键里程碑，写入独立里程碑列表并同步到事件系统
+            if (layer === 'milestone') {
+                if (!u.content) { stats.skipped++; continue; }
+                if (typeof EnhancedMemory.addMilestone === 'function') {
+                    const ms = EnhancedMemory.addMilestone(u.content, { importance: u.importance, turn: turn, category: u.category });
+                    if (ms) stats.milestone++;
+                    else stats.skipped++;
+                } else {
+                    stats.skipped++;
+                }
+                continue;
+            }
 
             if (u.op === 'delete') {
                 // delete：按 content 或 keywords 定位删除
@@ -600,12 +629,12 @@ const AIResponseMutator = {
         }
 
         // 有实际变更时失效注入缓存，确保下一轮 buildInjection 重新生成
-        if (stats.add + stats.replace + stats.delete > 0) {
+        if (stats.add + stats.replace + stats.delete + stats.shortTerm + stats.milestone > 0) {
             EnhancedMemory._cachedInjection = null;
             EnhancedMemory._cachedInjectionTurn = -1;
             EnhancedMemory._ltmDirty = true;
             if (typeof console !== 'undefined' && console.log) {
-                console.log('[AIResponseMutator] memoryUpdates 已应用：新增/合并 ' + stats.add + '，替换 ' + stats.replace + '，删除 ' + stats.delete + '，跳过 ' + stats.skipped);
+                console.log('[AIResponseMutator] memoryUpdates 已应用：长期新增/合并 ' + stats.add + '，替换 ' + stats.replace + '，删除 ' + stats.delete + '，短期记忆 ' + stats.shortTerm + '，里程碑 ' + stats.milestone + '，跳过 ' + stats.skipped);
             }
         }
     },

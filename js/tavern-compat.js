@@ -2656,7 +2656,11 @@ var GameMemory = {
         // ═══ 第六层：重要事件（时间锚点 + 增强衰减）═══
         var eventLines = self._buildEventsSection(lastTurn);
         if (eventLines.length > 0) parts.push({ key: 'events', priority: 5, lines: eventLines, changed: true });
-        
+
+        // ═══ 第六层半：Mufy 三层记忆（短期/长期/里程碑）═══
+        var memoryLines = self._buildMemoryLayersSection();
+        if (memoryLines.length > 0) parts.push({ key: 'memoryLayers', priority: 5, lines: memoryLines, changed: true });
+
         // ═══ 第七层：持有物品（关键词激活）═══
         var itemLines = self._buildItemsSection(lastTurn, topic);
         if (itemLines.length > 0) parts.push({ key: 'items', priority: 4, lines: itemLines, changed: true });
@@ -2681,6 +2685,7 @@ var GameMemory = {
             quests: '【进行中的约定（玩家承诺和任务）】\n',
             characters: '【角色近况（比世界快照中的角色数据更实时）】\n',
             events: '【重要事件（影响后续剧情的关键节点）】\n',
+            memoryLayers: '【三层记忆（Mufy 风格：关键里程碑 + 短期记忆 + 长期归档）】\n',
             items: '【持有物品（比世界快照中的背包数据更实时）】\n',
             sceneState: '【当前场景（角色所在的环境）】\n',
             summaryLayers: '【对话摘要（早期对话的浓缩版，细节以原文为准）】\n',
@@ -2688,7 +2693,7 @@ var GameMemory = {
         };
         var footers = {
             permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n',
-            characters: '\n', events: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n', storytellingReminders: '\n'
+            characters: '\n', events: '\n', memoryLayers: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n', storytellingReminders: '\n'
         };
         
         // 总量控制：超限时智能压缩而非直接丢弃
@@ -2776,6 +2781,8 @@ var GameMemory = {
         versionParts.push(Object.keys(self.tables.items).length);
         versionParts.push(self.quests ? self.quests.length : 0);
         versionParts.push(self.events ? self.events.length : 0);
+        versionParts.push(self._shortTermEntries ? self._shortTermEntries.length : 0);
+        versionParts.push(self._milestoneEntries ? self._milestoneEntries.length : 0);
         return versionParts.join('_');
     },
 
@@ -3207,6 +3214,33 @@ var GameMemory = {
             var weightMark = (typeof e.narrativeWeight === 'number') ? '[权重' + e.narrativeWeight.toFixed(1) + ']' : '';
             lines.push((imp >= 9 ? '●' : (imp >= 7 ? '◐' : '○')) + '[重要度' + imp + ']' + emoTag + weightMark + timeTag + ' ' + content);
         });
+        return lines;
+    },
+
+    // [Mufy 三层记忆] 构建短期/长期/里程碑记忆注入文本
+    _buildMemoryLayersSection: function() {
+        var lines = [];
+        var self = this;
+        if (Array.isArray(self._milestoneEntries) && self._milestoneEntries.length > 0) {
+            lines.push('【关键里程碑】');
+            self._milestoneEntries.slice(-10).forEach(function(m) {
+                lines.push('• ' + m.gameTime + ' [重要度' + m.importance + '] ' + m.content);
+            });
+        }
+        if (Array.isArray(self._shortTermEntries) && self._shortTermEntries.length > 0) {
+            lines.push('【短期记忆（最近 ' + self._shortTermEntries.length + ' 条，满 10 条自动归档）】');
+            self._shortTermEntries.slice(-10).forEach(function(e) {
+                lines.push('• ' + e.content);
+            });
+        }
+        var settings = (self.permanentFacts && self.permanentFacts.settings) || [];
+        var summaries = settings.filter(function(f) { return f && f.content && f.content.indexOf('【阶段回顾】') === 0; });
+        if (summaries.length > 0) {
+            lines.push('【长期记忆归档】');
+            summaries.slice(-5).forEach(function(f) {
+                lines.push('• ' + f.content.replace(/^【阶段回顾】/, ''));
+            });
+        }
         return lines;
     },
 
@@ -3767,6 +3801,102 @@ var GameMemory = {
         return gameTime;
     },
 
+    // ─────────────────────────────────────────────────────────────
+    // [Mufy 三层记忆] 短期记忆 + 关键里程碑管理
+    // ─────────────────────────────────────────────────────────────
+    /**
+     * 添加一条短期记忆。当短期记忆累计满 10 条时，自动合并为一条长期记忆归档。
+     * @param {string} content - 本轮剧情核心事实（建议 20 字以内）
+     * @param {number} [turn] - 当前回合数，默认 this.currentTurn
+     * @returns {{archived: boolean, longTermFact?: object}} archived=true 表示已触发归档
+     */
+    addShortTermMemory: function(content, turn) {
+        if (!content || typeof content !== 'string') return { archived: false };
+        content = content.trim();
+        if (!content) return { archived: false };
+        if (!Array.isArray(this._shortTermEntries)) this._shortTermEntries = [];
+        var entry = { content: content, turn: turn || this.currentTurn, gameTime: this.getGameTimeStr(), createdAt: Date.now() };
+        this._shortTermEntries.push(entry);
+        this._markLtmDirty();
+        if (this._shortTermEntries.length >= 10) {
+            return { archived: true, longTermFact: this.summarizeShortTermMemory() };
+        }
+        return { archived: false };
+    },
+
+    /**
+     * 将当前所有短期记忆概括为一条长期记忆，写入 permanentFacts.settings，并清空短期记忆。
+     * 这里使用启发式拼接；若后续接入模型摘要，可替换为 AI 生成。
+     * @returns {object} 生成的长期记忆事实
+     */
+    summarizeShortTermMemory: function() {
+        if (!Array.isArray(this._shortTermEntries) || this._shortTermEntries.length === 0) return null;
+        var entries = this._shortTermEntries.slice();
+        var summaryContent = entries.map(function(e, i) { return (i + 1) + '. ' + e.content; }).join('；');
+        if (summaryContent.length > 300) summaryContent = summaryContent.substring(0, 297) + '…';
+        var fact = this.addWorldAnchor('settings',
+            '【阶段回顾】' + this.getGameTimeStr() + '：' + summaryContent,
+            'shortTermSummary',
+            this.currentTurn
+        );
+        this._shortTermEntries = [];
+        this._markLtmDirty();
+        return fact;
+    },
+
+    /**
+     * 添加关键里程碑。重大事件（确立关系、击败 Boss、获得核心道具等）永久标记。
+     * @param {string} content - 里程碑内容
+     * @param {object} [options] - { importance: 1-10, category: string }
+     * @returns {object} 里程碑对象
+     */
+    addMilestone: function(content, options) {
+        if (!content || typeof content !== 'string') return null;
+        content = content.trim();
+        if (!content) return null;
+        if (!Array.isArray(this._milestoneEntries)) this._milestoneEntries = [];
+        var importance = (options && typeof options.importance === 'number') ? options.importance : 8;
+        importance = Math.max(1, Math.min(10, importance));
+        // 去重：内容完全相同的里程碑不重复添加
+        if (this._milestoneEntries.some(function(m) { return m.content === content; })) return null;
+        var milestone = {
+            content: content,
+            turn: (options && options.turn) || this.currentTurn,
+            gameTime: this.getGameTimeStr(),
+            importance: importance,
+            category: (options && options.category) || 'milestone',
+            createdAt: Date.now()
+        };
+        this._milestoneEntries.push(milestone);
+        // 同时写入 importantEvents，保持与现有事件系统兼容
+        this.events.push({ content: content, turn: milestone.turn, gameTime: milestone.gameTime, importance: importance, decayScore: importance });
+        this._pruneImportantEvents(50);
+        this._markLtmDirty();
+        return milestone;
+    },
+
+    /**
+     * 获取 Mufy 风格三层记忆文本，用于注入 prompts。
+     * @returns {string}
+     */
+    getMemoryLayersText: function() {
+        var lines = [];
+        if (Array.isArray(this._milestoneEntries) && this._milestoneEntries.length > 0) {
+            lines.push('【关键里程碑】');
+            this._milestoneEntries.forEach(function(m) { lines.push('• ' + m.gameTime + '：' + m.content); });
+        }
+        if (Array.isArray(this._shortTermEntries) && this._shortTermEntries.length > 0) {
+            lines.push('【短期记忆（最近 ' + this._shortTermEntries.length + ' 条）】');
+            this._shortTermEntries.slice(-10).forEach(function(e) { lines.push('• ' + e.content); });
+        }
+        var settings = (this.permanentFacts && this.permanentFacts.settings) || [];
+        var summaries = settings.filter(function(f) { return f && f.content && f.content.indexOf('【阶段回顾】') === 0; });
+        if (summaries.length > 0) {
+            lines.push('【长期记忆归档】');
+            summaries.slice(-5).forEach(function(f) { lines.push('• ' + f.content.replace(/^【阶段回顾】/, '')); });
+        }
+        return lines.join('\n');
+    },
 
     // ─────────────────────────────────────────────────────────────
     // 永久事实区 3 个核心写入入口的分工（避免维护时混淆）：
@@ -4236,7 +4366,7 @@ var GameMemory = {
         try {
             // 保存前清理 _changeLog，只保留最近20条
             if (self._changeLog && self._changeLog.length > 20) self._changeLog = self._changeLog.slice(-20);
-            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, _worldNotes: self._worldNotes || [], savedAt: Date.now() };
+            var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, _shortTermEntries: self._shortTermEntries || [], _milestoneEntries: self._milestoneEntries || [], budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, _worldNotes: self._worldNotes || [], savedAt: Date.now() };
             var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
             if (!result || result.success === false) self._handleSaveFailure(result, data);
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
@@ -4254,7 +4384,7 @@ var GameMemory = {
             if (this.timeline && this.timeline.length > 20) this.timeline = this.timeline.slice(-20);
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
-            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
+            var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _shortTermEntries: this._shortTermEntries || [], _milestoneEntries: this._milestoneEntries || [], _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
             var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
             if (r2 && r2.success) {
                 console.log('[GameMemory] 降级保存成功');
@@ -4302,7 +4432,7 @@ var GameMemory = {
             console.log('[GameMemory] 迁移到 v4 完成');
         }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
-        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
+        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', '_shortTermEntries', '_milestoneEntries', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
         for (let i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
         // 【第4轮优化】加载后强制同步 currentTurn 到 gameState._stats.totalTurns
         // 避免双源不同步导致 shouldTriggerCompression 用 _stats.totalTurns、其他逻辑用 self.currentTurn 产生偏差
@@ -4404,6 +4534,10 @@ var GameMemory = {
             StateManager.set('entities.relationships', [], { silent: true });
         }
         this.workingMemory = { recentMessages: [], currentTopic: null, turns: [], messages: [] };
+        // [Mufy 三层记忆] 短期记忆条目：每轮对话总结，满 10 条自动归档为长期记忆
+        this._shortTermEntries = [];
+        // [Mufy 三层记忆] 关键里程碑：重大事件永久标记
+        this._milestoneEntries = [];
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
         this._changeLog = []; this.summaryHistory = [];
         this._injectionSnapshots = {};

@@ -135,6 +135,37 @@
     // 5 套预设通用正则
     var COMMON_REGEX = [REGEX_KILL_METAPHOR, REGEX_KILL_SYNESTHESIA, REGEX_KILL_POETIC_TAIL, REGEX_UNIFY_QUOTES];
 
+    // ===== 公共段：Mufy 风格因果锚点（让 AI 从“设定表扮演”升级为“活在世界里的人”）=====
+    var MUFY_CAUSAL_ANCHOR_SECTION = {
+        identifier: 'mufy-causal-anchor',
+        name: 'Mufy 因果锚点',
+        role: 'system',
+        content:
+            '【角色塑造·Mufy 因果锚点】\n' +
+            '在扮演任何角色时，你必须让角色看起来像“活在一个具体世界里的人”，而不是在念一张设定表。请从以下维度提取并遵守因果链：\n' +
+            '\n' +
+            '【世界观锚点】\n' +
+            '  - 社会重力：角色的阶层、经济状况、职业习惯如何影响他的日常选择？\n' +
+            '  - 文化背景：这个世界对爱情、信任、冲突的主流态度是什么？角色认同还是反抗？\n' +
+            '  - 时间质感：当前季节、时辰、天气如何影响场景氛围和角色情绪？\n' +
+            '\n' +
+            '【角色本体锚点】\n' +
+            '  - 核心矛盾：角色表面行为与内心真相之间的张力（例：表面疏离，内心渴望被需要）。\n' +
+            '  - 感官签名：角色身上的气味、声音质感、触碰时的力道、习惯性小动作。\n' +
+            '  - 语言指纹：角色的口头禅、惯用句式、对不同对象（陌生人/朋友/主角）的语气切换。\n' +
+            '\n' +
+            '【叙事纪律】\n' +
+            '  - 不要直接写“他很帅/很美/很温柔”，改成“他走进房间时，其他人会不自觉地放轻动作”。\n' +
+            '  - 不要直接写“他心里很复杂”，改成具体动作：捏纸杯、转笔、把袖子卷了又放下。\n' +
+            '  - 对话必须体现角色关系：同一句话，陌生人说、朋友说、恋人说，必须不同。\n' +
+            '  - 每个重大反应必须能从角色的“核心矛盾”或“过往经历”找到原因。',
+        injection_position: 0,
+        injection_depth: 4,
+        injection_order: 25,
+        enabled: true,
+        system_prompt: true
+    };
+
     // ========================================
     // 预设 1：抒情（Lyrical）
     // 慢热 / 细腻 / 潜台词 / 情感张力
@@ -193,6 +224,7 @@
                 system_prompt: true
             },
             STYLE_ADAPT_SECTION,
+            MUFY_CAUSAL_ANCHOR_SECTION,
             ANTI_OMNISCIENCE_SECTION,
             ANTI_METAPHOR_SECTION,
             OUTPUT_CONTRACT_SECTION
@@ -262,6 +294,7 @@
                 system_prompt: true
             },
             STYLE_ADAPT_SECTION,
+            MUFY_CAUSAL_ANCHOR_SECTION,
             ANTI_OMNISCIENCE_SECTION,
             // 激进模式不禁修辞，但保留比拟/通感（强情绪需要夸张表达）—— 注释掉 ANTI_METAPHOR_SECTION
             OUTPUT_CONTRACT_SECTION
@@ -333,6 +366,7 @@
                 system_prompt: true
             },
             STYLE_ADAPT_SECTION,
+            MUFY_CAUSAL_ANCHOR_SECTION,
             ANTI_OMNISCIENCE_SECTION,
             ANTI_METAPHOR_SECTION,
             OUTPUT_CONTRACT_SECTION
@@ -379,6 +413,7 @@
                 system_prompt: true
             },
             STYLE_ADAPT_SECTION,
+            MUFY_CAUSAL_ANCHOR_SECTION,
             ANTI_OMNISCIENCE_SECTION,
             ANTI_METAPHOR_SECTION,
             OUTPUT_CONTRACT_SECTION

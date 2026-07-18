@@ -1978,6 +1978,91 @@
         margin: 2px 0;
     }
 
+/* ================================================================
+   MEMORY PANEL — Mufy 三层记忆（纯文字）
+================================================================ */
+.memory-panel {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.memory-panel-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.memory-section {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+}
+
+.memory-section summary {
+    padding: 12px 14px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    cursor: pointer;
+    background: var(--bg-secondary);
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.memory-section summary::-webkit-details-marker {
+    display: none;
+}
+
+.memory-section summary::after {
+    content: '+';
+    font-size: 18px;
+    color: var(--text-tertiary);
+    transition: transform .2s;
+}
+
+.memory-section[open] summary::after {
+    content: '−';
+}
+
+.memory-section ul {
+    margin: 0;
+    padding: 12px 14px 12px 32px;
+    list-style: disc;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.memory-section li {
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+}
+
+.memory-tag {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    margin-right: 4px;
+}
+
+.memory-empty {
+    padding: 30px 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--text-tertiary);
+    background: var(--bg-secondary);
+    border-radius: var(--radius-sm);
+}
+
     .setting-context-info {
         font-size: 11px;
         margin-top: 2px;

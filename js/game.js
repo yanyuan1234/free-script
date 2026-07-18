@@ -703,6 +703,11 @@ function _buildFormatRules(gs, _t, turn) {
         + '  - ranking: items[{rank:1,name:"角色名",score:100,desc:"说明"}] - 排行榜\n'
         + '  - cards: items[{icon:"单字图标",title:"标题",content:"内容"}] - 卡片\n'
         + '  - comments: {main:"主帖",comments:[{name:"评论者",text:"评论"}]} - 评论模块(无items数组,直接main+comments)\n'
+        + '【memoryUpdates 三层记忆规则】memoryUpdates 为必填数组，每回合必须根据剧情变化输出记忆更新，每项 {op, category, layer, importance, content, keywords, reason}。\n'
+        + '  - layer 仅允许：shortTerm（短期记忆，每轮一条 20 字以内核心事实）/ longTerm（长期归档，写入永久事实区）/ milestone（关键里程碑，importance≥7 的重大事件）。\n'
+        + '  - op 仅允许 add/replace/delete；category 仅允许 pcIdentity/settings/worldRules/npcProfiles/promises/worldPlaces。\n'
+        + '  - 示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"主角答应帮林晚寻找失踪的妹妹"}；{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与主角正式确立合作关系"}。\n'
+        + '  - 即使剧情没有重大变化，也必须输出至少 1 条 shortTerm 记忆；无长期/里程碑变更则对应层返回空数组或省略。\n'
         + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
         + '约' + _maxTokens + 'tokens输出空间';
 }

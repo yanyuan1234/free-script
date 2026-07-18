@@ -101,6 +101,13 @@ function renderSvgEmptyState(iconSvg, title, hint) {
     return html + '</div>';
 }
 
+// 安全转义：优先使用 core.js 的 escapeHtml，否则本地兜底
+function escapeHtml(text) {
+    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') return window.escapeHtml(text);
+    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text || '').replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
 
 // ========================================
 
@@ -1007,6 +1014,60 @@ function renderWorldModules(modules) {
     if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
 }
 
+// [Mufy 三层记忆] 渲染纯文字记忆面板（无图片）
+function renderMemoryPanel() {
+    var container = document.getElementById('memoryPanelContainer');
+    if (!container) return;
+    if (typeof EnhancedMemory === 'undefined') {
+        container.innerHTML = '';
+        return;
+    }
+    var milestones = EnhancedMemory._milestoneEntries || [];
+    var shortTerm = EnhancedMemory._shortTermEntries || [];
+    var settings = (EnhancedMemory.permanentFacts && EnhancedMemory.permanentFacts.settings) || [];
+    var longTerm = settings.filter(function(f) { return f && f.content && f.content.indexOf('【阶段回顾】') === 0; });
+
+    var html = '<div class="memory-panel">';
+    html += '<div class="memory-panel-title">📜 记忆档案</div>';
+
+    if (milestones.length > 0) {
+        html += '<details class="memory-section" open>';
+        html += '<summary>关键里程碑 (' + milestones.length + ')</summary>';
+        html += '<ul>';
+        milestones.slice(-10).reverse().forEach(function(m) {
+            html += '<li><span class="memory-tag">[' + m.gameTime + ']</span> ' + escapeHtml(m.content) + '</li>';
+        });
+        html += '</ul></details>';
+    }
+
+    if (shortTerm.length > 0) {
+        html += '<details class="memory-section" open>';
+        html += '<summary>短期记忆 (' + shortTerm.length + '/10 自动归档)</summary>';
+        html += '<ul>';
+        shortTerm.slice(-10).reverse().forEach(function(e) {
+            html += '<li>' + escapeHtml(e.content) + '</li>';
+        });
+        html += '</ul></details>';
+    }
+
+    if (longTerm.length > 0) {
+        html += '<details class="memory-section">';
+        html += '<summary>长期归档 (' + longTerm.length + ')</summary>';
+        html += '<ul>';
+        longTerm.slice(-5).reverse().forEach(function(f) {
+            html += '<li>' + escapeHtml(f.content.replace(/^【阶段回顾】/, '')) + '</li>';
+        });
+        html += '</ul></details>';
+    }
+
+    if (milestones.length === 0 && shortTerm.length === 0 && longTerm.length === 0) {
+        html += '<div class="memory-empty">暂无记忆记录，游戏进行后会自动汇总。</div>';
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
+}
+
 // 自动将AI返回的world模块解析到世界观设定页面
 function _autoExtractWorldNotes(modules) {
     if (!modules || !Array.isArray(modules) || modules.length === 0) return;
@@ -1549,7 +1610,16 @@ function getLogPageRenderers() {
         shop: renderShopPage,
         // 【小剧场融合】新增渲染器
         calendar: renderCalendarPage,
-        author_note: renderAuthorNotePage
+        author_note: renderAuthorNotePage,
+        // [Mufy 三层记忆] 记忆档案渲染器
+        memory: function() {
+            var c = document.getElementById('logSubContent');
+            if (!c) return '';
+            // 在子页面中预留容器，renderMemoryPanel 会填充内容
+            c.innerHTML = '<div id="memoryPanelContainer"></div>';
+            renderMemoryPanel();
+            return '';
+        }
     };
     return _logPageRenderers;
 }
@@ -1733,7 +1803,8 @@ function openLogSubPage(type) {
         achieve: '成就',
         diary: '日记',
         mail: '邮箱',
-        world: '世界信息'
+        world: '世界信息',
+        memory: '记忆档案'
     };
     var title = titles[type] || type;
     var logSubTitle = document.getElementById('logSubTitle');
@@ -1766,7 +1837,7 @@ function openLogSubPage(type) {
 // 应用日志页面样式
 function _applyLogPageStyle(content, type, html) {
     var isFullScreen = ['chat', 'forum', 'moments', 'rank', 'items', 'diary', 'mail', 'shop', 'quests',
-        'achieve'
+        'achieve', 'memory'
     ].indexOf(type) >= 0;
 
     if (isFullScreen) {
@@ -5281,6 +5352,8 @@ function _restoreGameRender() {
                     if (data.world && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0) {
                         _autoExtractWorldNotes(data.world);
                     }
+                    // [Mufy 三层记忆] 每回合刷新记忆面板
+                    renderMemoryPanel();
                     if (data.bag) renderBag(data.bag);
                     if (data.quests) {
                         mergeQuests(data.quests);
@@ -5350,6 +5423,8 @@ function _restoreGameRender() {
         if (gameState._lastHUD) {
             renderHUD(gameState._lastHUD);
         }
+        // [Mufy 三层记忆] 加载存档后刷新记忆面板
+        renderMemoryPanel();
         applyFontSize();
         setWaiting(false);
 

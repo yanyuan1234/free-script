@@ -113,4 +113,48 @@ AIResponseMutator.apply({
 assertEq(StateManager.get('entities.locations').length, 1, 'filter invalid locations');
 assertEq(StateManager.get('entities.locations')[0].name, '森林', 'valid location kept');
 
+// 测试 5：[Mufy 三层记忆] memoryUpdates 按 layer 分流
+reset();
+// 模拟 EnhancedMemory，避免依赖 tavern-compat.js 的浏览器环境
+var capturedShortTerm = [];
+var capturedMilestones = [];
+var capturedLongTerm = [];
+global.EnhancedMemory = {
+    _shortTermEntries: [],
+    _milestoneEntries: [],
+    permanentFacts: { settings: [] },
+    addShortTermMemory: function(content, turn) {
+        capturedShortTerm.push({ content: content, turn: turn });
+        return { archived: false };
+    },
+    addMilestone: function(content, options) {
+        capturedMilestones.push({ content: content, options: options });
+        return { content: content };
+    },
+    upsertPermanentFact: function(category, fact) {
+        capturedLongTerm.push({ category: category, content: fact.content });
+        return 'added';
+    },
+    _cachedInjection: null,
+    _cachedInjectionTurn: -1,
+    _ltmDirty: false
+};
+AIResponseMutator.apply({
+    success: true,
+    data: {
+        memoryUpdates: [
+            { op: 'add', category: 'settings', layer: 'shortTerm', importance: 5, content: '短期事实' },
+            { op: 'add', category: 'promises', layer: 'milestone', importance: 8, content: '里程碑事件' },
+            { op: 'add', category: 'npcProfiles', layer: 'longTerm', importance: 6, content: '长期事实' }
+        ]
+    }
+});
+assertEq(capturedShortTerm.length, 1, 'shortTerm captured');
+assertEq(capturedShortTerm[0].content, '短期事实', 'shortTerm content');
+assertEq(capturedMilestones.length, 1, 'milestone captured');
+assertEq(capturedMilestones[0].content, '里程碑事件', 'milestone content');
+assertEq(capturedLongTerm.length, 1, 'longTerm captured');
+assertEq(capturedLongTerm[0].content, '长期事实', 'longTerm content');
+delete global.EnhancedMemory;
+
 console.log('AIResponseMutator tests passed');

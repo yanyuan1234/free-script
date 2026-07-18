@@ -13,6 +13,10 @@ const AIOutputSchema = {
     MEMORY_CATEGORIES: ['pcIdentity', 'settings', 'worldRules', 'npcProfiles', 'promises', 'worldPlaces'],
     // 合法操作白名单：add=合并累积 / replace=替换覆盖(单值类如pcIdentity) / delete=按内容/名字删除
     MEMORY_OPS: ['add', 'replace', 'delete'],
+    // [Mufy 三层记忆] 记忆层级：shortTerm=短期记忆 / longTerm=长期归档 / milestone=关键里程碑
+    MEMORY_LAYERS: ['shortTerm', 'longTerm', 'milestone'],
+    // 关键里程碑重要性默认阈值
+    MILESTONE_IMPORTANCE_THRESHOLD: 7,
 
     getDefaultOutput() {
         return {
@@ -144,7 +148,7 @@ const AIOutputSchema = {
         if (raw.contextSummary) out.contextSummary = String(raw.contextSummary);
         if (raw.hud && typeof raw.hud === 'object' && !Array.isArray(raw.hud)) out.hud = this._shallowClone(raw.hud);
 
-        // [P0] memoryUpdates normalize：白名单校验 op/category，过滤非法项
+        // [P0] memoryUpdates normalize：白名单校验 op/category/layer，过滤非法项
         // AI 可能输出 op='update'（归一为 'replace'）、action 代替 op、type 代替 category 等变体
         if (raw.memoryUpdates && Array.isArray(raw.memoryUpdates)) {
             var validCats = this.MEMORY_CATEGORIES;
@@ -159,6 +163,16 @@ const AIOutputSchema = {
                 // category 归一：兼容 type 字段
                 var category = String(u.category || u.type || '').trim();
                 if (validCats.indexOf(category) === -1) return null; // 非法类别直接丢弃，避免污染
+                // layer 归一：兼容 level/tier 字段，大小写不敏感，返回 canonical 驼峰形式
+                var layerInput = String(u.layer || u.level || u.tier || 'longTerm').trim();
+                var layerMap = { 'shortterm': 'shortTerm', 'short': 'shortTerm', 'st': 'shortTerm',
+                                 'longterm': 'longTerm', 'long': 'longTerm', 'lt': 'longTerm',
+                                 'milestone': 'milestone', 'ms': 'milestone' };
+                var layer = layerMap[layerInput.toLowerCase()] || 'longTerm';
+                // importance 归一：1-10 整数，默认 5
+                var importance = parseInt(u.importance || u.imp || u.priority || 5, 10);
+                if (isNaN(importance)) importance = 5;
+                importance = Math.max(1, Math.min(10, importance));
                 // delete 操作 content 可空（仅按 keywords 删除），其他操作必须非空
                 var content = String(u.content || u.text || u.value || '').trim();
                 var keywords = Array.isArray(u.keywords)
@@ -167,7 +181,7 @@ const AIOutputSchema = {
                 if (op !== 'delete' && !content) return null;
                 if (op === 'delete' && !content && keywords.length === 0) return null; // delete 至少要有定位信息
                 var reason = String(u.reason || u.note || '').trim();
-                return { op: op, category: category, content: content, keywords: keywords, reason: reason };
+                return { op: op, category: category, layer: layer, importance: importance, content: content, keywords: keywords, reason: reason };
             }).filter(function(u) { return u; });
         }
         return out;

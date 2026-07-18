@@ -217,19 +217,23 @@ const PromptBuilder = {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
             // 纯文本模式已有 <mem> 标签机制，不注入 memoryUpdates 契约避免重复
             if (pureText) return '';
-            return '【记忆维护契约·memoryUpdates】\n'
-                + '何时输出：当本回合发生需要永久记住的事实时，在 JSON 中追加 memoryUpdates 数组。无变更时省略该字段或输出空数组。\n'
-                + '内容要求：每条 = { op, category, content, keywords?, reason? }\n'
-                + '  - op：add（新增/合并累积，已存在则追加新信息）| replace（替换覆盖，仅用于 pcIdentity 等单值）| delete（按名字或内容删除已过时事实）\n'
+            return '【记忆维护契约·memoryUpdates（Mufy 三层记忆）】\n'
+                + '每回合必须在 JSON 中输出 memoryUpdates 数组，按 layer 分为三层，避免 AI 失忆。\n'
+                + '  1) shortTerm（短期记忆）：每回合至少 1 条，记录本轮最核心的事实，20 字以内。示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"主角答应帮林晚寻找失踪的妹妹"}\n'
+                + '  2) longTerm（长期归档）：跨回合长期生效的事实。系统会在短期记忆满 10 条时自动汇总为长期记忆。示例：{"op":"add","category":"npcProfiles","layer":"longTerm","importance":6,"content":"林晚：清冷孤傲的刑警，内心极度渴望被需要"}\n'
+                + '  3) milestone（关键里程碑）：importance≥7 的重大事件，如关系确立、击败 Boss、获得核心道具、地图转换。示例：{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与主角正式确立合作关系"}\n'
+                + '通用字段：\n'
+                + '  - op：add（新增/合并累积）| replace（替换覆盖，仅用于 pcIdentity 等单值）| delete（按名字或内容删除已过时事实）\n'
                 + '  - category：pcIdentity（主角身份）| settings（世界设定）| worldRules（世界规则/铁律）| npcProfiles（关键角色档案）| promises（玩家承诺）| worldPlaces（关键地点）\n'
-                + '  - content：事实正文。角色/地点用"名字：描述"格式（冒号分隔，便于去重合并）\n'
+                + '  - importance：1-10，普通事实 5，关键里程碑≥7\n'
+                + '  - content：事实正文。角色/地点建议用"名字：描述"格式（冒号分隔，便于去重合并）\n'
                 + '  - keywords（可选）：定位关键词数组，delete 操作可仅凭 keywords 定位\n'
-                + '  - reason（可选）：一句话说明为何增改删，供玩家在记忆面板核对\n'
+                + '  - reason（可选）：一句话说明为何增改删\n'
                 + '强制约束：\n'
-                + '  - 仅记录跨回合长期生效的事实，日常剧情变化不要写入（那些由 story/characters/quests 等字段承载）\n'
+                + '  - shortTerm 每回合必填至少 1 条；longTerm/milestone 无变更可省略\n'
                 + '  - 不要重复写入已存在的相同事实；信息更新时用 replace 或带新字段的 add\n'
                 + '  - delete 不会删除玩家手动锁定（locked）的事实\n'
-                + '  - 每回合 memoryUpdates 建议 0-3 条，宁缺毋滥';
+                + '  - 日常剧情变化（无长期价值）不要写入 longTerm，用 shortTerm 承载即可';
         }, { order: 72 });
 
         // gametime：当前游戏时间
