@@ -236,66 +236,6 @@ var SmartConfigEngine = {
     },
 
     /**
-    * 解析并记录配置信息（仅用于展示推荐项，不自动修改游戏设置）
-    */
-    logConfig: function(config, presetName) {
-        if (!config) return;
-
-        var applied = [];
-
-        // 1. 记录自动解析设置
-        if (config.autoParse) {
-            applied.push('自动解析: ' + config.autoParse.prefix + ' ... ' + config.autoParse.suffix);
-        }
-
-        // 2. 记录API设置
-        if (config.apiSettings) {
-            if (config.apiSettings.promptPostProcessing) {
-                applied.push('提示词后处理: ' + config.apiSettings.promptPostProcessing);
-            }
-            if (config.apiSettings.extraParams) {
-                applied.push('附加参数: ' + JSON.stringify(config.apiSettings.extraParams));
-            }
-            if (config.apiSettings.apiUrl) {
-                applied.push('API地址: ' + config.apiSettings.apiUrl);
-            }
-        }
-
-        // 3. 记录模型推荐
-        if (config.modelRecommendations.length > 0) {
-            applied.push('推荐模型: ' + config.modelRecommendations.join(', '));
-        }
-
-        // 4. 记录插件需求
-        if (config.pluginRequirements.length > 0) {
-            var pluginNames = config.pluginRequirements.map(function(p) { return p.name; });
-            applied.push('需要插件: ' + pluginNames.join(', '));
-        }
-
-        // 5. 记录温度推荐
-        if (config.temperatureGuide) {
-            var tempStr = '';
-            if (config.temperatureGuide.recommended) {
-                tempStr = config.temperatureGuide.recommended;
-            } else if (config.temperatureGuide.low && config.temperatureGuide.high) {
-                tempStr = config.temperatureGuide.low + ' - ' + config.temperatureGuide.high;
-            }
-            applied.push('温度推荐: ' + tempStr);
-        }
-
-    // 输出日志
-    if (applied.length > 0) {
-        console.log('[智能配置] 预设「' + presetName + '」推荐配置:');
-        applied.forEach(function(item) {
-            console.log('  ✓ ' + item);
-            });
-        UI.toast('检测到 ' + applied.length + ' 项推荐配置（手动设置生效）');
-    }
-
-    this.currentConfig = config;
-    },
-
-    /**
     * 从预设加载并应用配置
     * [优化#4] 改为调用 applyConfig 真正应用，而非仅 logConfig 记录
     */

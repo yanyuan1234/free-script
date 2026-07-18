@@ -3271,51 +3271,6 @@ if (document.readyState === 'loading') {
 // 渲染器 - 使用集成版UI样式
 // ========================================
 
-// --- 流式chunk处理 ---
-// 从 JSON 包装的流式响应中提取 story 字段值
-// 用于 onStreamChunk 的 JSON 模式分支
-function extractStoryStreaming(text) {
-    var match = text.match(/"story"\s*:\s*"/);
-    if (!match) return null;
-    var i = match.index + match[0].length;
-    var inEscape = false;
-    var result = '';
-    while (i < text.length) {
-        var ch = text[i];
-        if (inEscape) {
-            switch (ch) {
-                case 'n': result += '\n'; break;
-                case '"': result += '"'; break;
-                case '\\': result += '\\'; break;
-                case 't': result += '\t'; break;
-                case 'r': result += '\r'; break;
-                case 'b': result += '\b'; break;
-                case 'f': result += '\f'; break;
-                case 'u':
-                    var hexStr = text.substring(i + 1, i + 5);
-                    if (/^[0-9a-fA-F]{4}$/.test(hexStr)) {
-                        result += String.fromCharCode(parseInt(hexStr, 16));
-                        i += 4;
-                    } else {
-
-                        result += '\\' + ch;
-                    }
-                    break;
-                default: result += ch;
-            }
-            inEscape = false;
-        } else if (ch === '\\') {
-            inEscape = true;
-        } else if (ch === '"') {
-            return result;
-        } else {
-            result += ch;
-        }
-        i++;
-    }
-    return result.length > 0 ? result : null;
-}
-
 
 // 【NEW-007 修复】流式增量提取状态（O(1) per chunk，不再 O(n) 全缓冲区扫描）
 // 每轮请求开始时由 _resetStreamExtractor 重置

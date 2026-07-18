@@ -6588,11 +6588,7 @@ return prompts.map(p => {
         if (script.minDepth !== null && script.minDepth !== undefined && messageDepth < script.minDepth) continue;
         if (script.maxDepth !== null && script.maxDepth !== undefined && messageDepth > script.maxDepth) continue;
 
-        // ── run_on / runOnEdit 过滤（果实/月读格式） ──
-        const runOn = script.run_on || script.runOnEdit;
-        // runOnEdit 在两个阶段都运行，run_on 只在指定阶段运行
-        // 这里简化为：都执行
-
+        // run_on / runOnEdit 过滤已简化：两类都在两个阶段执行
         try {
             text = this._applyScript(text, script);
             } catch (e) {

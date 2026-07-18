@@ -156,12 +156,6 @@ const StateTagParser = {
     _parseInt(s, def) {
         var n = parseInt(s, 10);
         return isNaN(n) ? def : n;
-    },
-
-    // 检测 AI 回复是否包含 <state> 块（快速判断，不解析）
-    hasStateBlock(rawReply) {
-        if (!rawReply || typeof rawReply !== 'string') return false;
-        return this._reStateBlock.test(rawReply);
     }
 };
 
