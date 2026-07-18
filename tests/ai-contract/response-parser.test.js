@@ -41,4 +41,13 @@ assertEq(bareThinking.success, true, 'bare thinking then json success');
 assertEq(bareThinking.storyText, 'hello', 'bare thinking then json story');
 assertEq(bareThinking.data.title, '第一章', 'bare thinking then json title');
 
+// BUG-A2：模型把设计思路写入 JSON 的 story 字段，解析后应清洗为叙事正文
+var leakedJson = '{"story":"用户现在需要开始修仙养成的开局，首先得符合被退婚的废材。\\n\\n然后开局的场景：林墨在杂役院的破屋里醒来，手里攥着退婚文书。\\n\\n林墨深吸一口气，系统的提示音在脑海中响起。","title":"第一章","choices":[{"id":"A","text":"查看系统面板"}]}';
+var leakedParse = ResponseParser.parse(leakedJson);
+assertEq(leakedParse.success, true, 'leaked design thinking json success');
+if (leakedParse.storyText.indexOf('用户现在需要') !== -1) throw new Error('ResponseParser leaked user-now-needs: ' + JSON.stringify(leakedParse.storyText));
+if (leakedParse.storyText.indexOf('首先得') !== -1) throw new Error('ResponseParser leaked first-must');
+if (leakedParse.storyText.indexOf('林墨深吸一口气') === -1) throw new Error('ResponseParser removed real story: ' + JSON.stringify(leakedParse.storyText));
+console.log('ResponseParser leaked design-thoughts test passed, cleaned length:', leakedParse.storyText.length);
+
 console.log('ResponseParser tests passed');

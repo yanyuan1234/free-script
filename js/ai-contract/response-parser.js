@@ -127,9 +127,25 @@ const ResponseParser = {
 
     // 背景：AI 会把 <mem> 标签嵌入 JSON story 字段值内（合法的字符串内容）。
     // Level 0/1/2 成功后直接返回，导致 mem 标签原文泄漏到 storyText，且结构化记忆丢失。
-    // 本方法在返回前统一后处理：提取 mems，从 storyText 和 data.story 中剥离标签原文。
+    // 本方法在返回前统一后处理：
+    //   1) 清洗 storyText（剥离思维链、裸推理、HTML、JSON 残片等）
+    //   2) 提取 mems，从 storyText 和 data.story 中剥离标签原文。
     _postExtractMems(result) {
         if (!result || !result.storyText || typeof result.storyText !== 'string') return;
+
+        // BUG-A2 修复：模型可能把无标签思考过程直接写入 JSON 的 story 字段，
+        // 必须在返回前统一清洗，避免泄漏到剧情 UI。
+        if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.sanitizeStory) {
+            var cleanedStory = OutputSanitizer.sanitizeStory(result.storyText);
+            if (cleanedStory !== result.storyText) {
+                result.storyText = cleanedStory;
+                if (result.data && typeof result.data === 'object') {
+                    result.data.story = cleanedStory;
+                }
+                result.warnings.push('story sanitized (thinking/artifacts removed)');
+            }
+        }
+
         if (result.storyText.indexOf('<mem') === -1) return;  // 快速路径：无 mem 标签
         const memResult = this._tryMemTags(result.storyText);
         if (memResult && memResult.mems && memResult.mems.length > 0) {

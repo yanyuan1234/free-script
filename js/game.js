@@ -412,13 +412,31 @@ function _isThinkingContent(text) {
         /根据.{0,10}设定/,
         /根据.{0,10}世界观/,
         /这回合/,
-        /本回合.{0,5}应该/
+        /本回合.{0,5}应该/,
+        // BUG-A2 扩展：模型把设计思路写入 story 字段
+        /^用户现在需要/, /^玩家现在需要/,
+        /^首先[^。]*(?:设定|设计|安排|规划)/,
+        /^然后[^。]*的话/,
+        /^然后(?:NPC|开局|choices|world|keyEvents|player|bag|quests|gameTime|心声|系统|剧情|场景)/,
+        /^比如叫/,
+        /^对，/
+    ];
+    var strongPatterns = [
+        /^用户现在需要/, /^玩家现在需要/,
+        /^首先得/, /^首先[^。]*(?:设定|设计|安排|规划)/,
+        /^然后[^。]*的话/,
+        /^然后(?:NPC|开局|choices|world|keyEvents|player|bag|quests|gameTime|心声|系统|剧情|场景)/
     ];
     var hits = 0;
+    var hasStrong = false;
     for (var i = 0; i < patterns.length; i++) {
         if (patterns[i].test(text)) hits++;
     }
-    return hits >= 2;
+    for (var j = 0; j < strongPatterns.length; j++) {
+        if (strongPatterns[j].test(text)) { hasStrong = true; break; }
+    }
+    // 强信号命中 1 次即拦截；普通模式仍需 2 次避免误杀
+    return hasStrong ? hits >= 1 : hits >= 2;
 }
 
 function _slimAssistantMessage(content) {
@@ -647,6 +665,7 @@ function _buildFormatRules(gs, _t, turn) {
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
         + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
+        + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请留在 reasoning_content（如果 API 支持），不要写入 story。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
@@ -2360,6 +2379,20 @@ async function sendAIRequest(userMessage, isInit = false) {
         } catch (e) {
             finalStory = response || '';
             if (typeof finalStory !== 'string') finalStory = String(finalStory || '');
+        }
+        // BUG-A2 修复：模型可能把无标签思考过程写入 JSON 的 story 字段，
+        // 流式阶段已把脏文本推入打字机。此处对最终文本再次清洗；
+        // 若清洗后变短，立即重置打字机，用干净文本重新渲染。
+        var _rawFinalStory = finalStory;
+        if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.sanitizeStory) {
+            try {
+                finalStory = OutputSanitizer.sanitizeStory(finalStory);
+            } catch (e) {
+                console.warn('[sendAIRequest] sanitizeStory 异常，使用原文:', e && e.message);
+            }
+        }
+        if (finalStory.length < _rawFinalStory.length) {
+            TypewriterBuffer.stop();
         }
         // 【BUG-001 修复】让出主线程一次，让前面 AIResponseMutator / UI 渲染的累积工作先绘制到屏幕
         // 否则下面 RegexManager.apply + formatStory 会继续堆积同步任务，触发长时间卡顿

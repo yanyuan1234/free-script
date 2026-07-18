@@ -39,7 +39,35 @@ const OutputSanitizer = {
         /^策略[:：]/,
         /^步骤[:：]/,
         /^\d+[\.\、]\s*(描述|推进|设置|生成|引入|安排)/,
-        /^- (描述|推进|设置|生成|引入|安排)/
+        /^- (描述|推进|设置|生成|引入|安排)/,
+        // BUG-A2：模型常把设计思路直接写入 story 字段，以下模式覆盖这些元话语
+        /^用户现在需要/,
+        /^玩家现在需要/,
+        /^首先得/,
+        /^首先[^。]*(?:设定|设计|安排|规划)/,
+        /^比如叫/,
+        /^比如[\w\u4e00-\u9fa5]{1,6}[,，]?/,
+        /^对，/,
+        /^对[,，]/,
+        /^然后NPC/,
+        /^然后[^。]*的话/,
+        /^然后开局/,
+        /^然后choices/,
+        /^然后world/,
+        /^然后keyEvents/,
+        /^然后player/,
+        /^然后bag/,
+        /^然后quests/,
+        /^然后gameTime/,
+        /^然后心声/,
+        /^然后系统/,
+        /^然后剧情/,
+        /^然后场景/,
+        /^主角.*设定/,
+        /^属性.*设定/,
+        /^NPC.*设定/,
+        /^任务.*设定/,
+        /^时间.*设定/
     ],
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
@@ -59,13 +87,25 @@ const OutputSanitizer = {
     // 仅当文本以多段元话语开头时才剥离，避免误删正常剧情
     stripBareThinking(text) {
         if (!text || typeof text !== 'string') return '';
-        // 按双换行分段
-        const paras = text.split(/\n\n+/);
+        // 按换行分段（模型常把设计思路用单换行连接，不能只按双换行）
+        const paras = text.split(/\n+/);
         if (paras.length === 0) return text;
+
+        // 强信号模式：只要文本以这些开头，极大概率是模型把设计思路写进了 story
+        const STRONG_THINKING_PATTERNS = [
+            /^用户现在需要/, /^玩家现在需要/,
+            /^首先得/, /^首先[^。]*(?:设定|设计|安排|规划)/,
+            /^然后NPC/, /^然后[^。]*的话/, /^然后开局/,
+            /^然后choices/, /^然后world/, /^然后keyEvents/,
+            /^然后player/, /^然后bag/, /^然后quests/, /^然后gameTime/,
+            /^然后心声/, /^然后系统/, /^然后剧情/, /^然后场景/,
+            /^主角.*设定/, /^属性.*设定/, /^NPC.*设定/, /^任务.*设定/, /^时间.*设定/
+        ];
 
         // 检测开头连续多少段是思考内容
         let thinkEnd = 0;
         let matchCount = 0;
+        let hasStrongSignal = false;
         for (let i = 0; i < paras.length; i++) {
             const para = paras[i].trim();
             if (!para) { thinkEnd = i + 1; continue; }
@@ -75,12 +115,17 @@ const OutputSanitizer = {
             if (isThinking) {
                 thinkEnd = i + 1;
                 matchCount++;
+                if (STRONG_THINKING_PATTERNS.some(function(re) { return re.test(firstLine); })) {
+                    hasStrongSignal = true;
+                }
             } else {
                 break;
             }
         }
         // 至少 2 段匹配才剥离（避免误删单段"我需要..."的剧情对话）
-        if (matchCount >= 2 && thinkEnd < paras.length) {
+        // 强信号模式下放宽到 1 段
+        const minMatch = hasStrongSignal ? 1 : 2;
+        if (matchCount >= minMatch && thinkEnd < paras.length) {
             return paras.slice(thinkEnd).join('\n\n').trim();
         }
         // BUG FIX：单段裸推理前缀后紧跟 JSON 时，允许 1 段匹配即剥离
