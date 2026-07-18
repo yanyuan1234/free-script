@@ -629,6 +629,9 @@
                             <use href="#icon-back" />
                         </svg></button>
                     <h2 class="page-title">日志</h2>
+                    <button class="circle-btn" data-action="openLogFeaturesModal" aria-label="日志功能设置" style="margin-left:auto;"><svg class="icon">
+                            <use href="#icon-settings" />
+                        </svg></button>
                 </div>
                 <div class="page-body overflow-y-auto pt-12">
                     <div class="menu-top-card w-full mb-20">
@@ -2871,6 +2874,21 @@
 <!-- ============================================================ -->
 
 
+
+            <!-- ==================== 日志功能开关模态框 ==================== -->
+            <div class="modal-overlay" id="logFeaturesModal">
+                <div class="modal-content" style="max-height:80vh;">
+                    <div class="modal-header">
+                        <h3 class="modal-title">日志功能开关</h3>
+                        <button class="circle-btn" data-close="logFeaturesModal"><svg class="icon icon-sm">
+                                <use href="#icon-close" />
+                            </svg></button>
+                    </div>
+                    <div class="modal-body" id="logFeaturesSettingsBody" style="padding:16px;">
+                        <!-- 由 JS 动态渲染开关列表 -->
+                    </div>
+                </div>
+            </div>
 
 <!-- ============================================================================
 【修复补丁 v3.0】Bug修复与性能优化 - 安全版本

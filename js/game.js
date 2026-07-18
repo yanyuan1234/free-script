@@ -521,6 +521,23 @@ function getEffectiveMaxTokens() {
     return Math.max(effective, 2048);
 }
 
+// [日志功能开关] 全局读取玩家在剧情页设置的日志功能启停状态
+var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
+var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, world: true, calendar: true, author_note: true, memory: true };
+function getLogFeatureFlag(key) {
+    var stored = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('settings.logFeatures') : null;
+    if (!stored || typeof stored !== 'object') stored = {};
+    return stored[key] !== undefined ? !!stored[key] : !!LOG_FEATURE_DEFAULTS[key];
+}
+function buildLogFeatureSettingsPrompt() {
+    var disabled = [];
+    for (var k in LOG_FEATURE_LABELS) {
+        if (!getLogFeatureFlag(k)) disabled.push(LOG_FEATURE_LABELS[k]);
+    }
+    if (disabled.length === 0) return '';
+    return '\n【玩家已关闭的功能】以下内容已被玩家关闭，禁止生成相关模块或在剧情中引入：' + disabled.join('、') + '。\n';
+}
+
 function buildSystemPrompt(includeFormatRules) {
     if (includeFormatRules === undefined) includeFormatRules = true;
 
@@ -666,6 +683,30 @@ function _buildFormatRules(gs, _t, turn) {
     // [优化#10] 基于原版单 HTML 测试反馈，把原本"建议性"字段提升为必填/最低要求，
     // 解决新版输出 world 模块过少、story 过短、npcMessages/relationships 缺失的问题。
     var _storyTarget = Math.min(1800, Math.max(800, Math.floor(_maxTokens * 0.35)));
+
+    // [日志功能开关] 根据玩家在设置里启用的功能动态调整格式要求
+    var _logFeatureLabels = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
+    var _logFeatureDefaults = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, world: true, calendar: true, author_note: true, memory: true };
+    function _getLogFeatureFlag(key) {
+        var stored = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('settings.logFeatures') : null;
+        if (!stored || typeof stored !== 'object') stored = {};
+        return stored[key] !== undefined ? !!stored[key] : !!_logFeatureDefaults[key];
+    }
+    var _enabledWorldTypes = ['text', 'list', 'ranking', 'key_value', 'cards'];
+    if (_getLogFeatureFlag('forum') || _getLogFeatureFlag('comments')) _enabledWorldTypes.push('comments');
+    if (_getLogFeatureFlag('chat')) _enabledWorldTypes.push('chat');
+    if (_getLogFeatureFlag('moments')) _enabledWorldTypes.push('moments');
+    if (_getLogFeatureFlag('mail')) _enabledWorldTypes.push('mail');
+    if (_getLogFeatureFlag('shop')) _enabledWorldTypes.push('shop');
+    if (_getLogFeatureFlag('diary')) _enabledWorldTypes.push('diary');
+    var _disabledFeatures = [];
+    for (var _lfKey in _logFeatureLabels) {
+        if (!_getLogFeatureFlag(_lfKey)) _disabledFeatures.push(_logFeatureLabels[_lfKey]);
+    }
+    var _disabledFeaturesHint = _disabledFeatures.length
+        ? '\n【玩家已关闭的功能】以下内容已被玩家关闭，本回合禁止生成相关模块或在剧情中引入：' + _disabledFeatures.join('、') + '。\n'
+        : '';
+
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
         + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
@@ -674,7 +715,7 @@ function _buildFormatRules(gs, _t, turn) {
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
-        + '"world": [{"type":"text/list/ranking/key_value/cards/comments/moments/mail/shop/diary/chat/forum","title":"标题","content":"内容","items":[]}], '
+        + '"world": [{"type":"' + _enabledWorldTypes.join('/') + '","title":"标题","content":"内容","items":[]}], '
         + '"bag": [{"name":"物品名","count":1,"desc":"描述","rarity":"普通/精良/珍稀/传说","usable":false,"effect":"","equippable":false,"equipped":false,"slot":"weapon/armor/accessory/head"}], '
         + '"currency": 0, "currencyName": "按世界观设定（修仙用灵石，现代用元，古代用银两等）", '
         + '"quests": [{"title":"任务名","type":"主线/支线/隐藏","status":"进行中/已完成/失败","progress":"当前/总数","hint":"下一步提示"}], '
@@ -709,7 +750,8 @@ function _buildFormatRules(gs, _t, turn) {
         + '  - 示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"主角答应帮林晚寻找失踪的妹妹"}；{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与主角正式确立合作关系"}。\n'
         + '  - 即使剧情没有重大变化，也必须输出至少 1 条 shortTerm 记忆；无长期/里程碑变更则对应层返回空数组或省略。\n'
         + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
-        + '约' + _maxTokens + 'tokens输出空间';
+        + '约' + _maxTokens + 'tokens输出空间'
+        + _disabledFeaturesHint;
 }
 
 /**
@@ -4834,7 +4876,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     var _aiReturned = function(t) { return !!_aiTypesThisTurn[t]; };
 
     // 排行榜：按好感度排序的角色榜
-    if (!hasType('ranking') && charList.length > 0) {
+    if (getLogFeatureFlag('rank') && !hasType('ranking') && charList.length > 0) {
         var ranked = charList.slice().sort(function(a, b) { return (b.favorability || 0) - (a.favorability || 0); }).slice(0, 5);
         modules.push({
             type: 'ranking',
@@ -4844,7 +4886,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
     // 商店：从背包物品 + 默认商品生成
-    if (!hasType('shop')) {
+    if (getLogFeatureFlag('shop') && !hasType('shop')) {
         var goods = [];
         if (bag.length > 0) {
             bag.slice(0, 5).forEach(function(it) {
@@ -4867,7 +4909,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 改为：主角用剧情摘要、NPC用 desc/最近事件拼接，并准备多套模板按角色名hash分散。
 
     // 改为按本轮是否返回判断，让朋友圈随轮次持续增长。
-    if (!_aiReturned('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
+    if (getLogFeatureFlag('moments') && !_aiReturned('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
         var _moodTemplates = [
             '又是充实的一天。',
             '今天的天气不错，心情也跟着好起来。',
@@ -4907,7 +4949,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
 
     // 第1轮的邮件使 hasType('mail') 永远为 true，后续轮次不再生成系统邮件。
     // 改为：每轮都追加"第N轮冒险记录"系统邮件（去重），任务邮件仅在无邮件时生成。
-    if (turn > 0) {
+    if (getLogFeatureFlag('mail') && turn > 0) {
         var _existingMailMods = modules.filter(function(m) { return m && m.type === 'mail'; });
         var _allMails = [];
         _existingMailMods.forEach(function(m) {
@@ -4947,7 +4989,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 兜底须用 items 而非 entries，否则多条日记会被当成一条空记录丢失。
 
     // 改为按本轮是否返回判断，让日记随轮次持续增长。
-    if (!_aiReturned('diary') && storyText) {
+    if (getLogFeatureFlag('diary') && !_aiReturned('diary') && storyText) {
         var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
         var diaryEntries = [{ npc: playerName, date: Date.now(), content: summary, mood: '平静', memos: [] }];
         // 为每个 NPC 也生成日记条目（用 desc/mood 作为内容）
@@ -4971,7 +5013,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 原兜底把多个帖子塞进一个模块的 posts 数组，导致只有一条空帖子。
     // 改为：每个事件展开为独立的 comments 模块。
 
-    if (!_aiReturned('comments') && !_aiReturned('forum') && events.length > 0) {
+    if (getLogFeatureFlag('forum') && !_aiReturned('comments') && !_aiReturned('forum') && events.length > 0) {
         events.slice(0, 2).forEach(function(ev) {
             var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '发生了什么');
             modules.push({
@@ -4986,7 +5028,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
     // 成就：注入默认成就，确保成就页有内容
-    if (typeof AchievementSystem !== 'undefined' && !hasType('achievements') && !hasType('achievement')) {
+    if (getLogFeatureFlag('achieve') && typeof AchievementSystem !== 'undefined' && !hasType('achievements') && !hasType('achievement')) {
         var defaultAchievements = [
             { id: 'ach_first_step', name: '踏上旅程', desc: '完成第一轮剧情', category: 'STORY', rarity: 'common', condition: 'storyCount >= 1', icon: '👣' },
             { id: 'ach_meet_npc', name: '初次相识', desc: '结识第一位 NPC', category: 'SOCIAL', rarity: 'common', condition: 'npcCount >= 1', icon: '🤝' },
@@ -4997,6 +5039,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
     // 聊天：为所有角色自动生成初始聊天消息（AI 未主动发消息时兜底）
+    if (getLogFeatureFlag('chat')) {
 
     // 聊天列表永远只有1条消息。增加每轮兜底：从剧情/事件中提取话题，让1-2个NPC主动发消息。
     if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
@@ -5061,6 +5104,8 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         }
     }
 
+
+    }
 
     // AI 连续多轮不返回 world 模块时会导致 accumulate 类型无限增长。
     // 此处对每种类型保留最近 20 条，与 renderWorldModules 的上限一致。

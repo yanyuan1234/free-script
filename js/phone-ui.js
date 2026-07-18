@@ -984,9 +984,30 @@ function deleteMail(index) {
     }
 }
 
-// 模块级：根据数据存在性控制日志入口显隐，减少空入口 clutter
+// [日志功能开关] 默认值与标签
+var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
+var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, world: true, calendar: true, author_note: true, memory: true };
+function getLogFeatureSettings() {
+    var stored = (StateManager ? StateManager.get('settings.logFeatures') : null) || {};
+    var settings = {};
+    for (var k in LOG_FEATURE_DEFAULTS) {
+        settings[k] = stored[k] !== undefined ? !!stored[k] : LOG_FEATURE_DEFAULTS[k];
+    }
+    return settings;
+}
+function isLogFeatureEnabled(key) { return !!getLogFeatureSettings()[key]; }
+function setLogFeatureEnabled(key, enabled) {
+    var settings = getLogFeatureSettings();
+    settings[key] = !!enabled;
+    if (StateManager && StateManager.set) StateManager.set('settings.logFeatures', settings, { silent: true });
+    updateLogFeatureVisibility();
+    autoSave && autoSave();
+}
+
+// 模块级：根据数据存在性与设置状态控制日志入口显隐
 function updateLogFeatureVisibility() {
     if (typeof gameState === 'undefined') return;
+    var settings = getLogFeatureSettings();
     var mods = gameState._worldModules || [];
     var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])) || [];
     var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.quests || [])) || [];
@@ -994,18 +1015,43 @@ function updateLogFeatureVisibility() {
         var el = document.getElementById(id);
         if (el) el.style.display = visible ? '' : 'none';
     }
-    setVisible('logFeat-calendar', mods.some(function(m) { return m.type === 'calendar'; }));
-    setVisible('logFeat-author_note', mods.some(function(m) { return m.type === 'author_note'; }));
-    setVisible('logFeat-chat', mods.some(function(m) { return m.type === 'chat'; }) || !!(gameState._chatLogs && gameState._chatLogs.length));
-    setVisible('logFeat-forum', mods.some(function(m) { return m.type === 'forum' || m.type === 'comments'; }));
-    setVisible('logFeat-rank', mods.some(function(m) { return m.type === 'ranking'; }));
-    setVisible('logFeat-shop', mods.some(function(m) { return m.type === 'shop'; }));
-    setVisible('logFeat-moments', mods.some(function(m) { return m.type === 'moments'; }));
-    setVisible('logFeat-diary', mods.some(function(m) { return m.type === 'diary'; }));
-    setVisible('logFeat-mail', mods.some(function(m) { return m.type === 'mail'; }));
-    setVisible('logFeat-achieve', mods.some(function(m) { return m.type === 'achievement' || m.type === 'achievements'; }));
-    setVisible('logFeat-quests', quests.length > 0);
-    // 物品页保留可见，方便手动添加；世界/记忆为核心入口始终可见
+    setVisible('logFeat-calendar', settings.calendar && mods.some(function(m) { return m.type === 'calendar'; }));
+    setVisible('logFeat-author_note', settings.author_note && mods.some(function(m) { return m.type === 'author_note'; }));
+    setVisible('logFeat-chat', settings.chat && (mods.some(function(m) { return m.type === 'chat'; }) || !!(gameState._chatLogs && gameState._chatLogs.length)));
+    setVisible('logFeat-forum', settings.forum && mods.some(function(m) { return m.type === 'forum' || m.type === 'comments'; }));
+    setVisible('logFeat-rank', settings.rank && mods.some(function(m) { return m.type === 'ranking'; }));
+    setVisible('logFeat-shop', settings.shop && mods.some(function(m) { return m.type === 'shop'; }));
+    setVisible('logFeat-moments', settings.moments && mods.some(function(m) { return m.type === 'moments'; }));
+    setVisible('logFeat-diary', settings.diary && mods.some(function(m) { return m.type === 'diary'; }));
+    setVisible('logFeat-mail', settings.mail && mods.some(function(m) { return m.type === 'mail'; }));
+    setVisible('logFeat-achieve', settings.achieve && mods.some(function(m) { return m.type === 'achievement' || m.type === 'achievements'; }));
+    setVisible('logFeat-quests', settings.quests && quests.length > 0);
+    setVisible('logFeat-items', settings.items);
+    setVisible('logFeat-world', settings.world);
+    setVisible('logFeat-memory', settings.memory);
+}
+
+// 日志功能开关弹窗
+function openLogFeaturesModal() {
+    renderLogFeaturesSettings();
+    UI.showModal('logFeaturesModal');
+}
+function renderLogFeaturesSettings() {
+    var container = document.getElementById('logFeaturesSettingsBody');
+    if (!container) return;
+    var settings = getLogFeatureSettings();
+    var html = '<div style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;">关闭后对应入口会隐藏，并提示 AI 不再生成相关内容。</div>';
+    for (var key in LOG_FEATURE_DEFAULTS) {
+        var label = LOG_FEATURE_LABELS[key] || key;
+        var checked = settings[key] ? 'checked' : '';
+        html += '<div class="setting-item">' +
+            '<span class="setting-label">' + label + '</span>' +
+            '<label class="switch">' +
+            '<input type="checkbox" data-log-feature="' + key + '" ' + checked + '>' +
+            '<span class="slider"></span>' +
+            '</label></div>';
+    }
+    container.innerHTML = html;
 }
 function renderWorldModules(modules) {
     modules = modules || [];
@@ -4523,6 +4569,15 @@ function bindEvents() {
         cotToggle.addEventListener('click', function(ev) {
             ev.stopPropagation();
             toggleCotPanel();
+        });
+    }
+
+    // 日志功能开关弹窗内的开关
+    var logFeaturesBody = document.getElementById('logFeaturesSettingsBody');
+    if (logFeaturesBody) {
+        logFeaturesBody.addEventListener('change', function(ev) {
+            var cb = ev.target.closest('[data-log-feature]');
+            if (cb) setLogFeatureEnabled(cb.getAttribute('data-log-feature'), cb.checked);
         });
     }
 
