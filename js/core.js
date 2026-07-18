@@ -5284,13 +5284,13 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // idle 看门狗不触发，需等 10 分钟总超时。这里加 240s fetch 阶段超时
     // 【复审 v2 修复 NEW-001】30s 对中转站过于激进（api.iamhc.cn 复杂 JSON Schema 请求首字节 >30s），
     // 全部延长到 240s，给中转站和推理模型充足反应时间
-    var CONNECT_TIMEOUT_MS = 240 * 1000;
+    var CONNECT_TIMEOUT_MS = 60 * 1000; // 60s 连接/首字节总超时，避免中转站无限 keep-alive 挂起
     var _connectTimer = null;
     var _connectAC = null;
     if (typeof AbortController !== 'undefined') {
         _connectAC = new AbortController();
         _connectTimer = TimerManager.setTimeout('aiConnectTimeout', function() {
-            try { _connectAC.abort(new Error('API 连接超时（240秒未建立连接）')); }
+            try { _connectAC.abort(new Error('API 连接超时（60秒未建立连接）')); }
             catch (e) {}
         }, CONNECT_TIMEOUT_MS);
         // 若外部 signal 已 abort，同步触发 connect AC
@@ -5354,9 +5354,10 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // 【第5轮优化】分层 idle 超时（参考业界 SSE 看门狗最佳实践）
     // 单一 60 秒超时的问题：首 token 慢时（推理模型思考 30-50 秒）会被误杀，但服务端真挂起时 60 秒又太久
     // 业界方案：首 token 用较长超时（容忍思考），后续 chunk 间隔用较短超时（真挂起快速判定）
-    // 【复审 v2 修复 NEW-001】全部延长到 240s：中转站复杂 Schema 请求 + 推理模型长思考 + 故事/JSON 切换间隔都需要更长时间
-    var FIRST_TOKEN_TIMEOUT_MS = 240 * 1000;   // 首 token 240 秒（推理模型思考 + 中转站 buffer）
-    var CHUNK_IDLE_TIMEOUT_MS = 240 * 1000;   // 后续 chunk 间隔 240 秒（故事→JSON 元数据切换可能间隔较长）
+    // 60s 作为 idle 总超时：足够普通模型首 token + 故事/JSON 元数据切换间隔；
+    // 同时避免中转站在 429 限流时用 keep-alive 无限挂起前端。
+    var FIRST_TOKEN_TIMEOUT_MS = 60 * 1000;   // 首 token 60 秒
+    var CHUNK_IDLE_TIMEOUT_MS = 60 * 1000;   // 后续 chunk 间隔 60 秒
     var _hasFirstChunk = false;
 
     while (true) {
@@ -5445,15 +5446,15 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
 
 async function executeAINormal(url, body, apiKey, signal) {
-    // P3 修复 BUG-007 真正缺口：fetch 阶段加 240s connect 超时（与 executeAIStream 一致）
-    // 【复审 v2 修复 NEW-001】30s→240s，给中转站复杂 Schema 请求充足反应时间
-    var CONNECT_TIMEOUT_MS = 240 * 1000;
+    // P3 修复 BUG-007 真正缺口：fetch 阶段加 60s connect 超时（与 executeAIStream 一致）
+    // 60s 足够普通模型响应；避免中转站 keep-alive 导致前端无限挂起
+    var CONNECT_TIMEOUT_MS = 60 * 1000;
     var _connectTimer = null;
     var _connectAC = null;
     if (typeof AbortController !== 'undefined') {
         _connectAC = new AbortController();
         _connectTimer = TimerManager.setTimeout('aiConnectTimeout', function() {
-            try { _connectAC.abort(new Error('API 连接超时（240秒未建立连接）')); }
+            try { _connectAC.abort(new Error('API 连接超时（60秒未建立连接）')); }
             catch (e) {}
         }, CONNECT_TIMEOUT_MS);
         if (signal) {
