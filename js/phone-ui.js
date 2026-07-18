@@ -722,6 +722,119 @@ function filterBagItems(category, el) {
         box.style.display = show ? '' : 'none';
     }
 }
+
+// [冗余精简] 背包物品管理从记忆页迁移到日志-物品页
+function addBagItem() { showBagItemForm(null); }
+function editBagItem(name) { showBagItemForm(name); }
+function deleteBagItem(name) {
+    if (!confirm('确定删除「' + name + '」？')) return;
+    var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])) || [];
+    var newBag = bag.filter(function(it) { return it && it.name !== name; });
+    if (typeof BagMutator !== 'undefined' && BagMutator.setItems) {
+        if (BagMutator.setItems(newBag)) { if (UI.toast) UI.toast('物品已删除'); openLogSubPage('items'); }
+    } else {
+        if (StateManager && StateManager.set) StateManager.set('entities.bag', newBag, { silent: true });
+        else if (typeof gameState !== 'undefined') gameState.currentBag = newBag;
+        openLogSubPage('items');
+    }
+}
+function _bagItemFormField(id, label, type, value, options) {
+    var html = '<div style="display:flex;flex-direction:column;gap:6px;">' +
+        '<label for="' + id + '" style="font-size:13px;color:var(--text-secondary);">' + escapeHtml(label) + '</label>';
+    if (type === 'select') {
+        html += '<select id="' + id + '" style="padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
+        (options || []).forEach(function(opt) {
+            html += '<option value="' + escapeHtml(opt) + '"' + (opt === value ? ' selected' : '') + '>' + escapeHtml(opt) + '</option>';
+        });
+        html += '</select>';
+    } else if (type === 'textarea') {
+        html += '<textarea id="' + id + '" style="padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;min-height:80px;resize:vertical;">' + escapeHtml(value || '') + '</textarea>';
+    } else {
+        html += '<input id="' + id + '" type="' + type + '" value="' + escapeHtml(value || '') + '" style="padding:10px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none;">';
+    }
+    return html + '</div>';
+}
+function showBagItemForm(oldName) {
+    var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])) || [];
+    var item = {};
+    if (oldName) {
+        for (var i = 0; i < bag.length; i++) {
+            if (bag[i] && bag[i].name === oldName) { item = bag[i]; break; }
+        }
+    }
+    var name = oldName || '';
+    var count = item.count || 1;
+    var unit = item.unit || '个';
+    var rarity = item.rarity || '普通';
+    var desc = item.desc || '';
+    var escOld = JSON.stringify(oldName || '').replace(/'/g, '&#39;');
+    var footer = '<div style="display:flex;gap:10px;margin-top:16px;">' +
+        '<div class="items-tab-btn active" role="button" tabindex="0" data-action="saveBagItem" data-args=\'' + escOld + '\' style="flex:1;text-align:center;">保存</div>' +
+        '<div class="items-tab-btn" role="button" tabindex="0" data-action="cancelBagItemForm" style="flex:1;text-align:center;">取消</div>' +
+        '</div>';
+    var html = '<div class="items-page">' +
+        '<div class="items-body">' +
+        '<div class="memory-card"><div class="memory-card-title">' + (oldName ? '编辑物品' : '添加物品') + '</div>' +
+        '<div style="display:flex;flex-direction:column;gap:12px;">' +
+        _bagItemFormField('bagItemName', '名称', 'text', name) +
+        '<div style="display:flex;gap:10px;">' +
+        _bagItemFormField('bagItemCount', '数量', 'number', count) +
+        _bagItemFormField('bagItemUnit', '单位', 'text', unit) +
+        '</div>' +
+        _bagItemFormField('bagItemRarity', '品质', 'select', rarity, ['普通', '精良', '珍稀', '传说']) +
+        _bagItemFormField('bagItemDesc', '描述', 'textarea', desc) +
+        '</div>' + footer +
+        '</div></div></div>';
+    var content = document.getElementById('logSubContent');
+    if (content) content.innerHTML = html;
+}
+function cancelBagItemForm() { openLogSubPage('items'); }
+function saveBagItem(oldName) {
+    var newName = document.getElementById('bagItemName').value.trim();
+    if (!newName) { if (UI.toast) UI.toast('请输入物品名称'); return; }
+    var count = parseInt(document.getElementById('bagItemCount').value, 10) || 1;
+    var unit = document.getElementById('bagItemUnit').value.trim() || '个';
+    var rarity = document.getElementById('bagItemRarity').value || '普通';
+    var desc = document.getElementById('bagItemDesc').value.trim();
+    var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])) || [];
+    var conflict = false;
+    for (var i = 0; i < bag.length; i++) {
+        var it = bag[i];
+        if (it && it.name === newName && (!oldName || oldName !== newName)) { conflict = true; break; }
+    }
+    if (conflict) { if (UI.toast) UI.toast('已存在同名物品'); return; }
+    var newBag = [];
+    var added = false;
+    for (var j = 0; j < bag.length; j++) {
+        var it2 = bag[j];
+        if (!it2) continue;
+        if (oldName && it2.name === oldName) {
+            var updated = {};
+            for (var k in it2) { if (it2.hasOwnProperty(k)) updated[k] = it2[k]; }
+            updated.name = newName;
+            updated.count = count;
+            updated.unit = unit;
+            updated.rarity = rarity;
+            updated.desc = desc;
+            updated.lastChangedTurn = 0;
+            newBag.push(BagMutator.normalizeItem(updated));
+            added = true;
+        } else {
+            newBag.push(it2);
+        }
+    }
+    if (!oldName || !added) {
+        newBag.push(BagMutator.normalizeItem({ name: newName, count: count, unit: unit, rarity: rarity, desc: desc }));
+    }
+    if (typeof BagMutator !== 'undefined' && BagMutator.setItems) {
+        if (BagMutator.setItems(newBag)) { if (UI.toast) UI.toast(oldName ? '保存成功' : '添加成功'); openLogSubPage('items'); }
+    } else {
+        if (StateManager && StateManager.set) StateManager.set('entities.bag', newBag, { silent: true });
+        else if (typeof gameState !== 'undefined') gameState.currentBag = newBag;
+        openLogSubPage('items');
+    }
+}
+
 function viewNpcDiary(name) {
     gameState._currentDiaryNpc = name;
     if (!gameState._npcDiaries) gameState._npcDiaries = {};
@@ -871,18 +984,28 @@ function deleteMail(index) {
     }
 }
 
-// 模块级：根据 gameState._worldModules 控制 logFeat-calendar / logFeat-author_note 元素显隐
-
-// 导致 renderWorldModules 三处调用永远不执行，日历/作者备注入口无法及时刷新。
+// 模块级：根据数据存在性控制日志入口显隐，减少空入口 clutter
 function updateLogFeatureVisibility() {
     if (typeof gameState === 'undefined') return;
     var mods = gameState._worldModules || [];
-    var hasCalendar = mods.some(function(m) { return m.type === 'calendar'; });
-    var hasAuthorNote = mods.some(function(m) { return m.type === 'author_note'; });
-    var calEl = document.getElementById('logFeat-calendar');
-    if (calEl) calEl.style.display = hasCalendar ? '' : 'none';
-    var anEl = document.getElementById('logFeat-author_note');
-    if (anEl) anEl.style.display = hasAuthorNote ? '' : 'none';
+    var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])) || [];
+    var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.quests || [])) || [];
+    function setVisible(id, visible) {
+        var el = document.getElementById(id);
+        if (el) el.style.display = visible ? '' : 'none';
+    }
+    setVisible('logFeat-calendar', mods.some(function(m) { return m.type === 'calendar'; }));
+    setVisible('logFeat-author_note', mods.some(function(m) { return m.type === 'author_note'; }));
+    setVisible('logFeat-chat', mods.some(function(m) { return m.type === 'chat'; }) || !!(gameState._chatLogs && gameState._chatLogs.length));
+    setVisible('logFeat-forum', mods.some(function(m) { return m.type === 'forum' || m.type === 'comments'; }));
+    setVisible('logFeat-rank', mods.some(function(m) { return m.type === 'ranking'; }));
+    setVisible('logFeat-shop', mods.some(function(m) { return m.type === 'shop'; }));
+    setVisible('logFeat-moments', mods.some(function(m) { return m.type === 'moments'; }));
+    setVisible('logFeat-diary', mods.some(function(m) { return m.type === 'diary'; }));
+    setVisible('logFeat-mail', mods.some(function(m) { return m.type === 'mail'; }));
+    setVisible('logFeat-achieve', mods.some(function(m) { return m.type === 'achievement' || m.type === 'achievements'; }));
+    setVisible('logFeat-quests', quests.length > 0);
+    // 物品页保留可见，方便手动添加；世界/记忆为核心入口始终可见
 }
 function renderWorldModules(modules) {
     modules = modules || [];
@@ -1078,12 +1201,19 @@ function _autoExtractWorldNotes(modules) {
         'list': '规则',
         'ranking': '设定',
         'key_value': '规则',
-        'cards': '设定',
-        'comments': '设定'
+        'cards': '设定'
     };
-    
+
+    // [冗余精简] 与日志子页重复的模块不写入世界观设定
+    var SKIP_WORLD_NOTE_TYPES = {
+        chat: true, forum: true, comments: true, moments: true,
+        mail: true, shop: true, diary: true, calendar: true,
+        author_note: true, achievements: true, achievement: true
+    };
+
     modules.forEach(function(mod) {
         if (!mod || !mod.title) return;
+        if (SKIP_WORLD_NOTE_TYPES[mod.type]) return;
         var content = '';
         
         if (mod.type === 'list' && Array.isArray(mod.items)) {
@@ -2043,7 +2173,19 @@ function renderWorldPage() {
         return '<div class="empty-state"><div class="empty-state-icon">世</div><p>暂无世界信息</p></div>';
     }
 
-    return modules.map(function(mod) {
+    // [冗余精简] 聊天/论坛/朋友圈/邮件/商店/日记等模块已有专属日志页，
+    // 世界信息页只保留世界观、设定、规则、排行榜、卡片等纯背景信息。
+    var DEDICATED_LOG_MODULE_TYPES = {
+        chat: true, forum: true, comments: true, moments: true,
+        mail: true, shop: true, diary: true, calendar: true,
+        author_note: true, achievements: true, achievement: true
+    };
+    var visibleModules = modules.filter(function(mod) { return mod && !DEDICATED_LOG_MODULE_TYPES[mod.type]; });
+    if (visibleModules.length === 0) {
+        return '<div class="empty-state"><div class="empty-state-icon">世</div><p>世界设定</p><p style="font-size:12px;margin-top:4px;">动态内容已归到对应日志页面</p></div>';
+    }
+
+    return visibleModules.map(function(mod) {
         var inner = '';
         switch (mod.type) {
             case 'text':
@@ -2697,7 +2839,6 @@ function renderRankPage() {
 }
 function renderItemsPage() {
     var bag = (StateManager ? StateManager.get('entities.bag') : (gameState.currentBag || [])).filter(function(item) {
-
         if (!item) return false;
         var name = String(item.name || item.title || '').trim();
         return name && name !== '无' && name !== 'undefined' && name !== 'null' && name !== '未知';
@@ -2710,6 +2851,7 @@ function renderItemsPage() {
     var _key = 'items:' + bag.length + '|' + currency + '|' + _lastItem;
     if (shouldSkipPageRender('renderItemsPage', _key)) return;
 
+    var rarityClassMap = { '普通': 'common', '精良': 'fine', '珍稀': 'rare', '传说': 'legendary' };
     var itemsHtml = '';
     if (bag.length === 0) {
         itemsHtml =
@@ -2718,10 +2860,15 @@ function renderItemsPage() {
         itemsHtml = bag.map(function(item, i) {
             var count = item.count || 1;
             var rarity = item.rarity || '普通';
-            var rarityClass = item.rarityClass || 'common';
+            var rarityClass = rarityClassMap[rarity] || 'common';
             var equipped = item.equipped ? ' [已装备]' : '';
-            return '<div class="items-box" role="button" tabindex="0" style="padding:20px 10px;">' +
-                '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;">' + (item.name || '未知物品') + equipped + '</div>' +
+            var args = JSON.stringify([item.name]).replace(/'/g, '&#39;');
+            return '<div class="items-box" style="position:relative;padding:20px 10px;">' +
+                '<div style="position:absolute;top:6px;right:6px;display:flex;gap:4px;">' +
+                '<div role="button" tabindex="0" data-action="editBagItem" data-args=\'' + args + '\' style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--bg-secondary);color:var(--text-secondary);font-size:12px;cursor:pointer;" aria-label="编辑">✎</div>' +
+                '<div role="button" tabindex="0" data-action="deleteBagItem" data-args=\'' + args + '\' style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--bg-secondary);color:#f44;font-size:14px;cursor:pointer;" aria-label="删除">×</div>' +
+                '</div>' +
+                '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;padding-right:48px;">' + (item.name || '未知物品') + equipped + '</div>' +
                 '<div class="items-box-count" style="margin-bottom:4px;">x' + count + '</div>' +
                 '<div class="items-box-rarity ' + rarityClass + '">' + rarity + '</div></div>';
         }).join('');
@@ -2759,6 +2906,10 @@ function renderItemsPage() {
         '<div class="items-tab-btn" role="button" tabindex="0" data-action="switchItemsTab" data-args=\'["bill",null]\'>账单</div>' +
         '</div>' +
         '<div id="itemsSection">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:12px 4px 8px;">' +
+        '<div style="font-size:13px;color:var(--text-secondary);">背包物品 (' + bag.length + ')</div>' +
+        '<div class="items-tab-btn" role="button" tabindex="0" data-action="addBagItem" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;">+ 添加物品</div>' +
+        '</div>' +
         '<div class="items-sub-tabs" id="itemsSubTabs"><div class="items-sub-tab active" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["all",null]\'>全部</div><div class="items-sub-tab" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["装备",null]\'>装备</div><div class="items-sub-tab" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["消耗品",null]\'>消耗品</div><div class="items-sub-tab" role="button" tabindex="0" data-action="filterBagItems" data-args=\'["材料",null]\'>材料</div></div>' +
         '<div class="items-grid" id="itemsGrid" style="justify-items:center;">' + itemsHtml + '</div>' +
         '</div>' +

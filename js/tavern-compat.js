@@ -5102,14 +5102,13 @@ var MemoryManagerUI = {
         if (!content) return;
         var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
         if (!gm) { content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">记忆系统未初始化</div>'; return; }
-        var tabMap = { overview: 'renderOverview', anchors: 'renderPermanentFacts', permanentFacts: 'renderPermanentFacts', recentMemory: 'renderRecentMemory', characters: 'renderCharacters', items: 'renderItems', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', quests: 'renderQuests', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState', world: 'renderLocations' };
+        var tabMap = { overview: 'renderOverview', anchors: 'renderPermanentFacts', permanentFacts: 'renderPermanentFacts', recentMemory: 'renderRecentMemory', characters: 'renderCharacters', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState' };
         var method = tabMap[this.currentTab];
         content.innerHTML = (method && this[method]) ? this[method](gm) : this.renderOverview(gm);
     },
 
     renderOverview: function(gm) {
         var stats = gm.getStats();
-        var pendingQuests = gm.quests.filter(function(q) { return q.status === 'pending'; }).length;
         var totalAnchors = 0; Object.keys(gm.permanentFacts).forEach(function(k) { totalAnchors += gm.permanentFacts[k].length; });
         // 【BG-010 修复】统一数据源，避免与人际页/顶部标签显示不一致
         // 1. 总消息数：原用 stats.totalMessages（仅 assistant 计数），改为 conversationHistory 长度（含 user+assistant）
@@ -5136,7 +5135,6 @@ var MemoryManagerUI = {
         return '<div class="memory-card"><div class="memory-card-title">记忆统计</div><div class="memory-stat-grid">'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + _totalMsgs + '</div><div class="memory-stat-label">总消息数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + _totalChars + '</div><div class="memory-stat-label">角色数</div></div>'
-            + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalItems + '</div><div class="memory-stat-label">物品数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalLocations + '</div><div class="memory-stat-label">地点数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalEvents + '</div><div class="memory-stat-label">重要事件</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + (stats.memorySize / 1024).toFixed(1) + 'KB</div><div class="memory-stat-label">数据大小</div></div>'
@@ -5144,7 +5142,6 @@ var MemoryManagerUI = {
             + '<div class="memory-card"><div class="memory-card-title">系统状态</div><div style="display:flex;gap:16px;">'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">游戏时间</div><div style="font-size:20px;font-weight:600;">' + escapeHtml(gm.getGameTimeStr()) + '</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">永久事实</div><div style="font-size:20px;font-weight:600;">' + totalAnchors + ' 条</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">进行中约定</div><div style="font-size:20px;font-weight:600;">' + pendingQuests + ' 待办</div></div>'
             + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + (function() {
                 // 【P3-3 修复】统一从 StateManager.progress.turn 读取回合数，与顶部场景标签一致
                 // 原实现用 gm.currentTurn，与 progress.turn 是两套独立计数器：
