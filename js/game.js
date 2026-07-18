@@ -649,10 +649,11 @@ function _buildFormatAnchor() {
         'gameTime 为必填字段，每回合必须给出具体时间。\n' +
         'quests 若任务已完成，status 填"已完成"、progress 填"1/1"。\n' +
         'currency 必须准确反映剧情中的金钱变化。\n' +
-        '可选字段：hud, relationships, keyEvents, npcMessages, contextSummary（空字段省略）\n' +
+        'hud, relationships, keyEvents, npcMessages, contextSummary 为常用字段，有内容时必须返回；无内容时返回空数组或省略（但 npcMessages 必须保留字段）。\n' +
         '心声系统：用 <giggle>角色名：心声内容</giggle> 格式穿插（每回合2-5个）。\n' +
         '**禁止写主角角度的心声**，只能写NPC的心声。\n' +
         'gameTime 推进规则：根据剧情中发生的事件合理推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n' +
+        'world 模块必须与本回合剧情紧密联动，禁止无关填充；每回合至少呈现 4 个不同模块。\n' +
         '约' + _maxTokensForAnchor + 'tokens输出空间';
 }
 
@@ -662,10 +663,14 @@ function _buildFormatRules(gs, _t, turn) {
     // 第4轮优化：从原版 backup/index.html 回填字段级规则，避免 AI 输出字段缺失或语义冲突
     // 关键修正：keyEvents 从"至少1条"改为"0-3条可空"（原版语义，避免强迫AI编造事件污染记忆）
     var _maxTokens = getEffectiveMaxTokens();
+    // [优化#10] 基于原版单 HTML 测试反馈，把原本"建议性"字段提升为必填/最低要求，
+    // 解决新版输出 world 模块过少、story 过短、npcMessages/relationships 缺失的问题。
+    var _storyTarget = Math.min(1800, Math.max(800, Math.floor(_maxTokens * 0.35)));
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
         + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
         + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请留在 reasoning_content（如果 API 支持），不要写入 story。**\n'
+        + '\n**story 长度强制要求：每回合剧情正文至少 800 中文字符，推荐 1000-1500 中文字符。场景铺垫、NPC反应、环境细节、心理描写都要充分展开，避免几句话草草带过。优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
@@ -675,17 +680,19 @@ function _buildFormatRules(gs, _t, turn) {
         + '"quests": [{"title":"任务名","type":"主线/支线/隐藏","status":"进行中/已完成/失败","progress":"当前/总数","hint":"下一步提示"}], '
         + '"keyEvents": ["本回合重要事件，每条简短一句含人物名"], '
         + '"gameTime": {"date":"日期","time":"时间","period":"时段","weather":"晴/阴/雨/雪","era":"时代/年号"} }\n'
-        + '可选字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊,正式通知用mail), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
+        + '必填/常用字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
         + '**player=主角（玩家唯一操控角色），characters=NPC列表。绝对禁止把主角放进 characters！剧情提到任何角色名都必须放入 characters；已知角色即使本回合未出场也要保留；每回合检查不遗漏；同一角色只用一个固定名字不加括号备注。**\n'
         + '**player.name 必须严格等于主角姓名，违反会导致游戏崩溃。原始JSON不用```json包裹。**\n'
         + '**player.stats 更新规则：每回合根据剧情事件更新属性值。修炼/锻炼/学习提升属性、购买/消耗降低金币、受伤降低体质等变化必须反映在 stats 中。禁止每回合返回相同的 stats 值（除非本回合确实无属性变化）。**\n'
         + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
         + 'quests 任务规则：type三类(主线/支线/隐藏),status三类(进行中/已完成/失败),progress用"当前/总数";同时存在不超过5个;**每回合至少返回1个进行中任务**;第一回合至少1个主线;完成/失败保留1-2回合后移除。**若任务已完成,status填"已完成"、progress填"1/1";若仍在进行,progress必须推进,禁止始终为0/1。**\n'
-        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角用"主角"二字。\n'
+        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角用"主角"二字。**有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。**\n'
+        + 'npcMessages NPC主动消息：用 [{"from":"NPC名字","text":"消息内容"}] 格式。粘人/关心型NPC每回合可能发1-2条，冷漠型可0条；消息内容必须与本回合剧情相关，from须是已出场角色。**无消息时返回空数组 []，禁止省略该字段。**\n'
         + 'keyEvents 规则：**有重要事件发生时必须返回 1-3 条，仅无任何重要事件的纯过场回合才输出空数组 []。**重要事件指：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露。每条简短一句含人物名。日常对话/普通移动不写入。\n'
         + 'favorability 分级（整数）：80-100极度亲密,60-79非常亲近,40-59有好感,15-39关系融洽,-14~14中立(0=中立非敌意),-39~-15略有隔阂,-100~-40负面。范围 -100 到 100。relation用符合世界观的词,不要套固定模板,不要省略数值。\n'
         + 'currency 必须准确反映剧情中的金钱变化，禁止与剧情矛盾。\n'
         + '世界模块(world)必须和剧情紧密联动，不要生成与剧情无关的静态内容。\n'
+        + '【world 模块强制要求】world 数组每回合至少包含 4-6 个模块，必须覆盖以下类型中的至少 4 种（按剧情需要选择）：comments（论坛热帖）、moments（朋友圈动态）、mail（邮件/飞剑传书）、shop（商店商品）、ranking（排行榜）、cards（信息卡片）、key_value（关键数据）、list（列表）。每种模块的 items 内容必须引用本回合剧情中的角色、地点、事件或物品，禁止生成与当前剧情无关的通用填充内容。\n'
         + '【world 模块扩展】各 type 的 items 结构（content 字段为简述，items 数组为详情，按需生成）：\n'
         + '  - chat: items[{npc:"角色名",content:"消息内容",time:"08:30"}] - NPC主动发来消息,每回合0-2条,npc须已出场\n'
         + '  - forum: items[{author:"角色名",content:"帖子内容",replies:[{author,content}]}] - 论坛帖子\n'

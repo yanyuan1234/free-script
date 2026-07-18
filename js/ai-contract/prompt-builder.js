@@ -164,6 +164,7 @@ const PromptBuilder = {
                 // [优化#9] "直接输出JSON"由 formatAnchor/format 负责，这里只写工作方式
                 parts.push('story放第一个字段，用\\n换行，对话用「」。你大约有 ' + maxTokens + ' tokens输出空间。');
                 parts.push('- story=叙事正文，choices=决策点；严禁回到故事开头或重复初始场景。');
+                parts.push('- 叙事要充分展开：场景描写、人物动作、环境氛围、NPC反应、主角心理都要具体呈现，避免几句话草草带过。每回合剧情正文不少于 800 中文字符。');
             }
             parts.push('');
             parts.push('【信息优先级】始终生效>本轮变化>旧记录>旧指令');

@@ -6110,12 +6110,29 @@ function showApiDetail(slot) {
 
     bindFresh('btnSaveApiDetail', 'click', function() {
         var compatibleMode = document.getElementById('detailApiCompatibleMode');
+        var modelSelect = document.getElementById('detailApiModelSelect');
+        var modelInput = document.getElementById('detailApiModelInput');
+        var modelValue = (modelSelect && modelSelect.value) || (modelInput && modelInput.value.trim()) || '';
+        // [BUG-FIX] 当 select 没有选项但 input 有手动输入时，把 input 值同步进 select，
+        // 避免部分浏览器/框架在 display:none 的 input 上取不到值导致 model 为空。
+        if (modelValue && modelSelect) {
+            var hasOption = false;
+            for (var oi = 0; oi < modelSelect.options.length; oi++) {
+                if (modelSelect.options[oi].value === modelValue) { hasOption = true; break; }
+            }
+            if (!hasOption) {
+                var opt = document.createElement('option');
+                opt.value = modelValue;
+                opt.textContent = modelValue;
+                modelSelect.appendChild(opt);
+            }
+            modelSelect.value = modelValue;
+        }
         LocalGameAPI.setConfig(slot, {
             name: document.getElementById('detailApiName').value.trim() || cfg.name,
             baseUrl: document.getElementById('detailApiUrl').value.trim(),
             apiKey: document.getElementById('detailApiKey').value.trim(),
-            model: document.getElementById('detailApiModelSelect').value || document
-                .getElementById('detailApiModelInput').value.trim(),
+            model: modelValue,
             group: document.getElementById('detailApiGroup').value,
             compatibleMode: compatibleMode ? compatibleMode.checked : false
         });
@@ -6158,11 +6175,13 @@ function showApiDetail(slot) {
                 LocalGameAPI._connectionStatus = {};
             }
 
+            var _modelSel = document.getElementById('detailApiModelSelect');
+            var _modelInp = document.getElementById('detailApiModelInput');
+            var _modelVal = (_modelSel && _modelSel.value) || (_modelInp && _modelInp.value.trim()) || '';
             var result = await LocalGameAPI.testConnection({
                 baseUrl: document.getElementById('detailApiUrl').value.trim(),
                 apiKey: document.getElementById('detailApiKey').value.trim(),
-                model: document.getElementById('detailApiModelSelect').value || document
-                    .getElementById('detailApiModelInput').value.trim()
+                model: _modelVal
             }, newTestBtn._testAbortCtrl.signal);
 
             // 保存连接状态
