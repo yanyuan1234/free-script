@@ -1121,6 +1121,8 @@ var GameMemory = {
         var fidelity = options.fidelity || 'balanced';
         var self = this;
         var onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
+        // 【BG-002 修复】每轮独立超时：避免单轮 callAI 挂起导致整个锻造流程卡死
+        var _passTimeoutMs = options.passTimeoutMs || 30000;
 
         return new Promise(function(resolve, reject) {
             if (!blob || typeof blob !== 'string' || !blob.trim()) {
@@ -1138,12 +1140,16 @@ var GameMemory = {
 
             function runPass() {
                 state.currentPass++;
+                var _stageLabel = state.currentPass === 1 ? 'extraction' : (state.currentPass === 2 ? 'critique' : 'refinement');
+                var _stageDesc = state.currentPass === 1 ? '正在抽取设定…' :
+                    (state.currentPass === 2 ? '审查找缺口，正在等待 AI 响应…' : '正在精炼最终设定…');
                 if (onProgress) {
                     try {
                         onProgress({
                             pass: state.currentPass,
                             total: passes,
-                            stage: state.currentPass === 1 ? 'extraction' : (state.currentPass === 2 ? 'critique' : 'refinement')
+                            stage: _stageLabel,
+                            desc: _stageDesc
                         });
                     } catch (e) { /* 忽略 */ }
                 }
@@ -1157,7 +1163,27 @@ var GameMemory = {
                     return resolve(fallback);
                 }
 
-                callAI(messages, { max_tokens: 4096, temperature: 0.4 }).then(function(raw) {
+                // 【BG-002 修复】用 Promise.race 给每轮加超时，超时则用当前结果继续
+                var _passTimer = new Promise(function(_resolveTimeout) {
+                    setTimeout(function() {
+                        _resolveTimeout({ __timeout: true });
+                    }, _passTimeoutMs);
+                });
+
+                Promise.race([
+                    callAI(messages, { max_tokens: 2048, temperature: 0.4 }),
+                    _passTimer
+                ]).then(function(raw) {
+                    // 超时兜底：用当前已精炼结果继续，避免卡死
+                    if (raw && raw.__timeout) {
+                        console.warn('[SetupForge] 第' + state.currentPass + '轮超时(' + _passTimeoutMs + 'ms)，使用当前结果继续');
+                        if (state.currentPass >= passes) {
+                            var _toResult = state.refined || self._fallbackFromBlob(state.blob);
+                            self._applyForgedSetup(_toResult);
+                            return resolve(_toResult);
+                        }
+                        return setTimeout(runPass, 0);
+                    }
                     var parsed = ResponseParser.parse(raw);
                     if (!parsed.success || !parsed.data) {
                         console.warn('[SetupForge] 第' + state.currentPass + '轮解析失败');
@@ -1184,10 +1210,7 @@ var GameMemory = {
                         if (!parsed.data.protagonist || typeof parsed.data.protagonist !== 'object'
                             || Object.keys(parsed.data.protagonist).length === 0
                             || !parsed.data.protagonist.name) {
-                            var _pName = '';
-                            // 从 blob 中提取主角名（常见模式："主角叫XX"/"我是XX"/"名叫XX"）
-                            var _nameMatch = _blob.match(/(?:主角[叫是]|我[叫是是]|名叫|名为)([\u4e00-\u9fa5]{2,6})/);
-                            if (_nameMatch) _pName = _nameMatch[1];
+                            var _pName = self._extractProtagonistName(_blob);
                             parsed.data.protagonist = parsed.data.protagonist || {};
                             if (_pName) parsed.data.protagonist.name = _pName;
                             console.warn('[SetupForge] protagonist 缺失，从 blob 补充: name=' + (_pName || '(未匹配)'));
@@ -1226,6 +1249,39 @@ var GameMemory = {
 
             runPass();
         });
+    },
+
+    // 【BG-003 修复】主角名提取：覆盖表单化/口语化多种分隔符，并允许中英文混合
+    // 优先从 gameState.playerName 取（表单直填），blob 正则仅作兜底
+    _extractProtagonistName: function(blob) {
+        // 1. 优先使用表单直填的主角名
+        try {
+            if (typeof gameState !== 'undefined' && gameState) {
+                var _formName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
+                if (_formName && String(_formName).trim()) return String(_formName).trim();
+            }
+        } catch (e) { /* 忽略 */ }
+
+        if (!blob || typeof blob !== 'string') return '';
+        // 2. 表单化分隔符：主角名：/主角姓名：/主角名字：/名字：/姓名：/主角名:/Name:
+        //    口语化：主角叫/主角是/我是/我叫/我是是/名叫/名为/叫做/叫作/为/
+        //    允许 1-8 个汉字或英文字母
+        var _patterns = [
+            /主角(?:姓名|名字|名)\s*[:：]\s*([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z\s]{0,7})/,
+            /(?:姓名|名字|名)\s*[:：]\s*([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z\s]{0,7})/,
+            /(?:主角[叫是]|我[叫是]|名叫|名为|叫做|叫作)\s*([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z]{1,7})/,
+            /protagonist\s*[:：]\s*([\u4e00-\u9fa5A-Za-z][\u4e00-\u9fa5A-Za-z\s]{0,7})/i
+        ];
+        for (var i = 0; i < _patterns.length; i++) {
+            var m = blob.match(_patterns[i]);
+            if (m && m[1]) {
+                var name = m[1].trim();
+                // 去掉末尾可能的标点
+                name = name.replace(/[，。,.\s]+$/, '').trim();
+                if (name.length >= 1 && name.length <= 8) return name;
+            }
+        }
+        return '';
     },
 
     _applyForgedSetup: function(refined) {
@@ -1317,9 +1373,140 @@ var GameMemory = {
                 probability: 100,
                 depth: 4,
                 position: 0,
-                role: 0
+                role: 0,
+                // 【BG-006 修复】记录来源与时间戳，便于后续按新鲜度筛选
+                source: 'forge',
+                updatedAt: Date.now()
             };
         });
+
+        if (typeof WorldInfo.save === 'function') WorldInfo.save();
+    },
+
+    // 【BG-006 修复】从当前剧情同步地点/角色到世界书（MERGE 语义，不覆盖已有更新条目）
+    // 在 sendAIRequest 成功后调用，避免世界书停留在锻造阶段的初始抽取
+    syncWorldInfoFromStory: function(storyText) {
+        if (typeof WorldInfo === 'undefined' || !WorldInfo.books) return;
+        if (!storyText || typeof storyText !== 'string') return;
+
+        // 找到或创建「剧情动态」世界书（与锻造世界书分离，避免污染初始设定）
+        var book = null;
+        for (var i = 0; i < WorldInfo.books.length; i++) {
+            if (WorldInfo.books[i].name === '剧情动态') {
+                book = WorldInfo.books[i];
+                break;
+            }
+        }
+        if (!book) {
+            book = {
+                id: 'book_story_' + Date.now(),
+                name: '剧情动态',
+                enabled: true,
+                entries: {}
+            };
+            WorldInfo.books.push(book);
+        }
+
+        var _now = Date.now();
+        var _turn = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.turn') || 0) : 0;
+
+        // 1. 提取地点并 MERGE：已有同名地点则更新 content 和 updatedAt，不重复创建
+        try {
+            var locations = this._extractLocations(storyText);
+            locations.forEach(function(locName) {
+                if (!locName || locName.length < 2) return;
+                // 查找已有条目（key 包含该地名）
+                var existingUid = null;
+                for (var uid in book.entries) {
+                    var e = book.entries[uid];
+                    if (e._category === 'worldPlaces' && e._entityName === locName) {
+                        existingUid = uid;
+                        break;
+                    }
+                }
+                if (existingUid) {
+                    // MERGE：仅更新时间戳和回合，content 保留最新（避免历史地点被覆盖）
+                    book.entries[existingUid].updatedAt = _now;
+                    book.entries[existingUid]._lastTurn = _turn;
+                } else {
+                    var newUid = 'story_place_' + _now + '_' + Math.floor(Math.random() * 1000);
+                    book.entries[newUid] = {
+                        uid: newUid,
+                        key: [locName],
+                        keysecondary: [],
+                        content: locName + '（当前剧情地点）',
+                        comment: locName,
+                        constant: false,
+                        selective: true,
+                        enabled: true,
+                        order: 90,
+                        probability: 100,
+                        depth: 4,
+                        position: 0,
+                        role: 0,
+                        source: 'story',
+                        _category: 'worldPlaces',
+                        _entityName: locName,
+                        updatedAt: _now,
+                        _lastTurn: _turn
+                    };
+                }
+            });
+        } catch (e) { console.warn('[syncWorldInfoFromStory] 地点同步失败:', e); }
+
+        // 2. 从 StateManager 提取当前角色并 MERGE
+        try {
+            var chars = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.characters') : null;
+            if (chars) {
+                var charList = Array.isArray(chars) ? chars : (function() {
+                    var arr = [];
+                    for (var k in chars) { if (chars.hasOwnProperty(k)) arr.push(chars[k]); }
+                    return arr;
+                })();
+                charList.forEach(function(c) {
+                    if (!c || !c.name) return;
+                    var cName = String(c.name).trim();
+                    if (!cName) return;
+                    var existingUid = null;
+                    for (var uid in book.entries) {
+                        var e = book.entries[uid];
+                        if (e._category === 'npcProfiles' && e._entityName === cName) {
+                            existingUid = uid;
+                            break;
+                        }
+                    }
+                    var desc = c.identity || c.description || c.relation || '';
+                    if (existingUid) {
+                        // MERGE：更新描述和时间戳
+                        if (desc) book.entries[existingUid].content = cName + '：' + desc;
+                        book.entries[existingUid].updatedAt = _now;
+                        book.entries[existingUid]._lastTurn = _turn;
+                    } else {
+                        var newUid = 'story_npc_' + _now + '_' + Math.floor(Math.random() * 1000);
+                        book.entries[newUid] = {
+                            uid: newUid,
+                            key: [cName],
+                            keysecondary: [],
+                            content: cName + (desc ? '：' + desc : ''),
+                            comment: cName,
+                            constant: false,
+                            selective: true,
+                            enabled: true,
+                            order: 90,
+                            probability: 100,
+                            depth: 4,
+                            position: 0,
+                            role: 0,
+                            source: 'story',
+                            _category: 'npcProfiles',
+                            _entityName: cName,
+                            updatedAt: _now,
+                            _lastTurn: _turn
+                        };
+                    }
+                });
+            }
+        } catch (e) { console.warn('[syncWorldInfoFromStory] 角色同步失败:', e); }
 
         if (typeof WorldInfo.save === 'function') WorldInfo.save();
     },
@@ -4802,9 +4989,31 @@ var MemoryManagerUI = {
         var stats = gm.getStats();
         var pendingQuests = gm.quests.filter(function(q) { return q.status === 'pending'; }).length;
         var totalAnchors = 0; Object.keys(gm.permanentFacts).forEach(function(k) { totalAnchors += gm.permanentFacts[k].length; });
+        // 【BG-010 修复】统一数据源，避免与人际页/顶部标签显示不一致
+        // 1. 总消息数：原用 stats.totalMessages（仅 assistant 计数），改为 conversationHistory 长度（含 user+assistant）
+        var _totalMsgs = stats.totalMessages;
+        try {
+            if (typeof StateManager !== 'undefined' && StateManager.get) {
+                var _ch = StateManager.get('progress.conversationHistory') || [];
+                // 减去 system 消息（首条），统计真实的 user+assistant 消息数
+                var _nonSystem = _ch.filter(function(m) { return m && m.role !== 'system'; }).length;
+                if (_nonSystem > 0) _totalMsgs = _nonSystem;
+            }
+        } catch (e) {}
+        // 2. 角色数：原用 GameMemory.tables.characters（AI 输出抽取），改为 entities.characters（与人际页一致）
+        var _totalChars = stats.totalCharacters;
+        try {
+            if (typeof StateManager !== 'undefined' && StateManager.get) {
+                var _chars = StateManager.get('entities.characters');
+                if (_chars) {
+                    var _charCount = Array.isArray(_chars) ? _chars.length : Object.keys(_chars).length;
+                    if (_charCount > 0) _totalChars = _charCount;
+                }
+            }
+        } catch (e) {}
         return '<div class="memory-card"><div class="memory-card-title">记忆统计</div><div class="memory-stat-grid">'
-            + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalMessages + '</div><div class="memory-stat-label">总消息数</div></div>'
-            + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalCharacters + '</div><div class="memory-stat-label">角色数</div></div>'
+            + '<div class="memory-stat-item"><div class="memory-stat-value">' + _totalMsgs + '</div><div class="memory-stat-label">总消息数</div></div>'
+            + '<div class="memory-stat-item"><div class="memory-stat-value">' + _totalChars + '</div><div class="memory-stat-label">角色数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalItems + '</div><div class="memory-stat-label">物品数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalLocations + '</div><div class="memory-stat-label">地点数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalEvents + '</div><div class="memory-stat-label">重要事件</div></div>'

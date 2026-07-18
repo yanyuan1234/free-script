@@ -14,8 +14,11 @@ var _SSE_SEP = /\r?\n\r?\n/;
 // 活跃请求表：requestId -> { abortController, fullText, reasoningText, ... }
 var _activeRequests = {};
 
-// FPS 节流配置（参考 SillyTavern Stopwatch，默认 60fps = 16ms 间隔）
-var _CHUNK_THROTTLE_MS = 16;
+// FPS 节流配置（参考 SillyTavern FAQ 建议 10-15 FPS）
+// 【BG-005 修复】原 16ms (60fps) 在高并发/限流 API 下会放大 QPS 压力，
+// 易触发 ResourceExhausted。提高到 60ms (~16fps) 降低 API 侧请求频率，
+// 同时仍保持流式体验的流畅度。
+var _CHUNK_THROTTLE_MS = 60;
 var _LAST_CHUNK_TIME = 0;  // 全局：所有请求共享一个节流时钟，避免多请求时 postMessage 风暴
 var _pendingChunkMsg = null;  // 待发送的 chunk 消息（节流缓冲）
 
@@ -161,7 +164,15 @@ async function _executeStream(requestId, url, body, apiKey) {
         } catch (e) {}
         var _err = new Error(errMsg);
         _err.status = res.status;
-        if (res.status === 429) {
+        // 【BG-005 修复】识别 429 / ResourceExhausted / rate_limit / quota，
+        // 统一标记为 status=429 让主线程 retry 逻辑接管，避免 Worker 直接降级丢失流式体验
+        var _isRateLimited = (res.status === 429)
+            || /ResourceExhausted/i.test(errMsg)
+            || /rate_?limit/i.test(errMsg)
+            || /quota/i.test(errMsg)
+            || /request limit reached/i.test(errMsg);
+        if (_isRateLimited) {
+            _err.status = 429;  // 统一标记，主线程 _is429 检测会命中
             var _retryAfter = res.headers.get('Retry-After');
             if (_retryAfter) _err.retryAfter = _retryAfter;
         }

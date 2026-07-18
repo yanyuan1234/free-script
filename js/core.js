@@ -5596,6 +5596,23 @@ async function callAI(messages, options = {}) {
                                     // 用户取消，不降级，直接抛出
                                     throw wErr;
                                 } else {
+                                    // 【BG-005 修复】对 429/ResourceExhausted 类错误不降级，
+                                    // 直接抛回让外层 callAI 的 429 重试逻辑接管（带指数退避），
+                                    // 避免降级后再次冲击 API 导致连锁限流
+                                    var _wMsg = (wErr && wErr.message) ? String(wErr.message) : '';
+                                    var _wIs429 = (wErr && wErr.status === 429)
+                                        || /ResourceExhausted/i.test(_wMsg)
+                                        || /rate_?limit/i.test(_wMsg)
+                                        || /quota/i.test(_wMsg)
+                                        || /request limit reached/i.test(_wMsg);
+                                    if (_wIs429) {
+                                        // 保留 retryAfter 头，让外层 retry 逻辑使用
+                                        if (wErr && wErr.retryAfter) {
+                                            wErr._preservedRetryAfter = wErr.retryAfter;
+                                        }
+                                        console.warn('[callAI] Worker 遭遇限流，抛回主线程重试（不降级）');
+                                        throw wErr;
+                                    }
                                     console.warn('[callAI] Worker 流式失败，降级到主线程:', wErr && wErr.message);
                                 }
                                 // 降级到原 executeAIStream（主线程同步解析）

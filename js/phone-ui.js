@@ -1395,7 +1395,13 @@ function renderLogPage() {
         var _presetApps = (gameState && gameState._presetApps) || {};
         var _wMods = (gameState && gameState._worldModules) || [];
         var _dateKey = (new Date()).getDate();
-        var _key = Object.keys(_presetApps).length + '|' + _wMods.length + '|' + _dateKey;
+        // 【BG-008 修复】缓存签名加入最近 assistant 消息条数，使新回合后日志主页刷新
+        var _recentCount = 0;
+        try {
+            var _hist = _getConversationHistory();
+            for (var i = 0; i < _hist.length; i++) { if (_hist[i] && _hist[i].role === 'assistant') _recentCount++; }
+        } catch (e) {}
+        var _key = Object.keys(_presetApps).length + '|' + _wMods.length + '|' + _dateKey + '|' + _recentCount;
         // 【冗余审计 P1-8】统一用 shouldSkipPageRender（原两行 same+mark 重复模式）
         if (shouldSkipPageRender('renderLogPage', _key)) return;
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
@@ -1409,6 +1415,12 @@ function renderLogPage() {
     var logSubContainer = document.getElementById('logSubContainer');
     if (logMainContent) logMainContent.style.display = 'block';
     if (logSubContainer) logSubContainer.style.display = 'none';
+
+    // 【BG-008 修复】渲染近期剧情动态：从 conversationHistory 取最近 3 条 assistant 回复
+    // 让日志主页面不再是纯空壳，玩家可直接看到最近发生了什么
+    try {
+        _renderRecentStoryFeed(logMainContent);
+    } catch (e) { console.warn('[renderLogPage] 近期动态渲染失败:', e); }
 
     // 渲染预设动态app入口
     _renderPresetApps();
@@ -1443,6 +1455,59 @@ function renderLogPage() {
     }
 
     renderNavBar('logNav', MAIN_NAV_TABS, 3);
+}
+
+// 【BG-008 修复】渲染近期剧情动态 feed，插入到日志主页面顶部
+function _renderRecentStoryFeed(container) {
+    if (!container) return;
+    var feedId = 'logRecentStoryFeed';
+    var existing = document.getElementById(feedId);
+    var stories = [];
+    try {
+        // 复用 getStoryList 的解析逻辑（含 ResponseParser 兜底）
+        if (typeof getStoryList === 'function') {
+            stories = getStoryList() || [];
+        }
+    } catch (e) { /* 忽略 */ }
+
+    // 取最近 3 条
+    var recent = stories.slice(-3).reverse();
+
+    var html = '';
+    if (recent.length > 0) {
+        html = '<div id="' + feedId + '" class="recent-story-feed" style="margin-bottom:16px;">' +
+            '<div class="recent-feed-title text-13 text-secondary font-medium" style="margin:4px 4px 8px;">近期剧情</div>' +
+            recent.map(function(s, idx) {
+                var title = (s.title || ('第' + (s.index !== undefined ? s.index : idx + 1) + '段')).trim();
+                var preview = (s.text || '').replace(/<[^>]+>/g, '').slice(0, 80);
+                if (preview.length < (s.text || '').replace(/<[^>]+>/g, '').length) preview += '…';
+                var timeStr = s.time ? new Date(s.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+                return '<div class="recent-story-item pearl-card" role="button" tabindex="0" data-action="open-recap-detail" data-args=\'' + escapeAttr(JSON.stringify([title])) + '\' style="padding:10px 12px;margin-bottom:8px;cursor:pointer;">' +
+                    '<div class="flex-row-gap-8" style="align-items:center;justify-content:space-between;">' +
+                        '<span class="text-14 font-semibold" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(title) + '</span>' +
+                        (timeStr ? '<span class="text-11 text-secondary">' + escapeHtml(timeStr) + '</span>' : '') +
+                    '</div>' +
+                    (preview ? '<div class="text-12 text-secondary" style="margin-top:4px;line-height:1.5;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;">' + escapeHtml(preview) + '</div>' : '') +
+                '</div>';
+            }).join('') +
+        '</div>';
+    }
+
+    if (existing) {
+        if (html) {
+            existing.outerHTML = html;
+        } else {
+            existing.remove();
+        }
+    } else if (html) {
+        // 插入到 logFeatureGrid 之前
+        var grid = document.getElementById('logFeatureGrid');
+        if (grid) {
+            grid.insertAdjacentHTML('beforebegin', html);
+        } else {
+            container.insertAdjacentHTML('afterbegin', html);
+        }
+    }
 }
 // 日志子页面渲染函数映射
 // 原代码在这里引用了 renderChatPage 等函数，但它们在下一个 script 块中才定义
@@ -7978,9 +8043,10 @@ function renderNpcPage() {
             var favColor = favColorOf(fav);
 
             var tagsHtml = '';
-            if (c.relation) tagsHtml += '<span class="char-tag">' + escapeHtml(c.relation) + '</span>';
-            if (c.title) tagsHtml += '<span class="char-tag">' + escapeHtml(c.title) + '</span>';
-            // 添加好感度等级标签
+            // 【BG-007 修复】去除重复标签：原代码把 relation/title 各输出两次
+            //   - relation 在 favLevel（行 7975 已赋值 = c.relation）中体现，此处不再单独输出
+            //   - title 已在 char-meta（行 7991）显示，此处不再作为标签重复输出
+            // 仅保留好感度等级标签（favLevel），避免视觉冗余
             tagsHtml += '<span class="char-tag" style="background:' + favColor + '20;color:' + favColor + ';">' + escapeHtml(favLevel) + '</span>';
 
             var firstChar = (c.name && typeof c.name === 'string') ? c.name.charAt(0) : '?';

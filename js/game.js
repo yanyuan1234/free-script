@@ -998,6 +998,9 @@ async function sendAIRequest(userMessage, isInit = false) {
     safeAbort();
     window._currentAbort = new AbortController();
     setWaiting(true);
+    // 【BG-001 修复】请求开始时先清理上一轮可能残留的生成弹窗，
+    // 避免重试/降级路径下 showGenerating/hideGenerating 调度乱序导致遮罩叠加
+    try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
     showStoryLoading();
     streamBuffer = '';
 
@@ -1079,6 +1082,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【关键修复】在构建消息列表之前，确保全局宏变量已注入
         // 这样预设中的 {{getglobalvar::XXX}} 才能被正确替换
         injectPresetGlobalVars();
+
+        // 【BG-004 修复】跟踪 turn 是否已在正常路径递增，
+        // catch 块据此决定是否补递增（避免异常路径读到 turn=0 显示"第 1 回合"）
+        var _turnIncremented = false;
         
         var messages;
         // isInit: 初始化请求也需要应用预设提示词（写作风格、字数控制等）
@@ -2433,10 +2440,12 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (StateManager) {
             var currentTurn = StateManager.get('progress.turn') || 0;
             StateManager.set('progress.turn', currentTurn + 1, { silent: true });
+            _turnIncremented = true; // 【BG-004 修复】标记正常路径已递增
         } else {
             // 兜底：StateManager 不可用时直接写 gameState._stats
             if (!gameState._stats) gameState._stats = {};
             gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
+            _turnIncremented = true; // 【BG-004 修复】标记正常路径已递增
         }
 
         // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
@@ -2519,10 +2528,14 @@ async function sendAIRequest(userMessage, isInit = false) {
             historyAssistantContent = '【本回合 AI 回复异常，已跳过存储。请重新生成或检查模型输出格式。】';
             if (gameState) gameState._lastThinkingBlocked = true;
         }
+        // 【BG-009 修复】跟踪对话历史是否已在正常路径写入，
+        // catch 块据此决定是否补写入（避免异常路径丢失回合记录导致回顾页只显示一轮）
+        var _convHistoryUpdated = false;
         if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
             var _ch = StateManager.get('progress.conversationHistory') || [];
             _ch.push({ role: 'user', content: userMessage }, { role: 'assistant', content: historyAssistantContent });
             StateManager.set('progress.conversationHistory', _ch, { silent: true });
+            _convHistoryUpdated = true;
         }
         // 对话历史上限200条，防止内存和token膨胀
         var _convHist = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('progress.conversationHistory') : (gameState ? gameState.conversationHistory : []);
@@ -2567,6 +2580,15 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 避免 accumulate 类型首次生成后 !hasType() 永久阻止后续兜底（与BUG-010同根）。
         try { ensureLogFallbacks(finalStory, data && data.world); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
+        // 【BG-006 修复】每次成功生成后，把当前剧情地点/角色同步到「剧情动态」世界书（MERGE）
+        // 延迟到下一 tick，避免阻塞主线程；失败不影响主流程
+        setTimeout(function() {
+            try {
+                if (typeof TavernHelperCompat !== 'undefined' && TavernHelperCompat.syncWorldInfoFromStory) {
+                    TavernHelperCompat.syncWorldInfoFromStory(finalStory || storyText || '');
+                }
+            } catch (e) { console.warn('[BG-006] syncWorldInfoFromStory 失败:', e); }
+        }, 0);
         autoSave();
         // 【BUG-001 深度修复】延迟 token 计数到下一 tick。
         // updateTokenCount 内部调用 estimateTokensForMessagesUtil 迭代整个 conversationHistory
@@ -2590,6 +2612,17 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 条件与正常路径一致：gameState 存在且 sceneTitle 未被设置过有效值
         try {
             if (gameState && typeof StateManager !== 'undefined' && StateManager.get) {
+                // 【BG-004 修复】若正常路径未递增 turn（异常发生在 line 2442 之前），
+                // 此处补递增。玩家已发出消息并收到 AI 响应，turn 应前进。
+                // 注意：_aiMutatorApplied=true 时下方 deleteLastTurn 会回滚，那时 turn 会随之回退；
+                //       但若 mutator 未执行（_aiMutatorApplied=false），不递增会导致回合数永久卡在 0。
+                if (!_turnIncremented && !_aiMutatorApplied) {
+                    var _curT = StateManager.get('progress.turn') || 0;
+                    StateManager.set('progress.turn', _curT + 1, { silent: true });
+                    _turnIncremented = true;
+                    if (typeof updateTurnLabel === 'function') updateTurnLabel();
+                    console.warn('[BG-004] 异常路径补递增 turn:', _curT, '->', _curT + 1);
+                }
                 var _curSceneTitle = StateManager.get('progress.sceneTitle');
                 if (!_curSceneTitle) {
                     var _errTurn = StateManager.get('progress.turn') || 0;
@@ -2616,6 +2649,32 @@ async function sendAIRequest(userMessage, isInit = false) {
             } catch (rollbackErr) {
                 console.error('[sendAIRequest] 状态回滚失败:', rollbackErr);
             }
+        }
+
+        // 【BG-009 修复】异常路径补写入对话历史：
+        // 若 AI 已返回响应但后处理异常导致 line 2534 未执行，回顾页会丢失本轮记录。
+        // 此处在 catch 块补写入（仅当 response 存在且未回滚时），避免回顾页只显示一轮
+        if (!_convHistoryUpdated && response && !_aiMutatorApplied && userMessage) {
+            try {
+                if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+                    var _catchHist = StateManager.get('progress.conversationHistory') || [];
+                    // 避免重复：检查最后一条是否已是本轮 user 消息
+                    var _lastIsSameUser = _catchHist.length > 0
+                        && _catchHist[_catchHist.length - 1].role === 'user'
+                        && _catchHist[_catchHist.length - 1].content === userMessage;
+                    if (!_lastIsSameUser) {
+                        var _catchAssistantContent = (typeof _slimAssistantMessage === 'function')
+                            ? (_slimAssistantMessage(response) || storyText || response)
+                            : (storyText || response);
+                        _catchHist.push(
+                            { role: 'user', content: userMessage },
+                            { role: 'assistant', content: _catchAssistantContent }
+                        );
+                        StateManager.set('progress.conversationHistory', _catchHist, { silent: true });
+                        console.warn('[BG-009] 异常路径补写入对话历史，当前条数:', _catchHist.length);
+                    }
+                }
+            } catch (histErr) { console.warn('[BG-009] 补写入对话历史失败:', histErr); }
         }
         // 【ISSUE-006 修复】API 失败后恢复用户自定义输入
         // 原 btnSendAction/customAction keypress 在调用 sendAIRequest 前就清空了 input.value，
@@ -2667,6 +2726,22 @@ async function sendAIRequest(userMessage, isInit = false) {
         setWaiting(false);
         // 【日志页面】AI 请求结束（成功/失败/取消），自动关闭生成弹窗
         try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
+        // 【BG-001 修复】延迟兜底：finally 执行后若弹窗状态因异步竞态仍残留，
+        // 200ms 后再次强制清理（覆盖 setWaiting 缓存失效、hideGenerating 动画未完成等场景）
+        setTimeout(function() {
+            try {
+                if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating();
+                if (typeof hideStoryLoading === 'function') hideStoryLoading();
+                // 防御性：若 body 仍带 is-waiting，强制移除（input.disabled 由 setWaiting 已处理）
+                if (document.body.classList.contains('is-waiting')) {
+                    document.body.classList.remove('is-waiting');
+                    var _input = document.getElementById('customAction');
+                    var _sendBtn = document.getElementById('btnSendAction');
+                    if (_input) _input.disabled = false;
+                    if (_sendBtn) _sendBtn.disabled = false;
+                }
+            } catch (e) {}
+        }, 200);
     }
 }
 function updateTokenCount(currentResponse) {
