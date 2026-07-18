@@ -4810,6 +4810,14 @@ async function autoSave() {
 }, 2000);
 }
 function safeAbort() { if (window._currentAbort) { try { window._currentAbort.abort(); } catch(e){} } }
+
+// 更新状态栏文本（如 429 重试提示），不影响 active 状态
+function updateGenStatus(text) {
+    if (typeof document === 'undefined') return;
+    var el = document.getElementById('genStatusText');
+    if (el) el.textContent = text || '正在生成...';
+}
+
 // 缓存 setWaiting 重复 DOM 查询的元素引用
 // [M-6] 修复缓存 stale reference：单页应用切换视图后旧 DOM 节点会被卸载，
 // 缓存的引用还在但已脱离 document，下次操作抛错或无效。
@@ -4879,6 +4887,8 @@ function setWaiting(w) {
         if (w) genControl.classList.add('active');
         else genControl.classList.remove('active');
     }
+    // 结束等待时恢复默认提示文本
+    if (!w) updateGenStatus('正在生成...');
     // 显示/隐藏流式输出进度条
     var progressBar = _getSetWaitingEl('progressBar');
     if (progressBar) {
@@ -5655,10 +5665,13 @@ async function callAI(messages, options = {}) {
                         }
                     }
                 }
-                console.warn('[callAI] 429 速率限制，' + (_waitMs / 1000) + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')' + (e429 && e429.retryAfter ? ' [Retry-After: ' + e429.retryAfter + ']' : ''));
+                var _statusMsg = '速率限制，' + (_waitMs / 1000) + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')';
+                console.warn('[callAI] ' + _statusMsg + (e429 && e429.retryAfter ? ' [Retry-After: ' + e429.retryAfter + ']' : ''));
                 if (typeof UI !== 'undefined' && UI.toast) {
-                    UI.toast('速率限制，' + _waitMs / 1000 + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')');
+                    UI.toast(_statusMsg);
                 }
+                // 同步更新状态栏文本，让用户在加载条上看到重试信息
+                updateGenStatus(_statusMsg);
                 // 等待期间监听 abort 事件，用户取消时提前唤醒
                 await new Promise(function(resolve) {
                     var _timer = setTimeout(resolve, _waitMs);
