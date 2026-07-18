@@ -13,4 +13,10 @@ assertEq(OutputSanitizer.sanitizeStory('hi <thinking>推理</thinking> there'), 
 assertEq(OutputSanitizer.sanitizeJSON('```json\n{"a":1}\n```'), '{"a":1}', 'json code block');
 assertEq(OutputSanitizer.stripJSONArtifacts('"story": "hello'), 'hello', 'json artifact');
 
+// BUG：裸推理前缀（无标签）混在剧情前，应被剥离
+assertEq(OutputSanitizer.stripBareThinking('我需要考虑下一步。\n\n{"story":"hello"}'), '{"story":"hello"}', 'single bare thinking para then json');
+assertEq(OutputSanitizer.stripBareThinking('我需要考虑下一步。\n\n玩家选择了A。\n\n{"story":"hello"}'), '{"story":"hello"}', 'multiple bare thinking paras then json');
+// 单段裸推理前缀后紧跟普通剧情文本（非 JSON），保持保守策略不剥离
+assertEq(OutputSanitizer.stripBareThinking('我需要考虑下一步。\n\n真正的剧情从这里开始。'), '我需要考虑下一步。\n\n真正的剧情从这里开始。', 'single bare thinking para then plain story stays');
+
 console.log('OutputSanitizer tests passed');

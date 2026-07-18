@@ -169,6 +169,14 @@ const ResponseParser = {
             s = s.replace(/💭[\s\S]*?💭/g, '');
         }
 
+        // Step 1.5: 剥离无标签的裸推理前缀（如 "我需要考虑一下...\n\n{\"story\":\"...\"}")
+        if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripBareThinking) {
+            var strippedBare = OutputSanitizer.stripBareThinking(s);
+            if (strippedBare !== s) {
+                s = strippedBare;
+            }
+        }
+
         // Step 2: 检查是否有未匹配的开标签（思考末尾被 max_tokens 截断，无闭标签）
         var hasLoneOpenTag = false;
         for (var j = 0; j < tags.length; j++) {

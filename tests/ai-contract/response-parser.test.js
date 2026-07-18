@@ -35,4 +35,10 @@ var plain = ResponseParser.parse('hello world');
 assertEq(plain.success, false, 'plain success=false (intentional, NEW-008 fix)');
 assertEq(plain.fallbackLevel, 4, 'plain level');
 
+// BUG：裸推理前缀（无标签）+ JSON，应正确解析 JSON 并丢弃前缀
+var bareThinking = ResponseParser.parse('我需要考虑下一步。\n\n{"story":"hello","title":"第一章"}');
+assertEq(bareThinking.success, true, 'bare thinking then json success');
+assertEq(bareThinking.storyText, 'hello', 'bare thinking then json story');
+assertEq(bareThinking.data.title, '第一章', 'bare thinking then json title');
+
 console.log('ResponseParser tests passed');

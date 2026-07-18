@@ -25,6 +25,8 @@ const OutputSanitizer = {
         /^玩家选择了?.*推进/,
         /^选择[A-D一二三四五六七八九]\s*[的之后]/,
         /^选择[A-D一二三四五六七八九]\s*果/,
+        /^用户选择[了到]?[A-D一二三四五六七八九]/,
+        /^玩家选择[了到]?[A-D一二三四五六七八九]/,
         /^当前状态/,
         /^当前情况/,
         /^我需要/,
@@ -80,6 +82,14 @@ const OutputSanitizer = {
         // 至少 2 段匹配才剥离（避免误删单段"我需要..."的剧情对话）
         if (matchCount >= 2 && thinkEnd < paras.length) {
             return paras.slice(thinkEnd).join('\n\n').trim();
+        }
+        // BUG FIX：单段裸推理前缀后紧跟 JSON 时，允许 1 段匹配即剥离
+        // 场景：模型先输出 "我需要考虑一下..." 再输出 {"story":"..."}，该前缀不属于剧情
+        if (matchCount >= 1 && thinkEnd < paras.length) {
+            const rest = paras.slice(thinkEnd).join('\n\n').trim();
+            if (/^\s*[\{\[]/.test(rest)) {
+                return rest;
+            }
         }
         return text;
     },

@@ -3385,6 +3385,34 @@ function onStreamChunk(delta, fullText) {
                     _showStreamWaitingHint();
                     return;
                 }
+
+                // BUG FIX：模型可能先输出裸推理前缀，再输出 JSON 正文。
+                // 扫描缓冲区中是否存在已知的 JSON 响应起点；若存在，说明当前是「推理前缀 + JSON」模式，
+                // 应继续等待 story 字段，而不是切换为纯文本模式把推理文本推入 UI。
+                var jsonStartPatterns = [
+                    /\{\s*"story"/i, /\{\s*"title"/i, /\{\s*"player"/i,
+                    /\{\s*"choices"/i, /\{\s*"characters"/i, /\{\s*"bag"/i,
+                    /\{\s*"quests"/i, /\{\s*"gameTime"/i, /\{\s*"narrative"/i,
+                    /\{\s*"content"/i, /\{\s*"storyText"/i, /\{\s*"scene"/i
+                ];
+                var jsonStartIdx = -1;
+                for (var pi = 0; pi < jsonStartPatterns.length; pi++) {
+                    var pm = streamBuffer.match(jsonStartPatterns[pi]);
+                    if (pm && pm.index !== undefined) {
+                        if (jsonStartIdx === -1 || pm.index < jsonStartIdx) {
+                            jsonStartIdx = pm.index;
+                        }
+                    }
+                }
+                if (jsonStartIdx > 0) {
+                    // 找到 JSON 起点：丢弃前缀，继续 JSON 模式等待 story 字段
+                    if (streamBuffer.length - jsonStartIdx > 200) {
+                        console.warn('[onStreamChunk] JSON模式 story 字段延迟出现（含推理前缀），缓冲区:', streamBuffer.length);
+                    }
+                    _showStreamWaitingHint();
+                    return;
+                }
+
                 // 非 JSON 响应，切换纯文本模式
                 _streamPlaintextMode = true;
                 RuntimeState.streamMode = 'plaintext';
