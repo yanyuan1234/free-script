@@ -5102,7 +5102,7 @@ var MemoryManagerUI = {
         if (!content) return;
         var gm = window.GameMemory || (typeof GameMemory !== 'undefined' ? GameMemory : null);
         if (!gm) { content.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-tertiary);">记忆系统未初始化</div>'; return; }
-        var tabMap = { overview: 'renderOverview', anchors: 'renderPermanentFacts', permanentFacts: 'renderPermanentFacts', recentMemory: 'renderRecentMemory', characters: 'renderCharacters', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState' };
+        var tabMap = { overview: 'renderOverview', anchors: 'renderPermanentFacts', permanentFacts: 'renderPermanentFacts', recentMemory: 'renderRecentMemory', locations: 'renderLocations', relationships: 'renderRelationships', plot: 'renderPlot', events: 'renderEvents', timeline: 'renderTimeline', injection: 'renderInjectionPreview', search: 'renderSearch', summaryLayers: 'renderSummaryLayers', sceneState: 'renderSceneState' };
         var method = tabMap[this.currentTab];
         content.innerHTML = (method && this[method]) ? this[method](gm) : this.renderOverview(gm);
     },
@@ -5110,8 +5110,8 @@ var MemoryManagerUI = {
     renderOverview: function(gm) {
         var stats = gm.getStats();
         var totalAnchors = 0; Object.keys(gm.permanentFacts).forEach(function(k) { totalAnchors += gm.permanentFacts[k].length; });
-        // 【BG-010 修复】统一数据源，避免与人际页/顶部标签显示不一致
-        // 1. 总消息数：原用 stats.totalMessages（仅 assistant 计数），改为 conversationHistory 长度（含 user+assistant）
+        // 【BG-010 修复】统一数据源，避免与顶部标签显示不一致
+        // 总消息数：原用 stats.totalMessages（仅 assistant 计数），改为 conversationHistory 长度（含 user+assistant）
         var _totalMsgs = stats.totalMessages;
         try {
             if (typeof StateManager !== 'undefined' && StateManager.get) {
@@ -5121,20 +5121,8 @@ var MemoryManagerUI = {
                 if (_nonSystem > 0) _totalMsgs = _nonSystem;
             }
         } catch (e) {}
-        // 2. 角色数：原用 GameMemory.tables.characters（AI 输出抽取），改为 entities.characters（与人际页一致）
-        var _totalChars = stats.totalCharacters;
-        try {
-            if (typeof StateManager !== 'undefined' && StateManager.get) {
-                var _chars = StateManager.get('entities.characters');
-                if (_chars) {
-                    var _charCount = Array.isArray(_chars) ? _chars.length : Object.keys(_chars).length;
-                    if (_charCount > 0) _totalChars = _charCount;
-                }
-            }
-        } catch (e) {}
         return '<div class="memory-card"><div class="memory-card-title">记忆统计</div><div class="memory-stat-grid">'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + _totalMsgs + '</div><div class="memory-stat-label">总消息数</div></div>'
-            + '<div class="memory-stat-item"><div class="memory-stat-value">' + _totalChars + '</div><div class="memory-stat-label">角色数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalLocations + '</div><div class="memory-stat-label">地点数</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalEvents + '</div><div class="memory-stat-label">重要事件</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + (stats.memorySize / 1024).toFixed(1) + 'KB</div><div class="memory-stat-label">数据大小</div></div>'

@@ -8131,19 +8131,24 @@ function addNpcChatBubble(role, text, skipPush) {
         autoSave();
     }
 }
+var npcEditingName = '';
 function openEditNpcModal(name) {
     UI.hideModal('npcDetailModal');
-    if (!gameState || !gameState.allCharacters) return;
-    npcEditingName = name;
-    var c = gameState.allCharacters[name];
-    if (!c) return;
+    if (!gameState) return;
+    if (!gameState.allCharacters) gameState.allCharacters = {};
+    npcEditingName = name || '';
+    var isAdd = !name;
+    var c = isAdd ? {} : (gameState.allCharacters[name] || {});
     var el;
-    el = document.getElementById('npcEditModalTitle'); if (el) el.textContent = '编辑「' + name + '」';
-    el = document.getElementById('npcEditName'); if (el) { el.value = c.name || ''; el.disabled = true; }
+    el = document.getElementById('npcEditModalTitle'); if (el) el.textContent = isAdd ? '添加角色' : '编辑「' + name + '」';
+    el = document.getElementById('npcEditName'); if (el) { el.value = c.name || ''; el.disabled = !isAdd; }
     el = document.getElementById('npcEditTitle2'); if (el) el.value = c.title || '';
     el = document.getElementById('npcEditRelation'); if (el) el.value = c.relation || '';
     el = document.getElementById('npcEditFavor'); if (el) el.value = c.favorability !== undefined ? c.favorability : 0;
+    el = document.getElementById('npcEditMood'); if (el) el.value = c.mood || '';
+    el = document.getElementById('npcEditLocation'); if (el) el.value = c.location || '';
     el = document.getElementById('npcEditDesc'); if (el) el.value = c.desc || '';
+    el = document.getElementById('npcEditLocked'); if (el) el.checked = !!c.locked;
     var extra = '';
     if (c.details && c.details.length > 0) {
         extra = c.details.map(function(d) {
@@ -8153,6 +8158,7 @@ function openEditNpcModal(name) {
     el = document.getElementById('npcEditExtra'); if (el) el.value = extra;
     UI.showModal('npcEditModal');
 }
+function openAddNpcModal() { openEditNpcModal(null); }
 function saveNpcEdit() {
     // 修复：每个 input 都做 nullish 检查，缺一不崩溃
     var nameEl = document.getElementById('npcEditName');
@@ -8162,21 +8168,31 @@ function saveNpcEdit() {
         UI.toast('请填写角色名字');
         return;
     }
-    var titleEl = document.getElementById('npcEditTitle2');
-    var relationEl = document.getElementById('npcEditRelation');
-    var favorEl = document.getElementById('npcEditFavor');
-    var descEl = document.getElementById('npcEditDesc');
-    var extraEl = document.getElementById('npcEditExtra');
-    var title = titleEl ? titleEl.value.trim() : '';
-    var relation = relationEl ? relationEl.value.trim() : '';
-    var favor = favorEl ? parseInt(favorEl.value) : NaN;
+    var isAdd = !npcEditingName;
+    if (isAdd && gameState.allCharacters && gameState.allCharacters[name]) {
+        UI.toast('已存在同名角色');
+        return;
+    }
 
+    function _getVal(id) {
+        var el = document.getElementById(id);
+        return el ? el.value.trim() : '';
+    }
+
+    var title = _getVal('npcEditTitle2');
+    var relation = _getVal('npcEditRelation');
+    var favorEl = document.getElementById('npcEditFavor');
+    var favor = favorEl ? parseInt(favorEl.value) : NaN;
     if (isNaN(favor)) {
         var _curC = gameState.allCharacters && gameState.allCharacters[name];
         favor = (_curC && _curC.favorability !== undefined) ? _curC.favorability : 0;
     }
-    var desc = descEl ? descEl.value.trim() : '';
-    var extra = extraEl ? extraEl.value.trim() : '';
+    var desc = _getVal('npcEditDesc');
+    var mood = _getVal('npcEditMood');
+    var location = _getVal('npcEditLocation');
+    var lockedEl = document.getElementById('npcEditLocked');
+    var locked = lockedEl ? lockedEl.checked : false;
+    var extra = _getVal('npcEditExtra');
 
     favor = Math.max(-100, Math.min(100, favor));
     var details = [];
@@ -8207,17 +8223,31 @@ function saveNpcEdit() {
         relation: relation,
         favorability: favor,
         desc: desc,
+        mood: mood,
+        location: location,
+        locked: locked,
         details: details
     };
 
-    if (typeof CharacterMutator === 'undefined' || !CharacterMutator.replaceCharacter) {
-        throw new Error('CharacterMutator.replaceCharacter 不可用，无法保存 NPC 编辑');
+    if (typeof CharacterMutator === 'undefined') {
+        throw new Error('CharacterMutator 不可用，无法保存 NPC');
     }
-    // 若改名（npcEditingName !== name），replaceCharacter 会自动删除旧名并迁移累积数据
-    CharacterMutator.replaceCharacter(npcEditingName || name, _newCharObj);
+    if (isAdd) {
+        if (!CharacterMutator.mergeCharacters) {
+            throw new Error('CharacterMutator.mergeCharacters 不可用，无法添加 NPC');
+        }
+        CharacterMutator.mergeCharacters([_newCharObj]);
+    } else {
+        if (!CharacterMutator.replaceCharacter) {
+            throw new Error('CharacterMutator.replaceCharacter 不可用，无法保存 NPC 编辑');
+        }
+        // 若改名（npcEditingName !== name），replaceCharacter 会自动删除旧名并迁移累积数据
+        CharacterMutator.replaceCharacter(npcEditingName, _newCharObj);
+    }
+
     // 注入到对话历史让AI记住
-    var injectText = '【系统提示：玩家更新了角色「' + name + '」的设定】\n' + '姓名: ' + name + '\n' + (title ? '身份: ' + title +
-        '\n' : '') + (relation ? '关系: ' + relation + '\n' : '') + '好感度: ' + favor + '\n' + (desc ?
+    var injectText = '【系统提示：玩家' + (isAdd ? '新增' : '更新') + '了角色「' + name + '」的设定】\n' + '姓名: ' + name + '\n' + (title ? '身份: ' + title +
+        '\n' : '') + (relation ? '关系: ' + relation + '\n' : '') + '好感度: ' + favor + '\n' + (mood ? '心情: ' + mood + '\n' : '') + (location ? '位置: ' + location + '\n' : '') + (desc ?
         '状态: ' + desc + '\n' : '');
     if (details.length > 0) {
         injectText += details.map(function(d) {
@@ -8227,9 +8257,6 @@ function saveNpcEdit() {
     injectText += '请在后续剧情中按照以上设定来描写该角色。';
 
     // concat 创建新数组，避免原地 push 污染 undo 快照引用 + 绕过 StateManager。
-    // 旧实现直 push 到 gameState.conversationHistory，导致：
-    //   1. StateManager.get('progress.conversationHistory') 返回陈旧值（不含注入消息）
-    //   2. UndoMutator 快照基于 StateManager，注入消息不进入撤销历史 → 撤销失效
     var _histForInject = _getConversationHistory();
     if (_histForInject.length > 0) {
         _updateConversationHistory(_histForInject.concat([{
@@ -8237,13 +8264,13 @@ function saveNpcEdit() {
             content: injectText
         }, {
             role: 'assistant',
-            content: '明白，已更新「' + name + '」的角色设定，后续会保持一致。'
+            content: '明白，已' + (isAdd ? '添加' : '更新') + '「' + name + '」的角色设定，后续会保持一致。'
         }]));
     }
     renderNpcList();
     UI.hideModal('npcEditModal');
     autoSave();
-    UI.toast('角色「' + name + '」已保存');
+    UI.toast('角色「' + name + '」已' + (isAdd ? '添加' : '保存'));
 }
 var renderNpcList = renderNpcPage;
 function renderNpcPage() {
@@ -8365,6 +8392,9 @@ function openNpcDetail(name) {
     var baseFields = [
         { key: '关系', value: c.relation || '-' }
     ];
+    if (c.mood) baseFields.push({ key: '心情', value: c.mood });
+    if (c.location) baseFields.push({ key: '位置', value: c.location });
+    if (c.locked) baseFields.push({ key: '场景锁定', value: '已锁定' });
     if (c.identity || c.identitySurface) baseFields.push({ key: '身份', value: c.identitySurface || c.identity });
     if (c.attitudeToUser) baseFields.push({ key: '对主角态度', value: c.attitudeToUser });
     if (c.appearance) baseFields.push({ key: '外貌', value: formatMufyField(c.appearance) });

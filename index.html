@@ -594,6 +594,7 @@
                             <use href="#icon-back" />
                         </svg></button>
                     <h2 class="page-title">人际</h2>
+                    <button class="circle-btn" data-action="openAddNpcModal" aria-label="添加角色" style="margin-left:auto;"><span style="font-size:22px;font-weight:500;line-height:1;">+</span></button>
                 </div>
                 <div class="page-body">
                     <div class="character-list" id="characterList"></div>
@@ -1738,7 +1739,6 @@
                         <button class="memory-tab" data-tab="anchors">永久事实</button>
                         <button class="memory-tab" data-tab="recentMemory">近期记忆</button>
                         <button class="memory-tab" data-tab="timeline">时间线</button>
-                        <button class="memory-tab" data-tab="characters">角色</button>
                         <button class="memory-tab" data-tab="locations">地点</button>
                         <button class="memory-tab" data-tab="events">事件</button>
                         <button class="memory-tab" data-tab="search">搜索</button>
@@ -2168,8 +2168,18 @@
                                 <div><label class="field-label">好感度 (0-100)</label><input type="number"
                                         class="input-field" id="npcEditFavor" min="0" max="100" value="50"></div>
                             </div>
+                            <div class="edit-form-row">
+                                <div><label class="field-label">心情</label><input type="text" class="input-field"
+                                        id="npcEditMood" placeholder="如：愉悦、焦虑"></div>
+                                <div><label class="field-label">位置</label><input type="text" class="input-field"
+                                        id="npcEditLocation" placeholder="如：王都酒馆、主角家中"></div>
+                            </div>
                             <div><label class="field-label">状态描述</label><input type="text" class="input-field"
                                     id="npcEditDesc" placeholder="如：正在旅行、外出办事中"></div>
+                            <div style="display:flex;align-items:center;gap:8px;margin:8px 0;">
+                                <input type="checkbox" id="npcEditLocked" style="width:18px;height:18px;">
+                                <label for="npcEditLocked" class="field-label" style="margin:0;">锁定场景（AI 暂时不推动该角色离开当前位置）</label>
+                            </div>
                             <div><label class="field-label">详细人设（选填）</label><textarea class="input-field textarea-field"
                                     id="npcEditExtra" rows="3"
                                     placeholder="如：性格：外冷内热&#10;外貌：黑发红瞳、身材高挑&#10;背景：曾是某组织的成员，后离开..."></textarea></div>
