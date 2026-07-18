@@ -276,3 +276,5 @@ const CharacterMutator = {
         return [];
     }
 };
+
+if (typeof module !== 'undefined' && module.exports) module.exports = CharacterMutator;

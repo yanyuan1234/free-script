@@ -31,7 +31,8 @@ assertEq(mem.mems.length, 1, 'mem count');
 assertEq(mem.mems[0].name, '刀', 'mem name');
 
 var plain = ResponseParser.parse('hello world');
-assertEq(plain.success, true, 'plain success');
+// 【NEW-008 修复后】纯文本兜底不算"解析成功"，success=false 让上层走 legacy 提取路径
+assertEq(plain.success, false, 'plain success=false (intentional, NEW-008 fix)');
 assertEq(plain.fallbackLevel, 4, 'plain level');
 
 console.log('ResponseParser tests passed');

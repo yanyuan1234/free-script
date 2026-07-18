@@ -24,12 +24,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # 测试门禁：所有单元测试必须通过才能继续部署
+      # 失败时 workflow 中止，避免推送有回归的代码到线上
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run unit tests (test gate)
+        run: |
+          echo "==== Running unit test suite ===="
+          node tests/run-all.js
+
       # 准备 dist 目录：复制所有需要的文件到 dist/
       # 排除 .git/.github/.trae/backup/node_modules 等运行时不需要的目录
       - name: Prepare deploy directory
         run: |
           mkdir -p dist
-          rsync -a --exclude='.git' --exclude='.github' --exclude='.trae' --exclude='backup' --exclude='dist' --exclude='node_modules' --exclude='.gitignore' ./ dist/
+          rsync -a --exclude='.git' --exclude='.github' --exclude='.trae' --exclude='backup' --exclude='dist' --exclude='node_modules' --exclude='.gitignore' --exclude='tests' ./ dist/
           echo "Files prepared in dist/:"
           ls -la dist/
 

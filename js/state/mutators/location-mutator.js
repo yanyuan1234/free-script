@@ -67,6 +67,22 @@ const LocationMutator = {
     // 标准化地点 schema
     normalizeLocation(raw) {
         if (!raw) return null;
+        // 支持字符串输入（与 BagMutator.normalizeItem 行为一致）
+        // AI/旧代码可能传 '森林' 而非 { name: '森林' }，原实现会丢掉这种输入
+        if (typeof raw === 'string') {
+            const name = raw.trim();
+            if (!name) return null;
+            return {
+                id: 'loc_' + name + '_' + Date.now(),
+                name: name,
+                desc: '',
+                features: '',
+                charactersPresent: '',
+                notes: '',
+                lastChangedTurn: 0,
+                locked: false
+            };
+        }
         const name = String(raw.name || '').trim();
         if (!name) return null;
         return {

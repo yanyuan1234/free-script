@@ -102,3 +102,5 @@ const TimeMutator = {
             return null;
         }
 };
+
+if (typeof module !== 'undefined' && module.exports) module.exports = TimeMutator;

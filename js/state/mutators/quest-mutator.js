@@ -305,3 +305,5 @@ const QuestMutator = {
         }).filter(Boolean);
     }
 };
+
+if (typeof module !== 'undefined' && module.exports) module.exports = QuestMutator;

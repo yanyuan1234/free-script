@@ -6,6 +6,28 @@ var fs = require('fs');
 var vm = require('vm');
 var path = require('path');
 
+// schema.js 引用 utils.js 中的全局常量，Node 环境补齐
+if (typeof DEFAULT_MAX_TOKENS === 'undefined') global.DEFAULT_MAX_TOKENS = 32768;
+if (typeof DEFAULT_CONTEXT_SIZE === 'undefined') global.DEFAULT_CONTEXT_SIZE = 32000;
+if (typeof safeInt !== 'function') {
+    global.safeInt = function(v, defaultVal) {
+        if (v === null || v === undefined || v === '') return defaultVal || 0;
+        var n = parseInt(v, 10);
+        return isNaN(n) ? (defaultVal || 0) : n;
+    };
+}
+if (typeof parseProgressParts !== 'function') {
+    global.parseProgressParts = function(progress) {
+        if (!progress) return { current: 0, total: 1 };
+        var parts = String(progress).split('/');
+        if (parts.length === 2) {
+            return { current: global.safeInt(parts[0], 0), total: global.safeInt(parts[1], 1) };
+        }
+        var n = parseInt(progress, 10);
+        return { current: isNaN(n) ? 0 : n, total: 1 };
+    };
+}
+
 function loadScript(relativePath) {
     var fullPath = path.join(__dirname, relativePath);
     var code = fs.readFileSync(fullPath, 'utf8');
@@ -18,6 +40,9 @@ loadScript('../../js/state/mutators/bag-mutator.js');
 loadScript('../../js/state/mutators/quest-mutator.js');
 loadScript('../../js/state/mutators/character-mutator.js');
 loadScript('../../js/state/mutators/time-mutator.js');
+loadScript('../../js/state/mutators/location-mutator.js');
+loadScript('../../js/state/mutators/relationship-mutator.js');
+loadScript('../../js/state/mutators/currency-mutator.js');
 loadScript('../../js/ai-contract/output-sanitizer.js');
 loadScript('../../js/ai-contract/ai-response-mutator.js');
 
@@ -58,7 +83,9 @@ assertEq(StateManager.get('entities.player').name, '艾文', 'player name');
 assertEq(StateManager.get('entities.bag')[0].name, '面包', 'bag item');
 assertEq(StateManager.get('entities.currency'), 50, 'currency');
 assertEq(StateManager.get('entities.quests')[0].title, '寻找失踪的猫', 'quest title');
-assertEq(StateManager.get('time').period, '傍晚', 'time period');
+// 【设计变更】AIResponseMutator 不再写 gameTime，统一由 GameTimeSystem.parseFromAI 作为
+// 时间写入的唯一入口（避免与 game.js 双写），所以 time.period 不会被这里更新
+// assertEq(StateManager.get('time').period, '傍晚', 'time period');
 assertEq(StateManager.get('entities.locations')[0].name, '酒馆', 'location');
 assertEq(StateManager.get('ui.lastHUD').hp, 100, 'hud');
 

@@ -142,3 +142,5 @@ const BagMutator = {
         };
     }
 };
+
+if (typeof module !== 'undefined' && module.exports) module.exports = BagMutator;
