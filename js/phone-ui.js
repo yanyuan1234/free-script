@@ -101,11 +101,15 @@ function renderSvgEmptyState(iconSvg, title, hint) {
     return html + '</div>';
 }
 
-// 安全转义：优先使用 core.js 的 escapeHtml，否则本地兜底
+// 安全转义：本地实现，避免与 core.js 的 window.escapeHtml 发生全局命名冲突（P0 Bug 修复）
 function escapeHtml(text) {
-    if (typeof window !== 'undefined' && typeof window.escapeHtml === 'function') return window.escapeHtml(text);
-    var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
-    return String(text || '').replace(/[&<>"']/g, function(m) { return map[m]; });
+    if (text == null) return '';
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 }
 
 
@@ -6810,13 +6814,29 @@ function showApiDetail(slot) {
         input.type = input.type === 'password' ? 'text' : 'password';
     });
 }
+function _refreshCreateApiModelInput() {
+    var select = document.getElementById('createApiModelSelect');
+    var input = document.getElementById('createApiModelInput');
+    if (select.value === '__manual__') {
+        select.style.display = 'none';
+        input.style.display = 'block';
+        input.focus();
+    } else {
+        select.style.display = 'block';
+        input.style.display = 'none';
+        input.value = '';
+    }
+}
 function showCreateApiModal() {
     document.getElementById('createApiName').value = '';
     document.getElementById('createApiUrl').value = '';
     document.getElementById('createApiKey').value = '';
-    document.getElementById('createApiModelSelect').innerHTML = '<option value="">选择或输入模型</option>';
-    document.getElementById('createApiModelInput').value = '';
-    document.getElementById('createApiModelInput').style.display = 'none';
+    var modelSelect = document.getElementById('createApiModelSelect');
+    modelSelect.innerHTML = '<option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
+    modelSelect.style.display = 'block';
+    var modelInput = document.getElementById('createApiModelInput');
+    modelInput.value = '';
+    modelInput.style.display = 'none';
     document.getElementById('createApiGroup').innerHTML = '<option value="">未分组</option>';
     var groups = LocalGameAPI.getGroups();
     groups.forEach(function(g) {
@@ -6826,6 +6846,11 @@ function showCreateApiModal() {
         document.getElementById('createApiGroup').appendChild(opt);
     });
     UI.showModal('createApiModal');
+
+    // 模型选择切换：手动输入 / 下拉选择
+    var newModelSelect = modelSelect.cloneNode(true);
+    modelSelect.parentNode.replaceChild(newModelSelect, modelSelect);
+    newModelSelect.addEventListener('change', _refreshCreateApiModelInput);
 
     var confirmBtn = document.getElementById('btnConfirmCreateApi');
     var newConfirmBtn = confirmBtn.cloneNode(true);
@@ -6837,8 +6862,11 @@ function showCreateApiModal() {
             UI.toast('请填写接口地址和密钥');
             return;
         }
-        var model = document.getElementById('createApiModelSelect').value || document
-            .getElementById('createApiModelInput').value.trim();
+        var selectVal = document.getElementById('createApiModelSelect').value;
+        var model = (selectVal === '__manual__')
+            ? document.getElementById('createApiModelInput').value.trim()
+            : selectVal;
+        var newSlot = LocalGameAPI._configs.length;
         LocalGameAPI._configs.push({
             name: document.getElementById('createApiName').value.trim(),
             baseUrl: url,
@@ -6847,11 +6875,11 @@ function showCreateApiModal() {
             models: [],
             group: document.getElementById('createApiGroup').value
         });
-        LocalGameAPI.save();
+        LocalGameAPI.setCurrentSlot(newSlot); // 新建 API 自动设为当前使用
         UI.hideModal('createApiModal');
         // [M-1] 新增只是追加一行，走局部更新
-        _appendApiCard(LocalGameAPI._configs.length - 1);
-        UI.toast('API已创建');
+        _appendApiCard(newSlot);
+        UI.toast('API已创建并启用');
     });
 
     // 密码切换
@@ -6880,7 +6908,7 @@ function showCreateApiModal() {
             var select = document.getElementById('createApiModelSelect');
             // 分类：正常  vs  △ 提醒（失败）—— 分两组显示
             // 失败模型依然可选、依然能用，仅作提醒（下架检测已删除）
-            select.innerHTML = '<option value="">选择模型</option>';
+            select.innerHTML = '<option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
             var normalGroup = document.createElement('optgroup');
             normalGroup.label = '正常模型';
             var warnGroup = document.createElement('optgroup');

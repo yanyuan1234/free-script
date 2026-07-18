@@ -2105,9 +2105,10 @@
                                 <label class="field-label">模型</label>
                                 <div style="display:flex;gap:8px;">
                                     <select class="api-model-select" id="createApiModelSelect" style="flex:1;">
-                                        <option value="">选择或输入模型</option>
+                                        <option value="">选择模型</option>
+                                        <option value="__manual__">-- 手动输入 --</option>
                                     </select>
-                                    <input type="text" class="input-field" id="createApiModelInput" placeholder="手动输入"
+                                    <input type="text" class="input-field" id="createApiModelInput" placeholder="手动输入模型名"
                                         style="flex:1;display:none;">
                                 </div>
                                 <button class="api-fetch-btn" id="btnFetchModelsCreate"
