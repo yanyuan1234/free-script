@@ -3425,35 +3425,59 @@ function _resetStreamExtractor() {
     _streamInEscape = false;
     _streamStoryClosed = false;
     _streamExtractedStory = '';
+    _streamStoryArr = [];      // 【P0 性能修复】重置数组累加器
+    _streamStoryArrLen = 0;
     _streamLastPushedLen = 0;
     _streamPlaintextMode = false;
 }
 
 // 【NEW-007 修复】增量提取 story 字段值（O(delta) per chunk）
-// 从 _streamScanPos 继续扫描 streamBuffer，只处理新增部分
+// 【P0 性能修复】用数组累加替代 string += char，避免 O(n²) 字符串拷贝
+// 原实现 _streamExtractedStory += ch 在循环中对每个字符做一次 O(n) 的字符串拷贝，
+// 当故事文本增长到 50KB+ 时，总开销达 50 亿+ 操作，导致浏览器冻结 50+ 秒。
+// 新实现用 _streamStoryArr 数组 push 字符（O(1)），读取时 join('')（O(n) 一次性）
+var _streamStoryArr = [];
+var _streamStoryArrLen = 0;
+
+function _getStreamExtractedStory() {
+    if (_streamStoryArr.length === 0) return '';
+    if (_streamStoryArr.length !== _streamStoryArrLen) {
+        _streamExtractedStory = _streamStoryArr.join('');
+        _streamStoryArrLen = _streamStoryArr.length;
+    }
+    return _streamExtractedStory;
+}
+
+function _appendStreamStory(str) {
+    if (!str) return;
+    _streamStoryArr.push(str);
+    _streamExtractedStory = null; // 标记需要重新 join
+    _streamStoryArrLen = -1;
+}
+
 function _extractStoryIncremental() {
-    if (_streamStoryClosed) return _streamExtractedStory;  // 已闭合，不再变化
+    if (_streamStoryClosed) return _getStreamExtractedStory();  // 已闭合，不再变化
     while (_streamScanPos < streamBuffer.length) {
         var ch = streamBuffer[_streamScanPos];
         if (_streamInEscape) {
             switch (ch) {
-                case 'n': _streamExtractedStory += '\n'; break;
-                case '"': _streamExtractedStory += '"'; break;
-                case '\\': _streamExtractedStory += '\\'; break;
-                case 't': _streamExtractedStory += '\t'; break;
-                case 'r': _streamExtractedStory += '\r'; break;
-                case 'b': _streamExtractedStory += '\b'; break;
-                case 'f': _streamExtractedStory += '\f'; break;
+                case 'n': _appendStreamStory('\n'); break;
+                case '"': _appendStreamStory('"'); break;
+                case '\\': _appendStreamStory('\\'); break;
+                case 't': _appendStreamStory('\t'); break;
+                case 'r': _appendStreamStory('\r'); break;
+                case 'b': _appendStreamStory('\b'); break;
+                case 'f': _appendStreamStory('\f'); break;
                 case 'u':
                     var hexStr = streamBuffer.substring(_streamScanPos + 1, _streamScanPos + 5);
                     if (/^[0-9a-fA-F]{4}$/.test(hexStr)) {
-                        _streamExtractedStory += String.fromCharCode(parseInt(hexStr, 16));
+                        _appendStreamStory(String.fromCharCode(parseInt(hexStr, 16)));
                         _streamScanPos += 4;
                     } else {
-                        _streamExtractedStory += '\\' + ch;
+                        _appendStreamStory('\\' + ch);
                     }
                     break;
-                default: _streamExtractedStory += ch;
+                default: _appendStreamStory(ch);
             }
             _streamInEscape = false;
         } else if (ch === '\\') {
@@ -3463,11 +3487,23 @@ function _extractStoryIncremental() {
             _streamScanPos++;
             break;  // story 字段闭合
         } else {
-            _streamExtractedStory += ch;
+            // 【P0 性能修复】批量提取连续普通字符，避免逐字符 += 拷贝
+            var _batchStart = _streamScanPos;
+            var _batchEnd = _streamScanPos;
+            while (_batchEnd < streamBuffer.length) {
+                var _bch = streamBuffer[_batchEnd];
+                if (_bch === '\\' || _bch === '"') break;
+                _batchEnd++;
+            }
+            if (_batchEnd > _batchStart) {
+                _appendStreamStory(streamBuffer.substring(_batchStart, _batchEnd));
+            }
+            _streamScanPos = _batchEnd;
+            continue;  // 跳过下面的 _streamScanPos++，因为已经在上面更新了
         }
         _streamScanPos++;
     }
-    return _streamExtractedStory;
+    return _getStreamExtractedStory();
 }
 
 // 流式模式锁定语义：一旦确定模式（json/plaintext），不再切换，避免每帧正则扫描。
