@@ -3509,6 +3509,8 @@ function _extractStoryIncremental() {
 // 流式模式锁定语义：一旦确定模式（json/plaintext），不再切换，避免每帧正则扫描。
 
 function onStreamChunk(delta, fullText) {
+    // 【性能诊断】监控 onStreamChunk 执行时间
+    var _perfStart = performance.now();
 
     if ((!delta && fullText === '') || (fullText !== undefined && !fullText && !delta)) return;
     if (fullText !== undefined && fullText !== '') {
@@ -3644,7 +3646,24 @@ function onStreamChunk(delta, fullText) {
         TypewriterBuffer.push(story);
         _streamLastPushedLen = story.length;
     }
+    
+    // 【性能诊断】慢调用告警
+    var _perfElapsed = performance.now() - _perfStart;
+    if (_perfElapsed > 50) {
+        console.warn('[onStreamChunk] SLOW: ' + _perfElapsed.toFixed(1) + 'ms, bufLen=' + streamBuffer.length + ', storyLen=' + (story?story.length:0) + ', pushed=' + _streamLastPushedLen);
+    }
 }
+
+// 【性能诊断】主线程心跳，检测主线程是否被阻塞
+var _heartbeatLast = Date.now();
+setInterval(function() {
+    var now = Date.now();
+    var gap = now - _heartbeatLast;
+    if (gap > 3000) {
+        console.warn('[heartbeat] 主线程阻塞 ' + gap + 'ms (streamBuf=' + (typeof streamBuffer !== 'undefined' ? streamBuffer.length : '?') + ')');
+    }
+    _heartbeatLast = now;
+}, 2000);
 
 // 【NEW-003 修复】流式等待 story 字段时的剧情区提示
 // 不污染 TypewriterBuffer（避免与 story 内容冲突），直接操作 DOM
