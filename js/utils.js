@@ -1222,3 +1222,76 @@ function extractPairedTagContents(text, tagName) {
     return result;
 }
 if (typeof window !== 'undefined') window.extractPairedTagContents = extractPairedTagContents;
+
+/**
+ * 线性扫描提取指定语言代码块的内容
+ * 替代正则 /```lang\n?([\s\S]*?)\n?```/，避免灾难性回溯
+ * @param {string} text 待处理文本
+ * @param {string} langPrefix 语言前缀（如 'json'）
+ * @returns {string|null} 第一个匹配的代码块内容，或 null
+ */
+function stripCodeBlockContent(text, langPrefix) {
+    if (!text || typeof text !== 'string' || !langPrefix) return null;
+    var opener = '```' + langPrefix;
+    var fence = '```';
+    var openerLen = opener.length;
+    var fenceLen = fence.length;
+    var pos = 0;
+    var len = text.length;
+    while (pos < len) {
+        var startIdx = text.indexOf(opener, pos);
+        if (startIdx === -1) return null;
+        // 跳过 opener 后的换行
+        var contentStart = startIdx + openerLen;
+        if (text.charAt(contentStart) === '\n') contentStart++;
+        else if (text.charAt(contentStart) === '\r') {
+            contentStart++;
+            if (text.charAt(contentStart) === '\n') contentStart++;
+        }
+        // 找闭合 ```
+        var endIdx = text.indexOf(fence, contentStart);
+        if (endIdx === -1) return null; // 未闭合，无内容
+        return text.slice(contentStart, endIdx).replace(/\n$/, '');
+    }
+    return null;
+}
+if (typeof window !== 'undefined') window.stripCodeBlockContent = stripCodeBlockContent;
+
+/**
+ * 线性扫描提取第一个平衡的 JSON 对象 {...}
+ * 替代正则 /\{[\s\S]*\}/，避免贪婪匹配和回溯问题
+ * @param {string} text 待处理文本
+ * @returns {string|null} 第一个平衡的 {...} 块，或 null
+ */
+function extractFirstJSONBlock(text) {
+    if (!text || typeof text !== 'string') return null;
+    var startIdx = text.indexOf('{');
+    if (startIdx === -1) return null;
+    var depth = 0;
+    var inString = false;
+    var escape = false;
+    var pos = startIdx;
+    var len = text.length;
+    while (pos < len) {
+        var ch = text.charAt(pos);
+        if (escape) {
+            escape = false;
+        } else if (ch === '\\') {
+            escape = true;
+        } else if (ch === '"') {
+            inString = !inString;
+        } else if (!inString) {
+            if (ch === '{') depth++;
+            else if (ch === '}') {
+                depth--;
+                if (depth === 0) {
+                    return text.slice(startIdx, pos + 1);
+                }
+            }
+        }
+        pos++;
+    }
+    // 未平衡：返回从第一个 { 到末尾
+    return text.slice(startIdx);
+}
+if (typeof window !== 'undefined') window.extractFirstJSONBlock = extractFirstJSONBlock;

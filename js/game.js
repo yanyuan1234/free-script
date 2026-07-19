@@ -3494,46 +3494,83 @@ function onStreamChunk(delta, fullText) {
 
     // JSON 模式：增量提取 story 字段
     if (_streamStoryStartIdx === -1) {
-        // 还未定位 story 起始，尝试定位
-        var match = streamBuffer.match(/"story"\s*:\s*"/);
-        if (match) {
-            _streamStoryStartIdx = match.index + match[0].length;
-            _streamScanPos = _streamStoryStartIdx;
-            _clearStreamWaitingHint();
-        } else {
+        // 【P0 性能修复】用 indexOf 增量扫描替代 streamBuffer.match() 全量正则匹配
+        // 原实现：每个 chunk 都对整个 streamBuffer 跑 .match(/"story"\s*:\s*"/)，
+        // 缓冲区越大越慢（O(n) × N chunks = O(n²)），大响应时直接冻结浏览器。
+        // 新实现：只扫描上次未扫描的部分（_streamJsonScanPos），O(delta) per chunk。
+        if (typeof _streamJsonScanPos === 'undefined') _streamJsonScanPos = 0;
+        var _storyFound = false;
+        // 只在新增部分搜索 "story" 字段
+        var _searchFrom = Math.max(0, _streamJsonScanPos - 10); // 回退10字符防跨chunk断裂
+        var _storyIdx = streamBuffer.indexOf('"story"', _searchFrom);
+        if (_storyIdx !== -1) {
+            // 验证后面是否跟 : " 格式
+            var _afterKey = streamBuffer.substring(_storyIdx + 7);
+            var _colonMatch = _afterKey.match(/^\s*:\s*"/);
+            if (_colonMatch) {
+                _streamStoryStartIdx = _storyIdx + 7 + _colonMatch[0].length;
+                _streamScanPos = _streamStoryStartIdx;
+                _storyFound = true;
+                _clearStreamWaitingHint();
+            }
+        }
+        _streamJsonScanPos = streamBuffer.length;
+
+        if (!_storyFound) {
             // story 尚未出现，判断是否 JSON
             if (streamBuffer.length > 50) {
-                var isLikelyJSON = /^\s*\{/.test(streamBuffer);
-                if (isLikelyJSON) {
+                // 缓存 isLikelyJSON 判断结果，避免每 chunk 重复 test
+                if (typeof _streamIsLikelyJSON === 'undefined') {
+                    _streamIsLikelyJSON = /^\s*\{/.test(streamBuffer);
+                }
+                if (_streamIsLikelyJSON) {
                     // JSON 模式但 story 字段未到，显示等待提示
-                    if (streamBuffer.length > 200) {
+                    if (streamBuffer.length > 200 && streamBuffer.length % 1000 < 50) {
                         console.warn('[onStreamChunk] JSON模式 story 字段延迟出现，缓冲区:', streamBuffer.length);
                     }
-                    _showStreamWaitingHint();
+                    // 【安全网】缓冲区超过 50KB 仍未找到 story 字段，切换纯文本模式避免无限等待
+                    if (streamBuffer.length > 50000) {
+                        console.warn('[onStreamChunk] 缓冲区超过50KB未找到story字段，切换纯文本模式');
+                        _streamPlaintextMode = true;
+                        if (typeof RuntimeState !== 'undefined') {
+                            RuntimeState.streamMode = 'plaintext';
+                            RuntimeState.streamModeLocked = true;
+                        }
+                        _clearStreamWaitingHint();
+                        TypewriterBuffer.push(streamBuffer);
+                        _streamLastPushedLen = streamBuffer.length;
+                    } else {
+                        _showStreamWaitingHint();
+                    }
                     return;
                 }
 
                 // BUG FIX：模型可能先输出裸推理前缀，再输出 JSON 正文。
-                // 扫描缓冲区中是否存在已知的 JSON 响应起点；若存在，说明当前是「推理前缀 + JSON」模式，
-                // 应继续等待 story 字段，而不是切换为纯文本模式把推理文本推入 UI。
-                var jsonStartPatterns = [
-                    /\{\s*"story"/i, /\{\s*"title"/i, /\{\s*"player"/i,
-                    /\{\s*"choices"/i, /\{\s*"characters"/i, /\{\s*"bag"/i,
-                    /\{\s*"quests"/i, /\{\s*"gameTime"/i, /\{\s*"narrative"/i,
-                    /\{\s*"content"/i, /\{\s*"storyText"/i, /\{\s*"scene"/i
-                ];
-                var jsonStartIdx = -1;
-                for (var pi = 0; pi < jsonStartPatterns.length; pi++) {
-                    var pm = streamBuffer.match(jsonStartPatterns[pi]);
-                    if (pm && pm.index !== undefined) {
-                        if (jsonStartIdx === -1 || pm.index < jsonStartIdx) {
-                            jsonStartIdx = pm.index;
+                // 【P0 性能修复】用 indexOf 替代 12 个正则 match，避免 O(n²) 全量扫描
+                var _jsonStartKeys = ['{"story"', '{"title"', '{"player"', '{"choices"',
+                    '{"characters"', '{"bag"', '{"quests"', '{"gameTime"',
+                    '{"narrative"', '{"content"', '{"storyText"', '{"scene"'];
+                var _jsonStartIdx = -1;
+                for (var pi = 0; pi < _jsonStartKeys.length; pi++) {
+                    // 只在新增部分搜索
+                    var _idx = streamBuffer.indexOf(_jsonStartKeys[pi], _searchFrom);
+                    // 也检查缓冲区开头（推理前缀场景，JSON 可能在任意位置）
+                    if (_idx === -1 && _searchFrom > 0) {
+                        _idx = streamBuffer.indexOf(_jsonStartKeys[pi]);
+                    }
+                    if (_idx !== -1) {
+                        // 容错：key 后可能跟空格，如 { "story"
+                        var _afterBracket = streamBuffer.substring(_idx + 1);
+                        if (/^\s*"/.test(_afterBracket) || _jsonStartKeys[pi].charAt(1) === '"') {
+                            if (_jsonStartIdx === -1 || _idx < _jsonStartIdx) {
+                                _jsonStartIdx = _idx;
+                            }
                         }
                     }
                 }
-                if (jsonStartIdx > 0) {
+                if (_jsonStartIdx > 0) {
                     // 找到 JSON 起点：丢弃前缀，继续 JSON 模式等待 story 字段
-                    if (streamBuffer.length - jsonStartIdx > 200) {
+                    if (streamBuffer.length - _jsonStartIdx > 200 && streamBuffer.length % 1000 < 50) {
                         console.warn('[onStreamChunk] JSON模式 story 字段延迟出现（含推理前缀），缓冲区:', streamBuffer.length);
                     }
                     _showStreamWaitingHint();
@@ -3542,8 +3579,10 @@ function onStreamChunk(delta, fullText) {
 
                 // 非 JSON 响应，切换纯文本模式
                 _streamPlaintextMode = true;
-                RuntimeState.streamMode = 'plaintext';
-                RuntimeState.streamModeLocked = true;
+                if (typeof RuntimeState !== 'undefined') {
+                    RuntimeState.streamMode = 'plaintext';
+                    RuntimeState.streamModeLocked = true;
+                }
                 _clearStreamWaitingHint();
                 TypewriterBuffer.push(streamBuffer);
                 _streamLastPushedLen = streamBuffer.length;
@@ -3898,9 +3937,11 @@ var _reItalic = /\*(.*?)\*/g;
 function formatStory(text) {
     if (!text) return '';
 
+    // 【性能监控】记录 formatStory 执行时间，文本超过 2000 字符时输出
+    var _fmtStartTime = (text.length > 2000) ? Date.now() : 0;
+    var _fmtTextLen = text.length;
 
     // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
-
 
     if (text.indexOf('&') !== -1) {
         _reHtmlLt.lastIndex = 0; _reHtmlGt.lastIndex = 0;
@@ -4228,6 +4269,14 @@ function formatStory(text) {
     });
 
     var finalOutput = result.join('') + chapterEndHtml;
+
+    // 【性能监控】formatStory 执行时间
+    if (_fmtStartTime > 0) {
+        var _fmtElapsed = Date.now() - _fmtStartTime;
+        if (_fmtElapsed > 50) {
+            console.warn('[性能] formatStory 耗时 ' + _fmtElapsed + 'ms (文本长度: ' + _fmtTextLen + ')');
+        }
+    }
 
     return sanitizeHtml(finalOutput);
 }

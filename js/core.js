@@ -3153,10 +3153,16 @@ function parseAIResponse(reply) {
             }
         } catch (e1) {
             // 步骤2: 代码块JSON提取
-            var _blockMatch = reply.match(/```json\n?([\s\S]*?)\n?```/);
-            if (_blockMatch) {
+            // 【P0 ReDoS 修复】用 stripCodeBlocks 替代 [\s\S]*? 正则
+            var _blockContent = (typeof stripCodeBlockContent === 'function')
+                ? stripCodeBlockContent(reply, 'json')
+                : (function() {
+                    var _m = reply.match(/```json\n?([\s\S]*?)\n?```/);
+                    return _m ? _m[1] : null;
+                })();
+            if (_blockContent) {
                 try {
-                    var _blockData = JSON.parse(_blockMatch[1]);
+                    var _blockData = JSON.parse(_blockContent);
                     if (_blockData && typeof _blockData === 'object') {
                         data = _blockData;
                         storyText = data.story || '';
@@ -3164,14 +3170,20 @@ function parseAIResponse(reply) {
                 } catch (e2) {}
             }
             // 步骤3: 纯文本中提取JSON块
+            // 【P0 ReDoS 修复】用 indexOf 配对扫描替代 \{[\s\S]*\} 贪婪正则
             if (!data) {
-                var _jsonBlockMatch = reply.match(/\{[\s\S]*\}/);
-                if (_jsonBlockMatch) {
+                var _jsonBlockContent = (typeof extractFirstJSONBlock === 'function')
+                    ? extractFirstJSONBlock(reply)
+                    : (function() {
+                        var _m = reply.match(/\{[\s\S]*\}/);
+                        return _m ? _m[0] : null;
+                    })();
+                if (_jsonBlockContent) {
                     try {
-                        var _extracted = JSON.parse(_jsonBlockMatch[0]);
+                        var _extracted = JSON.parse(_jsonBlockContent);
                         if (_extracted && typeof _extracted === 'object') {
                             data = _extracted;
-                            storyText = (data.story || reply.replace(_jsonBlockMatch[0], '').trim()) || reply;
+                            storyText = (data.story || reply.replace(_jsonBlockContent, '').trim()) || reply;
                         }
                     } catch (e3) {}
                 }
@@ -3179,20 +3191,29 @@ function parseAIResponse(reply) {
         }
         // 步骤4: 兜底用原文
         if (!storyText && reply) {
-            storyText = reply.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-                .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
-                .replace(/💭[\s\S]*?💭/g, '')
-                .trim() || reply;
+            // 【P0 ReDoS 修复】用 stripPairedTags / scanMarkerPairs 替代 [\s\S]*? 正则
+            var _cleanReplyFallback = reply;
+            if (typeof stripPairedTags !== 'undefined') {
+                _cleanReplyFallback = stripPairedTags(_cleanReplyFallback, ['thinking', 'ECoT']);
+            }
+            if (typeof scanMarkerPairs !== 'undefined') {
+                _cleanReplyFallback = scanMarkerPairs(_cleanReplyFallback, '💭', 'strip');
+            }
+            storyText = _cleanReplyFallback.trim() || reply;
         }
     }
 
     // 兜底：storyText 为空但 reply 有内容（纯文本小说预设）
     if ((!storyText || storyText.trim() === '') && reply && reply.trim()) {
-        var cleanedReply = reply
-            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
-            .replace(/<ECoT>[\s\S]*?<\/ECoT>/gi, '')
-            .replace(/💭[\s\S]*?💭/g, '')
-            .trim();
+        // 【P0 ReDoS 修复】用 stripPairedTags / scanMarkerPairs 替代 [\s\S]*? 正则
+        var cleanedReply = reply;
+        if (typeof stripPairedTags !== 'undefined') {
+            cleanedReply = stripPairedTags(cleanedReply, ['thinking', 'ECoT']);
+        }
+        if (typeof scanMarkerPairs !== 'undefined') {
+            cleanedReply = scanMarkerPairs(cleanedReply, '💭', 'strip');
+        }
+        cleanedReply = cleanedReply.trim();
         if (cleanedReply) storyText = cleanedReply;
     }
 
