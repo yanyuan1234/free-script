@@ -1068,6 +1068,7 @@ function applyLengthPreset(preset) {
 async function sendAIRequest(userMessage, isInit = false) {
     // 【性能诊断】sendAIRequest 入口时间戳
     var _t_entry = performance.now();
+    document.title = 'PERF:1-entry';
     // 【P0 修复】isInit 时强制重置 isWaiting，防止上一轮异常残留导致开局卡死
     // 场景：extractSetupToMemory 超时后调用 sendAIRequest，但 isWaiting 可能被
     // autoCompressContext 或其他路径设为 true 且未清理
@@ -1136,7 +1137,9 @@ async function sendAIRequest(userMessage, isInit = false) {
     // 移除等待帧，让 loading 动画由 CSS 动画自动处理（不需要 JS 等待帧）
     
     // 保存撤销状态（在AI回复前）
+    document.title = 'PERF:2-saveUndo';
     saveUndoState();
+    document.title = 'PERF:3-postUndo';
 
     if (gameState) {
         var preTitle = StateManager ? (StateManager.get('progress.lastSceneTitle') || '') : '';
@@ -1169,8 +1172,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【关键修复】在构建消息列表之前，确保全局宏变量已注入
         // 这样预设中的 {{getglobalvar::XXX}} 才能被正确替换
         var _t_inject = performance.now();
+        document.title = 'PERF:4-preInject';
         console.log('[perf] sendAIRequest pre-inject: ' + (_t_inject - _t_entry).toFixed(1) + 'ms (safeAbort+setWaiting+saveUndoState+regex+emit)');
         injectPresetGlobalVars();
+        document.title = 'PERF:5-postInject';
         console.log('[perf] injectPresetGlobalVars: ' + (performance.now() - _t_inject).toFixed(1) + 'ms');
 
         // 【BG-004 修复】跟踪 turn 是否已在正常路径递增，
@@ -1836,6 +1841,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + (gameState && gameState._lastContextUsage) + '%)');
 
         try {
+            document.title = 'PERF:6-callAI';
             response = await callAI(messages, options);
         } catch (e) {
 
@@ -1848,10 +1854,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 【性能诊断】流完成时间戳
         var _t_streamEnd = performance.now();
+        document.title = 'PERF:7-streamDone';
         console.log('[perf] 流完成, responseLen=' + (response ? response.length : 0));
         // 流式空回检测
         var _t0 = performance.now();
+        document.title = 'PERF:8-parse';
         var parseResult = parseAIResponse(response);
+        document.title = 'PERF:9-postParse';
         console.log('[perf] parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
         var data = parseResult.data;
         var storyText = parseResult.storyText;
@@ -2536,11 +2545,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _doFinalRender = function() {
             if (_finalRendered) return;
             _finalRendered = true;
+            document.title = 'PERF:10-finalRender';
             try {
                 var _t4 = performance.now();
                 if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
                 var st = document.getElementById('storyText');
                 if (st) st.innerHTML = formatStory(finalStory);
+                document.title = 'PERF:11-done';
                 console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
                 _hideSkipButton();
             } catch (e) {
@@ -3529,6 +3540,9 @@ function _extractStoryIncremental() {
 function onStreamChunk(delta, fullText) {
     // 【性能诊断】监控 onStreamChunk 执行时间
     var _perfStart = performance.now();
+    if (!window._chunkCount) window._chunkCount = 0;
+    window._chunkCount++;
+    if (window._chunkCount % 50 === 1) document.title = 'PERF:chunk-' + window._chunkCount + '-buf=' + (streamBuffer||'').length;
 
     if ((!delta && fullText === '') || (fullText !== undefined && !fullText && !delta)) return;
     if (fullText !== undefined && fullText !== '') {
