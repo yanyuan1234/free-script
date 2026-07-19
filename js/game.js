@@ -2068,10 +2068,15 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (response && typeof response === 'string' && response.trim().length > 0) {
                 // 如果原始响应有内容但storyText为空，说明解析可能有问题
                 // 尝试直接显示清理后的原始响应（去掉JSON标记和COT）
-                var _cleanedRaw = response.replace(/```json[\s\S]*?```/g, '');
+                // 【ReDoS 修复】用 stripCodeBlocks 线性扫描替代 /```json[\s\S]*?```/g
+                var _cleanedRaw = (typeof stripCodeBlocks === 'function')
+                    ? stripCodeBlocks(response, 'json')
+                    : response.replace(/```json[\s\S]*?```/g, '');
                 _cleanedRaw = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.stripThinking)
                     ? OutputSanitizer.stripThinking(_cleanedRaw)
-                    : _cleanedRaw.replace(/💭[\s\S]*?💭/g, '');
+                    : ((typeof scanMarkerPairs === 'function')
+                        ? scanMarkerPairs(_cleanedRaw, '💭', 'strip')
+                        : _cleanedRaw.replace(/💭[\s\S]*?💭/g, ''));
                 var cleanedRaw = _cleanedRaw.replace(/"story"\s*:\s*""/g, '').trim();
 
                 var isRawSSE = cleanedRaw.indexOf('data:') !== -1 && cleanedRaw.indexOf('"object"') !== -1;
@@ -2964,9 +2969,13 @@ function exportAsNovel() {
         if (!content) continue;
 
         // 清理内容中的Markdown标记和特殊格式
-        content = content.replace(/```[\s\S]*?```/g, function(block) {
-            return block.replace(/```/g, '');
-        });
+        // 【ReDoS 修复】用 stripCodeBlockFences 线性扫描替代 /```[\s\S]*?```/g
+        // 原正则在嵌套或大量代码块上可能触发灾难性回溯
+        content = (typeof stripCodeBlockFences === 'function')
+            ? stripCodeBlockFences(content)
+            : content.replace(/```[\s\S]*?```/g, function(block) {
+                return block.replace(/```/g, '');
+            });
         content = content.replace(/\*\*(.*?)\*\*/g, '$1');
         content = content.replace(/\*(.*?)\*/g, '$1');
         content = content.replace(/^#{1,6}\s/gm, '');
@@ -3709,10 +3718,132 @@ var _reGiggleCNStrip = /【giggle】[\s\S]*?【\/giggle】/gi;
 
 // 旧正则要求闭合标签，导致未闭合标签残留并被 escapeHtml 转成 &lt;giggle&gt; 显示给玩家
 // 新增两个正则：匹配未闭合的开标签（到行尾/段尾/全文末尾）
+// 【ReDoS 修复 - fallback only】这些正则仅作为工具函数不可用时的兜底，
+// 主路径改用 extractPairedTags / stripPairedTags / indexOf 线性扫描
 var _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi;
 var _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi;
 var _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi;
 var _reDecorTagsTyping = /<(ice|snow|echo|danmu|branches|prologue|meow_FM|time_format|write_check|emoji|novel_header|profile|ccd|角色状态面板)[\s\S]*?<\/\1>/gi;
+
+// ========================================
+// 【P0 根因修复】线性时间代码块扫描器
+// 替代 /```[\s\S]*?```/g 和 /```json[\s\S]*?```/g 等正则
+// 复杂度严格 O(n)，使用 indexOf 线性搜索，无回溯，不会冻结主线程
+// ========================================
+
+/**
+ * 线性扫描移除代码块（包括内容）
+ * 替代正则 /```[\s\S]*?```/g 和 /```json[\s\S]*?```/g，避免灾难性回溯
+ * @param {string} text 待处理文本
+ * @param {string} [langPrefix] 可选的语言前缀（如 'json'），仅移除以 ```langPrefix 开头的代码块；
+ *                              不传则移除所有 ``` 代码块
+ * @returns {string} 移除代码块后的文本
+ */
+function stripCodeBlocks(text, langPrefix) {
+    if (!text || typeof text !== 'string') return text || '';
+    var opener = langPrefix ? ('```' + langPrefix) : '```';
+    var fence = '```';
+    var openerLen = opener.length;
+    var fenceLen = fence.length;
+    var result = [];
+    var pos = 0;
+    var len = text.length;
+    while (pos < len) {
+        var startIdx = text.indexOf(opener, pos);
+        if (startIdx === -1) {
+            result.push(text.slice(pos));
+            break;
+        }
+        // 保留代码块之前的内容
+        result.push(text.slice(pos, startIdx));
+        // 找下一个 ```（在 opener 之后）
+        var contentStart = startIdx + openerLen;
+        var endIdx = text.indexOf(fence, contentStart);
+        if (endIdx === -1) {
+            // 未闭合代码块：保留剩余内容（包括开标签 ```），与正则 [\s\S]*? 不匹配未闭合一致
+            result.push(text.slice(startIdx));
+            break;
+        }
+        // 跳过整个代码块（包括闭合 ```）
+        pos = endIdx + fenceLen;
+    }
+    return result.join('');
+}
+if (typeof window !== 'undefined') window.stripCodeBlocks = stripCodeBlocks;
+
+/**
+ * 线性扫描处理代码块：保留代码块内容，仅移除 ``` 标记
+ * 替代 content.replace(/```[\s\S]*?```/g, function(block) { return block.replace(/```/g, ''); });
+ * @param {string} text 待处理文本
+ * @returns {string} 移除 ``` 标记但保留内容的文本
+ */
+function stripCodeBlockFences(text) {
+    if (!text || typeof text !== 'string') return text || '';
+    var fence = '```';
+    var fenceLen = fence.length;
+    var result = [];
+    var pos = 0;
+    var len = text.length;
+    while (pos < len) {
+        var startIdx = text.indexOf(fence, pos);
+        if (startIdx === -1) {
+            result.push(text.slice(pos));
+            break;
+        }
+        // 找配对的闭合 ```
+        var endIdx = text.indexOf(fence, startIdx + fenceLen);
+        if (endIdx === -1) {
+            // 未配对：保留剩余内容（包括 ``` 本身，与正则 [\s\S]*? 不匹配未配对一致）
+            result.push(text.slice(pos));
+            break;
+        }
+        // 保留 ``` 之前的内容
+        result.push(text.slice(pos, startIdx));
+        // 保留代码块内容（去掉两端的 ```）
+        result.push(text.slice(startIdx + fenceLen, endIdx));
+        pos = endIdx + fenceLen;
+    }
+    return result.join('');
+}
+if (typeof window !== 'undefined') window.stripCodeBlockFences = stripCodeBlockFences;
+
+/**
+ * 线性扫描移除 【giggle】...【/giggle】 配对标签（包括内容）
+ * 替代正则 /【giggle】[\s\S]*?【\/giggle】/gi，避免灾难性回溯
+ * @param {string} text 待处理文本
+ * @returns {string} 移除配对标签后的文本
+ */
+function stripCNGigglePairs(text) {
+    if (!text || typeof text !== 'string') return text || '';
+    var open = '【giggle】';
+    var close = '【/giggle】';
+    var openLen = open.length;
+    var closeLen = close.length;
+    var result = [];
+    var pos = 0;
+    var len = text.length;
+    while (pos < len) {
+        var startIdx = text.indexOf(open, pos);
+        if (startIdx === -1) {
+            result.push(text.slice(pos));
+            break;
+        }
+        // 保留开标签之前的内容
+        result.push(text.slice(pos, startIdx));
+        // 找闭合标签
+        var contentStart = startIdx + openLen;
+        var endIdx = text.indexOf(close, contentStart);
+        if (endIdx === -1) {
+            // 未闭合：保留剩余（包括开标签），与正则 [\s\S]*? 不匹配未闭合一致
+            result.push(text.slice(startIdx));
+            break;
+        }
+        // 跳过整个配对
+        pos = endIdx + closeLen;
+    }
+    return result.join('');
+}
+if (typeof window !== 'undefined') window.stripCNGigglePairs = stripCNGigglePairs;
 
 // 检测标题是否疑似初始场景（用于防御 AI  confused 回退）
 function _looksLikeInitialScene(title, userPrompt) {
@@ -3791,9 +3922,25 @@ function formatStory(text) {
     }
 
 
-    text = text.replace(/<giggle>([\s\S]*?)<\/giggle>/gi, function(match, inner) {
-        return '<giggle>' + inner.replace(/\n/g, ' ').replace(/\r/g, '') + '</giggle>';
-    });
+    // 【ReDoS 修复】用 extractPairedTags 线性扫描替代 /<giggle>([\s\S]*?)<\/giggle>/gi
+    // 原正则在未闭合 <giggle> 标签上可能触发灾难性回溯
+    if (typeof extractPairedTags !== 'undefined') {
+        var _giggleMatches = extractPairedTags(text, ['giggle']);
+        if (_giggleMatches && _giggleMatches.length > 0) {
+            // 逆序替换避免索引偏移
+            for (var _gi = _giggleMatches.length - 1; _gi >= 0; _gi--) {
+                var _gm = _giggleMatches[_gi];
+                var _newInner = _gm.content.replace(/\n/g, ' ').replace(/\r/g, '');
+                text = text.slice(0, _gm.index)
+                    + '<giggle>' + _newInner + '</giggle>'
+                    + text.slice(_gm.index + _gm.fullMatch.length);
+            }
+        }
+    } else {
+        text = text.replace(/<giggle>([\s\S]*?)<\/giggle>/gi, function(match, inner) {
+            return '<giggle>' + inner.replace(/\n/g, ' ').replace(/\r/g, '') + '</giggle>';
+        });
+    }
 
 
     // parseFromText 遍历所有装饰标签做正则匹配，stripDecorTags 做大量正则替换
@@ -3867,11 +4014,25 @@ function formatStory(text) {
     if (text.indexOf('<giggle>') !== -1 || text.indexOf('【giggle】') !== -1) {
         for (let pI = 0; pI < paragraphs.length; pI++) {
             var pp = paragraphs[pI];
-            _reGiggleOpen.lastIndex = 0;
+            // 【ReDoS 修复】用 extractPairedTags 线性扫描替代 _reGiggleOpen 正则
+            // 原正则 /<giggle>([\s\S]*?)<\/giggle>/gi 在未闭合标签上触发灾难性回溯
             var tmatch;
+            var _closedMatches = (typeof extractPairedTags !== 'undefined')
+                ? extractPairedTags(pp, ['giggle'])
+                : (function() {
+                    // fallback：工具不可用时回退正则
+                    var arr = [];
+                    _reGiggleOpen.lastIndex = 0;
+                    var m;
+                    while ((m = _reGiggleOpen.exec(pp)) !== null) {
+                        arr.push({ content: m[1], fullMatch: m[0], index: m.index });
+                    }
+                    return arr;
+                })();
             // 先匹配闭合标签 <giggle>...</giggle>
-            while ((tmatch = _reGiggleOpen.exec(pp)) !== null) {
-                var giggleText = tmatch[1].trim();
+            for (var _ci = 0; _ci < _closedMatches.length; _ci++) {
+                tmatch = _closedMatches[_ci];
+                var giggleText = tmatch.content.trim();
                 var colonIdx = giggleText.indexOf('：');
                 if (colonIdx === -1) colonIdx = giggleText.indexOf(':');
                 var character, ttext;
@@ -3885,37 +4046,55 @@ function formatStory(text) {
                 allThoughts.push({
                     character: character,
                     text: ttext,
-                    original: tmatch[0],
+                    original: tmatch.fullMatch,
                     paragraphIdx: pI
                 });
             }
 
             // 避免重复：先剔除已匹配闭合标签的部分
-            _reGiggleStrip.lastIndex = 0;
-            var ppWithoutClosed = pp.replace(_reGiggleStrip, '');
-            _reGiggleUnclosed.lastIndex = 0;
-            var umatch;
-            while ((umatch = _reGiggleUnclosed.exec(ppWithoutClosed)) !== null) {
-                var uText = umatch[1].trim();
-                if (!uText) continue;
-                var uColon = uText.indexOf('：');
-                if (uColon === -1) uColon = uText.indexOf(':');
-                var uChar, uBody;
-                if (uColon > 0) {
-                    uChar = uText.substring(0, uColon).trim();
-                    uBody = uText.substring(uColon + 1).trim();
-                } else {
-                    uChar = '???';
-                    uBody = uText;
+            // 【ReDoS 修复】用 extractPairedTags + 手动切片替代 _reGiggleStrip 正则
+            // 注意：不能用 stripPairedTags（它会移除未闭合标签的开标签，破坏后续 indexOf 查找），
+            // 需用 extractPairedTags 找到配对标签后逆序切片，保留未闭合标签以供后续 indexOf 检测
+            var ppWithoutClosed;
+            if (typeof extractPairedTags !== 'undefined') {
+                ppWithoutClosed = pp;
+                var _pairedInPp = extractPairedTags(pp, ['giggle']);
+                if (_pairedInPp && _pairedInPp.length > 0) {
+                    // 逆序切片避免索引偏移
+                    for (var _pk = _pairedInPp.length - 1; _pk >= 0; _pk--) {
+                        var _pm2 = _pairedInPp[_pk];
+                        ppWithoutClosed = ppWithoutClosed.slice(0, _pm2.index)
+                            + ppWithoutClosed.slice(_pm2.index + _pm2.fullMatch.length);
+                    }
                 }
-                allThoughts.push({
-                    character: uChar,
-                    text: uBody,
-                    original: umatch[0],
-                    paragraphIdx: pI
-                });
-                // 未闭合标签 $ 匹配到段尾，只可能匹配一次
-                break;
+            } else {
+                _reGiggleStrip.lastIndex = 0;
+                ppWithoutClosed = pp.replace(_reGiggleStrip, '');
+            }
+            // 用 indexOf 找未闭合的 <giggle> 标签（替代 _reGiggleUnclosed 正则）
+            // _reGiggleUnclosed = /<giggle>([\s\S]*?)$/gi —— $ 锚定字符串末尾，仅匹配一次
+            var _uOpenIdx = ppWithoutClosed.indexOf('<giggle>');
+            if (_uOpenIdx !== -1) {
+                var uText = ppWithoutClosed.slice(_uOpenIdx + '<giggle>'.length).trim();
+                if (uText) {
+                    var uColon = uText.indexOf('：');
+                    if (uColon === -1) uColon = uText.indexOf(':');
+                    var uChar, uBody;
+                    if (uColon > 0) {
+                        uChar = uText.substring(0, uColon).trim();
+                        uBody = uText.substring(uColon + 1).trim();
+                    } else {
+                        uChar = '???';
+                        uBody = uText;
+                    }
+                    allThoughts.push({
+                        character: uChar,
+                        text: uBody,
+                        original: ppWithoutClosed.slice(_uOpenIdx),
+                        paragraphIdx: pI
+                    });
+                    // 未闭合标签 $ 匹配到段尾，只可能匹配一次
+                }
             }
         }
     }
@@ -3934,14 +4113,44 @@ function formatStory(text) {
 
     paragraphs.forEach(function(p, pIdx) {
         // 移除所有心声标记（兼容中文方括号格式 + 未闭合标签）
-        _reGiggleStrip.lastIndex = 0; _reGiggleCNStrip.lastIndex = 0;
-        _reGiggleUnclosedStrip.lastIndex = 0; _reGiggleCNUnclosedStrip.lastIndex = 0;
-        var cleanText = p
-            .replace(_reGiggleStrip, '')
-            .replace(_reGiggleCNStrip, '')
-            .replace(_reGiggleUnclosedStrip, '')
-            .replace(_reGiggleCNUnclosedStrip, '')
-            .trim();
+        // 【ReDoS 修复】用线性扫描替代 4 个含 [\s\S]*? 的 giggle strip 正则
+        // _reGiggleStrip / _reGiggleUnclosedStrip / _reGiggleCNUnclosedStrip 改用 extractPairedTags + indexOf
+        // _reGiggleCNStrip 改用 stripCNGigglePairs 线性扫描
+        // 注意：不能用 stripPairedTags（它会移除未闭合标签的开标签，破坏后续 indexOf 查找），
+        // 需用 extractPairedTags 找到配对标签后逆序切片，保留未闭合标签以供步骤 3/4 检测
+        var cleanText = p;
+        // 1. 移除已闭合的 <giggle>...</giggle> 标签（保留未闭合标签以供步骤 3 处理）
+        if (typeof extractPairedTags !== 'undefined') {
+            var _pairedG = extractPairedTags(cleanText, ['giggle']);
+            if (_pairedG && _pairedG.length > 0) {
+                // 逆序切片避免索引偏移
+                for (var _pg = _pairedG.length - 1; _pg >= 0; _pg--) {
+                    cleanText = cleanText.slice(0, _pairedG[_pg].index)
+                        + cleanText.slice(_pairedG[_pg].index + _pairedG[_pg].fullMatch.length);
+                }
+            }
+        } else {
+            _reGiggleStrip.lastIndex = 0;
+            cleanText = cleanText.replace(_reGiggleStrip, '');
+        }
+        // 2. 移除已闭合的 【giggle】...【/giggle】 标签
+        if (typeof stripCNGigglePairs !== 'undefined') {
+            cleanText = stripCNGigglePairs(cleanText);
+        } else {
+            _reGiggleCNStrip.lastIndex = 0;
+            cleanText = cleanText.replace(_reGiggleCNStrip, '');
+        }
+        // 3. 移除未闭合的 <giggle> 标签（到段尾）—— _reGiggleUnclosedStrip = /<giggle>[\s\S]*$/gi
+        var _gOpenIdx = cleanText.indexOf('<giggle>');
+        if (_gOpenIdx !== -1) {
+            cleanText = cleanText.slice(0, _gOpenIdx);
+        }
+        // 4. 移除未闭合的 【giggle】 标签（到段尾）—— _reGiggleCNUnclosedStrip = /【giggle】[\s\S]*$/gi
+        var _gCnOpenIdx = cleanText.indexOf('【giggle】');
+        if (_gCnOpenIdx !== -1) {
+            cleanText = cleanText.slice(0, _gCnOpenIdx);
+        }
+        cleanText = cleanText.trim();
 
         // 检查这个段落是否有对应的心声
         var hasThoughtInThisPara = false;
@@ -4788,7 +4997,12 @@ async function requestNpcReply(playerText) {
                 replies = [extractedReply];
                 choices = extractArr(response, 'choices') || [];
             } else {
-                var plainText = response.replace(/```[\s\S]*?```/g, '').replace(/\{[\s\S]*\}/g, '')
+                // 【ReDoS 修复】用 stripCodeBlocks 线性扫描替代 /```[\s\S]*?```/g
+                // JSON 正则 /\{[\s\S]*\}/g 是贪婪匹配，非 lazy，ReDoS 风险较低，保留
+                var _codeStripped = (typeof stripCodeBlocks === 'function')
+                    ? stripCodeBlocks(response)
+                    : response.replace(/```[\s\S]*?```/g, '');
+                var plainText = _codeStripped.replace(/\{[\s\S]*\}/g, '')
                     .trim();
                 if (plainText) replies = [plainText];
             }

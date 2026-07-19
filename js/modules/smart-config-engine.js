@@ -96,7 +96,31 @@ var SmartConfigEngine = {
     */
     _extractAutoParse: function(content) {
         // 匹配自动解析设置
-        var autoParseMatch = content.match(/自动解析[\s\S]*?前缀[\s]*([`<\w>]+)[\s\S]*?后缀[\s]*([`<\w>]+)/i);
+        // 【P0 根因修复】用 indexOf 线性扫描替代双 [\s\S]*? 正则，避免灾难性回溯
+        var autoParseMatch = null;
+        var _apIdx = content.indexOf('自动解析');
+        if (_apIdx !== -1) {
+            var _prefixIdx = content.indexOf('前缀', _apIdx + 4);
+            if (_prefixIdx !== -1) {
+                // 提取前缀值：[`<\w>]+
+                var _prefixValMatch = content.slice(_prefixIdx + 2).match(/^\s*([`<\w>]+)/i);
+                if (_prefixValMatch) {
+                    var _suffixIdx = content.indexOf('后缀', _prefixIdx + 2);
+                    if (_suffixIdx !== -1) {
+                        var _suffixValMatch = content.slice(_suffixIdx + 2).match(/^\s*([`<\w>]+)/i);
+                        if (_suffixValMatch) {
+                            autoParseMatch = [_prefixValMatch[0], _prefixValMatch[1], _suffixValMatch[1]];
+                        }
+                    }
+                }
+            }
+        }
+        // Fallback：原始双 [\s\S]*? 正则（仅在 indexOf 扫描未找到时使用）
+        if (!autoParseMatch) {
+            try {
+                autoParseMatch = content.match(/自动解析[\s\S]*?前缀[\s]*([`<\w>]+)[\s\S]*?后缀[\s]*([`<\w>]+)/i);
+            } catch(e) { autoParseMatch = null; }
+        }
         if (autoParseMatch) {
             return {
                 prefix: autoParseMatch[1].replace(/[<>`]/g, ''),
@@ -129,7 +153,32 @@ var SmartConfigEngine = {
         }
 
         // 附加参数
-        var extraParamsMatch = content.match(/附加参数[\s\S]*?(\{[\s\S]*?\})/);
+        // 【P0 根因修复】用 indexOf 线性扫描替代双 [\s\S]*? 正则
+        var extraParamsMatch = null;
+        var _epIdx = content.indexOf('附加参数');
+        if (_epIdx !== -1) {
+            var _braceStart = content.indexOf('{', _epIdx + 4);
+            if (_braceStart !== -1) {
+                // 找配对的 }（支持嵌套）
+                var _depth = 1;
+                var _pos = _braceStart + 1;
+                while (_pos < content.length && _depth > 0) {
+                    var _ch = content.charAt(_pos);
+                    if (_ch === '{') _depth++;
+                    else if (_ch === '}') _depth--;
+                    _pos++;
+                }
+                if (_depth === 0) {
+                    extraParamsMatch = [content.slice(_braceStart, _pos), content.slice(_braceStart, _pos)];
+                }
+            }
+        }
+        // Fallback
+        if (!extraParamsMatch) {
+            try {
+                extraParamsMatch = content.match(/附加参数[\s\S]*?(\{[\s\S]*?\})/);
+            } catch(e) { extraParamsMatch = null; }
+        }
         if (extraParamsMatch) {
             try {
                 settings.extraParams = JSON.parse(extraParamsMatch[1]);
@@ -182,8 +231,9 @@ var SmartConfigEngine = {
         var requirements = [];
 
         // 必开正则
-        var mustOpenRegex = /必开[\s\S]*?正则/gi;
-        if (mustOpenRegex.test(content)) {
+        // 【P0 修复】用 indexOf 替代 [\s\S]*? 正则
+        var _mustOpen = (content.indexOf('必开') !== -1 && content.indexOf('正则', content.indexOf('必开')) !== -1);
+        if (_mustOpen) {
             requirements.push('must_open');
         }
 
@@ -219,11 +269,36 @@ var SmartConfigEngine = {
         var guide = {};
 
         // 低温推荐
-        var lowTempMatch = content.match(/低温[\s\S]*?温度[\s]*([0-9.]+)/i);
+        // 【P0 修复】用 indexOf 替代 [\s\S]*? 正则
+        var lowTempMatch = null;
+        var _lowIdx = content.indexOf('低温');
+        if (_lowIdx !== -1) {
+            var _tempIdx = content.indexOf('温度', _lowIdx + 2);
+            if (_tempIdx !== -1) {
+                var _lowValMatch = content.slice(_tempIdx + 2).match(/^\s*([0-9.]+)/i);
+                if (_lowValMatch) lowTempMatch = [_lowValMatch[0], _lowValMatch[1]];
+            }
+        }
+        if (!lowTempMatch) {
+            try { lowTempMatch = content.match(/低温[\s\S]*?温度[\s]*([0-9.]+)/i); } catch(e) {}
+        }
         if (lowTempMatch) guide.low = parseFloat(lowTempMatch[1]);
 
         // 高温推荐
-        var highTempMatch = content.match(/高温|超高温[\s\S]*?温度[\s]*([0-9.]+)/i);
+        // 【P0 修复】用 indexOf 替代 [\s\S]*? 正则
+        var highTempMatch = null;
+        var _highIdx = content.indexOf('高温');
+        if (_highIdx === -1) _highIdx = content.indexOf('超高温');
+        if (_highIdx !== -1) {
+            var _tempIdx2 = content.indexOf('温度', _highIdx + 2);
+            if (_tempIdx2 !== -1) {
+                var _highValMatch = content.slice(_tempIdx2 + 2).match(/^\s*([0-9.]+)/i);
+                if (_highValMatch) highTempMatch = [_highValMatch[0], _highValMatch[1]];
+            }
+        }
+        if (!highTempMatch) {
+            try { highTempMatch = content.match(/高温|超高温[\s\S]*?温度[\s]*([0-9.]+)/i); } catch(e) {}
+        }
         if (highTempMatch) guide.high = parseFloat(highTempMatch[1]);
 
         // 通用温度

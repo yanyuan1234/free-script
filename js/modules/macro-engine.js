@@ -67,6 +67,50 @@ var _THEATER_VAR_KEYS = [
     ['novel_header'], ['profile'], ['角色关系'], ['seeds']
 ];
 
+/**
+ * 用 indexOf 线性扫描替代 {{prefix...::value}} 模板正则
+ * 替代 /\{\{prefix\s*::\s*([\s\S]*?)\}\}/gi 等正则，避免未闭合 }} 时的回溯
+ * @param {string} text 原始文本
+ * @param {string} prefix 宏前缀（如 '{{setvar::' 或 '{{raw::'）
+ * @param {function} callback 回调函数(fullMatch, innerContent) => 替换文本
+ *   - fullMatch: 完整匹配的字符串（如 '{{setvar::name::value}}'）
+ *   - innerContent: 前缀之后到 }} 之前的内容（如 'name::value'）
+ * @returns {string} 替换后的文本
+ */
+function safeReplaceTemplate(text, prefix, callback) {
+    if (!text || !prefix) return text;
+    var result = '';
+    var pos = 0;
+    var lowerText = text.toLowerCase();
+    var lowerPrefix = prefix.toLowerCase();
+    while (pos < text.length) {
+        var start = lowerText.indexOf(lowerPrefix, pos);
+        if (start === -1) {
+            result += text.slice(pos);
+            break;
+        }
+        result += text.slice(pos, start);
+        // 从 prefix 后开始找 }}
+        var contentStart = start + prefix.length;
+        var end = text.indexOf('}}', contentStart);
+        if (end === -1) {
+            // 未闭合，保留原文
+            result += text.slice(start);
+            break;
+        }
+        var innerContent = text.slice(contentStart, end);
+        var fullMatch = text.slice(start, end + 2);
+        try {
+            result += callback(fullMatch, innerContent);
+        } catch (e) {
+            result += fullMatch; // 回调出错时保留原文
+        }
+        pos = end + 2;
+    }
+    return result;
+}
+if (typeof window !== 'undefined') window.safeReplaceTemplate = safeReplaceTemplate;
+
 var MacroEngine = {
     // 局部变量存储（当前游戏会话级别）
     _localVars: {},
@@ -707,16 +751,41 @@ var MacroEngine = {
 
         // 2. 变量宏（最先执行，因为其他宏可能依赖变量值）
         // setvar::name::value
-        text = text.replace(/\{\{setvar\s*::\s*([^:]+?)\s*::\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
-            return self.setLocalVar(name, value);
+        // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则，避免未闭合 }} 回溯
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{setvar::', function(full, inner) {
+                var parts = inner.split('::');
+                if (parts.length < 2) return full; // 无 value 段，保留原文
+                var name = parts[0].trim();
+                var value = parts.slice(1).join('::').trim();
+                return self.setLocalVar(name, value);
+            })
+            : text.replace(/\{\{setvar\s*::\s*([^:]+?)\s*::\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
+                return self.setLocalVar(name, value);
             });
         // setglobalvar::name::value
-        text = text.replace(/\{\{setglobalvar\s*::\s*([^:]+?)\s*::\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
-            return self.setGlobalVar(name, value);
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{setglobalvar::', function(full, inner) {
+                var parts = inner.split('::');
+                if (parts.length < 2) return full;
+                var name = parts[0].trim();
+                var value = parts.slice(1).join('::').trim();
+                return self.setGlobalVar(name, value);
+            })
+            : text.replace(/\{\{setglobalvar\s*::\s*([^:]+?)\s*::\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
+                return self.setGlobalVar(name, value);
             });
         // addvar::name::value（支持多行值）
-        text = text.replace(/\{\{addvar\s*::\s*([^:]+?)\s*::\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
-            return self.addVar(name, value);
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{addvar::', function(full, inner) {
+                var parts = inner.split('::');
+                if (parts.length < 2) return full;
+                var name = parts[0].trim();
+                var value = parts.slice(1).join('::').trim();
+                return self.addVar(name, value);
+            })
+            : text.replace(/\{\{addvar\s*::\s*([^:]+?)\s*::\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
+                return self.addVar(name, value);
             });
         // incvar::name
         text = text.replace(/\{\{incvar\s*::\s*([^}]+?)\}\}/gi, function(_, name) {
@@ -756,7 +825,12 @@ var MacroEngine = {
     // {{original}} - 原始内容（未经宏处理的内容，用于包含COT标签发送给AI）
     text = text.replace(/\{\{original\}\}/gi, function() { return env.original || ''; });
     // {{raw:text}} - 原始文本（跳过宏处理）
-    text = text.replace(/\{\{raw\s*::\s*([\s\S]*?)\}\}/gi, function(_, rawText) { return rawText; });
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{raw::', function(full, inner) {
+            return inner;
+        })
+        : text.replace(/\{\{raw\s*::\s*([\s\S]*?)\}\}/gi, function(_, rawText) { return rawText; });
 
     // 新增关键宏（与SillyTavern一致）
     // {{input}} - 用户最后输入的内容
@@ -819,8 +893,13 @@ var MacroEngine = {
     text = text.replace(/\{\{uuid\}\}/gi, function() { return self.uuid(); });
 
     // {{pick::a::b::c}} 稳定随机（基于内容哈希）
-    text = text.replace(/\{\{pick\s*::\s*([\s\S]*?)\}\}/gi, function(_, listStr) {
-        return self.random(listStr); // 简化实现，使用随机
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{pick::', function(full, inner) {
+            return self.random(inner); // 简化实现，使用随机
+        })
+        : text.replace(/\{\{pick\s*::\s*([\s\S]*?)\}\}/gi, function(_, listStr) {
+            return self.random(listStr); // 简化实现，使用随机
         });
 
     // 骰子
@@ -837,7 +916,12 @@ var MacroEngine = {
     });
 
     // 注释宏（最后执行）
-    text = text.replace(/\{\{\/\/([\s\S]*?)\}\}/gm, '');
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{//', function(full, inner) {
+            return '';
+        })
+        : text.replace(/\{\{\/\/([\s\S]*?)\}\}/gm, '');
 
     // [T1-P1-15] 补 4 个酒馆核心宏（idle_duration/lastMessageId/mesId/last_message）
     // {{last_message}} - 最后一条消息（任意角色）
@@ -931,16 +1015,30 @@ var MacroEngine = {
     });
 
     // 权重随机宏 {{random::w:N:选项A::w:M:选项B::选项C}}
-    text = text.replace(/\{\{random\s*::\s*([\s\S]*?)\}\}/gi, function(_, argsStr) {
-        var parts = argsStr.split('::').filter(function(s){return s.trim();});
-        if (parts.length <= 1) return parts[0] || '';
-        var pool = [];
-        parts.forEach(function(p) {
-            var wMatch = p.match(/^w\s*:\s*(\d+)\s*:\s*(.*)$/);
-            if (wMatch) { var w = safeInt(wMatch[1], 1); for (var wi = 0; wi < w; wi++) pool.push(wMatch[2]); }
-            else { pool.push(p); }
-            });
-        return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : '';
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{random::', function(full, inner) {
+            var argsStr = inner;
+            var parts = argsStr.split('::').filter(function(s){return s.trim();});
+            if (parts.length <= 1) return parts[0] || '';
+            var pool = [];
+            parts.forEach(function(p) {
+                var wMatch = p.match(/^w\s*:\s*(\d+)\s*:\s*(.*)$/);
+                if (wMatch) { var w = safeInt(wMatch[1], 1); for (var wi = 0; wi < w; wi++) pool.push(wMatch[2]); }
+                else { pool.push(p); }
+                });
+            return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : '';
+        })
+        : text.replace(/\{\{random\s*::\s*([\s\S]*?)\}\}/gi, function(_, argsStr) {
+            var parts = argsStr.split('::').filter(function(s){return s.trim();});
+            if (parts.length <= 1) return parts[0] || '';
+            var pool = [];
+            parts.forEach(function(p) {
+                var wMatch = p.match(/^w\s*:\s*(\d+)\s*:\s*(.*)$/);
+                if (wMatch) { var w = safeInt(wMatch[1], 1); for (var wi = 0; wi < w; wi++) pool.push(wMatch[2]); }
+                else { pool.push(p); }
+                });
+            return pool.length > 0 ? pool[Math.floor(Math.random() * pool.length)] : '';
         });
 
     // ===== 管道宏机制 {{value|pipe1|pipe2|...}} =====
@@ -1399,53 +1497,116 @@ var MacroEngine = {
 
         // 处理赋值操作符 =（必须先处理，避免与其他操作符冲突）
         // {{.varname = value}}
-        text = text.replace(/\{\{\s*\.(\w+)\s*=\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
-            self.setLocalVar(name, value);
-            return '';
+        // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{.', function(full, inner) {
+                var m = inner.match(/^(\w+)\s*=\s*([\s\S]*)$/i);
+                if (!m) return full; // 不是 = 赋值，保留原文交给后续宏处理
+                self.setLocalVar(m[1], m[2]);
+                return '';
+            })
+            : text.replace(/\{\{\s*\.(\w+)\s*=\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
+                self.setLocalVar(name, value);
+                return '';
             });
         // {{$varname = value}}
-        text = text.replace(/\{\{\s*\$(\w+)\s*=\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
-            self.setGlobalVar(name, value);
-            return '';
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{$', function(full, inner) {
+                var m = inner.match(/^(\w+)\s*=\s*([\s\S]*)$/i);
+                if (!m) return full;
+                self.setGlobalVar(m[1], m[2]);
+                return '';
+            })
+            : text.replace(/\{\{\s*\$(\w+)\s*=\s*([\s\S]*?)\}\}/gi, function(_, name, value) {
+                self.setGlobalVar(name, value);
+                return '';
             });
 
         // 处理 ||= 操作符 (逻辑或赋值)
         // {{.varname ||= fallback}}
-        text = text.replace(/\{\{\s*\.(\w+)\s*\|\|=\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
-            var current = self.getLocalVar(name);
-            if (!self._isTruthy(current)) {
-                self.setLocalVar(name, fallback);
-                return fallback;
-            }
-        return current;
-        });
+        // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{.', function(full, inner) {
+                var m = inner.match(/^(\w+)\s*\|\|=\s*([\s\S]*)$/i);
+                if (!m) return full;
+                var name = m[1], fallback = m[2];
+                var current = self.getLocalVar(name);
+                if (!self._isTruthy(current)) {
+                    self.setLocalVar(name, fallback);
+                    return fallback;
+                }
+                return current;
+            })
+            : text.replace(/\{\{\s*\.(\w+)\s*\|\|=\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
+                var current = self.getLocalVar(name);
+                if (!self._isTruthy(current)) {
+                    self.setLocalVar(name, fallback);
+                    return fallback;
+                }
+            return current;
+            });
         // {{$varname ||= fallback}}
-        text = text.replace(/\{\{\s*\$(\w+)\s*\|\|=\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
-            var current = self.getGlobalVar(name);
-            if (!self._isTruthy(current)) {
-                self.setGlobalVar(name, fallback);
-                return fallback;
-            }
-        return current;
-        });
+        text = (typeof safeReplaceTemplate === 'function')
+            ? safeReplaceTemplate(text, '{{$', function(full, inner) {
+                var m = inner.match(/^(\w+)\s*\|\|=\s*([\s\S]*)$/i);
+                if (!m) return full;
+                var name = m[1], fallback = m[2];
+                var current = self.getGlobalVar(name);
+                if (!self._isTruthy(current)) {
+                    self.setGlobalVar(name, fallback);
+                    return fallback;
+                }
+                return current;
+            })
+            : text.replace(/\{\{\s*\$(\w+)\s*\|\|=\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
+                var current = self.getGlobalVar(name);
+                if (!self._isTruthy(current)) {
+                    self.setGlobalVar(name, fallback);
+                    return fallback;
+                }
+            return current;
+            });
 
     // 处理 || 操作符 (逻辑或) - 必须在递增递减之前
     // {{.varname || fallback}}
-    text = text.replace(/\{\{\s*\.(\w+)\s*\|\|\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
-        var current = self.getLocalVar(name);
-        if (!self._isTruthy(current)) {
-            return fallback;
-        }
-    return current;
-    });
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{.', function(full, inner) {
+            var m = inner.match(/^(\w+)\s*\|\|\s*([\s\S]*)$/i);
+            if (!m) return full;
+            var name = m[1], fallback = m[2];
+            var current = self.getLocalVar(name);
+            if (!self._isTruthy(current)) {
+                return fallback;
+            }
+            return current;
+        })
+        : text.replace(/\{\{\s*\.(\w+)\s*\|\|\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
+            var current = self.getLocalVar(name);
+            if (!self._isTruthy(current)) {
+                return fallback;
+            }
+        return current;
+        });
     // {{$varname || fallback}}
-    text = text.replace(/\{\{\s*\$(\w+)\s*\|\|\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
-        var current = self.getGlobalVar(name);
-        if (!self._isTruthy(current)) {
-            return fallback;
-        }
-    return current;
-    });
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{$', function(full, inner) {
+            var m = inner.match(/^(\w+)\s*\|\|\s*([\s\S]*)$/i);
+            if (!m) return full;
+            var name = m[1], fallback = m[2];
+            var current = self.getGlobalVar(name);
+            if (!self._isTruthy(current)) {
+                return fallback;
+            }
+            return current;
+        })
+        : text.replace(/\{\{\s*\$(\w+)\s*\|\|\s*([\s\S]*?)\}\}/gi, function(_, name, fallback) {
+            var current = self.getGlobalVar(name);
+            if (!self._isTruthy(current)) {
+                return fallback;
+            }
+        return current;
+        });
 
     // 处理 ++ 操作符
     // {{.varname++}}
@@ -1477,42 +1638,90 @@ var MacroEngine = {
 
     // 处理 += 操作符
     // {{.varname += n}}
-    text = text.replace(/\{\{\s*\.(\w+)\s*\+=\s*([\s\S]*?)\}\}/gi, function(_, name, increment) {
-        self.addVar(name, increment);
-        return '';
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{.', function(full, inner) {
+            var m = inner.match(/^(\w+)\s*\+=\s*([\s\S]*)$/i);
+            if (!m) return full;
+            self.addVar(m[1], m[2]);
+            return '';
+        })
+        : text.replace(/\{\{\s*\.(\w+)\s*\+=\s*([\s\S]*?)\}\}/gi, function(_, name, increment) {
+            self.addVar(name, increment);
+            return '';
         });
     // {{$varname += n}}
-    text = text.replace(/\{\{\s*\$(\w+)\s*\+=\s*([\s\S]*?)\}\}/gi, function(_, name, increment) {
-        var current = self.getGlobalVar(name) || '0';
-        var numCurrent = Number(current);
-        var numIncrement = Number(increment);
-        if (!isNaN(numCurrent) && !isNaN(numIncrement)) {
-            self.setGlobalVar(name, String(numCurrent + numIncrement));
-        }
-    return '';
-    });
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{$', function(full, inner) {
+            var m = inner.match(/^(\w+)\s*\+=\s*([\s\S]*)$/i);
+            if (!m) return full;
+            var name = m[1], increment = m[2];
+            var current = self.getGlobalVar(name) || '0';
+            var numCurrent = Number(current);
+            var numIncrement = Number(increment);
+            if (!isNaN(numCurrent) && !isNaN(numIncrement)) {
+                self.setGlobalVar(name, String(numCurrent + numIncrement));
+            }
+            return '';
+        })
+        : text.replace(/\{\{\s*\$(\w+)\s*\+=\s*([\s\S]*?)\}\}/gi, function(_, name, increment) {
+            var current = self.getGlobalVar(name) || '0';
+            var numCurrent = Number(current);
+            var numIncrement = Number(increment);
+            if (!isNaN(numCurrent) && !isNaN(numIncrement)) {
+                self.setGlobalVar(name, String(numCurrent + numIncrement));
+            }
+        return '';
+        });
 
     // 处理 -= 操作符
     // {{.varname -= n}}
-    text = text.replace(/\{\{\s*\.(\w+)\s*-=\s*([\s\S]*?)\}\}/gi, function(_, name, decrement) {
-        var current = self.getLocalVar(name) || '0';
-        var numCurrent = Number(current);
-        var numDecrement = Number(decrement);
-        if (!isNaN(numCurrent) && !isNaN(numDecrement)) {
-            self.setLocalVar(name, String(numCurrent - numDecrement));
-        }
-    return '';
-    });
+    // [SafeRegex] 用 indexOf 线性扫描替代 [\s\S]*? 正则
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{.', function(full, inner) {
+            var m = inner.match(/^(\w+)\s*-=\s*([\s\S]*)$/i);
+            if (!m) return full;
+            var name = m[1], decrement = m[2];
+            var current = self.getLocalVar(name) || '0';
+            var numCurrent = Number(current);
+            var numDecrement = Number(decrement);
+            if (!isNaN(numCurrent) && !isNaN(numDecrement)) {
+                self.setLocalVar(name, String(numCurrent - numDecrement));
+            }
+            return '';
+        })
+        : text.replace(/\{\{\s*\.(\w+)\s*-=\s*([\s\S]*?)\}\}/gi, function(_, name, decrement) {
+            var current = self.getLocalVar(name) || '0';
+            var numCurrent = Number(current);
+            var numDecrement = Number(decrement);
+            if (!isNaN(numCurrent) && !isNaN(numDecrement)) {
+                self.setLocalVar(name, String(numCurrent - numDecrement));
+            }
+        return '';
+        });
     // {{$varname -= n}}
-    text = text.replace(/\{\{\s*\$(\w+)\s*-=\s*([\s\S]*?)\}\}/gi, function(_, name, decrement) {
-        var current = self.getGlobalVar(name) || '0';
-        var numCurrent = Number(current);
-        var numDecrement = Number(decrement);
-        if (!isNaN(numCurrent) && !isNaN(numDecrement)) {
-            self.setGlobalVar(name, String(numCurrent - numDecrement));
-        }
-    return '';
-    });
+    text = (typeof safeReplaceTemplate === 'function')
+        ? safeReplaceTemplate(text, '{{$', function(full, inner) {
+            var m = inner.match(/^(\w+)\s*-=\s*([\s\S]*)$/i);
+            if (!m) return full;
+            var name = m[1], decrement = m[2];
+            var current = self.getGlobalVar(name) || '0';
+            var numCurrent = Number(current);
+            var numDecrement = Number(decrement);
+            if (!isNaN(numCurrent) && !isNaN(numDecrement)) {
+                self.setGlobalVar(name, String(numCurrent - numDecrement));
+            }
+            return '';
+        })
+        : text.replace(/\{\{\s*\$(\w+)\s*-=\s*([\s\S]*?)\}\}/gi, function(_, name, decrement) {
+            var current = self.getGlobalVar(name) || '0';
+            var numCurrent = Number(current);
+            var numDecrement = Number(decrement);
+            if (!isNaN(numCurrent) && !isNaN(numDecrement)) {
+                self.setGlobalVar(name, String(numCurrent - numDecrement));
+            }
+        return '';
+        });
 
     // 处理简单的获取（最后处理）
     // {{.varname}}

@@ -2025,7 +2025,9 @@ function _renderPresetAppContent(content, tag) {
             return '';
         })
         // 处理 <s> 删除线
-        .replace(/<s>([\s\S]*?)<\/s>/g, '<del style="color:var(--text-secondary);">$1</del>')
+        // 【P0 修复】用 stripPairedTags + extractPairedTags 替代 [\s\S]*? 正则
+        // 注意：这里需要把 <s>内容</s> 替换为 <del>内容</del>，不是简单移除
+        .replace(/<s>([^<]*)<\/s>/g, '<del style="color:var(--text-secondary);">$1</del>')
         // 处理换行
         .replace(/\n/g, '<br>');
 
