@@ -2918,7 +2918,9 @@
     <script src="js/ai-contract/ai-response-mutator.js" defer></script>
     <script src="js/ai-contract/prompt-builder.js" defer></script>
     <script src="js/core.js" defer></script>
-    <script src="js/stream-worker.js" defer></script>
+    <!-- 【P2 修复】移除 stream-worker.js 的主线程加载 -->
+    <!-- 该文件是 Web Worker 源码，只应通过 stream-bridge.js 的 Blob URL 加载 -->
+    <!-- 在主线程加载会污染全局空间（设置 window.onmessage 等） -->
     <script src="js/stream-bridge.js" defer></script>
     <script src="js/vector-retriever.js" defer></script>
     <script src="js/worldinfo.js" defer></script>

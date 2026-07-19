@@ -8,24 +8,44 @@ var StreamBridge = (function() {
     var _worker = null;
     var _workerAvailable = false;
     var _workerInitAttempted = false;
+    var _workerInitPromise = null;  // 【P1 修复】异步初始化 Promise，避免重复初始化
     var _pendingRequests = {};  // requestId -> { resolve, reject, onChunk, signal, abortListener }
     var _nextRequestId = 1;
 
-    // 懒初始化 Worker（首次调用时创建）
+    // 【P1 修复】懒初始化 Worker（异步，首次调用时创建）
+    // 原实现使用同步 XHR 获取 Worker 源码，阻塞主线程
+    // 新实现：使用 async fetch + Blob URL，不阻塞主线程
     function _ensureWorker() {
-        if (_workerInitAttempted) return _workerAvailable;
-        _workerInitAttempted = true;
+        if (_workerInitAttempted) {
+            // 已初始化完成（成功或失败），返回已缓存结果
+            return _workerAvailable ? Promise.resolve(true) : Promise.resolve(false);
+        }
+        if (_workerInitPromise) {
+            // 初始化正在进行中，复用同一个 Promise
+            return _workerInitPromise;
+        }
+        _workerInitPromise = _initWorkerAsync();
+        return _workerInitPromise;
+    }
 
+    async function _initWorkerAsync() {
         // 环境检测：Worker / Blob / URL 必须都可用
         if (typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined' || !URL.createObjectURL) {
             console.warn('[StreamBridge] 当前环境不支持 Web Worker，将使用主线程流式解析');
+            _workerInitAttempted = true;
+            _workerAvailable = false;
             return false;
         }
 
         try {
-            // 通过 Blob URL 加载 Worker，避免 GitHub Pages 跨路径问题
-            // Worker 源码内联为字符串，确保与主线程同源加载
-            var workerSrc = _getWorkerSource();
+            // 【P1 修复】异步获取 Worker 源码（替代同步 XHR）
+            var workerSrc = await _getWorkerSourceAsync();
+            if (!workerSrc) {
+                console.warn('[StreamBridge] Worker 源码为空，将使用主线程流式解析');
+                _workerInitAttempted = true;
+                _workerAvailable = false;
+                return false;
+            }
             var blob = new Blob([workerSrc], { type: 'application/javascript' });
             var blobUrl = URL.createObjectURL(blob);
             _worker = new Worker(blobUrl);
@@ -37,36 +57,35 @@ var StreamBridge = (function() {
                 _fallbackAllPending('Worker 运行时错误: ' + (e.message || 'unknown'));
             };
             _workerAvailable = true;
+            _workerInitAttempted = true;
             console.log('[StreamBridge] Web Worker 已就绪，SSE 解析将运行在 Worker 线程');
+            return true;
         } catch (e) {
             console.warn('[StreamBridge] Worker 初始化失败，将使用主线程流式解析:', e && e.message);
+            _workerInitAttempted = true;
             _workerAvailable = false;
+            return false;
         }
-        return _workerAvailable;
     }
 
-    // Worker 源码：通过 fetch 同步获取 stream-worker.js 内容
-    // 注意：不能直接 new Worker('js/stream-worker.js')，因 GitHub Pages 部署路径可能变化
-    // 改为内联方式：把 stream-worker.js 内容作为字符串嵌入
-    // 为避免重复维护，使用 document.currentScript 或同步 XHR 获取源码
+    // 【P1 修复】Worker 源码：通过 async fetch 获取 stream-worker.js 内容
+    // 原实现使用同步 XHR（xhr.open('GET', url, false)），会阻塞主线程
+    // 新实现：使用 async fetch，不阻塞主线程
     var _cachedWorkerSrc = null;
-    function _getWorkerSource() {
+    async function _getWorkerSourceAsync() {
         if (_cachedWorkerSrc) return _cachedWorkerSrc;
-        // 同步 XHR 获取 Worker 源码（仅一次，初始化时执行）
-        // 同步 XHR 在现代浏览器有 deprecation warning，但用于 Worker 初始化是可接受的做法
         var scriptUrl = _resolveWorkerUrl();
         try {
-            var xhr = new XMLHttpRequest();
-            xhr.open('GET', scriptUrl, false);  // 同步
-            xhr.send();
-            if (xhr.status === 200) {
-                _cachedWorkerSrc = xhr.responseText;
+            var resp = await fetch(scriptUrl);
+            if (resp.ok) {
+                _cachedWorkerSrc = await resp.text();
                 return _cachedWorkerSrc;
+            } else {
+                console.warn('[StreamBridge] 异步获取 Worker 源码失败: HTTP ' + resp.status);
             }
         } catch (e) {
-            console.warn('[StreamBridge] 同步获取 Worker 源码失败:', e && e.message);
+            console.warn('[StreamBridge] 异步获取 Worker 源码失败:', e && e.message);
         }
-        // 兜底：返回空源码，Worker 创建会失败，降级到主线程
         return '';
     }
 
@@ -167,10 +186,12 @@ var StreamBridge = (function() {
 
     // 主入口：通过 Worker 执行流式请求
     // API 与 executeAIStream 完全一致：async (url, body, apiKey, signal, onChunk) -> string
-    function executeAIStreamViaWorker(url, body, apiKey, signal, onChunk) {
-        if (!_ensureWorker() || !_worker) {
+    async function executeAIStreamViaWorker(url, body, apiKey, signal, onChunk) {
+        // 【P1 修复】await 异步 Worker 初始化
+        var available = await _ensureWorker();
+        if (!available || !_worker) {
             // Worker 不可用，返回特殊标记让调用方降级
-            return Promise.reject(new Error('WORKER_UNAVAILABLE'));
+            throw new Error('WORKER_UNAVAILABLE');
         }
 
         var requestId = 'req_' + (_nextRequestId++);
@@ -226,6 +247,9 @@ var StreamBridge = (function() {
     // 对外暴露的 API
     return {
         executeAIStreamViaWorker: executeAIStreamViaWorker,
-        isAvailable: function() { return _ensureWorker(); }
+        // 【P1 修复】isAvailable 改为同步检查已缓存状态（不触发初始化）
+        isAvailable: function() { return _workerAvailable; },
+        // 异步检查可用性（触发初始化）
+        isAvailableAsync: function() { return _ensureWorker(); }
     };
 })();

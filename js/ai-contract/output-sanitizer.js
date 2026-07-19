@@ -298,15 +298,25 @@ const OutputSanitizer = {
     stripThinking(text) {
         if (!text || typeof text !== 'string') return '';
 
-        // 标签支持属性（\b[^>]*），如 <think type="x">。
-        var s = text;
+        // 【P0 根因修复】用线性时间扫描器替代正则
+        // 原实现：对 13 个标签各跑一次 new RegExp('[\\s\\S]*?') 正则，灾难性回溯
+        // 新实现：stripPairedTags 一次性 O(n) 扫描所有标签，无回溯
+        if (typeof stripPairedTags !== 'undefined' && THINKING_TAGS && THINKING_TAGS.length > 0) {
+            var s = stripPairedTags(text, THINKING_TAGS);
+            // 💭 是 emoji 包围（非标签），用线性扫描器处理
+            if (typeof scanMarkerPairs !== 'undefined') {
+                s = scanMarkerPairs(s, '💭', 'strip');
+            }
+            return s;
+        }
+        // 回退：原正则逻辑（仅在扫描器不可用时使用）
+        var s2 = text;
         for (var i = 0; i < THINKING_TAGS.length; i++) {
             var tag = THINKING_TAGS[i];
             var re = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?</' + tag + '\\s*>', 'gi');
-            s = s.replace(re, '');
+            s2 = s2.replace(re, '');
         }
-        // 💭 是 emoji 包围（非标签），单独处理
-        return s.replace(/💭[\s\S]*?💭/g, '');
+        return s2.replace(/💭[\s\S]*?💭/g, '');
     },
 
     stripHTMLAndCursors(text) {

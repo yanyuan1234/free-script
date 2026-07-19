@@ -5224,9 +5224,30 @@ function parseSSEEventText(eventText, ctx) {
         }
         ctx.fullText += content;
 
+        // 【P1 修复】主线程流式 onChunk 节流
+        // 原实现：每个 SSE token 都同步调用 onChunk，长回复时触发上千次回调
+        // 新实现：60ms 节流，用 requestAnimationFrame 批量刷新，与 Worker 路径一致
         if (ctx.onChunk && content) {
-            try { ctx.onChunk(content, ctx.fullText); }
-            catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
+            ctx._pendingChunkDelta = (ctx._pendingChunkDelta || '') + content;
+            if (!ctx._chunkFlushScheduled) {
+                ctx._chunkFlushScheduled = true;
+                var flushDelta = ctx._pendingChunkDelta;
+                var flushFull = ctx.fullText;
+                ctx._pendingChunkDelta = '';
+                try { ctx.onChunk(flushDelta, flushFull); }
+                catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
+                // 下一次刷新至少等待 60ms
+                setTimeout(function() {
+                    ctx._chunkFlushScheduled = false;
+                    if (ctx._pendingChunkDelta && ctx.onChunk) {
+                        var d2 = ctx._pendingChunkDelta;
+                        var f2 = ctx.fullText;
+                        ctx._pendingChunkDelta = '';
+                        try { ctx.onChunk(d2, f2); }
+                        catch (e2) { console.warn('[callAI] onChunk 回调异常(延迟):', e2); }
+                    }
+                }, 60);
+            }
         }
     }
 }
@@ -5384,6 +5405,14 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         if (readResult.done) {
             if (sseBuffer && sseBuffer.trim()) {
                 parseSSEEventText(sseBuffer, ctx);
+            }
+            // 【P1 修复】流结束时刷新剩余的 pending chunk，确保最后一段文本不丢失
+            if (ctx._pendingChunkDelta && ctx.onChunk) {
+                var _finalDelta = ctx._pendingChunkDelta;
+                var _finalFull = ctx.fullText;
+                ctx._pendingChunkDelta = '';
+                try { ctx.onChunk(_finalDelta, _finalFull); }
+                catch (_finalErr) { console.warn('[callAI] onChunk 最终刷新异常:', _finalErr); }
             }
             break;
         }

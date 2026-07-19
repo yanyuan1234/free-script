@@ -1581,6 +1581,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 月读预设通过正则脚本实现此功能，这里作为内置兜底
 
         _reDecorTags.lastIndex = 0;
+        // 【P0 根因修复】用线性时间 stripPairedTags 替代 _reDecorTags 正则
+        var _decorTagNames = ['giggle','ice','snow','echo','danmu','branches','prologue','meow_FM','time_format','write_check','emoji','novel_header','profile','ccd','角色状态面板'];
         messages.forEach(function(msg, idx) {
             if (msg.content && typeof msg.content === 'string' && msg.role === 'assistant') {
                 // 只清理历史消息（非最后一条assistant消息）
@@ -1592,10 +1594,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                     }
                 }
                 if (!isLastAssistant) {
-                    // 【第八轮 7.1+7.2】用 safeRegexApply 包装：软超时 2s + 计时日志定位慢正则
-                    msg.content = (typeof safeRegexApply !== 'undefined')
-                        ? safeRegexApply(_reDecorTags, msg.content, '', { tag: '_reDecorTags(history)', timeoutMs: 2000 })
-                        : (_reDecorTags.lastIndex = 0, msg.content.replace(_reDecorTags, ''));
+                    msg.content = (typeof stripPairedTags !== 'undefined')
+                        ? stripPairedTags(msg.content, _decorTagNames)
+                        : msg.content;
                 }
             }
         });
@@ -1953,23 +1954,28 @@ async function sendAIRequest(userMessage, isInit = false) {
         var cotMatches = [];
         var cleanStoryText = storyText;
         // 提取所有COT内容
-        // 【第八轮 7.1+7.2】用 safeRegexExecAll 包装 exec 循环：软超时 2s + 计时日志定位慢正则
-        // 注意：exec 内部的灾难性回溯在 C++ 层无法中断，但日志可定位
-        var _cotExecMatches = (typeof safeRegexExecAll !== 'undefined')
-            ? safeRegexExecAll(_reCotTags, storyText, { tag: '_reCotTags.exec', timeoutMs: 2000 })
-            : (function() {
-                _reCotTags.lastIndex = 0;
-                var arr = []; var m;
-                while ((m = _reCotTags.exec(storyText)) !== null) arr.push(m);
-                return arr;
-            })();
+        // 【P0 根因修复】用线性时间扫描器替代 safeRegexExecAll(_reCotTags, ...)
+        // 原正则 [\s\S]+? 配合 gi 标志在未闭合标签上触发灾难性回溯，冻结主线程数分钟
+        // 新实现 scanPairedTags 复杂度严格 O(n)，使用 indexOf 线性搜索，无回溯
+        var _cotThinkingTags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
+            ? OutputSanitizer.THINKING_TAGS : [];
+        var _cotExecMatches = (typeof scanPairedTags !== 'undefined' && _cotThinkingTags.length > 0)
+            ? scanPairedTags(storyText, _cotThinkingTags, 'extract')
+            : [];
+        // 同时提取 💭...💭 格式（线性扫描，无回溯）
+        var _cotMarkerMatches = (typeof scanMarkerPairs !== 'undefined')
+            ? scanMarkerPairs(storyText, '💭', 'extract')
+            : [];
         for (var _ci = 0; _ci < _cotExecMatches.length; _ci++) {
-            var cotMatch = _cotExecMatches[_ci];
-            // 捕获组2: XML标签格式 <thinking>...</thinking>（组1=标签名, 组3=闭合标签名）
-            // 捕获组4: 💭...💭 格式
-            var cotContent = (cotMatch[2] || cotMatch[4] || '').trim();
+            var cotContent = (_cotExecMatches[_ci].content || '').trim();
             if (cotContent) {
                 cotMatches.push(cotContent);
+            }
+        }
+        for (var _mi = 0; _mi < _cotMarkerMatches.length; _mi++) {
+            var cotMarkerContent = (_cotMarkerMatches[_mi].content || '').trim();
+            if (cotMarkerContent) {
+                cotMatches.push(cotMarkerContent);
             }
         }
         // 合并标签式 CoT 和 reasoning_content 字段透出值
@@ -1982,10 +1988,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _hasAnyCot = cotMatches.length > 0 || _reasoningFromField.length > 0;
         // 从storyText中移除COT标签（不显示给用户）
         if (cotMatches.length > 0) {
-            // 【第八轮 7.1+7.2】用 safeRegexApply 包装 replace：软超时 2s + 计时日志
-            cleanStoryText = (typeof safeRegexApply !== 'undefined')
-                ? safeRegexApply(_reCotTags, storyText, '', { tag: '_reCotTags.replace', timeoutMs: 2000 })
-                : (_reCotTags.lastIndex = 0, storyText.replace(_reCotTags, ''));
+            // 【P0 根因修复】用线性时间扫描器替代 safeRegexApply(_reCotTags, ...)
+            var _cotAllTags = _cotThinkingTags.slice();
+            cleanStoryText = storyText;
+            if (typeof stripPairedTags !== 'undefined' && _cotAllTags.length > 0) {
+                cleanStoryText = stripPairedTags(cleanStoryText, _cotAllTags);
+            }
+            if (typeof scanMarkerPairs !== 'undefined') {
+                cleanStoryText = scanMarkerPairs(cleanStoryText, '💭', 'strip');
+            }
             cleanStoryText = cleanStoryText.trim();
             // 保存原始内容（含COT）供 {{original}} 宏使用
             if (gameState) gameState._lastOriginalContent = storyText;
@@ -3802,18 +3813,25 @@ function formatStory(text) {
         text = _cleanUnrecognizedTags(text);
     } else {
         // 打字机tick期间：移除装饰标签和 giggle 标签
+        // 【P0 根因修复】用线性时间扫描器替代所有 _reDecorTagsTyping / _reGiggle* 正则
+        // 原正则 [\s\S]*? 在未闭合标签上触发灾难性回溯，每 25ms tick 累积导致冻结
+        // 新实现：stripPairedTags O(n) 移除已闭合标签 + indexOf O(n) 处理未闭合标签
 
-        _reDecorTagsTyping.lastIndex = 0;
-        // 【第八轮 7.1+7.2】用 safeRegexApply 包装：软超时 2s + 计时日志定位慢正则
-        // 注意：打字机 tick 是热路径（每 25ms 调用），但单次文本很短，wrapper 开销可忽略
-        text = (typeof safeRegexApply !== 'undefined')
-            ? safeRegexApply(_reDecorTagsTyping, text, '', { tag: '_reDecorTagsTyping(tick)', timeoutMs: 2000, logThreshold: 200 })
-            : text.replace(_reDecorTagsTyping, '');
-        _reGiggleStrip.lastIndex = 0;
-        _reGiggleCNStrip.lastIndex = 0;
-        _reGiggleUnclosedStrip.lastIndex = 0;
-        _reGiggleCNUnclosedStrip.lastIndex = 0;
-        text = text.replace(_reGiggleStrip, '').replace(_reGiggleCNStrip, '').replace(_reGiggleUnclosedStrip, '').replace(_reGiggleCNUnclosedStrip, '');
+        if (typeof stripPairedTags !== 'undefined') {
+            // 1. 移除已闭合的装饰标签（不含 giggle，giggle 单独处理）
+            text = stripPairedTags(text, ['ice','snow','echo','danmu','branches','prologue','meow_FM','time_format','write_check','emoji','novel_header','profile','ccd','角色状态面板']);
+            // 2. 移除已闭合的 giggle 标签
+            text = stripPairedTags(text, ['giggle']);
+            // 3. 处理未闭合的 giggle 标签：截断到开标签处（隐藏正在流式的 giggle 内容）
+            var _gOpenIdx = text.indexOf('<giggle');
+            if (_gOpenIdx !== -1) {
+                var _gCloseIdx = text.indexOf('</giggle', _gOpenIdx);
+                if (_gCloseIdx === -1) {
+                    // 未闭合：截断
+                    text = text.slice(0, _gOpenIdx);
+                }
+            }
+        }
 
         text = _cleanUnrecognizedTags(text);
     }

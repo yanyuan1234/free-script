@@ -980,3 +980,206 @@ function safeRegexExecAll(regex, text, opts) {
     return matches;
 }
 if (typeof window !== 'undefined') window.safeRegexExecAll = safeRegexExecAll;
+
+
+// ========================================
+// 【P0 根因修复】线性时间标签扫描器
+// 替代 /<(tag)[\s\S]+?<\/\1>/gi 等灾难性回溯正则
+// 复杂度严格 O(n)，使用 indexOf 线性搜索，无回溯，不会冻结主线程
+// ========================================
+
+/**
+ * 线性扫描配对标签：提取或移除 <tag>...</tag> 内容
+ * 替代正则 /<(tag)[\s\S]*?<\/\1>/gi，避免灾难性回溯
+ * @param {string} text 待处理文本
+ * @param {string[]} tagNames 要匹配的标签名列表（不区分大小写）
+ * @param {string} mode 'extract' 返回匹配数组；'strip' 返回移除标签后的文本
+ * @returns {Array|string} extract 模式返回 [{content, fullMatch, tagName}]；strip 模式返回 string
+ */
+function scanPairedTags(text, tagNames, mode) {
+    if (!text || typeof text !== 'string' || !tagNames || !tagNames.length) {
+        return mode === 'extract' ? [] : (text || '');
+    }
+    // 构建标签名查找表（小写）
+    var tagSet = {};
+    var tagLen = {};  // 标签名长度
+    for (var i = 0; i < tagNames.length; i++) {
+        var tn = String(tagNames[i]).toLowerCase();
+        tagSet[tn] = true;
+        tagLen[tn] = tn.length;
+    }
+
+    var results = (mode === 'extract') ? [] : null;
+    var segments = (mode === 'strip') ? [] : null;  // 文本片段
+    var pos = 0;
+    var len = text.length;
+
+    while (pos < len) {
+        // 线性查找下一个 '<'
+        var ltIdx = text.indexOf('<', pos);
+        if (ltIdx === -1) {
+            if (segments) segments.push(text.slice(pos));
+            break;
+        }
+
+        // 解析标签名：< 后面的字母/数字/下划线
+        var afterLt = ltIdx + 1;
+        if (afterLt >= len) {
+            if (segments) segments.push(text.slice(pos));
+            break;
+        }
+        var c = text.charCodeAt(afterLt);
+        // 标签名首字符：a-z A-Z _ 或中文字符
+        var isNameStart = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || (c >= 0x4e00 && c <= 0x9fff);
+        if (!isNameStart) {
+            // 不是标签开头，跳过这个 '<'
+            if (segments) segments.push(text.slice(pos, ltIdx + 1));
+            pos = ltIdx + 1;
+            continue;
+        }
+
+        // 提取标签名
+        var nameEnd = afterLt;
+        while (nameEnd < len) {
+            var cc = text.charCodeAt(nameEnd);
+            if ((cc >= 97 && cc <= 122) || (cc >= 65 && cc <= 90) || (cc >= 48 && cc <= 57) || cc === 95 || cc === 45 || (cc >= 0x4e00 && cc <= 0x9fff)) {
+                nameEnd++;
+            } else {
+                break;
+            }
+        }
+        var rawTagName = text.slice(afterLt, nameEnd);
+        var tagName = rawTagName.toLowerCase();
+
+        if (!tagSet[tagName]) {
+            // 不是目标标签，保留原样
+            if (segments) segments.push(text.slice(pos, ltIdx + 1));
+            pos = ltIdx + 1;
+            continue;
+        }
+
+        // 找到开标签，找 '>' 结束开标签
+        var tagCloseIdx = text.indexOf('>', nameEnd);
+        if (tagCloseIdx === -1) {
+            // 没有闭合 '>'，按未闭合处理
+            if (segments) segments.push(text.slice(pos, ltIdx));  // 保留 '<' 之前的文本
+            pos = ltIdx + 1;  // 跳过 '<'，保留后面内容
+            continue;
+        }
+
+        // 开标签范围：ltIdx .. tagCloseIdx（含 '>'）
+        var contentStart = tagCloseIdx + 1;
+
+        // 线性搜索闭合标签 </tagName>
+        var closeTagStr = '</' + rawTagName;
+        var closeIdx = text.indexOf(closeTagStr, contentStart);
+        if (closeIdx === -1) {
+            // 未闭合标签：移除开标签，保留内容（避免内容丢失）
+            if (segments) segments.push(text.slice(pos, ltIdx));
+            pos = contentStart;  // 跳过开标签，保留内容
+            continue;
+        }
+
+        // 验证闭合标签后紧跟 '>' 或空白+'>'（避免 </thinkingx> 误匹配）
+        var afterCloseTag = closeIdx + closeTagStr.length;
+        var closeGtIdx = -1;
+        if (afterCloseTag < len && text.charCodeAt(afterCloseTag) === 62) {  // '>'
+            closeGtIdx = afterCloseTag;
+        } else if (afterCloseTag < len && (text.charCodeAt(afterCloseTag) === 32 || text.charCodeAt(afterCloseTag) === 9 || text.charCodeAt(afterCloseTag) === 10 || text.charCodeAt(afterCloseTag) === 13)) {
+            // 空白后找 '>'
+            closeGtIdx = text.indexOf('>', afterCloseTag);
+            if (closeGtIdx === -1 || closeGtIdx > afterCloseTag + 20) {
+                // 太远或没找到，可能是误匹配
+                closeGtIdx = -1;
+            }
+        }
+        if (closeGtIdx === -1) {
+            // 闭合标签格式不对，按未闭合处理
+            if (segments) segments.push(text.slice(pos, ltIdx));
+            pos = contentStart;
+            continue;
+        }
+
+        // 完整匹配：ltIdx .. closeGtIdx（含 '>'）
+        var content = text.slice(contentStart, closeIdx);
+        var fullMatch = text.slice(ltIdx, closeGtIdx + 1);
+
+        if (results) {
+            results.push({ content: content, fullMatch: fullMatch, tagName: tagName });
+        }
+        if (segments) {
+            segments.push(text.slice(pos, ltIdx));  // 标签前的文本
+        }
+        pos = closeGtIdx + 1;  // 跳过整个标签对
+    }
+
+    if (segments) return segments.join('');
+    return results;
+}
+if (typeof window !== 'undefined') window.scanPairedTags = scanPairedTags;
+
+/**
+ * 线性扫描标记对：提取或移除 💭...💭 等非 XML 标记内容
+ * 替代正则 /💭[\s\S]+?💭/gi，避免灾难性回溯
+ * @param {string} text 待处理文本
+ * @param {string} marker 标记字符串（如 '💭'）
+ * @param {string} mode 'extract' 或 'strip'
+ * @returns {Array|string}
+ */
+function scanMarkerPairs(text, marker, mode) {
+    if (!text || typeof text !== 'string' || !marker) {
+        return mode === 'extract' ? [] : (text || '');
+    }
+    var markerLen = marker.length;
+    var results = (mode === 'extract') ? [] : null;
+    var segments = (mode === 'strip') ? [] : null;
+    var pos = 0;
+    var len = text.length;
+
+    while (pos < len) {
+        var openIdx = text.indexOf(marker, pos);
+        if (openIdx === -1) {
+            if (segments) segments.push(text.slice(pos));
+            break;
+        }
+        var contentStart = openIdx + markerLen;
+        var closeIdx = text.indexOf(marker, contentStart);
+        if (closeIdx === -1) {
+            // 未闭合标记：保留开标记，继续搜索
+            if (segments) segments.push(text.slice(pos, openIdx + markerLen));
+            pos = openIdx + markerLen;
+            continue;
+        }
+        var content = text.slice(contentStart, closeIdx);
+        var fullMatch = text.slice(openIdx, closeIdx + markerLen);
+        if (results) results.push({ content: content, fullMatch: fullMatch });
+        if (segments) segments.push(text.slice(pos, openIdx));
+        pos = closeIdx + markerLen;
+    }
+    if (segments) return segments.join('');
+    return results;
+}
+if (typeof window !== 'undefined') window.scanMarkerPairs = scanMarkerPairs;
+
+/**
+ * 便捷函数：移除配对标签（替代 safeRegexApply(regex, text, '')）
+ * @param {string} text
+ * @param {string[]} tagNames
+ * @returns {string} 移除标签后的文本
+ */
+function stripPairedTags(text, tagNames) {
+    return scanPairedTags(text, tagNames, 'strip');
+}
+if (typeof window !== 'undefined') window.stripPairedTags = stripPairedTags;
+
+/**
+ * 便捷函数：提取配对标签内容（替代 safeRegexExecAll(regex, text)）
+ * 返回格式与 execAll 兼容：每个元素含 [2]=content 字段
+ * @param {string} text
+ * @param {string[]} tagNames
+ * @returns {Array} [{content, fullMatch, tagName}]
+ */
+function extractPairedTags(text, tagNames) {
+    return scanPairedTags(text, tagNames, 'extract');
+}
+if (typeof window !== 'undefined') window.extractPairedTags = extractPairedTags;

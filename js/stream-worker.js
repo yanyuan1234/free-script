@@ -5,6 +5,14 @@
 // 主线程只接收节流后的 CHUNK 消息做 DOM 更新。
 // ========================================
 
+// 【P2 修复】主线程保护：如果被当作普通脚本加载（非 Worker 环境），立即退出
+// 防止意外在主线程执行时污染全局空间
+if (typeof importScripts !== 'function') {
+    // 主线程环境，不是 Worker，跳过所有代码
+    // 不设置任何全局变量，不注册 onmessage
+} else {
+// ===== 以下代码仅在 Worker 环境执行 =====
+
 // Worker 内无 window/document，使用 self
 var _workerCtx = (typeof self !== 'undefined') ? self : this;
 
@@ -325,3 +333,5 @@ _workerCtx.onmessage = function(e) {
         }
     }
 };
+
+} // ===== end of Worker-only code block =====

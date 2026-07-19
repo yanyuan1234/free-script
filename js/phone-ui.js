@@ -6055,6 +6055,9 @@ function renderAPISettings() {
 
     container.innerHTML = configs.map(function(cfg, i) {
         var isCurrent = i === currentSlot;
+        // 【P2 修复】未配置的占位 API（无 baseUrl 或无 apiKey）不显示"使用中"徽章
+        var isPlaceholder = !cfg || !cfg.baseUrl || !cfg.apiKey;
+        if (isPlaceholder) isCurrent = false;
         var modelDisplay = cfg.model || '未设置';
         var urlDisplay = cfg.baseUrl ? cfg.baseUrl.replace(/^https?:\/\//, '').split('/')[0] :
         '未设置';
@@ -6141,6 +6144,9 @@ function renderAPISettings() {
 // 行不存在则回退到全量 renderAPISettings（增删场景仍走全量）。
 function _buildApiCardHtml(cfg, i) {
     var isCurrent = i === LocalGameAPI._currentSlot;
+    // 【P2 修复】未配置的占位 API（无 baseUrl 或无 apiKey）不显示"使用中"徽章
+    var isPlaceholder = !cfg || !cfg.baseUrl || !cfg.apiKey;
+    if (isPlaceholder) isCurrent = false;
     var modelDisplay = cfg.model || '未设置';
     var urlDisplay = cfg.baseUrl ? cfg.baseUrl.replace(/^https?:\/\//, '').split('/')[0] : '未设置';
     var apiName = cfg.name || 'API ' + (i + 1);
@@ -6217,14 +6223,19 @@ function updateApiCurrentBadge() {
     // 给新当前行加 badge + border
     var currentCard = container.querySelector('.api-card[data-api-index="' + currentSlot + '"]');
     if (currentCard) {
-        currentCard.style.borderColor = 'var(--text)';
-        if (!currentCard.querySelector('.badge-primary')) {
-            var flex = currentCard.querySelector('div');
-            if (flex) {
-                var badge = document.createElement('span');
-                badge.className = 'badge badge-primary';
-                badge.textContent = '使用中';
-                flex.appendChild(badge);
+        // 【P2 修复】占位 API（无配置）不加"使用中"徽章
+        var currentCfg = LocalGameAPI._configs[currentSlot];
+        var isPlaceholder = !currentCfg || !currentCfg.baseUrl || !currentCfg.apiKey;
+        if (!isPlaceholder) {
+            currentCard.style.borderColor = 'var(--text)';
+            if (!currentCard.querySelector('.badge-primary')) {
+                var flex = currentCard.querySelector('div');
+                if (flex) {
+                    var badge = document.createElement('span');
+                    badge.className = 'badge badge-primary';
+                    badge.textContent = '使用中';
+                    flex.appendChild(badge);
+                }
             }
         }
     }
