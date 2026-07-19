@@ -2895,7 +2895,11 @@ function updateTokenCount(currentResponse) {
     // 智能压缩检查
 
     if (gameState && gameState.autoCompress !== false && !isCompressing && !isWaiting && typeof EnhancedMemory !== 'undefined') {
-        var triggerResult = EnhancedMemory.shouldTriggerCompression(estimated, (gameState && gameState.maxTokens) || 4096);
+        // 【长轮次优化】压缩阈值应基于上下文窗口（contextSize），而非输出预算（maxTokens）。
+        // 原逻辑用 maxTokens（32k）导致 64k 上下文模型在第 5-6 轮就过早触发压缩；
+        // 改为 contextSize 后，压缩触发点从 ~30k 提升到 ~58k，减少不必要的压缩 API 调用。
+        var ctxSize = (gameState && gameState.contextSize) || getContextSizeSafe();
+        var triggerResult = EnhancedMemory.shouldTriggerCompression(estimated, ctxSize);
         if (triggerResult.shouldCompress) {
             var cooldownMs = (EnhancedMemory.compressionConfig.cooldownMinutes || 15) * 60 * 1000;
             if (Date.now() - (window.lastCompressTime || 0) > cooldownMs) {

@@ -7097,7 +7097,8 @@ function _syncMaxTokens(value) {
     if (value != null && typeof PresetManager !== 'undefined' && PresetManager.currentParams) {
         PresetManager.currentParams.max_tokens = mt;
     }
-    // 2. 同步 gameState.maxTokens（压缩计算用）
+    // 2. 同步 gameState.maxTokens（输出预算/剧情长度上限用）
+    // 注意：压缩阈值已改为基于 contextSize，不再使用 maxTokens
     if (typeof gameState !== 'undefined' && gameState) {
         gameState.maxTokens = mt;
     }
