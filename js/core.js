@@ -6031,7 +6031,8 @@ async function detectContextSize() {
 // ========================================
 // 开局设定提取：用AI从玩家设定中提取结构化信息，预填充记忆系统
 // ========================================
-async function extractSetupToMemory() {
+async function extractSetupToMemory(opts) {
+    opts = opts || {};
     var setupText = gameState.userPrompt || '';
     if (!setupText || setupText.trim().length < 50) return;
 
@@ -6071,14 +6072,18 @@ async function extractSetupToMemory() {
         ], {
             stream: false,
             temperature: 0.3,
-            max_tokens: 4096
+            max_tokens: 4096,
+            signal: opts.signal || null  // 【P0 修复】透传 AbortSignal，支持外部超时取消
         });
 
         var parsed = parseJSONHelper(result);
-        if (!parsed) {
-            // 尝试从文本中提取JSON
-            var jsonMatch = result && result.match(/\{[\s\S]*\}/);
-            if (jsonMatch) parsed = parseJSONHelper(jsonMatch[0]);
+        if (!parsed && result) {
+            // 【P0 ReDoS 修复】用 extractFirstJSONBlock 线性扫描替代 /\{[\s\S]*\}/ 贪婪正则
+            // 原正则对大文本（>10KB）会从首个 { 贪婪匹配到末尾 }，且遇到嵌套结构时回溯开销大
+            var _jsonStr = (typeof extractFirstJSONBlock === 'function')
+                ? extractFirstJSONBlock(result)
+                : (function() { var m = result.match(/\{[\s\S]*\}/); return m ? m[0] : null; })();
+            if (_jsonStr) parsed = parseJSONHelper(_jsonStr);
         }
         if (!parsed) {
             console.warn('[设定提取] AI返回无法解析，跳过');
@@ -6341,12 +6346,30 @@ if (typeof GameTimeSystem !== 'undefined') {
     GameTimeSystem.updateUI();
 }
 // 开局前：用AI提取设定，预填充记忆系统（按次计费，多一次API调用无妨）
-extractSetupToMemory().then(function() {
+// 【P0 修复】给 extractSetupToMemory 加 30 秒超时保护：
+// callAI 默认超时 10 分钟，若 API 端点对非流式请求不响应，extractSetupToMemory 会挂起 10 分钟，
+// 期间 sendAIRequest 永远不会被调用，游戏卡死在"正在解析设定..."界面。
+// 超时后直接跳过设定提取，进入开局。
+var _setupAbortAC = new AbortController();
+var _setupTimeoutMs = 30000; // 30 秒超时
+TimerManager.setTimeout('extractSetupTimeout', function() {
+    try { _setupAbortAC.abort(new Error('设定提取超时（30s）')); } catch(e) {}
+}, _setupTimeoutMs);
+
+var _setupPromise = extractSetupToMemory({ signal: _setupAbortAC.signal });
+var _setupTimeoutPromise = new Promise(function(_, reject) {
+    TimerManager.setTimeout('extractSetupTimeoutReject', function() {
+        reject(new Error('设定提取超时'));
+    }, _setupTimeoutMs + 500);
+});
+
+Promise.race([_setupPromise, _setupTimeoutPromise]).then(function() {
+    console.log('[开局设定提取] 完成');
     if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
         RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
     }
 }).catch(function(e) {
-    console.warn('[开局设定提取] 失败，直接开局:', e && e.message);
+    console.warn('[开局设定提取] 失败/超时，直接开局:', e && e.message);
     if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
         RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
     }

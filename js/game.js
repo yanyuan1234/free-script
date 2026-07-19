@@ -1066,7 +1066,17 @@ function applyLengthPreset(preset) {
 }
 
 async function sendAIRequest(userMessage, isInit = false) {
-    if (isWaiting) return;
+    // 【P0 修复】isInit 时强制重置 isWaiting，防止上一轮异常残留导致开局卡死
+    // 场景：extractSetupToMemory 超时后调用 sendAIRequest，但 isWaiting 可能被
+    // autoCompressContext 或其他路径设为 true 且未清理
+    if (isWaiting) {
+        if (isInit) {
+            console.warn('[sendAIRequest] isInit 时检测到 isWaiting=true（可能是上一轮残留），强制重置');
+            setWaiting(false);
+        } else {
+            return;
+        }
+    }
     // AbortController 用于取消请求
     safeAbort();
     window._currentAbort = new AbortController();

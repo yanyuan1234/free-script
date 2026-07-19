@@ -2595,9 +2595,19 @@ var GameMemory = {
         // 按次计费优化：长设定需要更多输出token来完整解析，无上限
         var parseMaxTokens = Math.max(2000, Math.floor(fullSetup.length / 2));
 
+        // 【P0 修复】给 _aiParseSetup 的 callAI 加 60 秒超时保护
+        // 此 callAI 为非流式调用，默认 10 分钟超时太长，若 API 不响应会长期占用资源
+        var _parseAbortAC = new AbortController();
+        var _parseTimeoutMs = 60000; // 60 秒超时（设定解析比设定提取可能需要更长时间）
+        if (typeof TimerManager !== 'undefined') {
+            TimerManager.setTimeout('aiParseSetupTimeout', function() {
+                try { _parseAbortAC.abort(new Error('设定解析超时（60s）')); } catch(e) {}
+            }, _parseTimeoutMs);
+        }
+
         // 调用AI解析
         if (typeof callAI === 'function') {
-            callAI(messages, { max_tokens: parseMaxTokens }).then(function(response) {
+            callAI(messages, { max_tokens: parseMaxTokens, signal: _parseAbortAC.signal }).then(function(response) {
                 try {
                     var content = response;
                     if (response && typeof response === 'object') {
@@ -2613,10 +2623,15 @@ var GameMemory = {
                         console.warn('[设定解析] AI返回内容为空或格式异常');
                         return;
                     }
-                    // 提取JSON
+                    // 【P0 ReDoS 修复】用 extractFirstJSONBlock 替代 /\{[\s\S]*\}/ 贪婪正则
                     var jsonStr = content;
-                    var jsonMatch = content.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) jsonStr = jsonMatch[0];
+                    if (typeof extractFirstJSONBlock === 'function') {
+                        var _extracted = extractFirstJSONBlock(content);
+                        if (_extracted) jsonStr = _extracted;
+                    } else {
+                        var jsonMatch = content.match(/\{[\s\S]*\}/);
+                        if (jsonMatch) jsonStr = jsonMatch[0];
+                    }
 
                     // 复用 core.js 的 parseJSONHelper（含 ResponseParser 尾逗号 / 单引号修复等 5 层兜底）
                     var parsed = parseJSONHelper(jsonStr);
