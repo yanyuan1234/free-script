@@ -340,12 +340,81 @@ const OutputSanitizer = {
             .replace(/"\s*\}\s*$/g, '');
 
         // 场景：AI 把 "choices":[...]、"characters":[...] 等 JSON 片段写进了 story 字符串值
-        // 匹配 "字段名": 后跟 [ 或 { 的 JSON 结构残片（非剧情对话内容）
-        s = s.replace(/\\?"(?:choices|characters|player|bag|currency|currencyName|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages|memoryUpdates)\\?"\s*:\s*[\[{][\s\S]*?(?:\]|\})\s*,?/gi, '');
-        // 移除孤立的 JSON 结尾残片（如 ", "choices":[]}）
+        // 【P0 ReDoS 修复】用 indexOf 线性扫描替代 [\s\S]*? 正则，避免灾难性回溯
+        // 原实现：[\s\S]*?(?:\]|\}) 会在无配对符号时回溯整个文本
+        // 新实现：用 indexOf 找配对的 ] 或 }，O(n) 复杂度
+        var _jsonFieldNames = ['choices', 'characters', 'player', 'bag', 'currency', 'currencyName',
+            'quests', 'gameTime', 'keyEvents', 'world', 'locations', 'relationships',
+            'hud', 'contextSummary', 'title', 'npcMessages', 'memoryUpdates'];
+        for (var _fi = 0; _fi < _jsonFieldNames.length; _fi++) {
+            var _fieldName = _jsonFieldNames[_fi];
+            var _searchPos = 0;
+            while (_searchPos < s.length) {
+                // 查找 "fieldName": 后跟 [ 或 {
+                var _quotedField = '"' + _fieldName + '"';
+                var _fieldIdx = s.indexOf(_quotedField, _searchPos);
+                if (_fieldIdx === -1) {
+                    // 也尝试转义引号版本
+                    _quotedField = '\\"' + _fieldName + '\\"';
+                    _fieldIdx = s.indexOf(_quotedField, _searchPos);
+                }
+                if (_fieldIdx === -1) break;
+                // 跳过字段名和引号
+                var _afterField = _fieldIdx + _quotedField.length;
+                // 跳过空白和冒号
+                while (_afterField < s.length && /[\s:]/.test(s.charAt(_afterField))) _afterField++;
+                if (_afterField >= s.length) { _searchPos = _fieldIdx + 1; continue; }
+                var _openCh = s.charAt(_afterField);
+                var _closeCh = '';
+                if (_openCh === '[') _closeCh = ']';
+                else if (_openCh === '{') _closeCh = '}';
+                else { _searchPos = _fieldIdx + 1; continue; }
+                // 用深度计数找配对闭合符号
+                var _depth = 1;
+                var _pos = _afterField + 1;
+                var _inStr = false;
+                var _esc = false;
+                while (_pos < s.length && _depth > 0) {
+                    var _ch = s.charAt(_pos);
+                    if (_esc) { _esc = false; }
+                    else if (_ch === '\\') { _esc = true; }
+                    else if (_ch === '"') { _inStr = !_inStr; }
+                    else if (!_inStr) {
+                        if (_ch === _openCh) _depth++;
+                        else if (_ch === _closeCh) _depth--;
+                    }
+                    _pos++;
+                }
+                if (_depth === 0) {
+                    // 找到配对，删除整个 JSON 片段（包括后面的逗号和空白）
+                    var _endPos = _pos;
+                    while (_endPos < s.length && /[\s,]/.test(s.charAt(_endPos))) _endPos++;
+                    s = s.slice(0, _fieldIdx) + s.slice(_endPos);
+                    _searchPos = _fieldIdx;
+                } else {
+                    // 未找到配对，跳过这个字段名
+                    _searchPos = _fieldIdx + 1;
+                }
+            }
+        }
 
-        // 改为非贪婪匹配，且仅当后面紧跟 ] 或 } 闭合符号时才删除（确认是 JSON 残片而非剧情对话）
-        s = s.replace(/,\s*\\?"[a-zA-Z_]+\\?"\s*:\s*[\[{"][\s\S]*?(?:\]|\})\s*,?\s*$/gi, '');
+        // 移除孤立的 JSON 结尾残片（如 ", "choices":[]}）
+        // 【P0 ReDoS 修复】原正则 [\s\S]*?(?:\]|\})\s*,?\s*$ 会在无配对符号时回溯整个文本
+        // 新实现：从末尾向前扫描，找最后一个 ] 或 }，然后检查前面是否有 JSON 字段模式
+        var _lastClose = Math.max(s.lastIndexOf(']'), s.lastIndexOf('}'));
+        if (_lastClose !== -1 && _lastClose > 0) {
+            // 从 _lastClose 向前找逗号或字段名
+            var _checkStart = Math.max(0, _lastClose - 200); // 限制搜索范围
+            var _prefix = s.substring(_checkStart, _lastClose);
+            // 检查是否是 ", "fieldName":[ 或 ,"fieldName":{ 模式
+            if (/,\s*\\?"[a-zA-Z_]+\\?"\s*:\s*[\[{"]/.test(_prefix)) {
+                // 找到 JSON 残片，删除从逗号到末尾
+                var _commaIdx = _prefix.lastIndexOf(',');
+                if (_commaIdx !== -1) {
+                    s = s.substring(0, _checkStart + _commaIdx) + s.substring(_lastClose + 1).replace(/^[\s,]*/, '');
+                }
+            }
+        }
         // 移除转义的 JSON 引号残片
         s = s.replace(/\\+"/g, '"');
         return s;

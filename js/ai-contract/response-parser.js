@@ -746,11 +746,16 @@ const ResponseParser = {
     _tryPlainText(raw) {
         if (!raw || typeof raw !== 'string') return { storyText: '' };
         const cleaned = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer) ? OutputSanitizer.sanitizeStory(raw) : raw;
-        const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+        // 【P0 ReDoS 修复】用 extractFirstJSONBlock 替代 /\{[\s\S]*\}/ 贪婪正则
+        // 原正则会从第一个 { 匹配到最后一个 }，对大文本可能很慢且捕获过多
+        // 新实现：用平衡括号扫描找第一个完整的 {...} 块
+        const jsonStr = (typeof extractFirstJSONBlock === 'function')
+            ? extractFirstJSONBlock(cleaned)
+            : (function() { var m = cleaned.match(/\{[\s\S]*\}/); return m ? m[0] : null; })();
         let data = null;
-        if (jsonMatch) {
+        if (jsonStr) {
             try {
-                const parsed = JSON.parse(jsonMatch[0]);
+                const parsed = JSON.parse(jsonStr);
                 if (parsed && typeof parsed === 'object') data = parsed;
             } catch (e) {}
         }
