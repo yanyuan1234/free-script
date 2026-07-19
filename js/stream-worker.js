@@ -209,6 +209,9 @@ async function _executeStream(requestId, url, body, apiKey) {
     }
     reqState.reader = reader;
 
+    // 【P1 修复跟进】流被 idle timeout 取消时，如果已收到内容，不要丢弃
+    var _streamAborted = false;
+    try {
     while (true) {
         // 检查取消
         if (reqState.aborted) {
@@ -251,6 +254,15 @@ async function _executeStream(requestId, url, body, apiKey) {
         // 节流发送累积的 delta
         if (ctx.lastDelta) {
             _throttledPostChunk(requestId, ctx);
+        }
+    }
+    } catch (_streamErr) {
+        // 【P1 修复跟进】流被中断时，如果已收到内容，不要丢弃
+        if (ctx.fullText) {
+            _streamAborted = true;
+            console.warn('[Worker] 流被中断但已收到 ' + ctx.fullText.length + ' 字符内容，尝试使用已有数据:', _streamErr && _streamErr.message);
+        } else {
+            throw _streamErr;  // 没有收到任何内容，抛出原始错误
         }
     }
 

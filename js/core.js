@@ -5391,6 +5391,9 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     var CHUNK_IDLE_TIMEOUT_MS = 60 * 1000;   // 后续 chunk 间隔 60 秒
     var _hasFirstChunk = false;
 
+    // 【P1 修复跟进】流被 idle timeout 取消时，如果已收到内容，不要丢弃
+    var _streamAborted = false;
+    try {
     while (true) {
         var _idleMs = _hasFirstChunk ? CHUNK_IDLE_TIMEOUT_MS : FIRST_TOKEN_TIMEOUT_MS;
         var _idleTimer = TimerManager.setTimeout('aiStreamIdle', function() {
@@ -5432,6 +5435,23 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         sseBuffer = events.pop() || '';
         for (let i = 0; i < events.length; i++) {
             parseSSEEventText(events[i], ctx);
+        }
+    }
+    } catch (_streamErr) {
+        // 【P1 修复跟进】流被 idle timeout / 网络中断取消时，如果已收到内容，不要丢弃
+        if (ctx.fullText) {
+            _streamAborted = true;
+            console.warn('[callAI] 流被中断但已收到 ' + ctx.fullText.length + ' 字符内容，尝试使用已有数据:', _streamErr && _streamErr.message);
+            // 刷新剩余的 pending chunk
+            if (ctx._pendingChunkDelta && ctx.onChunk) {
+                var _abortDelta = ctx._pendingChunkDelta;
+                var _abortFull = ctx.fullText;
+                ctx._pendingChunkDelta = '';
+                try { ctx.onChunk(_abortDelta, _abortFull); }
+                catch (e) { console.warn('[callAI] onChunk 中断刷新异常:', e); }
+            }
+        } else {
+            throw _streamErr;  // 没有收到任何内容，抛出原始错误
         }
     }
 
@@ -5622,7 +5642,10 @@ async function callAI(messages, options = {}) {
                         // 【架构升级】优先通过 Web Worker 执行流式解析，避免主线程被 SSE 解析 + JSON.parse 占满。
                         // 长回答（50-150KB）时主线程保持响应，用户可随时点击取消/其他按钮。
                         // Worker 不可用时自动降级到原 executeAIStream（主线程解析）。
-                        if (typeof StreamBridge !== 'undefined' && StreamBridge.isAvailable()) {
+                        // 【P1 修复跟进】不再同步检查 isAvailable()（初始返回 false 会导致 Worker 永不初始化），
+                        // 而是直接调用 executeAIStreamViaWorker，由其内部异步初始化 Worker；
+                        // 初始化失败时抛 WORKER_UNAVAILABLE，下方 catch 自动降级到主线程。
+                        if (typeof StreamBridge !== 'undefined' && typeof StreamBridge.executeAIStreamViaWorker === 'function') {
                             try {
                                 return await StreamBridge.executeAIStreamViaWorker(url, body, config.apiKey, localAC.signal, options.onChunk);
                             } catch (wErr) {
