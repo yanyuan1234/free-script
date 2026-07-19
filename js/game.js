@@ -1186,6 +1186,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         // isInit: 初始化请求也需要应用预设提示词（写作风格、字数控制等）
         // 但不需要完整的聊天历史和世界书注入
         if (isInit) {
+            document.title = 'PERF:5a-isInit-start';
 
             if (gameState) {
                 gameState._depthPrompts = {};
@@ -1195,7 +1196,9 @@ async function sendAIRequest(userMessage, isInit = false) {
 
 
             try {
+                document.title = 'PERF:5b-getWI';
                 var _initWI = getWorldInfoInjection();
+                document.title = 'PERF:5c-postWI';
                 if (gameState) {
                     gameState._wiPositionTexts = (isObject(_initWI) && _initWI.positionTexts) ? _initWI.positionTexts : null;
                 }
@@ -1203,9 +1206,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                 console.warn('[isInit] 世界书扫描失败:', e);
             }
             if (typeof PresetManager !== 'undefined' && PresetManager.presets && PresetManager.currentPresetIndex >= 0) {
+                document.title = 'PERF:5d-applyPreset';
                 var initPreset = PresetManager.presets[PresetManager.currentPresetIndex];
                 if (initPreset) {
                     PresetManager._applyPromptsToSystemPrompt(initPreset);
+                    document.title = 'PERF:5e-postPreset';
                     // 同步更新 conversationHistory 中的系统提示词
                     if (gameState.conversationHistory && gameState.conversationHistory.length > 0 && gameState.conversationHistory[0].role === 'system') {
                         gameState.conversationHistory[0].content = gameState.systemPrompt;

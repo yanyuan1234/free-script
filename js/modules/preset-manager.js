@@ -1558,10 +1558,15 @@ var PresetManager = {
 
 
     _applyPromptsToSystemPrompt: function(preset) {
+        // 【性能诊断】
+        var _apt_t0 = performance.now();
+        var _apt_logs = [];
+        function _apt_log(label) { _apt_logs.push(label + ': ' + (performance.now() - _apt_t0).toFixed(1) + 'ms'); }
         // 【关键】有预设时只取游戏上下文（玩家设定/记忆/私聊），不包含默认格式规则
         // 预设才是最高优先级，格式规则由预设的 system_prompt=true 条目完全控制
         var basePrompt = '';
         try { basePrompt = buildSystemPrompt(false); } catch(e) { basePrompt = (gameState && gameState.systemPrompt) || ''; }
+        _apt_log('buildSystemPrompt');
 
         gameState.systemPrompt = basePrompt; // system prompt 只包含游戏上下文，格式规则由预设追加
 
@@ -1578,6 +1583,7 @@ var PresetManager = {
 
         // 【关键修复】在处理预设提示词之前，先注入全局宏变量
         injectPresetGlobalVars();
+        _apt_log('injectPresetGlobalVars');
 
         var positionPrompts = {}; // depth -> [prompts]  (depth 0~5, 固定位置)
         var jailbreakPrompts = [];
@@ -1667,6 +1673,7 @@ var PresetManager = {
         depthPrompts[injectionDepth].push(p);
     }
     });
+    _apt_log('forEach_prompts');
 
     // 【关键】将 system_prompt=true 的提示词合并到主系统提示词
     // 预设优先：预设的main prompt（身份定义）放在最前面，游戏数据作为上下文跟在后面
@@ -1677,11 +1684,12 @@ var PresetManager = {
         systemPromptParts.forEach(function(p) {
             var c = MacroEngine.process(p.content.trim(), macroEnv);
             if (c.trim()) spAppend.push(c);
-            });
+        });
         if (spAppend.length > 0) {
             gameState.systemPrompt = spAppend.join('\n\n') + '\n\n' + gameState.systemPrompt;
         }
     }
+    _apt_log('systemPromptParts');
 
     // 排序
     Object.keys(positionPrompts).forEach(function(d) {
@@ -1771,6 +1779,10 @@ var PresetManager = {
 
     // 设置 names_behavior
     gameState._namesBehavior = preset.names_behavior || 0;
+    _apt_log('depthPrompts+positionPrompts');
+    _apt_log('done');
+    window._applyPresetTiming = _apt_logs.join(' | ');
+    console.log('[perf] _applyPromptsToSystemPrompt: ' + window._applyPresetTiming);
     },
     _toggleAllPrompts: function() {
         var preset = this.presets[this._detailPresetIdx];
