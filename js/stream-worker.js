@@ -66,14 +66,38 @@ function _parseSSEEventText(eventText, ctx) {
         // story UI。参考原版单 HTML 只读取 delta.content，这里保持一致：正文只取 content，
         // reasoning 仅用于折叠面板/调试。
         if (reasoningChunk) {
-            ctx.reasoningText += reasoningChunk;
+            // 【P0 性能修复】用数组累加替代 += 拼接，避免 O(n²) 字符串拷贝
+            if (!ctx.reasoningTextArr) ctx.reasoningTextArr = [];
+            ctx.reasoningTextArr.push(reasoningChunk);
+            ctx._reasoningDirty = true;
         }
-        ctx.fullText += content;
+        // 【P0 性能修复】用数组累加替代 ctx.fullText += content，避免 O(n²) 字符串拷贝
+        // 原：每 chunk 都 ctx.fullText += content，1000 chunks × 50KB = 5000万次字符拷贝
+        // 新：push O(1)，仅在 postMessage 前 join 一次（16fps 节流后频率远低于 chunk 频率）
+        if (!ctx.fullTextArr) ctx.fullTextArr = [];
+        ctx.fullTextArr.push(content);
+        ctx._fullTextDirty = true;
 
         if (content) {
             ctx.lastDelta = content;
         }
     }
+}
+
+// 【P0 性能修复】懒 join：仅在需要 fullText 字符串时才 join 数组
+function _getFullText(ctx) {
+    if (ctx._fullTextDirty) {
+        ctx.fullText = ctx.fullTextArr.join('');
+        ctx._fullTextDirty = false;
+    }
+    return ctx.fullText;
+}
+function _getReasoningText(ctx) {
+    if (ctx._reasoningDirty) {
+        ctx.reasoningText = ctx.reasoningTextArr.join('');
+        ctx._reasoningDirty = false;
+    }
+    return ctx.reasoningText;
 }
 
 // 节流发送 chunk 到主线程
@@ -89,7 +113,7 @@ function _throttledPostChunk(requestId, ctx) {
             type: 'CHUNK',
             requestId: requestId,
             delta: ctx.lastDelta,
-            fullText: ctx.fullText
+            fullText: _getFullText(ctx)
         });
         ctx.lastDelta = '';
     } else {
@@ -113,7 +137,7 @@ function _flushPendingChunk() {
             type: 'CHUNK',
             requestId: msg.requestId,
             delta: msg.ctx.lastDelta,
-            fullText: msg.ctx.fullText
+            fullText: _getFullText(msg.ctx)
         });
         msg.ctx.lastDelta = '';
     }
@@ -126,7 +150,7 @@ function _flushFinalChunk(requestId, ctx) {
             type: 'CHUNK',
             requestId: requestId,
             delta: ctx.lastDelta,
-            fullText: ctx.fullText
+            fullText: _getFullText(ctx)
         });
         ctx.lastDelta = '';
     }
@@ -193,7 +217,9 @@ async function _executeStream(requestId, url, body, apiKey) {
     var sseBuffer = '';
 
     // rawBody 兜底（与 core.js 一致，1MB 滚动保留）
-    var rawBody = '';
+    // 【P0 性能修复】用数组累加替代 rawBody += chunk，避免 O(n²) 字符串拷贝
+    var rawBodyArr = [];
+    var rawBodyLen = 0;
     var RAW_BODY_MAX = 1024 * 1024;
 
     // 分层 idle 超时（与 core.js 一致）
@@ -241,9 +267,13 @@ async function _executeStream(requestId, url, body, apiKey) {
         hasFirstChunk = true;
         var chunk = decoder.decode(readResult.value, { stream: true });
 
-        rawBody += chunk;
-        if (rawBody.length > RAW_BODY_MAX) {
-            rawBody = rawBody.slice(-RAW_BODY_MAX);
+        // 【P0 性能修复】数组累加替代 rawBody += chunk
+        rawBodyArr.push(chunk);
+        rawBodyLen += chunk.length;
+        if (rawBodyLen > RAW_BODY_MAX) {
+            var _joined = rawBodyArr.join('');
+            rawBodyArr = [_joined.slice(-RAW_BODY_MAX)];
+            rawBodyLen = rawBodyArr[0].length;
         }
         sseBuffer += chunk;
         var events = sseBuffer.split(_SSE_SEP);
@@ -258,9 +288,10 @@ async function _executeStream(requestId, url, body, apiKey) {
     }
     } catch (_streamErr) {
         // 【P1 修复跟进】流被中断时，如果已收到内容，不要丢弃
-        if (ctx.fullText) {
+        var _fullTextSoFar = _getFullText(ctx);
+        if (_fullTextSoFar) {
             _streamAborted = true;
-            console.warn('[Worker] 流被中断但已收到 ' + ctx.fullText.length + ' 字符内容，尝试使用已有数据:', _streamErr && _streamErr.message);
+            console.warn('[Worker] 流被中断但已收到 ' + _fullTextSoFar.length + ' 字符内容，尝试使用已有数据:', _streamErr && _streamErr.message);
         } else {
             throw _streamErr;  // 没有收到任何内容，抛出原始错误
         }
@@ -269,27 +300,32 @@ async function _executeStream(requestId, url, body, apiKey) {
     // flush 最后一段未发送的 chunk
     _flushFinalChunk(requestId, ctx);
 
+    // 获取最终字符串（懒 join）
+    var _finalFullText = _getFullText(ctx);
+    var _finalReasoning = _getReasoningText(ctx);
+    var rawBody = rawBodyArr.length > 0 ? rawBodyArr.join('') : '';
+
     // 流中错误处理（与 core.js 一致）
-    if (ctx.streamError && !ctx.fullText) {
+    if (ctx.streamError && !_finalFullText) {
         throw new Error(ctx.streamError);
     }
 
     // SSE 解析为空时回传 rawBody 让主线程兜底解析
-    if (!ctx.fullText && rawBody) {
+    if (!_finalFullText && rawBody) {
         _workerCtx.postMessage({
             type: 'FALLBACK',
             requestId: requestId,
             rawBody: rawBody,
-            reasoningText: ctx.reasoningText || ''
+            reasoningText: _finalReasoning || ''
         });
-        return { needFallback: true, rawBody: rawBody, reasoningText: ctx.reasoningText || '' };
+        return { needFallback: true, rawBody: rawBody, reasoningText: _finalReasoning || '' };
     }
 
-    if (!ctx.fullText && !ctx.streamError) {
+    if (!_finalFullText && !ctx.streamError) {
         throw new Error('AI返回内容为空 → 可能是API返回了非流式格式或响应被截断，请尝试关闭流式模式或重试');
     }
 
-    return { needFallback: false, fullText: ctx.fullText, reasoningText: ctx.reasoningText };
+    return { needFallback: false, fullText: _finalFullText, reasoningText: _finalReasoning };
 }
 
 // 消息处理
