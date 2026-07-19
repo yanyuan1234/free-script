@@ -1183,3 +1183,42 @@ function extractPairedTags(text, tagNames) {
     return scanPairedTags(text, tagNames, 'extract');
 }
 if (typeof window !== 'undefined') window.extractPairedTags = extractPairedTags;
+
+/**
+ * 便捷函数：在文本中查找第一个出现的任意指定标签
+ * 替代 content.match(/<tag1>([\s\S]*?)<\/tag1>/i) || content.match(/<tag2>([\s\S]*?)<\/tag2>/i) || ...
+ * 只需一次线性扫描即可找到最早出现的标签
+ * @param {string} text 待搜索文本
+ * @param {string[]} tagNames 标签名列表（不区分大小写）
+ * @returns {Object|null} {content, fullMatch, tagName, rawTagName, index} 或 null
+ */
+function findFirstPairedTag(text, tagNames) {
+    if (!text || !tagNames || !tagNames.length) return null;
+    var matches = scanPairedTags(text, tagNames, 'extract');
+    if (!matches || matches.length === 0) return null;
+    // 返回最早出现的（index 最小）
+    var earliest = matches[0];
+    for (var i = 1; i < matches.length; i++) {
+        if (matches[i].index < earliest.index) earliest = matches[i];
+    }
+    return earliest;
+}
+if (typeof window !== 'undefined') window.findFirstPairedTag = findFirstPairedTag;
+
+/**
+ * 便捷函数：提取文本中所有指定标签的内容字符串数组
+ * 替代 while(regex.exec()) 循环提取 [1] 内容
+ * @param {string} text
+ * @param {string} tagName 单个标签名
+ * @returns {string[]} 内容字符串数组
+ */
+function extractPairedTagContents(text, tagName) {
+    var matches = scanPairedTags(text, [tagName], 'extract');
+    if (!matches || matches.length === 0) return [];
+    var result = [];
+    for (var i = 0; i < matches.length; i++) {
+        result.push(matches[i].content);
+    }
+    return result;
+}
+if (typeof window !== 'undefined') window.extractPairedTagContents = extractPairedTagContents;

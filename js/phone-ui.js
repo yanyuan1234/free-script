@@ -1465,8 +1465,17 @@ var PresetAppManager = (function() {
                 }
             });
 
-            var detailsRegex = /<details[\s>][\s\S]*?<\/details>/gi;
-            var detailsMatches = text.match(detailsRegex);
+            // 【P0 根因修复】用线性扫描器替代 [\s\S]*? 正则，避免灾难性回溯
+            var detailsMatches = null;
+            if (typeof extractPairedTags !== 'undefined') {
+                var _detailsArr = extractPairedTags(text, ['details']);
+                if (_detailsArr && _detailsArr.length > 0) {
+                    detailsMatches = _detailsArr.map(function(d) { return d.fullMatch; });
+                }
+            } else {
+                var detailsRegex = /<details[\s>][\s\S]*?<\/details>/gi;
+                detailsMatches = text.match(detailsRegex);
+            }
             if (detailsMatches && detailsMatches.length > 0) {
                 var hasSnowTag = !!newApps['snow'];
                 if (!hasSnowTag) {

@@ -208,6 +208,7 @@ var MacroEngine = {
     },
 
     // 【小剧场融合】解析小剧场内容标签
+    // 【P0 根因修复】用线性扫描器替代所有 [\s\S]*? 正则，避免灾难性回溯
     parseTheaterContent: function(content) {
         if (!content) return null;
 
@@ -216,302 +217,300 @@ var MacroEngine = {
             title: '',
             content: content,
             html: '',
-            data: null // 新增：存储结构化数据
-    };
+            data: null
+        };
 
-            // 检测 <snow> 标签
-            var snowMatch = content.match(/<snow>([\s\S]*?)<\/snow>/i);
-            if (snowMatch) {
-                result.type = 'snow';
-                result.html = snowMatch[1];
-                // 提取标题
-                var summaryMatch = result.html.match(/<summary>([\s\S]*?)<\/summary>/i);
-                if (summaryMatch) {
-                    result.title = summaryMatch[1].replace(/<[^>]+>/g, '').trim();
+        // 【P0 修复】一次性线性扫描所有已知标签，找到最早出现的
+        // 替代 30+ 个 content.match(/<tag>([\s\S]*?)<\/tag>/i) 串联调用
+        var _theaterTagNames = [
+            'snow', 'author_note', 'calendar_widget', 'status_panel', 'gossip',
+            '角色手机', '通用状态', '古风状态', 'meow_FM', 'branches', 'echo',
+            'ccd', 'live', 'danmu', 'ice', 'enigma', 'podcast', 'novel_header',
+            'profile', 'giggle', 'horaeevent', 'horae', 'tableEdit', 'table_Edit'
+        ];
+
+        var _firstMatch = null;
+        if (typeof findFirstPairedTag === 'function') {
+            _firstMatch = findFirstPairedTag(content, _theaterTagNames);
+        } else {
+            // Fallback：原始正则逻辑（仅在工具函数不可用时）
+            for (var _ti = 0; _ti < _theaterTagNames.length; _ti++) {
+                var _tn = _theaterTagNames[_ti];
+                var _re = new RegExp('<' + _tn + '>([\\s\\S]*?)</' + _tn + '>', 'i');
+                var _m = content.match(_re);
+                if (_m) {
+                    _firstMatch = { tagName: _tn.toLowerCase(), rawTagName: _tn, content: _m[1], fullMatch: _m[0], index: content.indexOf('<' + _tn) };
+                    break;
                 }
-            return result;
-        }
-
-        // 检测 <author_note> 标签（蛾摩拉作话）
-        var authorMatch = content.match(/<author_note>([\s\S]*?)<\/author_note>/i);
-        if (authorMatch) {
-            result.type = 'author_note';
-            result.html = authorMatch[1];
-            var mutteringMatch = result.html.match(/<muttering>([\s\S]*?)<\/muttering>/i);
-            if (mutteringMatch) {
-                result.content = mutteringMatch[1].trim();
             }
-        return result;
-    }
-
-    // 检测 <calendar_widget> 标签（日程表）
-    var calendarMatch = content.match(/<calendar_widget>([\s\S]*?)<\/calendar_widget>/i);
-    if (calendarMatch) {
-        result.type = 'calendar';
-        result.html = calendarMatch[1];
-        return result;
-    }
-
-    // 检测 <status_panel> 标签（状态栏）
-    var statusMatch = content.match(/<status_panel>([\s\S]*?)<\/status_panel>/i);
-    if (statusMatch) {
-        result.type = 'status';
-        result.html = statusMatch[1];
-        return result;
-    }
-
-
-    var gossipMatch = content.match(/<gossip>([\s\S]*?)<\/gossip>/i);
-    if (gossipMatch) {
-        result.type = 'gossip';
-        result.html = gossipMatch[1];
-        result.title = '论坛';
-        // 提取帖子列表
-        var posts = [];
-        var postMatches = result.html.match(/<post[^>]*>([\s\S]*?)<\/post>/gi) || [];
-        postMatches.forEach(function(post) {
-            var author = (post.match(/author=["']([^"']+)["']/i) || [])[1] || '匿名';
-            var title = (post.match(/<title>([\s\S]*?)<\/title>/i) || [])[1] || '';
-            var body = (post.match(/<body>([\s\S]*?)<\/body>/i) || [])[1] || post.replace(/<[^>]+>/g, '');
-            posts.push({ author: author, title: title, content: body, time: Date.now() });
-            });
-        if (posts.length === 0) {
-            posts.push({ author: '小剧场', content: result.html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });
         }
-    result.data = { posts: posts };
-    return result;
-    }
 
+        if (!_firstMatch) return result;
 
-    var phoneMatch = content.match(/<角色手机>([\s\S]*?)<\/角色手机>/i);
-    if (phoneMatch) {
-        result.type = 'phone';
-        result.html = phoneMatch[1];
-        result.title = '手机';
-        // 提取手机应用/消息
-        var apps = [];
-        var appMatches = result.html.match(/<app[^>]*>([\s\S]*?)<\/app>/gi) || [];
-        appMatches.forEach(function(app) {
-            var name = (app.match(/name=["']([^"']+)["']/i) || [])[1] || '应用';
-            var icon = (app.match(/icon=["']([^"']+)["']/i) || [])[1] || '◇';
-            var notification = (app.match(/<notification>([\s\S]*?)<\/notification>/i) || [])[1] || '';
-            apps.push({ name: name, icon: icon, notification: notification });
-            });
-        result.data = { apps: apps };
-        return result;
-    }
+        // 辅助函数：在 html 中查找第一个子标签内容（线性扫描）
+        function _findFirstInner(html, tagNames) {
+            if (typeof findFirstPairedTag === 'function') {
+                return findFirstPairedTag(html, tagNames);
+            }
+            for (var i = 0; i < tagNames.length; i++) {
+                var re = new RegExp('<' + tagNames[i] + '>([\\s\\S]*?)</' + tagNames[i] + '>', 'i');
+                var m = html.match(re);
+                if (m) return { content: m[1], fullMatch: m[0], tagName: tagNames[i].toLowerCase() };
+            }
+            return null;
+        }
 
+        // 辅助函数：提取所有子标签内容（线性扫描）
+        function _extractAllInner(html, tagName) {
+            if (typeof extractPairedTagContents === 'function') {
+                return extractPairedTagContents(html, tagName);
+            }
+            // Fallback
+            var arr = [];
+            var re = new RegExp('<' + tagName + '[^>]*>([\\s\\S]*?)</' + tagName + '>', 'gi');
+            var m;
+            while ((m = re.exec(html)) !== null) {
+                arr.push({ fullMatch: m[0], content: m[1] });
+            }
+            return arr;
+        }
 
-    var generalStatusMatch = content.match(/<通用状态>([\s\S]*?)<\/通用状态>/i);
-    if (generalStatusMatch) {
-        result.type = 'status';
-        result.html = generalStatusMatch[1];
-        result.title = '角色状态';
-        // 提取状态项
-        var stats = [];
-        var statMatches = result.html.match(/<stat[^>]*>[\s\S]*?<\/stat>/gi) || [];
-        statMatches.forEach(function(stat) {
-            var name = (stat.match(/name=["']([^"']+)["']/i) || [])[1] || '状态';
-            var value = (stat.match(/<value>([\s\S]*?)<\/value>/i) || [])[1] || '';
-            var icon = (stat.match(/icon=["']([^"']+)["']/i) || [])[1] || '◇';
-            stats.push({ name: name, value: value, icon: icon });
-            });
-        result.data = { stats: stats };
-        return result;
-    }
+        // 辅助函数：提取所有子标签（含 fullMatch 和 attributes）
+        function _extractAllTags(html, tagName) {
+            if (typeof extractPairedTags === 'function') {
+                return extractPairedTags(html, [tagName]);
+            }
+            var arr = [];
+            var re = new RegExp('<' + tagName + '[^>]*>([\\s\\S]*?)</' + tagName + '>', 'gi');
+            var m;
+            while ((m = re.exec(html)) !== null) {
+                arr.push({ fullMatch: m[0], content: m[1] });
+            }
+            return arr;
+        }
 
+        // 辅助函数：从 fullMatch 中提取属性值
+        function _getAttr(fullMatch, attrName) {
+            var re = new RegExp(attrName + '=["\']([^"\']+)["\']', 'i');
+            var m = fullMatch.match(re);
+            return m ? m[1] : null;
+        }
 
-    var ancientStatusMatch = content.match(/<古风状态>([\s\S]*?)<\/古风状态>/i);
-    if (ancientStatusMatch) {
-        result.type = 'status';
-        result.html = ancientStatusMatch[1];
-        result.title = '角色状态';
-        // 提取状态项
-        var stats = [];
-        var statMatches = result.html.match(/<stat[^>]*>[\s\S]*?<\/stat>/gi) || [];
-        statMatches.forEach(function(stat) {
-            var name = (stat.match(/name=["']([^"']+)["']/i) || [])[1] || '状态';
-            var value = (stat.match(/<value>([\s\S]*?)<\/value>/i) || [])[1] || '';
-            var icon = (stat.match(/icon=["']([^"']+)["']/i) || [])[1] || '◇';
-            stats.push({ name: name, value: value, icon: icon });
-            });
-        result.data = { stats: stats, ancient: true };
-        return result;
-    }
+        var tagName = _firstMatch.tagName;  // 小写
+        var rawTagName = _firstMatch.rawTagName || tagName;
+        result.html = _firstMatch.content;
 
+        // 根据标签名设置类型和标题
+        switch (tagName) {
+            case 'snow':
+                result.type = 'snow';
+                var _sumMatch = _findFirstInner(result.html, ['summary']);
+                if (_sumMatch) {
+                    result.title = _sumMatch.content.replace(/<[^>]+>/g, '').trim();
+                }
+                return result;
 
-    var meowFMMatch = content.match(/<meow_FM>([\s\S]*?)<\/meow_FM>/i);
-    if (meowFMMatch) {
-        result.type = 'summary';
-        result.html = meowFMMatch[1];
-        result.title = '摘要';
-        // 提取摘要内容
-        var summaryContent = (result.html.match(/<content>([\s\S]*?)<\/content>/i) || [])[1] || result.html;
-        result.data = { summary: summaryContent.replace(/<[^>]+>/g, '').trim() };
-        return result;
-    }
+            case 'author_note':
+                result.type = 'author_note';
+                var _mutMatch = _findFirstInner(result.html, ['muttering']);
+                if (_mutMatch) {
+                    result.content = _mutMatch.content.trim();
+                }
+                return result;
 
+            case 'calendar_widget':
+                result.type = 'calendar';
+                return result;
 
-    var branchesMatch = content.match(/<branches>([\s\S]*?)<\/branches>/i);
-    if (branchesMatch) {
-        result.type = 'branches';
-        result.html = branchesMatch[1];
-        result.title = '选项';
-        // 提取分支选项
-        var options = [];
-        var optionMatches = result.html.match(/<option[^>]*>[\s\S]*?<\/option>/gi) || [];
-        optionMatches.forEach(function(opt, idx) {
-            var text = (opt.match(/<text>([\s\S]*?)<\/text>/i) || [])[1] || opt.replace(/<[^>]+>/g, '');
-            var condition = (opt.match(/condition=["']([^"']+)["']/i) || [])[1] || '';
-            options.push({ text: text.trim(), condition: condition, index: idx + 1 });
-            });
-        if (options.length === 0) {
-            // 尝试简单解析
-            var lines = result.html.split(/\n/).filter(function(l) { return l.trim(); });
-            lines.forEach(function(line, idx) {
-                options.push({ text: line.replace(/<[^>]+>/g, '').trim(), condition: '', index: idx + 1 });
+            case 'status_panel':
+                result.type = 'status';
+                return result;
+
+            case 'gossip':
+                result.type = 'gossip';
+                result.title = '论坛';
+                var _posts = [];
+                var _postTags = _extractAllTags(result.html, 'post');
+                _postTags.forEach(function(post) {
+                    var _author = _getAttr(post.fullMatch, 'author') || '匿名';
+                    var _titleMatch = _findFirstInner(post.content, ['title']);
+                    var _title = _titleMatch ? _titleMatch.content : '';
+                    var _bodyMatch = _findFirstInner(post.content, ['body']);
+                    var _body = _bodyMatch ? _bodyMatch.content : post.content.replace(/<[^>]+>/g, '');
+                    _posts.push({ author: _author, title: _title, content: _body, time: Date.now() });
                 });
+                if (_posts.length === 0) {
+                    _posts.push({ author: '小剧场', content: result.html.replace(/<[^>]+>/g, '').substring(0, 200), time: Date.now() });
+                }
+                result.data = { posts: _posts };
+                return result;
+
+            case '角色手机':
+                result.type = 'phone';
+                result.title = '手机';
+                var _apps = [];
+                var _appTags = _extractAllTags(result.html, 'app');
+                _appTags.forEach(function(app) {
+                    var _name = _getAttr(app.fullMatch, 'name') || '应用';
+                    var _icon = _getAttr(app.fullMatch, 'icon') || '◇';
+                    var _notifMatch = _findFirstInner(app.content, ['notification']);
+                    var _notif = _notifMatch ? _notifMatch.content : '';
+                    _apps.push({ name: _name, icon: _icon, notification: _notif });
+                });
+                result.data = { apps: _apps };
+                return result;
+
+            case '通用状态':
+                result.type = 'status';
+                result.title = '角色状态';
+                var _stats = [];
+                var _statTags = _extractAllTags(result.html, 'stat');
+                _statTags.forEach(function(stat) {
+                    var _name = _getAttr(stat.fullMatch, 'name') || '状态';
+                    var _valMatch = _findFirstInner(stat.content, ['value']);
+                    var _val = _valMatch ? _valMatch.content : '';
+                    var _icon = _getAttr(stat.fullMatch, 'icon') || '◇';
+                    _stats.push({ name: _name, value: _val, icon: _icon });
+                });
+                result.data = { stats: _stats };
+                return result;
+
+            case '古风状态':
+                result.type = 'status';
+                result.title = '角色状态';
+                var _stats2 = [];
+                var _statTags2 = _extractAllTags(result.html, 'stat');
+                _statTags2.forEach(function(stat) {
+                    var _name = _getAttr(stat.fullMatch, 'name') || '状态';
+                    var _valMatch = _findFirstInner(stat.content, ['value']);
+                    var _val = _valMatch ? _valMatch.content : '';
+                    var _icon = _getAttr(stat.fullMatch, 'icon') || '◇';
+                    _stats2.push({ name: _name, value: _val, icon: _icon });
+                });
+                result.data = { stats: _stats2, ancient: true };
+                return result;
+
+            case 'meow_fm':
+                result.type = 'summary';
+                result.title = '摘要';
+                var _contMatch = _findFirstInner(result.html, ['content']);
+                var _summaryContent = _contMatch ? _contMatch.content : result.html;
+                result.data = { summary: _summaryContent.replace(/<[^>]+>/g, '').trim() };
+                return result;
+
+            case 'branches':
+                result.type = 'branches';
+                result.title = '选项';
+                var _options = [];
+                var _optTags = _extractAllTags(result.html, 'option');
+                _optTags.forEach(function(opt, idx) {
+                    var _textMatch = _findFirstInner(opt.content, ['text']);
+                    var _text = _textMatch ? _textMatch.content : opt.content.replace(/<[^>]+>/g, '');
+                    var _condition = _getAttr(opt.fullMatch, 'condition') || '';
+                    _options.push({ text: _text.trim(), condition: _condition, index: idx + 1 });
+                });
+                if (_options.length === 0) {
+                    var _lines = result.html.split(/\n/).filter(function(l) { return l.trim(); });
+                    _lines.forEach(function(line, idx) {
+                        _options.push({ text: line.replace(/<[^>]+>/g, '').trim(), condition: '', index: idx + 1 });
+                    });
+                }
+                result.data = { options: _options };
+                return result;
+
+            case 'echo':
+                result.type = 'echo';
+                result.title = '物品';
+                var _items = [];
+                var _itemTags = _extractAllTags(result.html, 'item');
+                _itemTags.forEach(function(item) {
+                    var _name = _getAttr(item.fullMatch, 'name') || '物品';
+                    var _descMatch = _findFirstInner(item.content, ['desc']);
+                    var _desc = _descMatch ? _descMatch.content : '';
+                    var _icon = _getAttr(item.fullMatch, 'icon') || '🎁';
+                    var _count = parseInt(_getAttr(item.fullMatch, 'count')) || 1;
+                    _items.push({ name: _name, description: _desc, icon: _icon, count: _count });
+                });
+                if (_items.length === 0) {
+                    _items.push({ name: '神秘物品', description: result.html.replace(/<[^>]+>/g, '').substring(0, 100), icon: '🎁', count: 1 });
+                }
+                result.data = { items: _items };
+                return result;
+
+            case 'ccd':
+                result.type = 'ccd';
+                result.title = '文字剧场';
+                var _scenes = [];
+                var _sceneTags = _extractAllTags(result.html, 'scene');
+                _sceneTags.forEach(function(scene) {
+                    var _title = _getAttr(scene.fullMatch, 'title') || '';
+                    var _textMatch = _findFirstInner(scene.content, ['text']);
+                    var _text = _textMatch ? _textMatch.content : scene.content.replace(/<[^>]+>/g, '');
+                    _scenes.push({ title: _title, text: _text.trim() });
+                });
+                if (_scenes.length === 0) {
+                    result.data = { text: result.html.replace(/<[^>]+>/g, '').trim() };
+                } else {
+                    result.data = { scenes: _scenes };
+                }
+                return result;
+
+            case 'live':
+                result.type = 'live';
+                result.html = result.html.replace(/^\s+|\s+$/g, '');
+                result.title = '直播';
+                return result;
+
+            case 'danmu':
+                result.type = 'danmu';
+                result.title = '弹幕';
+                return result;
+
+            case 'ice':
+                result.type = 'ice';
+                return result;
+
+            case 'enigma':
+                result.type = 'enigma';
+                result.title = '谜题';
+                return result;
+
+            case 'podcast':
+                result.type = 'podcast';
+                result.title = '播客';
+                return result;
+
+            case 'novel_header':
+                result.type = 'novel_header';
+                result.title = '章节标题';
+                return result;
+
+            case 'profile':
+                result.type = 'profile';
+                result.title = '角色关系';
+                return result;
+
+            case 'giggle':
+                result.type = 'giggle';
+                result.title = '角色心声';
+                result.content = result.html.replace(/<[^>]+>/g, '').trim();
+                return result;
+
+            case 'horaeevent':
+            case 'horae':
+                result.type = 'horae';
+                result.title = '记忆';
+                return result;
+
+            case 'tableedit':
+            case 'table_edit':
+                result.type = 'table';
+                result.title = '表格';
+                return result;
+
+            default:
+                return result;
         }
-    result.data = { options: options };
-    return result;
-    }
-
-
-    var echoMatch = content.match(/<echo>([\s\S]*?)<\/echo>/i);
-    if (echoMatch) {
-        result.type = 'echo';
-        result.html = echoMatch[1];
-        result.title = '物品';
-        // 提取物品列表
-        var items = [];
-        var itemMatches = result.html.match(/<item[^>]*>[\s\S]*?<\/item>/gi) || [];
-        itemMatches.forEach(function(item) {
-            var name = (item.match(/name=["']([^"']+)["']/i) || [])[1] || '物品';
-            var desc = (item.match(/<desc>([\s\S]*?)<\/desc>/i) || [])[1] || '';
-            var icon = (item.match(/icon=["']([^"']+)["']/i) || [])[1] || '🎁';
-            var count = parseInt((item.match(/count=["'](\d+)["']/i) || [])[1]) || 1;
-            items.push({ name: name, description: desc, icon: icon, count: count });
-            });
-        if (items.length === 0) {
-            items.push({ name: '神秘物品', description: result.html.replace(/<[^>]+>/g, '').substring(0, 100), icon: '🎁', count: 1 });
-        }
-    result.data = { items: items };
-    return result;
-    }
-
-
-    var ccdMatch = content.match(/<ccd>([\s\S]*?)<\/ccd>/i);
-    if (ccdMatch) {
-        result.type = 'ccd';
-        result.html = ccdMatch[1];
-        result.title = '文字剧场';
-        // 提取剧场内容
-        var scenes = [];
-        var sceneMatches = result.html.match(/<scene[^>]*>[\s\S]*?<\/scene>/gi) || [];
-        sceneMatches.forEach(function(scene) {
-            var title = (scene.match(/title=["']([^"']+)["']/i) || [])[1] || '';
-            var text = (scene.match(/<text>([\s\S]*?)<\/text>/i) || [])[1] || scene.replace(/<[^>]+>/g, '');
-            scenes.push({ title: title, text: text.trim() });
-            });
-        if (scenes.length === 0) {
-            result.data = { text: result.html.replace(/<[^>]+>/g, '').trim() };
-            } else {
-            result.data = { scenes: scenes };
-        }
-    return result;
-    }
-
-
-    var liveMatch = content.match(/<live>\s*([\s\S]*?)\s*<\/live>/i);
-    if (liveMatch) {
-        result.type = 'live';
-        result.html = liveMatch[1];
-        result.title = '直播';
-        return result;
-    }
-
-
-    var danmuMatch = content.match(/<danmu>([\s\S]*?)<\/danmu>/i);
-    if (danmuMatch) {
-        result.type = 'danmu';
-        result.html = danmuMatch[1];
-        result.title = '弹幕';
-        return result;
-    }
-
-
-    var iceMatch = content.match(/<ice>([\s\S]*?)<\/ice>/i);
-    if (iceMatch) {
-        result.type = 'ice';
-        result.html = iceMatch[1];
-        return result;
-    }
-
-
-    var enigmaMatch = content.match(/<enigma>([\s\S]*?)<\/enigma>/i);
-    if (enigmaMatch) {
-        result.type = 'enigma';
-        result.html = enigmaMatch[1];
-        result.title = '谜题';
-        return result;
-    }
-
-
-    var podcastMatch = content.match(/<podcast>([\s\S]*?)<\/podcast>/i);
-    if (podcastMatch) {
-        result.type = 'podcast';
-        result.html = podcastMatch[1];
-        result.title = '播客';
-        return result;
-    }
-
-
-    var novelHeaderMatch = content.match(/<novel_header>([\s\S]*?)<\/novel_header>/i);
-    if (novelHeaderMatch) {
-        result.type = 'novel_header';
-        result.html = novelHeaderMatch[1];
-        result.title = '章节标题';
-        return result;
-    }
-
-
-    var profileMatch = content.match(/<profile>([\s\S]*?)<\/profile>/i);
-    if (profileMatch) {
-        result.type = 'profile';
-        result.html = profileMatch[1];
-        result.title = '角色关系';
-        return result;
-    }
-
-
-    var giggleMatch = content.match(/<giggle>([\s\S]*?)<\/giggle>/i);
-    if (giggleMatch) {
-        result.type = 'giggle';
-        result.html = giggleMatch[1];
-        result.title = '角色心声';
-        result.content = giggleMatch[1].replace(/<[^>]+>/g, '').trim();
-        return result;
-    }
-
-
-    var horaeMatch = content.match(/<horaeevent>([\s\S]*?)<\/horaeevent>/i) || content.match(/<horae>([\s\S]*?)<\/horae>/i);
-    if (horaeMatch) {
-        result.type = 'horae';
-        result.html = horaeMatch[1];
-        result.title = '记忆';
-        return result;
-    }
-
-
-    var tableEditMatch = content.match(/<tableEdit>([\s\S]*?)<\/tableEdit>/i) || content.match(/<table_Edit>([\s\S]*?)<\/table_Edit>/i);
-    if (tableEditMatch) {
-        result.type = 'table';
-        result.html = tableEditMatch[1];
-        result.title = '表格';
-        return result;
-    }
-
-    return result;
     },
 
     // 格式化时间戳
@@ -986,12 +985,11 @@ var MacroEngine = {
             var newText = text;
             var _iterStartTime = Date.now();
 
-            // 使用非贪婪匹配先处理最内层的 {{if}}...{{/if}}
-            // 【根因修复 3】闭合标签强制要求斜杠（移除 \/?），避免 {{if}} 被误判为闭合标签
-            // 【第八轮 7.1+7.2】用 safeRegexApply 包装：单次 replace 软超时 2s + 计时日志
-            var _ifRegex = /\{\{\s*if\s+([\s\S]*?)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/gi;
+            // 【P0 根因修复】用 indexOf 线性扫描替代双 [\s\S]*? 正则
+            // 原正则 /\{\{\s*if\s+([\s\S]*?)\s*\}\}([\s\S]*?)\{\{\s*\/\s*if\s*\}\}/gi
+            // 有两个 [\s\S]*? 串联，当 {{if}} 没有配对 {{/if}} 时会导致灾难性回溯
             var _condCallback = function(match, condition, body) {
-                // 在body中查找同级的{{else}}（跳过嵌套的{{if}}）
+                // 在body中查找同级{{else}}（跳过嵌套{{if}}）
                 var elseIdx = -1;
                 var depth = 0;
                 var pos = 0;
@@ -1016,7 +1014,7 @@ var MacroEngine = {
                 var trueContent, falseContent;
                 if (elseIdx >= 0) {
                     trueContent = body.substring(0, elseIdx);
-                    falseContent = body.substring(elseIdx + 7); // 跳过 '{{else'
+                    falseContent = body.substring(elseIdx + 7);
                     var elseEnd = falseContent.indexOf('}}');
                     if (elseEnd >= 0) falseContent = falseContent.substring(elseEnd + 2);
                 } else {
@@ -1028,18 +1026,12 @@ var MacroEngine = {
                 var isTrue = self._evaluateCondition(condition);
                 return isTrue ? trueContent : falseContent;
             };
-            // 优先用 safeRegexApply 包装（utils.js 已加载时）；否则回退到原生 replace
-            if (typeof safeRegexApply !== 'undefined') {
-                newText = safeRegexApply(_ifRegex, text, _condCallback, {
-                    tag: '_processScopedConditionals#' + iterations,
-                    timeoutMs: 2000,
-                    logThreshold: 200
-                });
-            } else {
-                _ifRegex.lastIndex = 0;
-                newText = text.replace(_ifRegex, _condCallback);
-            }
-            // 单次迭代超时检测（safeRegexApply 超时已返回原文，这里检测异常耗时）
+
+            // 【P0 修复】indexOf 线性扫描找最内层 {{if}}...{{/if}} 配对
+            // 从左到右扫描，维护嵌套深度，找到深度归零的配对
+            newText = self._replaceInnermostIfPair(text, _condCallback);
+
+            // 单次迭代超时检测
             var _iterElapsed = Date.now() - _iterStartTime;
             if (_iterElapsed > 2000) {
                 console.warn('[SafeRegex] _processScopedConditionals#' + iterations
@@ -1059,6 +1051,103 @@ var MacroEngine = {
         }
 
         return text;
+    },
+
+    /**
+    * 【P0 根因修复】用 indexOf 线性扫描找最内层 {{if}}...{{/if}} 配对并替换
+    * 替代双 [\s\S]*? 正则，复杂度 O(n)，无回溯风险
+    * @param {string} text 原始文本
+    * @param {function} callback 回调函数(match, condition, body) => 替换文本
+    * @returns {string} 替换后的文本（如果没有匹配则返回原文）
+    */
+    _replaceInnermostIfPair: function(text, callback) {
+        if (!text || text.length < 8) return text;
+        var lowerText = text.toLowerCase();
+        var pos = 0;
+        var len = text.length;
+
+        // 第一遍：找到所有 {{if 和 {{/if 的位置，维护深度
+        // 从左到右找第一个 {{if，然后找配对的 {{/if（深度归零）
+        var ifStart = lowerText.indexOf('{{if', pos);
+        // 排除 {{/if}} 的误匹配（indexOf('{{if') 会匹配 '{{/if' 的 '{{i' 部分？不会，因为 '{{if' 的第3个字符是 'i'，而 '{{/' 的第2个字符是 '/'
+        // 但需要确认 {{if 后面不是 / 字符
+        while (ifStart !== -1) {
+            // 检查是否是 {{/if（跳过）
+            var charAfterIf = ifStart + 2 < len ? text.charAt(ifStart + 2) : '';
+            if (charAfterIf === '/') {
+                ifStart = lowerText.indexOf('{{if', ifStart + 1);
+                continue;
+            }
+            // 确认是 {{if 开头（后面需要跟空白或字母）
+            // 找到 }} 闭合
+            var ifClose = text.indexOf('}}', ifStart + 4);
+            if (ifClose === -1) break;
+
+            // 提取 condition：{{if condition}}
+            var ifInner = text.slice(ifStart + 2, ifClose); // "if condition"
+            // 验证是 "if" 开头（可能有空白）
+            var ifInnerTrimmed = ifInner.replace(/^\s*/, '');
+            if (ifInnerTrimmed.slice(0, 2).toLowerCase() !== 'if' ||
+                (ifInnerTrimmed.length > 2 && ifInnerTrimmed.charAt(2) !== ' ' && ifInnerTrimmed.charAt(2) !== '\t' && ifInnerTrimmed.charAt(2) !== '\n')) {
+                // 不是 {{if 条件，跳过
+                ifStart = lowerText.indexOf('{{if', ifStart + 1);
+                continue;
+            }
+            var condition = ifInnerTrimmed.slice(2).trim(); // 去掉 "if" 前缀
+
+            // 从 ifClose+2 开始找配对的 {{/if}}，维护嵌套深度
+            var depth = 1;
+            var searchPos = ifClose + 2;
+            var endIfIdx = -1;
+            while (searchPos < len) {
+                var nextIf = lowerText.indexOf('{{if', searchPos);
+                var nextEndIf = lowerText.indexOf('{{/if', searchPos);
+
+                if (nextEndIf === -1) break; // 没有闭合标签
+
+                if (nextIf !== -1 && nextIf < nextEndIf) {
+                    // 检查 nextIf 是否是 {{/if（避免误匹配）
+                    var c = text.charAt(nextIf + 2);
+                    if (c !== '/') {
+                        depth++;
+                    }
+                    searchPos = nextIf + 4;
+                } else {
+                    // 找到 {{/if
+                    depth--;
+                    if (depth === 0) {
+                        endIfIdx = nextEndIf;
+                        break;
+                    }
+                    searchPos = nextEndIf + 5;
+                }
+            }
+
+            if (endIfIdx === -1) {
+                // 没有配对的 {{/if}}，跳过这个 {{if
+                ifStart = lowerText.indexOf('{{if', ifStart + 1);
+                continue;
+            }
+
+            // 找到 {{/if}} 的闭合 }}
+            var endIfClose = text.indexOf('}}', endIfIdx);
+            if (endIfClose === -1) {
+                ifStart = lowerText.indexOf('{{if', ifStart + 1);
+                continue;
+            }
+
+            // 提取 body
+            var body = text.slice(ifClose + 2, endIfIdx);
+            var fullMatch = text.slice(ifStart, endIfClose + 2);
+
+            // 调用回调函数
+            var replacement = callback(fullMatch, condition, body);
+
+            // 替换并返回
+            return text.slice(0, ifStart) + replacement + text.slice(endIfClose + 2);
+        }
+
+        return text; // 没有找到任何配对
     },
 
         /**

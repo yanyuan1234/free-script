@@ -32,9 +32,18 @@ const ResponseParser = {
         }
 
         // [T1-P1-7] Level -1: <json></json> 标签（酒馆助手 TokenSender 模式 + 文心/豆包等国产模型）
-        const jsonTagMatch = effectiveReply.match(/<json>([\s\S]*?)<\/json>/i);
-        if (jsonTagMatch) {
-            const data2 = this._tryDirectJSON(jsonTagMatch[1]);
+        // [ReDoS 修复] 用 findFirstPairedTag 替代 /<json>([\s\S]*?)<\/json>/i，
+        // 避免未闭合 <json> 标签触发灾难性回溯；工具不可用时回退原始正则。
+        var jsonTagContent = null;
+        if (typeof findFirstPairedTag === 'function') {
+            var _jsonTagHit = findFirstPairedTag(effectiveReply, ['json']);
+            if (_jsonTagHit) jsonTagContent = _jsonTagHit.content;
+        } else {
+            var _jsonFallback = effectiveReply.match(/<json>([\s\S]*?)<\/json>/i);
+            if (_jsonFallback) jsonTagContent = _jsonFallback[1];
+        }
+        if (jsonTagContent !== null) {
+            const data2 = this._tryDirectJSON(jsonTagContent);
             if (data2) {
                 result.success = true;
                 result.data = (typeof AIOutputSchema !== 'undefined' && AIOutputSchema) ? AIOutputSchema.normalize(data2) : data2;
@@ -182,9 +191,18 @@ const ResponseParser = {
             }
         }
         // emoji 包围（非标签）
-        var emojiRe = /💭([\s\S]*?)💭/g;
-        var em;
-        while ((em = emojiRe.exec(raw)) !== null) parts.push(em[1].trim());
+        // [ReDoS 修复] 用 scanMarkerPairs 替代 /💭([\s\S]*?)💭/g，避免未闭合标记触发灾难性回溯；
+        // 工具不可用时回退原始正则。
+        if (typeof scanMarkerPairs === 'function') {
+            var _emojiMatches = scanMarkerPairs(raw, '💭', 'extract');
+            for (var _ei = 0; _ei < _emojiMatches.length; _ei++) {
+                parts.push(_emojiMatches[_ei].content.trim());
+            }
+        } else {
+            var emojiRe = /💭([\s\S]*?)💭/g;
+            var em;
+            while ((em = emojiRe.exec(raw)) !== null) parts.push(em[1].trim());
+        }
         if (parts.length === 0) return '';
         return parts.join('\n\n---\n\n');
     },
@@ -203,7 +221,12 @@ const ResponseParser = {
                 s = s.replace(pairRe, '');
             }
             // 💭 emoji 包围（非标签），fallback 时也需处理
-            s = s.replace(/💭[\s\S]*?💭/g, '');
+            // [ReDoS 修复] 用 scanMarkerPairs 替代 /💭[\s\S]*?💭/g；工具不可用时回退原始正则。
+            if (typeof scanMarkerPairs === 'function') {
+                s = scanMarkerPairs(s, '💭', 'strip');
+            } else {
+                s = s.replace(/💭[\s\S]*?💭/g, '');
+            }
         }
 
         // Step 1.5: 剥离无标签的裸推理前缀（如 "我需要考虑一下...\n\n{\"story\":\"...\"}")
@@ -320,9 +343,39 @@ const ResponseParser = {
     _tryCodeBlockJSON(raw) {
         if (!raw || typeof raw !== 'string') return null;
         // [T1-P1-6] 支持多种 fence 标签：json / JSON / js / javascript / object / output / 纯 ```（Gemini 2.5+ 主流输出格式）
-        const m = raw.match(/```(?:json|JSON|js|javascript|object|output)?\s*\n?([\s\S]*?)\n?```/i);
-        if (m) return this._tryDirectJSON(m[1]);
-        return null;
+        // [ReDoS 修复] 用 indexOf 线性扫描替代 /```(?:json|...)?\s*\n?([\s\S]*?)\n?```/i 中的 [\s\S]*?，
+        // 避免未闭合代码块触发灾难性回溯。原正则等价于：找最早出现的 ```（可选 lang 标签），
+        // 跳过开 fence 后的空白，找下一个 ```，提取中间内容（去掉末尾一个可选 \n）。
+        // 用小写副本做 indexOf 实现大小写不敏感（原正则带 i 标志），ASCII 位置保持不变。
+        var rawLower = raw.toLowerCase();
+        // 注意顺序：长 fence 在前，避免 ```js 误匹配 ```json 的前缀（同位置时取首个=更具体的）
+        var fences = ['```json', '```javascript', '```object', '```output', '```js', '```'];
+        var fenceStart = -1;
+        var contentStart = -1;
+        for (var fi = 0; fi < fences.length; fi++) {
+            var idx = rawLower.indexOf(fences[fi]);
+            if (idx !== -1 && (fenceStart === -1 || idx < fenceStart)) {
+                fenceStart = idx;
+                contentStart = idx + fences[fi].length;
+            }
+        }
+        if (fenceStart === -1) return null;
+        // 跳过开 fence 后的所有空白（原正则 \s*\n? 等价于 \s*，因 \s* 已贪婪包含 \n）
+        var cs = contentStart;
+        while (cs < raw.length) {
+            var chc = raw.charCodeAt(cs);
+            if (chc === 32 || chc === 9 || chc === 10 || chc === 13) cs++;
+            else break;
+        }
+        // 找闭合 ```（从 cs 开始搜索，cs 已越过开 fence，不会匹配到开 fence 本身）
+        var closeIdx = raw.indexOf('```', cs);
+        if (closeIdx === -1 || closeIdx < cs) return null;
+        var content = raw.slice(cs, closeIdx);
+        // 原正则 \n?```：内容后跟可选 \n 然后 ```，等价于去掉内容末尾的一个 \n
+        if (content.length > 0 && content.charCodeAt(content.length - 1) === 10) {
+            content = content.slice(0, -1);
+        }
+        return this._tryDirectJSON(content);
     },
 
     _tryRobustJSON(raw) {
@@ -553,17 +606,23 @@ const ResponseParser = {
     _tryMemTags(raw) {
         if (!raw || typeof raw !== 'string') return null;
         const mems = [];
-        const story = raw.replace(/<mem\b[^>]*?(?:>([\s\S]*?)<\/mem>|\/>)/gi, function(tag, inner) {
 
-            // prompt 指示 AI 使用 field/value/day/period 等属性，旧代码全部丢弃
+        // 内部工具：从标签字符串解析属性（保留原 attrRegex，不含 [\s\S]*? 无 ReDoS 风险）
+        function _parseMemAttrs(tagStr) {
             const attrs = {};
             const attrRegex = /(\w+)\s*=\s*"([^"]*)"/g;
             let m;
-            while ((m = attrRegex.exec(tag)) !== null) {
+            while ((m = attrRegex.exec(tagStr)) !== null) {
                 attrs[m[1]] = m[2];
             }
+            return attrs;
+        }
+
+        // 内部工具：构造 mem 对象（字段顺序与原实现一致）
+        function _makeMem(tagStr, inner) {
+            const attrs = _parseMemAttrs(tagStr);
             const content = (inner || '').replace(/<[^>]+>/g, '').trim();
-            mems.push({
+            return {
                 type: attrs.type || '',
                 action: attrs.action || '',
                 name: attrs.name || '',
@@ -573,9 +632,112 @@ const ResponseParser = {
                 value: attrs.value || '',
                 day: attrs.day || '',
                 period: attrs.period || ''
+            };
+        }
+
+        // Fallback: extractPairedTags 不可用时回退原始正则（含 [\s\S]*?）
+        if (typeof extractPairedTags !== 'function') {
+            var fallbackStory = raw.replace(/<mem\b[^>]*?(?:>([\s\S]*?)<\/mem>|\/>)/gi, function(tag, inner) {
+                mems.push(_makeMem(tag, inner));
+                return '';
+            }).trim();
+            if (mems.length === 0) return null;
+            if (!fallbackStory) return null;
+            return { storyText: fallbackStory, mems: mems };
+        }
+
+        // [ReDoS 修复] 主路径：用 extractPairedTags + 自闭合线性扫描替代原始正则。
+        // 原正则 /<mem\b[^>]*?(?:>([\s\S]*?)<\/mem>|\/>)/gi 同时处理配对和自闭合两种情况。
+        // extractPairedTags 只处理配对标签，且无法正确处理"自闭合 + 后续配对"的混合场景
+        // （会把自闭合开标签错误地与后续 </mem> 配对）。
+        // 解决方案：先线性扫描自闭合标签并在临时文本中替换为空格（保持位置不变），
+        // 再用 extractPairedTags 在临时文本上找配对标签，最后合并移除区间。
+        // 大小写不敏感：原正则带 gi 标志，这里用 rawLower 做 indexOf。
+        var rawLower = raw.toLowerCase();
+        var len = raw.length;
+
+        // Step 1: 线性扫描所有 <mem 标签，识别自闭合 <mem .../>
+        var selfClosingRanges = [];  // [{start, end, mem}]
+        var tmpArr = raw.split('');  // 用于构造临时文本（自闭合位置替换为空格）
+        var pos = 0;
+
+        while (pos < len) {
+            var ltIdx = rawLower.indexOf('<mem', pos);
+            if (ltIdx === -1) break;
+
+            // \b 边界检查：<mem 后不能跟字母/数字/下划线（等价于 \b）
+            var afterMem = ltIdx + 4;
+            if (afterMem < len) {
+                var cc = raw.charCodeAt(afterMem);
+                var isWordChar = (cc >= 97 && cc <= 122) || (cc >= 65 && cc <= 90) || (cc >= 48 && cc <= 57) || cc === 95;
+                if (isWordChar) {
+                    pos = ltIdx + 4;
+                    continue;
+                }
+            }
+
+            // 找 '>' 结束开标签
+            var gtIdx = raw.indexOf('>', ltIdx);
+            if (gtIdx === -1) break;
+
+            // 检查 '>' 之前是否有 '/'（允许中间有空白），判断是否自闭合
+            var isSelfClosing = false;
+            for (var k = gtIdx - 1; k > ltIdx + 3; k--) {
+                var c = raw.charCodeAt(k);
+                if (c === 32 || c === 9 || c === 10 || c === 13) continue;  // 跳过空白
+                if (c === 47) isSelfClosing = true;  // '/'
+                break;
+            }
+
+            if (isSelfClosing) {
+                var tagStr = raw.slice(ltIdx, gtIdx + 1);
+                selfClosingRanges.push({
+                    start: ltIdx,
+                    end: gtIdx + 1,
+                    mem: _makeMem(tagStr, '')
+                });
+                // 在临时文本中用空格替换（保持索引一致，让 extractPairedTags 跳过此处）
+                for (var s = ltIdx; s <= gtIdx; s++) tmpArr[s] = ' ';
+                pos = gtIdx + 1;
+            } else {
+                // 配对标签：交给 extractPairedTags 处理，这里仅跳过开标签
+                pos = gtIdx + 1;
+            }
+        }
+
+        var tmpText = tmpArr.join('');
+
+        // Step 2: 在临时文本上用 extractPairedTags 查找配对 <mem>...</mem>
+        var pairedMatches = extractPairedTags(tmpText, ['mem']);
+
+        // Step 3: 合并所有要移除的区间
+        var removals = [];
+        for (var i = 0; i < selfClosingRanges.length; i++) {
+            removals.push(selfClosingRanges[i]);
+        }
+        for (var j = 0; j < pairedMatches.length; j++) {
+            var pm = pairedMatches[j];
+            removals.push({
+                start: pm.index,
+                end: pm.index + pm.fullMatch.length,
+                mem: _makeMem(pm.fullMatch, pm.content)
             });
-            return '';
-        }).trim();
+        }
+
+        // Step 4: 按起点排序，去重叠，拼接 story
+        removals.sort(function(a, b) { return a.start - b.start; });
+        var storyParts = [];
+        var cur = 0;
+        for (var r = 0; r < removals.length; r++) {
+            var rm = removals[r];
+            if (rm.start < cur) continue;  // 跳过重叠区间
+            storyParts.push(raw.slice(cur, rm.start));
+            mems.push(rm.mem);
+            cur = rm.end;
+        }
+        storyParts.push(raw.slice(cur));
+        var story = storyParts.join('').trim();
+
         if (mems.length === 0) return null;
         if (!story) return null;
         return { storyText: story, mems: mems };

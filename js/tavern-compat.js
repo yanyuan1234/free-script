@@ -21,6 +21,220 @@ var _FACT_NEWKEY_TO_OLDTYPE = Object.freeze({
     worldPlaces: 'world_place'
 });
 
+// ============================================================================
+// 【ReDoS 修复】线性扫描辅助函数
+// 替代 /<tag\s+...>([\s\S]*?)<\/tag>/g、/\{\{if:...}}([\s\S]*?)\{\{\/if\}\}/g 等
+// 含 [\s\S]*? 的正则，避免 AI 输出未闭合标签时触发灾难性回溯（浏览器冻结）。
+// 当 utils.js 的 extractPairedTags 等工具函数不可用时，回退到原始正则。
+// 复杂度严格 O(n)，仅用 indexOf 线性搜索，无回溯。
+// ============================================================================
+
+/**
+ * 替代 /<tag\s+([^>]*?)>([\s\S]*?)<\/tag>/g 的 replace 回调模式
+ * @param {string} text 原文本
+ * @param {string} tagName 标签名（小写，如 'mem'）
+ * @param {Function} callback (fullMatch, attrsStr, innerContent) => replacement
+ * @param {RegExp} fallbackRegex 工具函数不可用时回退用的正则
+ * @returns {string} 替换后的文本
+ */
+function _safeReplacePairedTagWithAttrs(text, tagName, callback, fallbackRegex) {
+    if (!text || typeof text !== 'string') return text;
+    if (typeof extractPairedTags === 'function') {
+        try {
+            var matches = extractPairedTags(text, [tagName]);
+            if (!matches || matches.length === 0) return text;
+            var result = '';
+            var lastIdx = 0;
+            var prefixLen = tagName.length + 1;  // '<' + tagName
+            for (var i = 0; i < matches.length; i++) {
+                var m = matches[i];
+                // 原正则无 i 标志，大小写敏感：rawTagName 必须与请求的 tagName 完全一致
+                if (m.rawTagName !== tagName) continue;
+                var fm = m.fullMatch;
+                if (!fm || fm.length <= prefixLen) continue;
+                // 原正则要求 <tag\s+（标签名后紧跟空白），过滤掉无空白的伪匹配以保持行为一致
+                var sepC = fm.charCodeAt(prefixLen);
+                if (sepC !== 32 && sepC !== 9 && sepC !== 10 && sepC !== 13) continue;
+                var gtIdx = fm.indexOf('>', prefixLen);
+                // 原正则 <tag\s+([^>]*?) 的 \s+ 消耗了标签名后的空白，捕获组不含前导空白；
+                // 跳过 prefixLen 后的连续空白，使 attrsStr 与原捕获组一致
+                var attrStart = prefixLen;
+                while (attrStart < gtIdx) {
+                    var ac = fm.charCodeAt(attrStart);
+                    if (ac === 32 || ac === 9 || ac === 10 || ac === 13) attrStart++;
+                    else break;
+                }
+                var attrsStr = gtIdx >= 0 ? fm.slice(attrStart, gtIdx) : '';
+                result += text.slice(lastIdx, m.index);
+                var rep = callback(fm, attrsStr, m.content);
+                result += (rep == null ? '' : String(rep));
+                lastIdx = m.index + fm.length;
+            }
+            result += text.slice(lastIdx);
+            return result;
+        } catch (e) { /* 静默回退到正则 */ }
+    }
+    return text.replace(fallbackRegex, function(full, attrsStr, innerContent) {
+        return callback(full, attrsStr, innerContent);
+    });
+}
+
+/**
+ * 替代 while(/<tag>([\s\S]*?)<\/tag>/g.exec(text)) 循环提取内容
+ * @param {string} text
+ * @param {string} tagName 标签名（小写；原正则无 i 标志，大小写敏感）
+ * @param {RegExp} fallbackRegex 回退用正则
+ * @returns {Array<string>} 内容字符串数组（未 trim，与原 exec[1] 一致）
+ */
+function _safeExtractPairedTagContents(text, tagName, fallbackRegex) {
+    if (!text || typeof text !== 'string') return [];
+    // 用 extractPairedTags（而非 extractPairedTagContents）以拿到 rawTagName 做大小写敏感过滤
+    if (typeof extractPairedTags === 'function') {
+        try {
+            var matches = extractPairedTags(text, [tagName]);
+            if (!matches || matches.length === 0) return [];
+            var out = [];
+            for (var i = 0; i < matches.length; i++) {
+                if (matches[i].rawTagName !== tagName) continue;  // 大小写敏感
+                out.push(matches[i].content);
+            }
+            return out;
+        } catch (e) { /* 静默回退到正则 */ }
+    }
+    var out2 = [];
+    if (fallbackRegex) {
+        fallbackRegex.lastIndex = 0;
+        var m;
+        while ((m = fallbackRegex.exec(text)) !== null) {
+            out2.push(m[1]);
+            if (m.index === fallbackRegex.lastIndex) fallbackRegex.lastIndex++;
+        }
+    }
+    return out2;
+}
+
+/**
+ * 替代 /\{\{setvar::([^:]+?)::([\s\S]*?)\}\}/g 的 replace 回调
+ * 线性 indexOf 扫描，无回溯。适用于 {{setvar::name::value}} / {{setglobalvar::name::value}}
+ * @param {string} text
+ * @param {string} openMarker 如 '{{setvar::' / '{{setglobalvar::'
+ * @param {Function} callback (fullMatch, name, val) => replacement
+ * @param {RegExp} fallbackRegex 回退用正则
+ * @returns {string}
+ */
+function _safeReplaceColonSepMacro(text, openMarker, callback, fallbackRegex) {
+    if (!text || typeof text !== 'string') return text;
+    try {
+        var result = '';
+        var pos = 0;
+        var len = text.length;
+        var omLen = openMarker.length;
+        while (pos < len) {
+            var openIdx = text.indexOf(openMarker, pos);
+            if (openIdx === -1) {
+                result += text.slice(pos);
+                break;
+            }
+            var nameStart = openIdx + omLen;
+            // name = [^:]+? 须紧跟 '::'，indexOf 找第一个 '::'
+            var sepIdx = text.indexOf('::', nameStart);
+            if (sepIdx === -1) {
+                result += text.slice(pos, nameStart);
+                pos = nameStart;
+                continue;
+            }
+            var name = text.slice(nameStart, sepIdx);
+            // name 不允许包含 ':'（正则 [^:]+?），含则跳过此 {{openMarker
+            if (name.indexOf(':') !== -1) {
+                result += text.slice(pos, nameStart);
+                pos = nameStart;
+                continue;
+            }
+            var valStart = sepIdx + 2;
+            // value = [\s\S]*? 到第一个 '}}'
+            var endIdx = text.indexOf('}}', valStart);
+            if (endIdx === -1) {
+                result += text.slice(pos, nameStart);
+                pos = nameStart;
+                continue;
+            }
+            var val = text.slice(valStart, endIdx);
+            var fullMatch = text.slice(openIdx, endIdx + 2);
+            result += text.slice(pos, openIdx);
+            var rep = callback(fullMatch, name, val);
+            result += (rep == null ? '' : String(rep));
+            pos = endIdx + 2;
+        }
+        return result;
+    } catch (e) { /* 静默回退到正则 */ }
+    return text.replace(fallbackRegex, function(full, name, val) {
+        return callback(full, name, val);
+    });
+}
+
+/**
+ * 替代 /\{\{if:([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g 的 replace 回调
+ * 双 [\s\S]*? 串联（条件 + body）风险最高，必须线性扫描。
+ * 语义与原 lazy 正则一致：每个 {{if:cond}} 配对到其后第一个 {{/if}}，
+ * 支持嵌套（外层 while 循环逐层处理最内层）。
+ * @param {string} text
+ * @param {Function} callback (fullMatch, condition, body) => replacement
+ * @param {RegExp} fallbackRegex 回退用正则
+ * @returns {string}
+ */
+function _safeReplaceIfMacro(text, callback, fallbackRegex) {
+    if (!text || typeof text !== 'string') return text;
+    try {
+        var openMarker = '{{if:';
+        var closeMarker = '{{/if}}';
+        var omLen = openMarker.length;
+        var cmLen = closeMarker.length;
+        var result = '';
+        var pos = 0;
+        var len = text.length;
+        while (pos < len) {
+            var ifIdx = text.indexOf(openMarker, pos);
+            if (ifIdx === -1) {
+                result += text.slice(pos);
+                break;
+            }
+            var condStart = ifIdx + omLen;
+            // 条件 [^}]+ 后紧跟 '}}'
+            var condEnd = text.indexOf('}}', condStart);
+            if (condEnd === -1) {
+                result += text.slice(pos, condStart);
+                pos = condStart;
+                continue;
+            }
+            var condition = text.slice(condStart, condEnd);
+            // 条件不允许包含 '}' 且至少 1 字符（正则 [^}]+）
+            if (condition.length === 0 || condition.indexOf('}') !== -1) {
+                result += text.slice(pos, condStart);
+                pos = condStart;
+                continue;
+            }
+            var bodyStart = condEnd + 2;
+            // body = [\s\S]*? 到第一个 {{/if}}（lazy，与原正则一致）
+            var endIdx = text.indexOf(closeMarker, bodyStart);
+            if (endIdx === -1) {
+                result += text.slice(pos, condStart);
+                pos = condStart;
+                continue;
+            }
+            var body = text.slice(bodyStart, endIdx);
+            var fullMatch = text.slice(ifIdx, endIdx + cmLen);
+            result += text.slice(pos, ifIdx);
+            var rep = callback(fullMatch, condition, body);
+            result += (rep == null ? '' : String(rep));
+            pos = endIdx + cmLen;
+        }
+        return result;
+    } catch (e) { /* 静默回退到正则 */ }
+    return text.replace(fallbackRegex, function(full, condition, body) {
+        return callback(full, condition, body);
+    });
+}
+
 var TavernHelperCompat = {
     _slashCommands: {},
     _pipeValue: '',
@@ -1771,8 +1985,9 @@ var GameMemory = {
         if (!text || typeof text !== 'string') return { cleanedText: text || '', edits: [] };
         var edits = [];
         var cleanedText = text;
-        var contentTagRe = /<mem\s+([^>]*?)>([\s\S]*?)<\/mem>/g;
-        cleanedText = cleanedText.replace(contentTagRe, function(full, attrsStr, innerContent) {
+        // 【ReDoS 修复】用线性扫描替代 /<mem\s+([^>]*?)>([\s\S]*?)<\/mem>/g，
+        // 避免未闭合 <mem> 标签触发灾难性回溯。fallback 保留原正则。
+        cleanedText = _safeReplacePairedTagWithAttrs(cleanedText, 'mem', function(full, attrsStr, innerContent) {
             var attrs = self._parseMemAttrs(attrsStr);
             var type = attrs.type || '';
             var action = attrs.action || 'add';
@@ -1818,7 +2033,7 @@ var GameMemory = {
             }
             edits.push(edit);
             return '';
-        });
+        }, /<mem\s+([^>]*?)>([\s\S]*?)<\/mem>/g);
         var selfClosingRe = /<mem\s+([^>]*?)\/>/g;
         cleanedText = cleanedText.replace(selfClosingRe, function(full, attrsStr) {
             var attrs = self._parseMemAttrs(attrsStr);
@@ -1924,11 +2139,11 @@ var GameMemory = {
         if (!text || typeof text !== 'string') return;
         try {
             // 解析 <foreshadow> 标签
-            var foreshadowRe = /<foreshadow\s+([^>]*?)>([\s\S]*?)<\/foreshadow>/g;
-            var fm;
-            while ((fm = foreshadowRe.exec(text)) !== null) {
-                var fAttrs = self._parseMemAttrs(fm[1]);
-                var fDesc = (fm[2] || '').trim();
+            // 【ReDoS 修复】用线性扫描替代 /<foreshadow\s+([^>]*?)>([\s\S]*?)<\/foreshadow>/g，
+            // 避免未闭合 <foreshadow> 标签触发灾难性回溯。
+            _safeReplacePairedTagWithAttrs(text, 'foreshadow', function(full, attrsStr, innerContent) {
+                var fAttrs = self._parseMemAttrs(attrsStr);
+                var fDesc = (innerContent || '').trim();
                 var fId = fAttrs.id || ('fs_' + self.currentTurn + '_' + Math.random().toString(36).substr(2, 6));
                 var fPriority = safeInt(fAttrs.priority, 5);
                 if (fDesc && self._dormantTracking && self._dormantTracking.foreshadowings) {
@@ -1948,13 +2163,14 @@ var GameMemory = {
                         console.log('[AI叙事] 注册新伏笔:', fId, fDesc);
                     }
                 }
-            }
+                return full;  // 仅解析，不修改原文
+            }, /<foreshadow\s+([^>]*?)>([\s\S]*?)<\/foreshadow>/g);
 
             // 解析 <recall> 标签 - AI主动唤醒休眠角色/物品
-            var recallRe = /<recall>([\s\S]*?)<\/recall>/g;
-            var rm;
-            while ((rm = recallRe.exec(text)) !== null) {
-                var recallTarget = (rm[1] || '').trim();
+            // 【ReDoS 修复】用线性扫描替代 /<recall>([\s\S]*?)<\/recall>/g
+            var recallContents = _safeExtractPairedTagContents(text, 'recall', /<recall>([\s\S]*?)<\/recall>/g);
+            for (var ri = 0; ri < recallContents.length; ri++) {
+                var recallTarget = (recallContents[ri] || '').trim();
                 if (recallTarget) {
                     // 尝试匹配角色
                     if (self.tables.characters && self.tables.characters[recallTarget]) {
@@ -1970,10 +2186,10 @@ var GameMemory = {
             }
 
             // 解析 <trigger> 标签 - AI触发伏笔
-            var triggerRe = /<trigger>([\s\S]*?)<\/trigger>/g;
-            var tm;
-            while ((tm = triggerRe.exec(text)) !== null) {
-                var triggerId = (tm[1] || '').trim();
+            // 【ReDoS 修复】用线性扫描替代 /<trigger>([\s\S]*?)<\/trigger>/g
+            var triggerContents = _safeExtractPairedTagContents(text, 'trigger', /<trigger>([\s\S]*?)<\/trigger>/g);
+            for (var ti = 0; ti < triggerContents.length; ti++) {
+                var triggerId = (triggerContents[ti] || '').trim();
                 if (triggerId && self._dormantTracking && self._dormantTracking.foreshadowings) {
                     var fs = self._dormantTracking.foreshadowings[triggerId];
                     if (fs) {
@@ -1995,10 +2211,10 @@ var GameMemory = {
             }
 
             // 解析 <plan> 标签 - 记录AI的编剧计划（仅日志，不修改数据）
-            var planRe = /<plan>([\s\S]*?)<\/plan>/g;
-            var pm;
-            while ((pm = planRe.exec(text)) !== null) {
-                var planText = (pm[1] || '').trim();
+            // 【ReDoS 修复】用线性扫描替代 /<plan>([\s\S]*?)<\/plan>/g
+            var planContents = _safeExtractPairedTagContents(text, 'plan', /<plan>([\s\S]*?)<\/plan>/g);
+            for (var pi = 0; pi < planContents.length; pi++) {
+                var planText = (planContents[pi] || '').trim();
                 if (planText) {
                     console.log('[AI叙事] AI编剧计划:', planText.substring(0, 100) + (planText.length > 100 ? '...' : ''));
                 }
@@ -6292,20 +6508,23 @@ return text.replace(/\{\{\/\/[^}]*?\}\}/gs, '');
 _processSetVars(text) {
 // {{setvar::name::value}} — value 可跨行
 // 性能优化：使用单次 replace 回调，避免 O(N*L) 的逐次全文本替换
+// 【ReDoS 修复】用线性扫描替代 /\{\{setvar::([^:]+?)::([\s\S]*?)\}\}/g，
+// 避免 value 含未闭合 }} 时 [\s\S]*? 的潜在回溯。fallback 保留原正则。
 const self = this;
-text = text.replace(/\{\{setvar::([^:]+?)::([\s\S]*?)\}\}/g, function(full, name, val) {
+text = _safeReplaceColonSepMacro(text, '{{setvar::', function(full, name, val) {
     val = (val || '').trim();
     val = self.parse(val, { context: TemplateVars.context });
     VariableStore.setLocal(name.trim(), val);
     return '';
-});
+}, /\{\{setvar::([^:]+?)::([\s\S]*?)\}\}/g);
 // {{setglobalvar::name::value}}
-text = text.replace(/\{\{setglobalvar::([^:]+?)::([\s\S]*?)\}\}/g, function(full, name, val) {
+// 【ReDoS 修复】同上，线性扫描替代 /\{\{setglobalvar::([^:]+?)::([\s\S]*?)\}\}/g
+text = _safeReplaceColonSepMacro(text, '{{setglobalvar::', function(full, name, val) {
     val = (val || '').trim();
     val = self.parse(val, { context: TemplateVars.context });
     VariableStore.setGlobal(name.trim(), val);
     return '';
-});
+}, /\{\{setglobalvar::([^:]+?)::([\s\S]*?)\}\}/g);
 // {{trim}} — 去除首尾空白
 text = text.replace(/\{\{trim\}\}/gi, '');
 return text;
@@ -6317,9 +6536,13 @@ _processConditions(text) {
 let maxIter = 20; // 防止无限循环
 while (text.includes('{{if:') && text.includes('{{/if}}') && maxIter-- > 0) {
     // 找最内层的 if/else/endif
-    const innerIf = /\{\{if:([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
+    // 【ReDoS 修复】用线性扫描替代 /\{\{if:([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g。
+    // 该正则含双 [\s\S]*? 串联（条件+body），未闭合 {{/if}} 时回溯风险最高，
+    // 必须用 indexOf 线性扫描。语义与原 lazy 正则一致：每个 {{if:cond}} 配对到
+    // 其后第一个 {{/if}}，外层 while 循环逐层处理嵌套。fallback 保留原正则。
+    const innerIfRegex = /\{\{if:([^}]+)\}\}([\s\S]*?)\{\{\/if\}\}/g;
     let changed = false;
-    text = text.replace(innerIf, (match, condition, body) => {
+    text = _safeReplaceIfMacro(text, (match, condition, body) => {
         // 检查body内是否有else
         const elseIdx = this._findElse(body);
         if (elseIdx !== -1) {
@@ -6330,7 +6553,7 @@ while (text.includes('{{if:') && text.includes('{{/if}}') && maxIter-- > 0) {
         }
         changed = true;
         return this._evalCond(condition.trim()) ? body : '';
-    });
+    }, innerIfRegex);
     if (!changed) break;
 }
 return text;
