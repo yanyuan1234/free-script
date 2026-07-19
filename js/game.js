@@ -1066,6 +1066,8 @@ function applyLengthPreset(preset) {
 }
 
 async function sendAIRequest(userMessage, isInit = false) {
+    // 【性能诊断】sendAIRequest 入口时间戳
+    var _t_entry = performance.now();
     // 【P0 修复】isInit 时强制重置 isWaiting，防止上一轮异常残留导致开局卡死
     // 场景：extractSetupToMemory 超时后调用 sendAIRequest，但 isWaiting 可能被
     // autoCompressContext 或其他路径设为 true 且未清理
@@ -1166,7 +1168,10 @@ async function sendAIRequest(userMessage, isInit = false) {
     try {
         // 【关键修复】在构建消息列表之前，确保全局宏变量已注入
         // 这样预设中的 {{getglobalvar::XXX}} 才能被正确替换
+        var _t_inject = performance.now();
+        console.log('[perf] sendAIRequest pre-inject: ' + (_t_inject - _t_entry).toFixed(1) + 'ms (safeAbort+setWaiting+saveUndoState+regex+emit)');
         injectPresetGlobalVars();
+        console.log('[perf] injectPresetGlobalVars: ' + (performance.now() - _t_inject).toFixed(1) + 'ms');
 
         // 【BG-004 修复】跟踪 turn 是否已在正常路径递增，
         // catch 块据此决定是否补递增（避免异常路径读到 turn=0 显示"第 1 回合"）
@@ -1841,8 +1846,13 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
             throw e;
         }
+        // 【性能诊断】流完成时间戳
+        var _t_streamEnd = performance.now();
+        console.log('[perf] 流完成, responseLen=' + (response ? response.length : 0));
         // 流式空回检测
+        var _t0 = performance.now();
         var parseResult = parseAIResponse(response);
+        console.log('[perf] parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
@@ -1927,7 +1937,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             try {
                 // 【v3审查修复】apply() 内部 try-catch 失败时返回 { success: false } 而非抛异常
                 // 原实现仅凭"未抛异常"就置 _aiMutatorApplied = true，导致后续 deleteLastTurn 误撤销
+                var _t1 = performance.now();
                 var _mutatorResult = AIResponseMutator.apply(parseResult, { silent: true });
+                console.log('[perf] AIResponseMutator.apply: ' + (performance.now() - _t1).toFixed(1) + 'ms');
                 _aiMutatorApplied = !!(_mutatorResult && _mutatorResult.success === true);
                 if (_mutatorResult && Array.isArray(_mutatorResult.warnings) && _mutatorResult.warnings.length > 0) {
                     console.warn('[AIResponseMutator] 部分步骤告警:', _mutatorResult.warnings.join('; '));
@@ -2478,7 +2490,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _rawFinalStory = finalStory;
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.sanitizeStory) {
             try {
+                var _t2 = performance.now();
                 finalStory = OutputSanitizer.sanitizeStory(finalStory);
+                console.log('[perf] sanitizeStory: ' + (performance.now() - _t2).toFixed(1) + 'ms (len=' + finalStory.length + ')');
             } catch (e) {
                 console.warn('[sendAIRequest] sanitizeStory 异常，使用原文:', e && e.message);
             }
@@ -2499,7 +2513,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 失败/无 idle 支持时降级为同步执行，保证功能正确
         if (typeof RegexManager !== 'undefined') {
             try {
+                var _t3 = performance.now();
                 finalStory = RegexManager.apply(finalStory, 'output');
+                console.log('[perf] RegexManager.apply: ' + (performance.now() - _t3).toFixed(1) + 'ms (len=' + finalStory.length + ')');
             } catch (e) {
                 console.warn('[sendAIRequest] RegexManager.apply 异常，跳过:', e && e.message);
             }
@@ -2521,9 +2537,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (_finalRendered) return;
             _finalRendered = true;
             try {
+                var _t4 = performance.now();
                 if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
                 var st = document.getElementById('storyText');
                 if (st) st.innerHTML = formatStory(finalStory);
+                console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
                 _hideSkipButton();
             } catch (e) {
                 console.warn('[sendAIRequest] 最终渲染异常:', e && e.message);
