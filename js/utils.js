@@ -1105,7 +1105,7 @@ function scanPairedTags(text, tagNames, mode) {
         var fullMatch = text.slice(ltIdx, closeGtIdx + 1);
 
         if (results) {
-            results.push({ content: content, fullMatch: fullMatch, tagName: tagName });
+            results.push({ content: content, fullMatch: fullMatch, tagName: tagName, rawTagName: rawTagName, index: ltIdx });
         }
         if (segments) {
             segments.push(text.slice(pos, ltIdx));  // 标签前的文本

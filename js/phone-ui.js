@@ -1422,62 +1422,101 @@ var PresetAppManager = (function() {
         if (!text) return;
         var newApps = {};
 
-        // 遍历所有已定义的标签
-        Object.keys(_appDefs).forEach(function(tag) {
-            // 跳过排除的标签
-            if (_excludeTags.indexOf(tag) !== -1) return;
-            var regex = _appTagRegexes[tag];
-            regex.lastIndex = 0;
-            var matches = text.match(regex);
-            if (matches && matches.length > 0) {
-                // 合并多个同名标签的内容
-                newApps[tag] = matches.map(function(m) {
-                    return m;
-                }).join('\n');
+        // 【P0 根因修复】用线性扫描器替代 [\s\S]*? 正则，避免灾难性回溯
+        // 原实现：对每个标签各跑一次 new RegExp('[\\s\\S]*?')，未闭合标签触发 O(n²) 回溯
+        // 新实现：extractPairedTags 一次性 O(n) 扫描所有标签，无回溯
+        if (typeof extractPairedTags !== 'undefined') {
+            // 收集所有需要解析的标签名（排除 giggle）
+            var _parseTagNames = Object.keys(_appDefs).filter(function(t) {
+                return _excludeTags.indexOf(t) === -1;
+            });
+            // 构建小写标签名 -> 原始标签名 的查找表（因为 scanPairedTags 返回小写 tagName）
+            var _tagLowerToOrig = {};
+            _parseTagNames.forEach(function(t) { _tagLowerToOrig[t.toLowerCase()] = t; });
+            var _extracted = extractPairedTags(text, _parseTagNames);
+            for (var _ei = 0; _ei < _extracted.length; _ei++) {
+                var _tagName = _tagLowerToOrig[_extracted[_ei].tagName] || _extracted[_ei].tagName;
+                if (!newApps[_tagName]) newApps[_tagName] = '';
+                newApps[_tagName] += _extracted[_ei].fullMatch + '\n';
             }
-        });
+            // 也解析 <details> 标签
+            var _detailsArr = extractPairedTags(text, ['details']);
+            if (_detailsArr.length > 0) {
+                var _hasSnowTag = !!newApps['snow'];
+                if (!_hasSnowTag) {
+                    var _snowContent = _detailsArr.map(function(d) { return d.fullMatch; }).join('\n');
+                    if (_snowContent.indexOf('ccd') !== -1 || _snowContent.indexOf('创意标题') !== -1 ||
+                        _snowContent.indexOf('小剧场') !== -1 || _snowContent.indexOf('SYSTEM_LOG') !== -1) {
+                        newApps['snow'] = _snowContent;
+                    }
+                }
+            }
+        } else {
+            // 回退：原正则逻辑（仅在扫描器不可用时使用）
+            Object.keys(_appDefs).forEach(function(tag) {
+                if (_excludeTags.indexOf(tag) !== -1) return;
+                var regex = _appTagRegexes[tag];
+                regex.lastIndex = 0;
+                var matches = text.match(regex);
+                if (matches && matches.length > 0) {
+                    newApps[tag] = matches.map(function(m) {
+                        return m;
+                    }).join('\n');
+                }
+            });
 
-        // 特殊处理：<details> 标签（小剧场的简约文字模式）
-        var detailsRegex = /<details[\s>][\s\S]*?<\/details>/gi;
-        var detailsMatches = text.match(detailsRegex);
-        if (detailsMatches && detailsMatches.length > 0) {
-            // 检查是否包含小剧场特征
-            var hasSnowTag = !!newApps['snow'];
-            if (!hasSnowTag) {
-                var snowContent = detailsMatches.map(function(m) { return m; }).join('\n');
-                // 检查是否包含小剧场关键词
-                if (snowContent.indexOf('ccd') !== -1 || snowContent.indexOf('创意标题') !== -1 ||
-                    snowContent.indexOf('小剧场') !== -1 || snowContent.indexOf('SYSTEM_LOG') !== -1) {
-                    newApps['snow'] = snowContent;
+            var detailsRegex = /<details[\s>][\s\S]*?<\/details>/gi;
+            var detailsMatches = text.match(detailsRegex);
+            if (detailsMatches && detailsMatches.length > 0) {
+                var hasSnowTag = !!newApps['snow'];
+                if (!hasSnowTag) {
+                    var snowContent = detailsMatches.map(function(m) { return m; }).join('\n');
+                    if (snowContent.indexOf('ccd') !== -1 || snowContent.indexOf('创意标题') !== -1 ||
+                        snowContent.indexOf('小剧场') !== -1 || snowContent.indexOf('SYSTEM_LOG') !== -1) {
+                        newApps['snow'] = snowContent;
+                    }
                 }
             }
         }
 
-        // 特殊处理：<style> 标签（文中可视化 ice）
-        // 【第九轮 P0 根因修复】原 styleRegex 含双 [\s\S]*? 串联，AI 输出多个 <style> 块但 <div> 配对缺失时
-        // 触发 O(k²×n) 灾难性回溯——这正是第八轮复审"二次生成冻结 215s+"的真正根因。
-        // parseFromText 在 stripDecorTags 之前调用（game.js:3629 在 3634 之前），
-        // 第八轮只修复了 stripDecorTags 内的 _reStyleDiv，遗漏了此处 parseFromText 内的 inline 正则。
-        // 修复策略：拆成两步——先匹配所有 <style> 块（线性），再在每个 style 块后有限窗内查找配对 <div>。
-        var _iceStyleRe = /<style[\s>][\s\S]*?<\/style>/gi;
-        var _iceDivRe = /<div[\s>][\s\S]*?<\/div>/i;
-        var _iceBlocks = [];
-        // 用 safeRegexExecAll 包装 style 块匹配（软超时 + 计时日志）
-        var _styleMatches = (typeof safeRegexExecAll !== 'undefined')
-            ? safeRegexExecAll(_iceStyleRe, text, { tag: 'parseFromText._iceStyleRe', timeoutMs: 2000 })
-            : (function() { _iceStyleRe.lastIndex = 0; var arr = []; var m; while ((m = _iceStyleRe.exec(text)) !== null) arr.push(m); return arr; })();
-        for (var _si2 = 0; _si2 < _styleMatches.length; _si2++) {
-            var _styleItem = _styleMatches[_si2][0];
-            var _styleEndIdx = _styleMatches[_si2].index + _styleItem.length;
-            // 在 style 块后 200 字符窗口内查找配对 <div>...</div>（限窗搜索，避免全文回溯）
-            var _window = text.substring(_styleEndIdx, _styleEndIdx + 200);
-            var _divMatch = _window.match(_iceDivRe);
-            if (_divMatch) {
-                _iceBlocks.push(_styleItem + _window.substring(0, _divMatch.index + _divMatch[0].length));
+        // 特殊处理：<style>...</style> + <div>...</div> 块（ice组件）
+        // 【P0 根因修复】用线性扫描器替代 [\s\S]*? 正则
+        if (typeof extractPairedTags !== 'undefined') {
+            var _iceBlocks = [];
+            var _styleArr = extractPairedTags(text, ['style']);
+            for (var _si = 0; _si < _styleArr.length; _si++) {
+                var _styleItem = _styleArr[_si].fullMatch;
+                var _styleEndIdx = _styleArr[_si].index + _styleItem.length;
+                // 在 style 块后 200 字符窗口内查找配对 <div>...</div>
+                var _window = text.substring(_styleEndIdx, _styleEndIdx + 200);
+                var _divArr = extractPairedTags(_window, ['div']);
+                if (_divArr.length > 0) {
+                    _iceBlocks.push(_styleItem + _window.substring(0, _divArr[0].index + _divArr[0].fullMatch.length));
+                }
             }
-        }
-        if (_iceBlocks.length > 0 && !newApps['ice']) {
-            newApps['ice'] = _iceBlocks.join('\n');
+            if (_iceBlocks.length > 0 && !newApps['ice']) {
+                newApps['ice'] = _iceBlocks.join('\n');
+            }
+        } else {
+            // 回退：原 safeRegexExecAll 逻辑
+            var _iceStyleRe = /<style[\s>][\s\S]*?<\/style>/gi;
+            var _iceDivRe = /<div[\s>][\s\S]*?<\/div>/i;
+            var _iceBlocks = [];
+            var _styleMatches = (typeof safeRegexExecAll !== 'undefined')
+                ? safeRegexExecAll(_iceStyleRe, text, { tag: 'parseFromText._iceStyleRe', timeoutMs: 2000 })
+                : (function() { _iceStyleRe.lastIndex = 0; var arr = []; var m; while ((m = _iceStyleRe.exec(text)) !== null) arr.push(m); return arr; })();
+            for (var _si2 = 0; _si2 < _styleMatches.length; _si2++) {
+                var _styleItem = _styleMatches[_si2][0];
+                var _styleEndIdx = _styleMatches[_si2].index + _styleItem.length;
+                var _window = text.substring(_styleEndIdx, _styleEndIdx + 200);
+                var _divMatch = _window.match(_iceDivRe);
+                if (_divMatch) {
+                    _iceBlocks.push(_styleItem + _window.substring(0, _divMatch.index + _divMatch[0].length));
+                }
+            }
+            if (_iceBlocks.length > 0 && !newApps['ice']) {
+                newApps['ice'] = _iceBlocks.join('\n');
+            }
         }
 
         // 更新存储
@@ -1523,41 +1562,74 @@ var PresetAppManager = (function() {
         if (!text) return text;
         var result = text;
 
-        // 移除所有已定义的装饰标签（排除giggle，因为心声需要在剧情中显示）
+        // 【P0 根因修复】用线性扫描器替代所有 [\s\S]*? 正则，避免灾难性回溯
+        // 原实现：对每个标签各跑一次 replace(regex, '')，未闭合标签触发 O(n²) 回溯
+        // 新实现：stripPairedTags 一次性 O(n) 扫描所有标签，无回溯
+        if (typeof stripPairedTags !== 'undefined') {
+            // 合并所有需要移除的标签名：app标签(排除giggle) + style + div + decor标签
+            var _allStripTags = Object.keys(_appDefs).filter(function(t) {
+                return _excludeTags.indexOf(t) === -1;
+            }).concat(['style', 'div'], _decorTagNames);
+            result = stripPairedTags(result, _allStripTags);
 
-        Object.keys(_appDefs).forEach(function(tag) {
-            if (_excludeTags.indexOf(tag) !== -1) return;
-            var regex = _appTagRegexes[tag];
-            regex.lastIndex = 0;  // 重置 gi 标志的 lastIndex
-            result = result.replace(regex, '');
-        });
+            // 移除 HTML 注释 <!-- ... -->（线性扫描，非正则）
+            var _cIdx = 0;
+            var _cResult = '';
+            while (true) {
+                var _cStart = result.indexOf('<!--', _cIdx);
+                if (_cStart === -1) {
+                    _cResult += result.slice(_cIdx);
+                    break;
+                }
+                _cResult += result.slice(_cIdx, _cStart);
+                var _cEnd = result.indexOf('-->', _cStart + 4);
+                if (_cEnd === -1) break;  // 未闭合注释，移除剩余
+                _cIdx = _cEnd + 3;
+            }
+            result = _cResult;
 
-        // 移除 <style>...</style><div>...</div> 块（ice组件）
-        // 【根因修复 2】原 _reStyleDiv 双 [\s\S]*? 串联改为两步独立替换，避免灾难性回溯
-        // 【第八轮 7.1+7.2】用 safeRegexApply 包装：软超时 2s（超时返回原文）+ 计时日志定位慢正则
-        result = (typeof safeRegexApply !== 'undefined')
-            ? safeRegexApply(_reStyleBlock, result, '', { tag: '_reStyleBlock', timeoutMs: 2000 })
-            : (_reStyleBlock.lastIndex = 0, result.replace(_reStyleBlock, ''));
-        result = (typeof safeRegexApply !== 'undefined')
-            ? safeRegexApply(_reDivBlock, result, '', { tag: '_reDivBlock', timeoutMs: 2000 })
-            : (_reDivBlock.lastIndex = 0, result.replace(_reDivBlock, ''));
+            // 移除 image###...### 格式（线性扫描，非正则）
+            var _hIdx = 0;
+            var _hResult = '';
+            while (true) {
+                var _hStart = result.indexOf('image###', _hIdx);
+                if (_hStart === -1) {
+                    _hResult += result.slice(_hIdx);
+                    break;
+                }
+                _hResult += result.slice(_hIdx, _hStart);
+                var _hEnd = result.indexOf('###', _hStart + 8);
+                if (_hEnd === -1) break;  // 未闭合，移除剩余
+                _hIdx = _hEnd + 3;
+            }
+            result = _hResult;
+        } else {
+            // 回退：原正则逻辑（仅在扫描器不可用时使用）
+            Object.keys(_appDefs).forEach(function(tag) {
+                if (_excludeTags.indexOf(tag) !== -1) return;
+                var regex = _appTagRegexes[tag];
+                regex.lastIndex = 0;
+                result = result.replace(regex, '');
+            });
+            result = (typeof safeRegexApply !== 'undefined')
+                ? safeRegexApply(_reStyleBlock, result, '', { tag: '_reStyleBlock', timeoutMs: 2000 })
+                : (_reStyleBlock.lastIndex = 0, result.replace(_reStyleBlock, ''));
+            result = (typeof safeRegexApply !== 'undefined')
+                ? safeRegexApply(_reDivBlock, result, '', { tag: '_reDivBlock', timeoutMs: 2000 })
+                : (_reDivBlock.lastIndex = 0, result.replace(_reDivBlock, ''));
+            result = (typeof safeRegexApply !== 'undefined')
+                ? safeRegexApply(_decorTagsRegex, result, '', { tag: '_decorTagsRegex', timeoutMs: 2000 })
+                : (_decorTagsRegex.lastIndex = 0, result.replace(_decorTagsRegex, ''));
+            _reComment.lastIndex = 0;
+            result = result.replace(_reComment, '');
+            _reImageHash.lastIndex = 0;
+            result = result.replace(_reImageHash, '');
+        }
 
-
-        result = (typeof safeRegexApply !== 'undefined')
-            ? safeRegexApply(_decorTagsRegex, result, '', { tag: '_decorTagsRegex', timeoutMs: 2000 })
-            : (_decorTagsRegex.lastIndex = 0, result.replace(_decorTagsRegex, ''));
-
-        // 移除导演手记注释 <!-- ... -->
-        _reComment.lastIndex = 0;
-        result = result.replace(_reComment, '');
-
-        // 移除 pollinations.ai 图片链接
+        // 移除 pollinations.ai 图片链接（安全正则，无 [\s\S]*?）
         _rePollinations.lastIndex = 0;
         result = result.replace(_rePollinations, '');
-        // 移除 image###...### 格式
-        _reImageHash.lastIndex = 0;
-        result = result.replace(_reImageHash, '');
-        // 移除 <img> 标签（AI可能生成的图片标签）
+        // 移除 <img> 标签（安全正则 [^>]*，无 [\s\S]*?）
         _reImgTag.lastIndex = 0;
         result = result.replace(_reImgTag, '');
 
