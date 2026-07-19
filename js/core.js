@@ -2508,9 +2508,28 @@ var TypewriterBuffer = {
         //         当前段落变化时（每 tick）只更新最后一个 <p> 的 textContent
         var completedKey = this._completedParagraphs.join('\n');
         if (completedKey !== this._cachedCompletedKey) {
-            // 段落列表变了：全量重渲染（罕见）
+            // 段落列表变了：全量重渲染
             this._cachedCompletedKey = completedKey;
-            this._cachedCompletedHtml = (completedKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(completedKey) : '';
+            // 【P0 性能修复】打字期间用轻量渲染，避免 O(P²×L) 累积冻结
+            // 原实现：每次段落切换都 formatStory(全量已完成段落)
+            //   P 段累计：formatStory(P×L) + formatStory((P-1)×L) + ... = O(P²×L)
+            //   第三轮 P=20+ 段时冻结浏览器 30-60 秒
+            // 新实现：打字期间用 escapeHtml 轻量渲染 O(P×L)
+            //   打字完成后 _doFinalRender 一次性 formatStory(fullStory) 做完整格式化
+            if (this.onComplete) {
+                // 打字流程中：_doFinalRender 会做完整 formatStory，这里用轻量渲染
+                var _paras = completedKey.split('\n');
+                var _lightHtml = '';
+                for (var _pi = 0; _pi < _paras.length; _pi++) {
+                    if (_paras[_pi]) {
+                        _lightHtml += '<p>' + escapeHtml(_paras[_pi]) + '</p>';
+                    }
+                }
+                this._cachedCompletedHtml = _lightHtml;
+            } else {
+                // 非打字流程（如加载存档、直接渲染）：完整格式化
+                this._cachedCompletedHtml = (completedKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(completedKey) : '';
+            }
             this._currentParaEl = null;  // 强制重建当前段落元素
             // 【打字机重复修复】段落切换时必须清空 _lastCleanedPara 缓存，
             // 否则新段落会复用旧段落的清理结果，导致旧段落文本重复显示在新段落中
@@ -5399,7 +5418,9 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // 提高到 256KB 可覆盖 99% 推理模型输出，避免 JSON 花括号不匹配
     // 【P1-3 修复】256KB 在长思考链+长剧情场景仍会溢出，提升到 1MB 覆盖极端情况
     // 注：rawBody 仅在 SSE 解析失败（!ctx.fullText）时作兜底，不影响正常流式解析路径
-    var rawBody = '';
+    // 【P0 性能修复】用数组累加替代 string += chunk，避免 O(n²) 字符串拷贝
+    var rawBodyArr = [];
+    var rawBodyLen = 0;
     var RAW_BODY_MAX = 1024 * 1024;  // 1MB
     var rawBodyTruncated = false;
 
@@ -5443,9 +5464,13 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         _hasFirstChunk = true;
         var chunk = decoder.decode(readResult.value, { stream: true });
 
-        rawBody += chunk;
-            if (rawBody.length > RAW_BODY_MAX) {
-                rawBody = rawBody.slice(-RAW_BODY_MAX);
+        rawBodyArr.push(chunk);
+        rawBodyLen += chunk.length;
+            if (rawBodyLen > RAW_BODY_MAX) {
+                // 滚动保留最近 1MB
+                var _joined = rawBodyArr.join('');
+                rawBodyArr = [_joined.slice(-RAW_BODY_MAX)];
+                rawBodyLen = rawBodyArr[0].length;
                 if (!rawBodyTruncated) {
                     rawBodyTruncated = true;
                     console.warn('[callAI] rawBody 超过 1MB，改为滚动保留最近 1MB 用于兜底');
@@ -5510,6 +5535,7 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     }
 
     // 兜底：SSE 解析为空时再尝试从 rawBody 提取
+    var rawBody = rawBodyArr.length > 0 ? rawBodyArr.join('') : '';
     if (!ctx.fullText && rawBody) {
         return parseAIResponseFallback(rawBody);
     }

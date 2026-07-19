@@ -793,29 +793,33 @@ const ResponseParser = {
     // 本方法逐字符扫描，仅在字符串内部将控制字符转为转义序列，不影响 JSON 结构
     _escapeControlCharsInStrings(str) {
         if (!str || typeof str !== 'string') return str;
-        var result = '';
+        // 【P0 性能修复】用数组累加替代 string += char，避免 O(n²) 字符串拷贝
+        // 原实现：result += ch 逐字符拼接，JS 字符串不可变，每次 += 是 O(n) 拷贝
+        // 截断 JSON 修复路径下 candidate 可达 100K-1MB，O(n²) 冻结浏览器
+        // 新实现：resultArr.push() O(1) 每次，join('') O(n) 一次性合并
+        var resultArr = [];
         var inStr = false;
         var escape = false;
         for (var i = 0; i < str.length; i++) {
             var ch = str[i];
             if (escape) {
-                result += ch;
+                resultArr.push(ch);
                 escape = false;
                 continue;
             }
             if (inStr) {
-                if (ch === '\\') { result += ch; escape = true; continue; }
-                if (ch === '"') { result += ch; inStr = false; continue; }
-                if (ch === '\n') { result += '\\n'; continue; }
-                if (ch === '\r') { result += '\\r'; continue; }
-                if (ch === '\t') { result += '\\t'; continue; }
-                result += ch;
+                if (ch === '\\') { resultArr.push(ch); escape = true; continue; }
+                if (ch === '"') { resultArr.push(ch); inStr = false; continue; }
+                if (ch === '\n') { resultArr.push('\\n'); continue; }
+                if (ch === '\r') { resultArr.push('\\r'); continue; }
+                if (ch === '\t') { resultArr.push('\\t'); continue; }
+                resultArr.push(ch);
             } else {
                 if (ch === '"') { inStr = true; }
-                result += ch;
+                resultArr.push(ch);
             }
         }
-        return result;
+        return resultArr.join('');
     },
 
     _findMatching(str, open, close, start) {
