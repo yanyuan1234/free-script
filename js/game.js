@@ -3778,8 +3778,12 @@ var _heartbeatLast = Date.now();
 TimerManager.setInterval('heartbeat', function() {
     var now = Date.now();
     var gap = now - _heartbeatLast;
-    if (gap > 3000) {
+    if (gap > 1500) {
+        // 降级阈值：>1500ms 也告警，便于发现中度阻塞
         console.warn('[heartbeat] 主线程阻塞 ' + gap + 'ms (streamBuf=' + (typeof streamBuffer !== 'undefined' ? streamBuffer.length : '?') + ')');
+    } else if (gap > 500) {
+        // 轻量记录：>500ms 标注为 [perf] 供诊断使用
+        console.log('[perf] heartbeat: ' + gap + 'ms gap');
     }
     _heartbeatLast = now;
 }, 2000);
@@ -4466,6 +4470,8 @@ function formatStory(text) {
         if (_fmtElapsed > 50) {
             console.warn('[性能] formatStory 耗时 ' + _fmtElapsed + 'ms (文本长度: ' + _fmtTextLen + ')');
         }
+        // 永远记录 perf 标签供诊断
+        console.log('[perf] formatStory: ' + _fmtElapsed + 'ms (len=' + _fmtTextLen + ', typing=' + TypewriterBuffer.isTyping + ')');
     }
 
     return sanitizeHtml(finalOutput);
