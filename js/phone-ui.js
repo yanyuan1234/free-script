@@ -32,6 +32,67 @@
 //
 // 注：本会话仅完成短期文档化，物理迁移涉及 80+ 调用点，延后到独立重构任务。
 
+// ========================================
+// 【P1-1 修复】兼容层：Proxy 拦截 legacy 字段读写，透明转发到 StateManager
+// ========================================
+// 不直接替换 phone-ui.js 中 80+ 处 gameState.xxx 引用（风险太大），
+// 而是通过 Proxy 在 gameState 上建立兼容层，自动将 legacy 字段读写路由到 StateManager。
+// 读取：gameState.allCharacters → StateManager.get('entities.characters')
+// 写入：gameState.allCharacters[name] = val → 通过 get 返回 StateManager 内部对象后直接操作
+// 若 StateManager 不可用，Proxy 透明回退到原始 gameState 属性。
+(function() {
+    if (typeof gameState === 'undefined' || gameState.__phoneUiProxyInstalled) return;
+    if (typeof StateManager === 'undefined' || !StateManager.get) return;
+
+    var _legacyToStatePath = {
+        allCharacters: 'entities.characters',
+        currentBag: 'entities.bag',
+        currentQuests: 'entities.quests',
+        playerData: 'entities.player',
+        keyEvents: 'entities.events',
+        relationships: 'entities.relationships',
+        _worldModules: 'ui.worldModules'
+    };
+
+    try {
+        gameState = new Proxy(gameState, {
+            get: function(target, prop, receiver) {
+                // 对于已知的 legacy 字段，优先从 StateManager 读取权威值
+                var statePath = _legacyToStatePath[prop];
+                if (statePath) {
+                    try {
+                        var val = StateManager.get(statePath);
+                        if (val !== undefined) return val;
+                    } catch (e) {
+                        // StateManager.get 失败时回退到原始属性
+                        console.warn('[phone-ui compat] StateManager.get(' + statePath + ') 失败，回退到 legacy:', e.message);
+                    }
+                }
+                // 回退到原始 gameState 属性（包括非 legacy 字段）
+                return target[prop];
+            },
+            set: function(target, prop, value, receiver) {
+                // 对于已知的 legacy 字段，同步写入 StateManager
+                var statePath = _legacyToStatePath[prop];
+                if (statePath) {
+                    try {
+                        StateManager.set(statePath, value, { silent: true });
+                    } catch (e) {
+                        console.warn('[phone-ui compat] StateManager.set(' + statePath + ') 失败:', e.message);
+                    }
+                }
+                // 同时写入原始 gameState（保持向后兼容）
+                target[prop] = value;
+                return true;
+            }
+        });
+        gameState.__phoneUiProxyInstalled = true;
+        console.log('[phone-ui compat] Proxy 兼容层已安装，legacy 字段读写将自动路由到 StateManager');
+    } catch (e) {
+        console.warn('[phone-ui compat] Proxy 安装失败，继续使用 legacy 字段:', e.message);
+    }
+})();
+
 
 var MAX_FORUM_POSTS = 8;
 

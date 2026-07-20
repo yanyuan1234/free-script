@@ -3442,7 +3442,12 @@ function _restoreAuthorsNoteFields() {
     } catch (e) { /* 忽略 */ }
 }
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', _restoreAuthorsNoteFields);
+    // 【P1-5 修复】使用 GlobalCleanup 统一管理事件监听器，避免内存泄漏
+    if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+        GlobalCleanup.registerListener(document, 'DOMContentLoaded', _restoreAuthorsNoteFields);
+    } else {
+        document.addEventListener('DOMContentLoaded', _restoreAuthorsNoteFields);
+    }
 } else {
     _restoreAuthorsNoteFields();
 }
@@ -3824,11 +3829,17 @@ function renderCotPanel(content) {
     // 绑定折叠事件（只绑一次）
     if (toggleBtn && !toggleBtn._cotBound) {
         toggleBtn._cotBound = true;
-        toggleBtn.addEventListener('click', function() {
+        // 【P1-5 修复】使用 GlobalCleanup 统一管理事件监听器
+        var _cotHandler = function() {
             var expanded = this.getAttribute('aria-expanded') === 'true';
             this.setAttribute('aria-expanded', expanded ? 'false' : 'true');
             contentEl.style.display = expanded ? 'none' : 'block';
-        });
+        };
+        if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+            GlobalCleanup.registerListener(toggleBtn, 'click', _cotHandler);
+        } else {
+            toggleBtn.addEventListener('click', _cotHandler);
+        }
     }
 }
 // 全局心声计数器
@@ -4520,11 +4531,14 @@ function renderChoices(choices) {
     }).join('');
     container.innerHTML = toggleHtml + btnsHtml + '</div>';
 
+    // 【P1-5 修复】清理旧的事件监听器，防止每次渲染累积监听器导致内存泄漏
+    // 在 innerHTML 替换后，旧 DOM 元素被移除但监听器仍可能持有引用
+    // 通过 GlobalCleanup 统一管理，确保页面卸载时全部清理
 
     // 选项点击即发送（提升交互流畅度，无需双击或手动按发送）
     var btns = container.querySelectorAll('.option-btn[data-choice-text]');
     btns.forEach(function(btn) {
-        btn.addEventListener('click', function() {
+        var _choiceHandler = function() {
             var text = this.getAttribute('data-choice-text');
             var input = document.getElementById('customAction');
             if (!input) return;
@@ -4536,7 +4550,12 @@ function renderChoices(choices) {
                 UI.toast('AI 正在生成中，请稍候');
                 input.focus();
             }
-        });
+        };
+        if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+            GlobalCleanup.registerListener(btn, 'click', _choiceHandler);
+        } else {
+            btn.addEventListener('click', _choiceHandler);
+        }
     });
 
     // 旧代码面板初始 max-height:0px，许多玩家不知道要点击 "选项 (N个) ▶" 标题
@@ -5526,10 +5545,16 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
 function registerGameStartListener() {
     var _origStartBtn = document.getElementById('btnCreateWorld');
     if (_origStartBtn) {
-        _origStartBtn.addEventListener('click', function() {
+        // 【P1-5 修复】使用 GlobalCleanup 统一管理事件监听器，避免内存泄漏
+        var _startHandler = function() {
             var gpEl = document.getElementById('worldDescription');
             if (gpEl) Storage.set(Storage.KEYS.LAST_PROMPT, gpEl.value || '');
-        }, true);
+        };
+        if (typeof GlobalCleanup !== 'undefined' && GlobalCleanup.registerListener) {
+            GlobalCleanup.registerListener(_origStartBtn, 'click', _startHandler, true);
+        } else {
+            _origStartBtn.addEventListener('click', _startHandler, true);
+        }
     }
 }
 

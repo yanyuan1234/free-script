@@ -182,6 +182,29 @@ var StreamBridge = (function() {
             _cleanupRequest(ids[i]);
             req.reject(new Error('Worker 不可用: ' + reason));
         }
+        // 【P1-4 修复】Worker 崩溃后自动重启，恢复后续请求的处理能力
+        _restartWorker();
+    }
+
+    // 【P1-4 修复】重启 Worker：清理旧 Worker，重置状态，异步重新初始化
+    function _restartWorker() {
+        if (_worker) {
+            try { _worker.terminate(); } catch (e) {}
+            _worker = null;
+        }
+        _workerAvailable = false;
+        _workerInitAttempted = false;
+        _workerInitPromise = null;
+        // 异步重新初始化，不阻塞当前调用
+        _ensureWorker().then(function(ok) {
+            if (ok) {
+                console.log('[StreamBridge] Worker 已自动重启');
+            } else {
+                console.warn('[StreamBridge] Worker 重启失败，后续请求将降级到主线程');
+            }
+        }).catch(function(e) {
+            console.warn('[StreamBridge] Worker 重启异常:', e && e.message);
+        });
     }
 
     // 主入口：通过 Worker 执行流式请求

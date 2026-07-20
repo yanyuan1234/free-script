@@ -284,8 +284,9 @@ const AIOutputJSONSchema = {
     isStrictSupported(modelName) {
         if (!modelName || typeof modelName !== 'string') return false;
         var m = modelName.toLowerCase();
-        // DeepSeek 系（官方支持 json_schema strict）
-        if (/deepseek/.test(m)) return true;
+        // 【P1-3 修复】DeepSeek API 在 strict:true 时可能拒绝响应（400 错误），
+        // 降级为 json_object 模式，避免 API 调用失败
+        if (/deepseek/.test(m)) return false;
         // OpenAI GPT-4o / GPT-4.1 / o1 / o3 系（官方支持）
         if (/gpt-4o|gpt-4\.1|gpt-4-turbo|^o1|^o3|^o4/.test(m)) return true;
         // 通义 Qwen 系（阿里云官方支持）

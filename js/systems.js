@@ -360,6 +360,8 @@ var AchievementSystem = {
     }
     },
     getDefaultAchievements() {
+        // 【P1-2 修复】空值安全检查：gameState 未初始化时返回空数组
+        if (!gameState) return [];
         var modules = gameState._worldModules || [];
         var achieveModules = modules.filter(function(m) {
             return m.type === 'achievements' || m.type === 'achievement';
@@ -385,6 +387,8 @@ var AchievementSystem = {
     return aiAchievements;
     },
     getPlayerAchievements() {
+        // 【P1-2 修复】空值安全检查：gameState 未初始化时返回默认空状态
+        if (!gameState) return { unlocked: [], progress: {}, totalPoints: 0, lastCheck: 0 };
         if (!gameState._achievements) {
             gameState._achievements = {
                 unlocked: [],
@@ -396,20 +400,15 @@ var AchievementSystem = {
     return gameState._achievements;
     },
     calculateStats() {
+        // 【P1-2 修复】空值安全检查：gameState 未初始化时返回默认空统计
         var stats = {
-            storyCount: (gameState.conversationHistory || []).filter(m => m.role === 'assistant').length,
-            npcCount: Object.keys(gameState.allCharacters || {}).length,
-            friendlyNpc: 0,
-            romanceNpc: 0,
-            allyNpc: 0,
-            combatCount: 0,
-            winStreak: 0,
-            bagItems: 0,
-            rareItems: 0,
-            legendaryItems: 0,
-            locations: 0,
-            hiddenLocations: 0
-            };
+            storyCount: 0, npcCount: 0, friendlyNpc: 0, romanceNpc: 0, allyNpc: 0,
+            combatCount: 0, winStreak: 0, bagItems: 0, rareItems: 0,
+            legendaryItems: 0, locations: 0, hiddenLocations: 0
+        };
+        if (!gameState) return stats;
+        stats.storyCount = (gameState.conversationHistory || []).filter(function(m) { return m.role === 'assistant'; }).length;
+        stats.npcCount = Object.keys(gameState.allCharacters || {}).length;
         if (gameState.currentBag) {
             stats.bagItems = gameState.currentBag.reduce(function(s, i) {
                 return s + (i.count || 1);
@@ -763,6 +762,8 @@ function toggleQuestList() {
 }
 
 function renderQuests() {
+    // 【P1-2 修复】空值安全检查：gameState 未初始化时直接返回
+    if (!gameState) return;
     var container = document.getElementById('questModule');
     // 如果世界Tab里还没有任务模块容器，创建一个
     if (!container) {
@@ -912,6 +913,8 @@ function _inferRelationshipsFromCharacters() {
 }
 
 function renderRelationships() {
+    // 【P1-2 修复】空值安全检查：gameState 未初始化时直接返回
+    if (!gameState) return;
     var container = document.getElementById('relationModule');
     var list = document.getElementById('relationList');
     if (!container || !list) return;
