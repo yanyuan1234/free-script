@@ -1082,13 +1082,51 @@ var LocalGameAPI = {
         this._autoRotate = val;
         this.save();
     },
+    // 【BUG-001 修复】整体重试硬上限：跨 _retrySingleRequest 内部递归 + callAI 外层 while 循环
+    // 之前 tryWithFallback 内部限流重试 2 次 + 网络重试 3 次，外层 callAI 又有 2 次 429 重试，
+    // 极端情况下 9+ 次重试仍不退出，导致 UI 永远卡在 "速率限制，5秒后自动重试 (1/2)" 循环。
+    // 新增 _globalRetryCount：每次进入 tryWithFallback 失败 +1，累计超过上限后强制终止并提示用户。
     async tryWithFallback(requestFn) {
         // 网络错误重试配置
         const MAX_RETRIES = 3; // 每个配置最多重试3次
         const RETRY_DELAY_BASE = 1000; // 基础延迟1秒
 
+        // 【BUG-001 修复】全局重试计数器：跨 callAI 多次调用 tryWithFallback 时累计
+        // 用 LocalGameAPI 字段持久化在对象上，避免递归闭包污染
+        if (typeof this._globalRetryCount !== 'number') this._globalRetryCount = 0;
+        if (typeof this._globalRetryResetTimer !== 'undefined') clearTimeout(this._globalRetryResetTimer);
+        // 30秒内没有新的失败 → 重置计数（避免长期累积误伤）
+        this._globalRetryResetTimer = setTimeout(function() {
+            if (LocalGameAPI) LocalGameAPI._globalRetryCount = 0;
+        }, 30000);
+        // 硬上限：3 次连续全局失败后，强制终止并提示用户切换 API/手动操作
+        const GLOBAL_RETRY_LIMIT = 3;
+
         // 【P1 修复】清理过期的失败记录，避免堆积导致所有配置被跳过
         this._cleanupExpiredFailures();
+
+        // 【BUG-001 修复】在进入重试前先看是否已经触顶：避免上一次失败还没解除，
+        // 紧接着的下一次请求又陷入死循环。
+        if (this._globalRetryCount >= GLOBAL_RETRY_LIMIT) {
+            // 给出明确的可操作提示：用户可以重置计数 或 等冷却 或 换 API
+            var _errMsg = 'API 持续调用失败，已自动停止重试（累计 ' + this._globalRetryCount + ' 次）。\n\n'
+                + '可能原因：\n'
+                + '• API Key 余额/限流已用完\n'
+                + '• 当前所有 API 配置均不可用\n\n'
+                + '建议操作：\n'
+                + '1. 等待 30 秒后手动重试（错误计数会自动重置）\n'
+                + '2. 检查并更换其他可用的 API 配置\n'
+                + '3. 确认 API Key 余额充足';
+            this._globalRetryCount = 0; // 给用户一次手动重试的机会
+            var _limitErr = new Error(_errMsg);
+            _limitErr.name = 'GlobalRetryLimitError';
+            _limitErr.isUserFacing = true;
+            // 弹一个常驻 toast (5 秒) 而非 3 秒的普通 toast，确保用户能看见
+            if (typeof UI !== 'undefined' && UI.toast) {
+                try { UI.toast('API 持续失败已停止自动重试，请检查 API 配置', 5000, 'error'); } catch (e) {}
+            }
+            throw _limitErr;
+        }
 
         var startTs = Date.now();
 
@@ -1096,11 +1134,14 @@ var LocalGameAPI = {
             try {
                 var result = await this._retrySingleRequest(requestFn, this._currentSlot, 0, MAX_RETRIES, RETRY_DELAY_BASE);
                 this._logRequest(this._currentSlot, true, '', Date.now() - startTs);
+                this._globalRetryCount = 0; // 【BUG-001 修复】成功 → 重置全局计数
                 return result;
             } catch (e) {
                 var _singleErr = (e && e.message) ? e.message : String(e);
                 this._logRequest(this._currentSlot, false, _singleErr, Date.now() - startTs);
                 this._markModelFailed(this._currentSlot, _singleErr);
+                // 【BUG-001 修复】失败 → 全局计数 +1
+                this._globalRetryCount = (this._globalRetryCount || 0) + 1;
                 throw e;
             }
         }
@@ -1114,19 +1155,26 @@ var LocalGameAPI = {
             if (_c && _c.baseUrl && _c.apiKey) totalUsable++;
         }
         // 轮换顺序：当前 slot 起循环，失败标记仅作 UI 提醒，不影响轮换顺序
+        // 【BUG-004 修复】先过滤出"真正可用"的 slot（baseUrl + apiKey 均非空），
+        // 空占位 slot 完全不参与轮询，避免日志里出现"配置 1 不完整"的干扰信息，
+        // 也避免 slot 编号与"可用配置序号"不一致
         var orderedSlots = [];
         for (let i = 0; i < totalSlots; i++) {
-            orderedSlots.push((this._currentSlot + i) % totalSlots);
+            var _cfgi = this._configs[i];
+            if (_cfgi && _cfgi.baseUrl && _cfgi.apiKey) {
+                orderedSlots.push((this._currentSlot + i) % totalSlots);
+            }
         }
+        // totalSlots 改为 orderedSlots 长度，外层循环上限也对应调整
+        totalSlots = orderedSlots.length;
 
         var failReasons = [];
         for (let attempt = 0; attempt < totalSlots; attempt++) {
             const slotIdx = orderedSlots[attempt];
             const cfg = this._configs[slotIdx];
-            // 跳过配置不完整的API
-            if (!cfg.baseUrl || !cfg.apiKey) {
-                console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 不完整，跳过');
-                continue;
+            // 【BUG-004 修复】防御性检查：理论上 orderedSlots 已经过滤过空配置，但保险起见再查一次
+            if (!cfg || !cfg.baseUrl || !cfg.apiKey) {
+                continue; // 静默跳过空占位，不再打印"配置 X 不完整"日志
             }
 
             if (this.isSlotTimeoutRecent(slotIdx)) {
@@ -1143,6 +1191,7 @@ var LocalGameAPI = {
             try {
                 const result = await this._retrySingleRequest(requestFn, slotIdx, 0, MAX_RETRIES, RETRY_DELAY_BASE);
                 this._logRequest(slotIdx, true, '', Date.now() - startTs);
+                this._globalRetryCount = 0; // 【BUG-001 修复】成功 → 重置全局计数
                 if (attempt > 0 && slotIdx !== this._currentSlot) {
                     this.setCurrentSlot(slotIdx);
                     UI.toast('已自动切换到 ' + cfgLabel);
@@ -1153,6 +1202,8 @@ var LocalGameAPI = {
                 this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
                 // 失败标记记录原因，超时模型会在短期内被跳过
                 this._markModelFailed(slotIdx, errMsg);
+                // 【BUG-001 修复】失败 → 全局计数 +1
+                this._globalRetryCount = (this._globalRetryCount || 0) + 1;
                 console.warn(cfgLabel + ' (' + cfg.model + ') 调用失败:', errMsg);
 
                 failReasons.push(cfgLabel + '(' + (cfg.model || '?') + '): ' + errMsg);
@@ -1163,6 +1214,21 @@ var LocalGameAPI = {
                     UI.toast(cfgLabel + ' 失败，尝试下一个...');
                 }
             }
+        }
+        // 【BUG-001 修复】全部配置都失败 → 检查是否超过全局硬上限
+        // 一旦超过，抛 GlobalRetryLimitError 给 callAI 外层，强制停止重试循环
+        if (this._globalRetryCount >= GLOBAL_RETRY_LIMIT) {
+            var _limitMsg2 = 'API 持续调用失败，已自动停止重试（累计 ' + this._globalRetryCount + ' 次）。\n\n'
+                + '可能原因：API Key 余额/限流已用完，或所有 API 配置均不可用。\n\n'
+                + '建议：等待 30 秒后手动重试（错误计数会自动重置），或检查并更换其他可用的 API 配置。';
+            var _limitErr2 = new Error(_limitMsg2);
+            _limitErr2.name = 'GlobalRetryLimitError';
+            _limitErr2.isUserFacing = true;
+            this._globalRetryCount = 0;
+            if (typeof UI !== 'undefined' && UI.toast) {
+                try { UI.toast('API 持续失败已停止自动重试，请检查 API 配置', 5000, 'error'); } catch (e) {}
+            }
+            throw _limitErr2;
         }
         // 更详细的错误信息
         if (attemptedCount === 0) {
@@ -1416,11 +1482,13 @@ var LocalGameAPI = {
         if (!baseUrl) return [];
         try {
             const url = this.normalizeUrl(baseUrl) + '/models';
+            console.log('[fetchModels] 请求:', url);
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + apiKey
                 }
             });
+            console.log('[fetchModels] 响应状态:', res.status, res.statusText);
             if (res.ok) {
                 const data = await res.json();
                 const allModels = (data.data || []).map(function(m) {
@@ -1465,12 +1533,16 @@ var LocalGameAPI = {
                 }
                 console.log('[fetchModels] 过滤前: ' + allModels.length + ' 个模型，过滤后: ' + textModels.length + ' 个文本模型');
                 return textModels.sort();
-                } else {
-                throw new Error(translateError('HTTP错误: ' + res.status));
             }
+            // res.ok 为 false：抛出具体 HTTP 错误
+            var _errBody = '';
+            try { _errBody = await res.text(); } catch (e2) {}
+            console.error('[fetchModels] HTTP 错误:', res.status, _errBody.slice(0, 200));
+            throw new Error(translateError('HTTP ' + res.status + ': ' + (res.statusText || '') + (_errBody ? ' - ' + _errBody.slice(0, 100) : '')));
         } catch (e) {
-        throw new Error('无法获取模型列表。建议：手动输入模型名称');
-    }
+            console.error('[fetchModels] 失败:', e && e.message, e);
+            throw e;  // 【BUG-002 修复】透传真实错误，不要用模糊消息替换
+        }
     },
     async testConnection(config, signal) {
         if (!config.baseUrl || !config.apiKey) return {
@@ -5401,10 +5473,36 @@ function buildAIRequestBody(messages, options, config) {
             if (mt2 > effectiveMax) {
                 console.warn('[API] max_tokens(' + mt2 + ') 超过剩余空间(' + effectiveMax + ' = ctx ' + ctxSize + ' - input ' + inputTokens + ' - 100)，已裁剪');
                 filtered.max_tokens = effectiveMax;
+                // 【BUG-003 修复】记录截断信息，UI 端可基于此判断是否需要追加"已截断"提示
+                try {
+                    if (typeof window !== 'undefined') {
+                        window._lastMaxTokensTruncated = {
+                            requested: mt2,
+                            effective: effectiveMax,
+                            contextSize: ctxSize,
+                            inputTokens: inputTokens,
+                            timestamp: Date.now()
+                        };
+                    }
+                } catch (e) {}
+                if (typeof UI !== 'undefined' && UI.toast) {
+                    UI.toast('输出长度受上下文限制（已自动裁剪 ' + (mt2 - effectiveMax) + ' tokens）', 4000);
+                }
             } else if (mt2 > ctxSize) {
                 // 兜底：max_tokens 绝对不能超过 contextSize
                 console.warn('[API] max_tokens(' + mt2 + ') 超过 contextSize(' + ctxSize + ')，已裁剪');
                 filtered.max_tokens = ctxSize;
+                try {
+                    if (typeof window !== 'undefined') {
+                        window._lastMaxTokensTruncated = {
+                            requested: mt2,
+                            effective: ctxSize,
+                            contextSize: ctxSize,
+                            inputTokens: inputTokens,
+                            timestamp: Date.now()
+                        };
+                    }
+                } catch (e) {}
             }
         }
     }
@@ -5923,6 +6021,17 @@ async function callAI(messages, options = {}) {
             } catch (e429) {
                 // 用户取消时立即停止重试
                 if (localAC.signal.aborted) throw e429;
+                // 【BUG-001 修复】全局重试上限触发后，立即终止，
+                // 不要进入 429 重试循环，也不要被外层 JSON Schema 降级再次递归
+                if (e429 && e429.name === 'GlobalRetryLimitError') {
+                    // 清空降级状态，避免下次请求继承脏数据
+                    if (typeof gameState !== 'undefined' && gameState) gameState._jsonSchemaDowngrade = null;
+                    // 恢复"未生成"状态（避免 UI 永远卡在"AI正在构思剧情..."）
+                    if (typeof setWaiting === 'function') {
+                        try { setWaiting(false); } catch (e) {}
+                    }
+                    throw e429;
+                }
                 var _msg429 = (e429 && e429.message) ? String(e429.message) : '';
                 // 【NEW-011 修复】扩展限流检测：429 状态码 + ResourceExhausted + rate_limit/quota 关键词
                 // Google Gemini 风格的 ResourceExhausted 可能以 503 或其他状态码返回
@@ -5976,6 +6085,27 @@ async function callAI(messages, options = {}) {
             }
         }
     } catch (e) {
+        // 【BUG-001 修复】GlobalRetryLimitError 是用户可处理的终态错误，
+        // 不应该进入 JSON Schema 降级路径（否则会递归 callAI 又触发重试）
+        if (e && e.name === 'GlobalRetryLimitError') {
+            // 清空降级状态，避免下次请求继承脏数据
+            if (typeof gameState !== 'undefined' && gameState) gameState._jsonSchemaDowngrade = null;
+            // 恢复"未生成"状态（避免 UI 永远卡在"AI正在构思剧情..."）
+            if (typeof setWaiting === 'function') {
+                try { setWaiting(false); } catch (e2) {}
+            }
+            // 显示一个带"我知道了"按钮的错误提示
+            if (typeof UI !== 'undefined' && typeof UI.alert === 'function') {
+                try {
+                    UI.alert('API 持续调用失败\n\n' + (e.message || '') + '\n\n请检查 API 配置或更换其他 API 后重试。');
+                } catch (e3) {
+                    console.error('[callAI] GlobalRetryLimit:', e.message);
+                }
+            } else {
+                console.error('[callAI] GlobalRetryLimit:', e.message);
+            }
+            throw e;
+        }
         // 【JSON Schema 降级机制】检测 schema 相关的 400 错误，自动降级重试一次
         // 常见错误关键词：response_format / json_schema / schema / strict / invalid
         // 降级路径：strict → json_object → off

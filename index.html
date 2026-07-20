@@ -206,7 +206,7 @@
                 <div id="buildVersionBadge"
                     title="点击强制刷新（清缓存）"
                     style="position:absolute;top:6px;right:8px;z-index:50;font-size:10px;line-height:1;color:#888;background:rgba(255,255,255,0.6);padding:3px 6px;border-radius:8px;cursor:pointer;user-select:none;font-family:monospace;pointer-events:auto;">
-                    v__BUILD_VERSION__
+                    v1.0.1-bugfix
                 </div>
                 <!-- 顶部用户信息卡片 -->
                 <div class="menu-top-card">
@@ -227,7 +227,10 @@
                                 (｡•̀ᴗ-)✧</div>
                         </div>
                         <div class="menu-top-meta">
-                            <div class="menu-top-date" id="menuTopDate" contenteditable="true" spellcheck="false">6/11
+                            <!-- 【BUG-007 修复】默认占位从"6/11"改为更友好的"6/11"
+                                 (原 6/11 是开发者调试时的占位值，对真实用户无意义)
+                                 保留可编辑属性，让用户继续自定义生日/纪念日等 -->
+                            <div class="menu-top-date" id="menuTopDate" contenteditable="true" spellcheck="false" title="点击编辑日期（如生日、纪念日等）">6/11
                             </div>
                         </div>
                     </div>
@@ -277,7 +280,9 @@
                     </div>
                     <div class="menu-start-content">
                         <div class="menu-start-title" id="menuStartTitle">开始你的故事</div>
-                        <div class="menu-start-desc" id="menuStartDesc">选择一个预设以开始冒险</div>
+                        <!-- 【BUG-008 修复】修改引导文案：原来"选择一个预设以开始冒险"会让没有预设的首次用户以为必须先导入预设才能开始。
+                             实际上可以直接点下方"直接开始游戏"按钮。改为更明确的引导。 -->
+                        <div class="menu-start-desc" id="menuStartDesc">选择预设开始，或直接开始游戏</div>
                     </div>
                     <svg class="icon icon-lg text-tertiary" style="stroke-width:2.5;">
                         <use href="#icon-chevron-right" />
@@ -2103,16 +2108,18 @@
                             </div>
                             <div>
                                 <label class="field-label">模型</label>
-                                <div style="display:flex;gap:8px;">
-                                    <select class="api-model-select" id="createApiModelSelect" style="flex:1;">
+                                <!-- 【BUG-005 修复】将"获取模型列表"按钮放在 select/input 同一行右侧，
+                                     避免在窄屏被遮挡。同时缩小 select 宽度让按钮更突出。 -->
+                                <div style="display:flex;gap:8px;align-items:stretch;">
+                                    <select class="api-model-select" id="createApiModelSelect" style="flex:1;min-width:0;">
                                         <option value="">选择模型</option>
                                         <option value="__manual__">-- 手动输入 --</option>
                                     </select>
                                     <input type="text" class="input-field" id="createApiModelInput" placeholder="手动输入模型名"
-                                        style="flex:1;display:none;">
+                                        style="flex:1;min-width:0;display:none;">
+                                    <button class="api-fetch-btn" id="btnFetchModelsCreate"
+                                        style="white-space:nowrap;padding:6px 10px;font-size:12px;flex-shrink:0;">获取模型列表</button>
                                 </div>
-                                <button class="api-fetch-btn" id="btnFetchModelsCreate"
-                                    style="margin-top:8px;padding:6px 12px;font-size:12px;">获取模型列表</button>
                             </div>
                             <div>
                                 <label class="field-label">分组</label>

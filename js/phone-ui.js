@@ -7004,14 +7004,18 @@ function showApiDetail(slot) {
 function _refreshCreateApiModelInput() {
     var select = document.getElementById('createApiModelSelect');
     var input = document.getElementById('createApiModelInput');
+    var fetchBtn = document.getElementById('btnFetchModelsCreate');
     if (select.value === '__manual__') {
         select.style.display = 'none';
         input.style.display = 'block';
         input.focus();
+        // 【BUG-005 修复】手动输入模式下隐藏"获取模型列表"按钮，避免误导用户
+        if (fetchBtn) fetchBtn.style.display = 'none';
     } else {
         select.style.display = 'block';
         input.style.display = 'none';
         input.value = '';
+        if (fetchBtn) fetchBtn.style.display = '';
     }
 }
 function showCreateApiModal() {
@@ -7147,9 +7151,31 @@ function showCreateApiModal() {
             if (warnCount > 0) msg += '，' + warnCount + ' 个有提醒（依然可选）';
             UI.toast(msg);
         } catch (e) {
-            UI.toast(translateError(e.message));
+            // 【BUG-002 修复】显示更详细的错误，方便用户排查
+            var _em = (e && e.message) ? e.message : String(e);
+            console.error('[btnFetchModelsCreate] 失败:', _em);
+            var _hints = [];
+            if (/HTTP 401|401|unauthor|invalid.*key|authentication/i.test(_em)) {
+                _hints.push('API Key 无效或过期');
+            } else if (/HTTP 403|forbidden/i.test(_em)) {
+                _hints.push('API Key 没有访问该模型的权限');
+            } else if (/HTTP 404|not found/i.test(_em)) {
+                _hints.push('API 端点 URL 不正确（确认是 OpenAI 兼容 /v1 格式）');
+            } else if (/HTTP 429|rate.?limit|quota/i.test(_em)) {
+                _hints.push('API 限流或余额不足');
+            } else if (/Failed to fetch|network|CORS|cors/i.test(_em)) {
+                _hints.push('网络问题或 CORS 跨域被拦截');
+            }
+            var _userMsg = '获取模型失败：' + _em;
+            if (_hints.length > 0) {
+                _userMsg += '\n可能原因：' + _hints.join(' / ');
+            }
+            _userMsg += '\n\n请检查后重试，或直接使用「手动输入」';
+            // 5 秒错误 toast 给用户充足时间阅读
+            UI.toast(_userMsg, 5000, 'error');
         }
         newFetchBtn.disabled = false;
+        newFetchBtn.textContent = '获取模型列表';
     });
 }
 function showCreateGroupModal() {

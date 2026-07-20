@@ -2540,6 +2540,20 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 流式阶段已把脏文本推入打字机。此处对最终文本再次清洗；
         // 若清洗后变短，立即重置打字机，用干净文本重新渲染。
         var _rawFinalStory = finalStory;
+        // 【BUG-003 修复】如果本次 AI 响应被 max_tokens 截断，在末尾追加可见的"已自动截断"标记
+        // 之前只在 console 打 warn，用户看不到；现在在故事末尾加一个轻量级提示
+        try {
+            if (typeof window !== 'undefined' && window._lastMaxTokensTruncated &&
+                (Date.now() - (window._lastMaxTokensTruncated.timestamp || 0)) < 5000) {
+                var _mt = window._lastMaxTokensTruncated;
+                var _truncMark = '\n\n*（AI 响应达到最大长度限制自动结束。如需更长输出，请在"参数设置"中调高"最大回复长度"，或清理上下文/历史）*';
+                if (finalStory && finalStory.indexOf('AI 响应达到最大长度限制') === -1) {
+                    finalStory = finalStory + _truncMark;
+                    console.log('[BUG-003] 已为被截断的 AI 响应追加尾部提示');
+                }
+                window._lastMaxTokensTruncated = null; // 只追加一次
+            }
+        } catch (e) { /* 忽略 */ }
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.sanitizeStory) {
             try {
                 var _t2 = performance.now();
