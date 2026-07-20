@@ -2626,16 +2626,27 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (finalStory.length > alreadyDisplayed) {
             TypewriterBuffer.push(finalStory);
         }
-        // 【BUG-011 修复】isFinished 在 core.js 修复后已可用，但仍包 try/catch
-        // 防止任何 TypewriterBuffer 抛错阻断 turn++/选项渲染
+        // 【BUG-011 修复 v2】不再依赖 TypewriterBuffer.isFinished() / onComplete 触发最终渲染。
+        // 根本原因：OutputSanitizer.sanitizeStory() 在流结束后把 finalStory 缩短时会触发
+        // TypewriterBuffer.stop()，而 stop() 内部会把 onComplete 置为 null，导致流结束分支的
+        // 打字完成回调永远不触发；同时 setInterval 也可能因 pause/visibility 状态停在
+        // "isTyping=false, queue 仍有残余" 的中间态，使 isFinished() 的判定不再可靠。
+        // 这里直接同步调用 _doFinalRender：_doFinalRender 内部已有 _finalRendered 防重入，
+        // 因此即便打字机后续自然触发了 onComplete（onComplete 已被 stop 清理，不会再触发了），
+        // 也不会重复渲染。同步渲染能保证 turn++/选项渲染/HUD 刷新等后续逻辑立刻拿到最新 DOM。
         try {
-            // 如果打字机已完成，直接最终渲染（仅当 onComplete 未触发时才执行）
-            if (TypewriterBuffer.isFinished() && !_finalRendered) {
+            if (!_finalRendered) {
                 _doFinalRender();
             }
         } catch (e) {
-            console.warn('[sendAIRequest] isFinished 检查失败，跳过:', e && e.message);
+            console.warn('[sendAIRequest] 同步最终渲染异常:', e && e.message);
         }
+        // 【BUG-011 兜底】清空 onComplete 防止停摆的 setInterval 在 30s cursorSafety 之后
+        // 突然恢复并触发 _doFinalRender 二次调用（虽然 _finalRendered 标志会拦住，但减少
+        // 闭包引用、避免在最终状态后继续持有回调链）。
+        try {
+            TypewriterBuffer.onComplete = null;
+        } catch (e) { /* ignore */ }
 
         // 旧实现只依赖 TypewriterBuffer.onComplete 清理光标，但若打字机因故卡住
         // （如 pause 后未 resume、异常退出）onComplete 不会触发，光标会永久残留
