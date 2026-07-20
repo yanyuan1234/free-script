@@ -135,9 +135,40 @@ function _globalA11yDelegate(e) {
         }
     }
 }
+// P2-5: 移动端触摸事件委托 —— 为关键交互元素添加 touchstart 支持
+// 防止移动端点击 300ms 延迟，同时避免在可滚动区域误触发
+var _touchStartX = 0, _touchStartY = 0;
+function _touchDelegate(e) {
+    var t = e.target;
+    if (!t || t.nodeType !== 1) return;
+
+    // touchstart：记录触摸起始位置，用于后续判断是否为滑动
+    if (e.type === 'touchstart') {
+        _touchStartX = (e.touches && e.touches[0]) ? e.touches[0].clientX : 0;
+        _touchStartY = (e.touches && e.touches[0]) ? e.touches[0].clientY : 0;
+    }
+
+    // touchend：如果触摸位移很小（< 10px），则视为点击，触发对应逻辑
+    if (e.type === 'touchend') {
+        var deltaX = Math.abs(((e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientX : 0) - _touchStartX);
+        var deltaY = Math.abs(((e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0].clientY : 0) - _touchStartY);
+        if (deltaX > 10 || deltaY > 10) return; // 滑动操作，不触发点击
+
+        // 查找可交互元素：button、.btn-*、data-action、[role="button"]
+        var interactiveEl = t.closest('button, [role="button"], [data-action], .btn-primary, .btn-secondary, .btn-danger, .btn-outline, .wi-checkbox, .collapse-header, .setting-header, .memory-tab, .archetype-card, .param-preset, .world-preset-chip');
+        if (interactiveEl) {
+            e.preventDefault();
+            interactiveEl.click();
+        }
+    }
+}
+
 if (typeof document !== 'undefined') {
     GlobalCleanup.registerListener(document, 'keydown', _globalA11yDelegate);
     GlobalCleanup.registerListener(document, 'click', _globalA11yDelegate);
+    // P2-5: 注册移动端触摸事件
+    GlobalCleanup.registerListener(document, 'touchstart', _touchDelegate, { passive: true });
+    GlobalCleanup.registerListener(document, 'touchend', _touchDelegate, { passive: false });
 }
 
 // escapeHTML / sanitizeHTML 已统一到 core.js 的 escapeHtml，此处不再重复定义
@@ -593,11 +624,39 @@ const ThemeManager = {
     },
 
     apply() {
-        if (this._current === 'dark') {
-            document.documentElement.setAttribute('data-theme', 'dark');
+        // P2-4: 主题切换闪烁修复 —— 使用 View Transition API 实现平滑过渡
+        // 避免直接设置 data-theme 导致的页面闪烁（FOUC）
+        if (document.startViewTransition) {
+            var self = this;
+            document.startViewTransition(function() {
+                if (self._current === 'dark') {
+                    document.documentElement.setAttribute('data-theme', 'dark');
+                } else {
+                    document.documentElement.setAttribute('data-theme', 'light');
+                }
+            });
         } else {
-            document.documentElement.setAttribute('data-theme', 'light');
+            // 降级方案：使用 CSS transition 过渡主题切换
+            document.documentElement.style.setProperty('transition', 'background-color 0.3s ease, color 0.3s ease');
+            if (this._current === 'dark') {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+            // 过渡完成后清除 transition 属性，避免影响其他动画
+            var _root = document.documentElement;
+            setTimeout(function() {
+                _root.style.removeProperty('transition');
+            }, 350);
         }
+    },
+
+    // P2-4: 添加 toggle 方法，支持程序化主题切换
+    toggle() {
+        this._current = (this._current === 'dark') ? 'light' : 'dark';
+        Storage.set(Storage.KEYS.THEME, this._current);
+        this.apply();
+        this._updateStar();
     },
 
     _updateStar() {

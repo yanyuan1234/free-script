@@ -1813,6 +1813,46 @@ var PresetManager = {
         var preset = this.presets[idx];
         if (!preset) return;
 
+        // P2-3: 预设加载错误处理 —— 加载失败时回退到默认预设参数
+        try {
+            this._doLoadPreset(preset, idx);
+        } catch (e) {
+            console.error('[PresetManager] 预设加载失败，回退到默认预设:', e);
+            this._applyDefaultPreset();
+            UI.toast('预设加载失败，已回退到默认设置: ' + translateError(e.message || '未知错误'));
+        }
+    },
+
+    // 默认预设参数（P2-3 回退用）
+    _DEFAULT_PRESET_PARAMS: {
+        temperature: 0.8,
+        top_p: 0.9,
+        top_k: 0,
+        frequency_penalty: 0,
+        presence_penalty: 0,
+        max_tokens: DEFAULT_MAX_TOKENS,
+        tool_reasoning_mode: 'disabled',
+        use_sysprompt: true,
+        squash_system_messages: false,
+        names_behavior: 0,
+        world_info_position_first: true
+    },
+
+    _applyDefaultPreset: function() {
+        this.currentPresetIndex = -1;
+        this.currentParams = Object.assign({}, this._DEFAULT_PRESET_PARAMS);
+        this.saveCurrentParams();
+        this.syncParamsToUI();
+        if (typeof gameState !== 'undefined') {
+            gameState._useSysprompt = true;
+            gameState._squashSystemMessages = false;
+            gameState._namesBehavior = 0;
+            gameState._wiFirst = true;
+        }
+    },
+
+    _doLoadPreset: function(preset, idx) {
+
         // 清理旧预设的扩展配置残留，防止切换后旧配置影响新预设
         gameState._theaterConfig = null;
         gameState._triggers = null;

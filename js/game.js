@@ -451,6 +451,42 @@ function _slimAssistantMessage(content) {
         // 快速检测：不是JSON格式就直接返回
         var trimmed = content.trim();
         if (trimmed.charAt(0) !== '{') return content;
+
+        // P2-2: JSON 边界检测 —— 截断历史时可能把 JSON 分界符截断，污染下一轮
+        // 检测大括号是否匹配，不匹配则尝试修复截断的 JSON
+        var openBraces = 0, closeBraces = 0;
+        for (var bi = 0; bi < trimmed.length; bi++) {
+            if (trimmed[bi] === '{') openBraces++;
+            if (trimmed[bi] === '}') closeBraces++;
+        }
+        if (openBraces > closeBraces) {
+            // JSON 被截断：尝试补全缺失的闭合括号
+            var repaired = trimmed;
+            var missing = openBraces - closeBraces;
+            for (var ri = 0; ri < missing; ri++) repaired += '}';
+            try {
+                var repairedData = JSON.parse(repaired);
+                if (repairedData && repairedData.story) {
+                    // 标记为修复后的数据，仅保留 story 文本避免污染
+                    console.warn('[slimAssistant] JSON 被截断，已修复补全 ' + missing + ' 个闭合括号');
+                    return '{ "story": ' + JSON.stringify(repairedData.story) + ' }';
+                }
+            } catch (re) {
+                // 修复失败，提取纯文本 story 部分
+                console.warn('[slimAssistant] JSON 截断修复失败，提取纯文本');
+            }
+            // 兜底：尝试从截断 JSON 中提取 story 字段的文本内容
+            var storyMatch = trimmed.match(/"story"\s*:\s*"([^"\\]*(\\.[^"\\]*)*)"/);
+            if (storyMatch) {
+                return storyMatch[0]; // 返回提取到的 story 键值对片段
+            }
+            // 最后兜底：用正则提取最后一个完整的 JSON 键值对，丢弃截断部分
+            var lastComplete = trimmed.replace(/\{[^}]*$/, '');
+            if (lastComplete.length > 0) {
+                return lastComplete;
+            }
+        }
+
         var data = JSON.parse(trimmed);
         if (data && data.story) {
             // 【ISSUE-A1 修复】保留所有18字段名（骨架），但精简值
