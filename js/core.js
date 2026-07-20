@@ -3296,6 +3296,13 @@ function parseAIResponse(reply) {
         if (cleanedReply) storyText = cleanedReply;
     }
 
+    // 【P0 修复】检测 storyText 是否为原始 SSE 流数据泄露
+    // SSE 数据格式：data: {"id": "chatcmpl-...", "choices": [...], ...}
+    if (storyText && /^data:\s*\{/.test(storyText.trim())) {
+        console.warn('[parseAIResponse] 检测到原始 SSE 流数据泄露，已拦截');
+        storyText = '⚠️ **AI 回复格式异常**（SSE 流数据未正确解析）\n\n💡 建议点击 🔄 重新生成，或尝试关闭流式模式。';
+    }
+
     // 【P0 修复】检测 storyText 是否为原始 JSON 泄露
     // 当解析器失败时，AI 返回的原始 JSON 可能被当作 storyText 显示
     if (storyText && storyText.trim().startsWith('{') && /\}\s*$/.test(storyText.trim())) {
@@ -5442,6 +5449,11 @@ function parseAIResponseFallback(rawBody) {
     }
     if (sseContent) return sseContent;
     // 3) 终极兜底：原文（与原版一致）
+    // 【P0修复】检测 rawBody 是否为原始 SSE 数据（data: {...}），避免泄露到 UI
+    if (/^data:\s*\{/.test(rawBody.trim())) {
+        console.warn('[parseAIResponseFallback] 检测到原始 SSE 数据泄露，拦截返回空字符串');
+        return '';
+    }
     return rawBody;
 }
 

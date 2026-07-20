@@ -2668,9 +2668,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState.pureTextMode) {
             historyAssistantContent = storyText || response;
         } else {
+            // 【P0 修复】检测 response 是否为原始 SSE 流数据（data: {...} 格式）
+            // 当流式解析失败时，Worker FALLBACK 可能返回 rawBody，导致 SSE 数据泄露到历史
+            var _responseTrimmed = response ? response.trim() : '';
+            if (_responseTrimmed && /^data:\s*\{/.test(_responseTrimmed)) {
+                console.warn('[sendAIRequest] 检测到原始 SSE 流数据泄露，已拦截，不入历史');
+                historyAssistantContent = '【本回合 AI 回复异常，已跳过存储。请重新生成或关闭流式模式。】';
+            } else {
             // 【ISSUE-D1 修复】检测 response 是否是完整 JSON（以 { 开头且以 } 结尾）
             // 截断的半截 JSON 存入历史会污染下一轮（AI 模仿截断格式输出不完整 JSON）
-            var _responseTrimmed = response ? response.trim() : '';
             var _isCompleteJSON = _responseTrimmed.charAt(0) === '{' && _responseTrimmed.endsWith('}');
             if (_isCompleteJSON) {
                 historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
@@ -2684,7 +2690,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             } else {
                 historyAssistantContent = _slimAssistantMessage(response) || storyText || response;
             }
-        }
+            }
+            }
 
         // ResponseParser 失败时，response/storyText 可能是 AI 的推理过程（"用户现在选择了..."）
         // 直接入库会污染后续 prompt，导致 AI 混淆现实与推理、破第四面墙
