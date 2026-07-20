@@ -2626,9 +2626,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (finalStory.length > alreadyDisplayed) {
             TypewriterBuffer.push(finalStory);
         }
-        // 如果打字机已完成，直接最终渲染（仅当 onComplete 未触发时才执行）
-        if (TypewriterBuffer.isFinished() && !_finalRendered) {
-            _doFinalRender();
+        // 【BUG-011 修复】isFinished 在 core.js 修复后已可用，但仍包 try/catch
+        // 防止任何 TypewriterBuffer 抛错阻断 turn++/选项渲染
+        try {
+            // 如果打字机已完成，直接最终渲染（仅当 onComplete 未触发时才执行）
+            if (TypewriterBuffer.isFinished() && !_finalRendered) {
+                _doFinalRender();
+            }
+        } catch (e) {
+            console.warn('[sendAIRequest] isFinished 检查失败，跳过:', e && e.message);
         }
 
         // 旧实现只依赖 TypewriterBuffer.onComplete 清理光标，但若打字机因故卡住

@@ -2497,6 +2497,13 @@ var TypewriterBuffer = {
     _cachedCompletedHtml: '',
     _cachedCompletedKey: '',
     _lastCurrentPara: '',
+    // 【BUG-011 修复】isFinished 方法缺失：phone-ui.js 4493 有一个同名方法，
+    // 但 game.js 2630 调用的是 core.js 的 TypewriterBuffer，访问不到 phone-ui 的扩展。
+    // 当 isFinished 抛 TypeError，整个 sendAIRequest 后半段（turn++、选项渲染、loading 清理）都跳过。
+    // 这里实现"打字机不活跃且队列已空"判定，与 phone-ui 版本语义一致。
+    isFinished: function() {
+        return !this.isTyping && !this.queue;
+    },
     // 标点停顿映射（字符 → 额外等待ms）
     _pauseMap: {
         '\u3002': 120, '\uff01': 120, '\uff1f': 120, '\u2026': 80,
