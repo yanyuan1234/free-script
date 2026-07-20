@@ -3695,7 +3695,8 @@ function onStreamChunk(delta, fullText) {
 
 // 【性能诊断】主线程心跳，检测主线程是否被阻塞
 var _heartbeatLast = Date.now();
-setInterval(function() {
+// 【P0修复】使用 TimerManager 管理，页面卸载时 GlobalCleanup 会自动清理
+TimerManager.setInterval('heartbeat', function() {
     var now = Date.now();
     var gap = now - _heartbeatLast;
     if (gap > 3000) {

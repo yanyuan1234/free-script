@@ -48,10 +48,19 @@ const StateManager = {
         if (typeof window !== 'undefined') {
             window.gameState = this._state;
         }
-        // 仅重置事务状态（旧事务随旧 _state 失效），保留 _listeners
-        this._inTransaction = false;
-        this._pendingChanges = [];
-        this._transactionBackup = null;
+        // 【P0修复】若事务进行中，先完成/回滚事务再 attach，避免数据丢失
+        if (this._inTransaction) {
+            console.warn('[StateManager] attachState 时有进行中事务，先完成事务再 attach');
+            // 不发送通知（旧 state 即将被替换），仅应用变更以避免数据丢失
+            try {
+                this._applyPendingChanges({ silent: true });
+            } catch (e) {
+                console.error('[StateManager] attachState 完成进行中事务失败:', e);
+            }
+            this._inTransaction = false;
+            this._pendingChanges = [];
+            this._transactionBackup = null;
+        }
         console.log('[StateManager] attachState 完成，引用已重建');
         return true;
     },
@@ -184,6 +193,8 @@ const StateManager = {
     // 内部：同步镜像到旧字段名（数据断层修复）
     // 新路径写入后，同时写入对应的旧顶层字段，保证 UI 直接读 gameState.xxx 不为空
     //
+    // 【P0修复】增加 _syncFromLegacy 反向同步：在保存前检测 UI 直接写入的 legacy 字段并同步回 StateManager
+    // 解决 phone-ui.js 80+ 处直读写 legacy 字段导致的数据不一致问题
 
     // - 方向：仅 StateManager.set → gameState.<legacy>（供 UI 读取兼容）
     // - 禁止：UI 层不可直接写 gameState.<legacy>（绕过 StateManager 会导致两份数据不同步）
@@ -193,6 +204,44 @@ const StateManager = {
     //     3. 长期（P2/P3）：删除 _syncLegacyMirror 与 gameState 旧字段，StateManager 为唯一真相源
     // - 特殊转换在下方分支处理：characters 数组↔allCharacters 对象 / progress.turn↔_stats.totalTurns /
     //   entities.events 对象数组↔keyEvents 字符串数组
+
+    // 【P0修复】反向同步：检测 legacy 字段是否被 UI 直接修改，同步回 StateManager
+    _syncFromLegacy() {
+        if (!this._state) return;
+        var _state = this._state;
+        // characters: allCharacters 对象 → entities.characters 数组
+        if (_state.allCharacters && typeof _state.allCharacters === 'object') {
+            var chars = Object.values(_state.allCharacters);
+            var existing = _state.entities && _state.entities.characters;
+            if (!existing || chars.length !== existing.length ||
+                JSON.stringify(chars.map(function(c) { return c.name; }).sort()) !==
+                JSON.stringify((existing || []).map(function(c) { return c.name; }).sort())) {
+                _state.entities = _state.entities || {};
+                _state.entities.characters = chars;
+            }
+        }
+        // bag: currentBag 数组 → entities.bag 数组
+        if (Array.isArray(_state.currentBag)) {
+            var existingBag = _state.entities && _state.entities.bag;
+            if (!existingBag || _state.currentBag.length !== existingBag.length) {
+                _state.entities = _state.entities || {};
+                _state.entities.bag = _state.currentBag;
+            }
+        }
+        // quests: currentQuests 数组 → entities.quests 数组
+        if (Array.isArray(_state.currentQuests)) {
+            var existingQuests = _state.entities && _state.entities.quests;
+            if (!existingQuests || _state.currentQuests.length !== existingQuests.length) {
+                _state.entities = _state.entities || {};
+                _state.entities.quests = _state.currentQuests;
+            }
+        }
+        // player: playerData 对象 → entities.player 对象
+        if (_state.playerData && typeof _state.playerData === 'object') {
+            _state.entities = _state.entities || {};
+            _state.entities.player = _state.playerData;
+        }
+    },
     _syncLegacyMirror(path, value) {
         const legacyName = StateSchema.getLegacyName(path);
         if (legacyName === path) return; // 无对应旧字段

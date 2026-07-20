@@ -1502,14 +1502,33 @@ var SaveDB = {
     },
     // ── 底层原始读写（带一次重试，偶发错误不立即永久 fallback） ──
     async _getRaw(key) {
+        // 【P0修复】_db null 检查，避免 IDB 未初始化时崩溃
+        if (!SaveDB._db) {
+            throw new Error('IDB not initialized (db is null)');
+        }
         return await new Promise(function(resolve, reject) {
             var tx = SaveDB._db.transaction('saves', 'readonly');
             var req = tx.objectStore('saves').get(key);
             req.onsuccess = function() { resolve(req.result || null); };
             req.onerror = function() { reject(req.error || new Error('IDB get error')); };
+            // 【P0修复】补充事务级错误处理，避免 Promise 永久悬挂
+            tx.onerror = function() {
+                var err = tx.error;
+                if (!(err instanceof Error)) {
+                    err = new Error('IDB get transaction error (key=' + key + ')');
+                }
+                reject(err);
+            };
+            tx.onabort = function() {
+                reject(new Error('IDB get transaction aborted (key=' + key + ')'));
+            };
         });
     },
     async _setRaw(key, data) {
+        // 【P0修复】_db null 检查，避免 IDB 未初始化时崩溃
+        if (!SaveDB._db) {
+            throw new Error('IDB not initialized (db is null)');
+        }
         return await new Promise(function(resolve, reject) {
             var tx = SaveDB._db.transaction('saves', 'readwrite');
             var store = tx.objectStore('saves');
@@ -4823,18 +4842,17 @@ function withSaveLock(fn, label) {
         }
     );
 
-    // 超时保险：如果该锁持有超过 5 分钟仍未释放，强制重置
-
-    // 新代码：保留 pending 链，只重置状态计数器，让 pending 操作自然完成
+    // 【P0修复】超时仅告警，不再强制重置状态计数器
+    // 强制重置 depth 会导致新旧保存操作并发写入 IndexedDB，可能造成存档损坏
     var timeoutLabel = 'saveLockTimeout_' + label + '_' + Date.now();
     TimerManager.setTimeout(timeoutLabel, function() {
         if (_saveLockState.holder === label && (Date.now() - _saveLockState.startTime) >= SAVE_LOCK_TIMEOUT) {
-            console.error('[SaveLock] 锁超时强制释放:', label, '（pending 操作链保留，仅重置状态计数器）');
-            // 只重置状态计数器，不重置 _saveLock Promise 链
-            // pending 操作仍会自然完成，避免丢失写入
+            console.error('[SaveLock] 锁超时告警（不重置状态，避免并发写入）:', label,
+                'depth=' + _saveLockState.depth + ', held=' + (Date.now() - _saveLockState.startTime) + 'ms');
+            // 仅重置 holder 和 startTime，保留 depth 防止并发写入
+            // 如果 pending 操作自然完成，withSaveLock 的 finally 块会正常释放锁
             _saveLockState.holder = null;
             _saveLockState.startTime = 0;
-            _saveLockState.depth = 0;
         }
     }, SAVE_LOCK_TIMEOUT + 100);
 
@@ -4873,6 +4891,11 @@ async function autoSave() {
                 dot.style.animation = 'pulse 0.9s ease-in-out infinite';
             }
             if (typeof SaveDB !== 'undefined') {
+
+                // 【P0修复】保存前同步 UI 直写的 legacy 字段到 StateManager
+                if (typeof StateManager !== 'undefined' && StateManager._syncFromLegacy) {
+                    try { StateManager._syncFromLegacy(); } catch (e) { console.warn('[autoSave] _syncFromLegacy 失败:', e); }
+                }
 
                 // 修复：data 为 null 时跳过本次写入，保留上一次的有效自动存档
                 var _autoSaveData = null;
