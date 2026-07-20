@@ -1159,10 +1159,19 @@ var LocalGameAPI = {
         // 空占位 slot 完全不参与轮询，避免日志里出现"配置 1 不完整"的干扰信息，
         // 也避免 slot 编号与"可用配置序号"不一致
         var orderedSlots = [];
+        // 【BUG-010 修复】先计算 slot 下标（轮换起点 = _currentSlot），再判断该 slot 是否可用
+        // 旧逻辑：orderedSlots.push((this._currentSlot + i) % totalSlots)，
+        //   当 i=0, _currentSlot=1, totalSlots=2 时算出 1，OK；
+        //   但 i=1 时算出 0，而 _configs[0] 是空占位（被过滤跳过），所以正常场景能跑。
+        //   问题是 i=0 本身已经按"轮换偏移"计算，等价于"从 currentSlot 开始"。
+        //   当 _configs[_currentSlot] 自己为空时，旧逻辑会跳过该空 slot 但仍可能算出错误的下一个。
+        // 新逻辑：先按"从 _currentSlot 开始的轮换顺序"得到真实 slot 下标，再过滤空配置，
+        //   保证 orderedSlots 中的下标始终是 _configs 数组的有效索引
         for (let i = 0; i < totalSlots; i++) {
-            var _cfgi = this._configs[i];
+            const _slotIdx = (this._currentSlot + i) % totalSlots;
+            var _cfgi = this._configs[_slotIdx];
             if (_cfgi && _cfgi.baseUrl && _cfgi.apiKey) {
-                orderedSlots.push((this._currentSlot + i) % totalSlots);
+                orderedSlots.push(_slotIdx);
             }
         }
         // totalSlots 改为 orderedSlots 长度，外层循环上限也对应调整
