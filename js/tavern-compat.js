@@ -1443,6 +1443,65 @@ var GameMemory = {
                         state.refined = parsed.data;
                     }
 
+                    // 【BUG修复】最终轮（pass 3）字段完整性校验
+                    // AI在pass 3可能遗漏pass 1已提取的字段，需要从extraction补充
+                    if (state.currentPass >= passes && state.extraction && state.refined) {
+                        var _ext = state.extraction;
+                        var _ref = state.refined;
+                        // worldSetting 补充
+                        if (!_ref.worldSetting && _ext.worldSetting) {
+                            _ref.worldSetting = _ext.worldSetting;
+                            console.warn('[SetupForge] final worldSetting 缺失，从 extraction 补充');
+                        }
+                        if (!_ref.worldSettingCompressed && _ext.worldSettingCompressed) {
+                            _ref.worldSettingCompressed = _ext.worldSettingCompressed;
+                        }
+                        // protagonist 补充
+                        if (!_ref.protagonist || typeof _ref.protagonist !== 'object'
+                            || Object.keys(_ref.protagonist).length === 0) {
+                            if (_ext.protagonist && Object.keys(_ext.protagonist).length > 0) {
+                                _ref.protagonist = _ext.protagonist;
+                                console.warn('[SetupForge] final protagonist 缺失，从 extraction 补充');
+                            }
+                        }
+                        // openingScene 补充
+                        if (!_ref.openingScene || !String(_ref.openingScene).trim()) {
+                            if (_ext.openingScene) {
+                                _ref.openingScene = _ext.openingScene;
+                                console.warn('[SetupForge] final openingScene 缺失，从 extraction 补充');
+                            } else {
+                                _ref.openingScene = state.blob;
+                                console.warn('[SetupForge] final openingScene 缺失，从 blob 补充');
+                            }
+                        }
+                        // characters 补充
+                        if (!_ref.characters || !Array.isArray(_ref.characters) || _ref.characters.length === 0) {
+                            if (_ext.characters && _ext.characters.length > 0) {
+                                _ref.characters = _ext.characters;
+                            }
+                        }
+                        // themes 补充
+                        if (!_ref.themes || (Array.isArray(_ref.themes) && _ref.themes.length === 0)) {
+                            if (_ext.themes) _ref.themes = _ext.themes;
+                        }
+                        // styleNotes 补充
+                        if (!_ref.styleNotes && _ext.styleNotes) {
+                            _ref.styleNotes = _ext.styleNotes;
+                        }
+                        // memoryUpdates 补充
+                        if (!_ref.memoryUpdates || !Array.isArray(_ref.memoryUpdates) || _ref.memoryUpdates.length === 0) {
+                            if (_ext.memoryUpdates && _ext.memoryUpdates.length > 0) {
+                                _ref.memoryUpdates = _ext.memoryUpdates;
+                            }
+                        }
+                        // setupKeywords 补充
+                        if (!_ref.setupKeywords || (Array.isArray(_ref.setupKeywords) && _ref.setupKeywords.length === 0)) {
+                            if (_ext.setupKeywords) _ref.setupKeywords = _ext.setupKeywords;
+                        }
+                        // blob 补充
+                        if (!_ref.blob) _ref.blob = state.blob;
+                    }
+
                     if (state.currentPass >= passes) {
                         self._applyForgedSetup(state.refined);
                         return resolve(state.refined);

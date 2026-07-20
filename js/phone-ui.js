@@ -4678,17 +4678,17 @@ function bindEvents() {
     var genCancelBtn = document.getElementById('genCancelBtn');
     if (genCancelBtn) {
         genCancelBtn.addEventListener('click', function() {
-            if (isWaiting) {
-                safeAbort();
-                setWaiting(false);
-                hideStoryLoading();
-                TypewriterBuffer.stop();
-                streamBuffer = '';
+            // 【BUG修复】移除 isWaiting 前置检查，直接执行取消操作
+            // 原实现依赖 isWaiting 变量，但该变量在流式模式下可能未被正确设置
+            safeAbort();
+            try { setWaiting(false); } catch(e) {}
+            try { hideStoryLoading(); } catch(e) {}
+            try { TypewriterBuffer.stop(); } catch(e) {}
+            streamBuffer = '';
 
-                RuntimeState.streamModeLocked = false;
-                RuntimeState.streamMode = null;
-                UI.toast('已取消生成');
-            }
+            RuntimeState.streamModeLocked = false;
+            RuntimeState.streamMode = null;
+            UI.toast('已取消生成');
         });
     }
 

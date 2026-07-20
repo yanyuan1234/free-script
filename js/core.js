@@ -2554,6 +2554,25 @@ var TypewriterBuffer = {
 
         var newSuffix = newText.substring(this.displayed.length);
 
+        // 【BUG修复】流式长文本自动加速：队列累积超过5000字时直接flush
+        // 避免流式模式下逐字动画耗时过长（原25ms/char，5000字需2分钟）
+        if (this.isTyping && newSuffix.length > 5000 && this._queueIdx < this.queue.length) {
+            this.displayed = newText;
+            this.queue = newText;
+            this._queueIdx = newText.length;
+            this._currentParaChars = '';
+            this._completedParagraphs = [];
+            this.pause();
+            this.render();
+            try { _hideSkipButton(); } catch (e) {}
+            if (this.onComplete) {
+                var _flushCb = this.onComplete;
+                this.onComplete = null;
+                _flushCb();
+            }
+            return;
+        }
+
         var remaining = this._queueIdx >= this.queue.length ? '' : this.queue.substring(this._queueIdx);
         if (newSuffix.indexOf(remaining) === 0) {
             // 原 remaining 是 newSuffix 前缀，只追加差异（最优路径）
@@ -2599,21 +2618,39 @@ var TypewriterBuffer = {
         }
     return;
     }
-    var ch = self.queue[self._queueIdx++];
-    self.displayed += ch;
+    // 【BUG修复】自适应打字速度：队列越长，每tick处理越多字符
+    // 原实现每tick只处理1字符（25ms/char = 40字/秒），26000字需要10+分钟
+    // 新实现：队列>100字时每tick处理3字符，>500字时处理8字符，>2000字时处理20字符
+    var _remaining = self.queue.length - self._queueIdx;
+    var _charsPerTick = 1;
+    if (_remaining > 2000) _charsPerTick = 20;
+    else if (_remaining > 1000) _charsPerTick = 12;
+    else if (_remaining > 500) _charsPerTick = 8;
+    else if (_remaining > 100) _charsPerTick = 3;
 
-    // 段落分割：遇到换行且当前段落有内容时，完成当前段落
-    if (ch === '\n' && self._currentParaChars.length > 0) {
-        self._completedParagraphs.push(self._currentParaChars);
-        self._currentParaChars = '';
-        self._renderCached();
+    // 批量处理字符，只在最后一个字符处做段落分割和标点停顿判断
+    var _lastCh = '';
+    for (var _ci = 0; _ci < _charsPerTick && self._queueIdx < self.queue.length; _ci++) {
+        ch = self.queue[self._queueIdx++];
+        self.displayed += ch;
+        _lastCh = ch;
+
+        // 段落分割：遇到换行且当前段落有内容时，完成当前段落
+        if (ch === '\n' && self._currentParaChars.length > 0) {
+            self._completedParagraphs.push(self._currentParaChars);
+            self._currentParaChars = '';
+            self._renderCached();
         } else {
-        self._currentParaChars += ch;
-        self._renderCurrentPara();
+            self._currentParaChars += ch;
+        }
     }
+    // 批量渲染当前段落（每tick只渲染一次，而非每字符一次）
+    self._renderCurrentPara();
 
-    // 标点智能停顿
-    var pause = self._pauseMap[ch];
+    // 标点智能停顿（只检查最后一个字符，避免批量处理时频繁停顿）
+    var pause = self._pauseMap[_lastCh];
+    // 长文本时缩短标点停顿时间，避免累积延迟
+    if (pause && _remaining > 500) pause = Math.min(pause, 30);
     if (pause) {
         self.pause();
         self._pauseTimer = TimerManager.setTimeout('typewriterPause', function() {
@@ -2727,7 +2764,7 @@ var TypewriterBuffer = {
             //   第三轮 P=20+ 段时冻结浏览器 30-60 秒
             // 新实现：打字期间用 escapeHtml 轻量渲染 O(P×L)
             //   打字完成后 _doFinalRender 一次性 formatStory(fullStory) 做完整格式化
-            if (this.onComplete) {
+            if (this.isTyping) {
                 // 打字流程中：_doFinalRender 会做完整 formatStory，这里用轻量渲染
                 var _paras = completedKey.split('\n');
                 var _lightHtml = '';
@@ -5496,6 +5533,23 @@ function buildAIRequestBody(messages, options, config) {
         top_p: presetParams.top_p
     };
 
+    // 【BUG修复】兼容模式也发送关键反重复参数（DRY/min_p/repetition_penalty）
+    // 原实现在兼容模式下完全跳过这些参数，导致反重复改进无效
+    // 大多数现代API提供商（包括中转站）都支持或忽略未知参数，不会报错
+    if (isCompatibleMode) {
+        if (presetParams.dry_multiplier && presetParams.dry_multiplier > 0) {
+            params.dry_multiplier = presetParams.dry_multiplier;
+            params.dry_base = presetParams.dry_base || 1.75;
+            params.dry_allowed_length = presetParams.dry_allowed_length || 2;
+        }
+        if (presetParams.min_p && presetParams.min_p > 0) {
+            params.min_p = presetParams.min_p;
+        }
+        if (presetParams.repetition_penalty && presetParams.repetition_penalty !== 1) {
+            params.repetition_penalty = presetParams.repetition_penalty;
+        }
+    }
+
     // 【P1 修复】DeepSeek 等推理模型需要额外 headroom 容纳 reasoning tokens
     // reasoning tokens 与 output tokens 共享 max_tokens 预算，需要预留空间
     var _modelLower = (config.model || '').toLowerCase();
@@ -6240,6 +6294,8 @@ async function callAI(messages, options = {}) {
     // 清空上一次的 reasoning 透出值，避免上一轮残留进入本轮 CoT 面板
     try { if (typeof window !== 'undefined') window._lastReasoningText = ''; } catch (e) {}
     var localAC = new AbortController();
+    // 【BUG修复】将 localAC 赋值给 window._currentAbort，使 safeAbort() 能取消当前请求
+    window._currentAbort = localAC;
     TimerManager.setTimeout('aiRequestTimeout', function() {
         try { localAC.abort(new Error('AI请求超时（' + Math.round(_timeoutMs / 60000) + '分钟）')); }
         catch (e) { /* 忽略 */ }
@@ -6442,6 +6498,10 @@ async function callAI(messages, options = {}) {
         TimerManager.clearTimeout('aiRequestTimeout');
         if (externalListener && externalSignal) {
             try { externalSignal.removeEventListener('abort', externalListener); } catch (e) { /* 忽略 */ }
+        }
+        // 【BUG修复】清理 window._currentAbort，避免 safeAbort() 误触发已完成的请求
+        if (window._currentAbort === localAC) {
+            window._currentAbort = null;
         }
     }
 }
