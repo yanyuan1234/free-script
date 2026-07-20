@@ -22,7 +22,9 @@ var testFiles = [
     'state/relationship-mutator.test.js',
     'state/time-mutator.test.js',
     // P1 修复回归
-    'p1-verification.test.js'
+    'p1-verification.test.js',
+    // BUG-011 v2 修复验证
+    'verify-bug-011-v2.js'
 ];
 
 var failures = 0;
