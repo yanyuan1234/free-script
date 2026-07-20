@@ -525,7 +525,10 @@
     min-height: 0;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    padding-right: 4px
+    padding-right: 4px;
+    /* 【P3-5】长文本滚动性能优化 */
+    will-change: scroll-position;
+    contain: content
 }
 
 /* 【NEW-003 修复】流式等待 story 字段时的提示 */

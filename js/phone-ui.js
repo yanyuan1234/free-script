@@ -6873,7 +6873,39 @@ function showApiDetail(slot) {
                 });
                 select.appendChild(normalGroup);
                 select.appendChild(warnGroup);
-                if (cfg.model) select.value = cfg.model;
+                if (cfg.model) {
+                    select.value = cfg.model;
+                } else {
+                    // 【P3-1】没有已选模型时，自动选择第一个非推理模型
+                    var _isReasoningModel = function(name) {
+                        return /reasoning|deepseek-r1|^o1|^o3|thinking|deep-think|qwq|kimi-k/i.test(name);
+                    };
+                    var _autoModel = null;
+                    for (var _i = 0; _i < models.length; _i++) {
+                        if (!_isReasoningModel(models[_i]) && !LocalGameAPI.isModelFailed(models[_i])) {
+                            _autoModel = models[_i];
+                            break;
+                        }
+                    }
+                    if (!_autoModel) {
+                        // 如果没有非推理且非失败模型，退而求其次选第一个非推理模型
+                        for (var _j = 0; _j < models.length; _j++) {
+                            if (!_isReasoningModel(models[_j])) {
+                                _autoModel = models[_j];
+                                break;
+                            }
+                        }
+                    }
+                    if (!_autoModel && models.length > 0) {
+                        // 最后兜底：选第一个模型
+                        _autoModel = models[0];
+                    }
+                    if (_autoModel) {
+                        select.value = _autoModel;
+                        cfg.model = _autoModel;
+                        LocalGameAPI.save();
+                    }
+                }
                 var msg = '获取到 ' + models.length + ' 个模型';
                 if (warnCount > 0) msg += '，' + warnCount + ' 个有提醒（依然可选）';
                 UI.toast(msg);
@@ -7084,6 +7116,33 @@ function showCreateApiModal() {
             });
             select.appendChild(normalGroup);
             select.appendChild(warnGroup);
+            // 【P3-1】没有已选模型时，自动选择第一个非推理模型
+            if (!select.value || select.value === '') {
+                var _isReasoningModel2 = function(name) {
+                    return /reasoning|deepseek-r1|^o1|^o3|thinking|deep-think|qwq|kimi-k/i.test(name);
+                };
+                var _autoModel2 = null;
+                for (var _k = 0; _k < models.length; _k++) {
+                    if (!_isReasoningModel2(models[_k]) && !LocalGameAPI.isModelFailed(models[_k])) {
+                        _autoModel2 = models[_k];
+                        break;
+                    }
+                }
+                if (!_autoModel2) {
+                    for (var _l = 0; _l < models.length; _l++) {
+                        if (!_isReasoningModel2(models[_l])) {
+                            _autoModel2 = models[_l];
+                            break;
+                        }
+                    }
+                }
+                if (!_autoModel2 && models.length > 0) {
+                    _autoModel2 = models[0];
+                }
+                if (_autoModel2) {
+                    select.value = _autoModel2;
+                }
+            }
             var msg = '获取到 ' + models.length + ' 个模型';
             if (warnCount > 0) msg += '，' + warnCount + ' 个有提醒（依然可选）';
             UI.toast(msg);

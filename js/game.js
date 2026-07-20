@@ -1844,7 +1844,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 流式偶发断流/空回时，自动降级避免用户看到半截JSON
         var _streamFailCount = (gameState && gameState.streamFailCount) || 0;
-        var _useStreamNow = gameState && gameState.useStream && _streamFailCount < 2;
+        var _useStreamNow = gameState && gameState.useStream && _streamFailCount < 3;
         var options = {
             stream: _useStreamNow,
 
@@ -1860,7 +1860,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState.pureTextMode !== true) {
             options.jsonSchema = 'auto';
         }
-        if (gameState && !_useStreamNow && _streamFailCount >= 2) {
+        if (gameState && !_useStreamNow && _streamFailCount >= 3) {
             console.log('[流式降级] 连续失败' + _streamFailCount + '次, 本轮使用非流式');
         }
         // 触发事件：GENERATION_AFTER_COMMANDS（生成前，命令执行后）
@@ -2136,7 +2136,7 @@ async function sendAIRequest(userMessage, isInit = false) {
 
             if (gameState && _useStreamNow) {
                 gameState.streamFailCount = (_streamFailCount || 0) + 1;
-                console.log('[流式降级] 失败计数: ' + gameState.streamFailCount + '/2');
+                console.log('[流式降级] 失败计数: ' + gameState.streamFailCount + '/3');
             }
             // 尝试从原始response中提取任何可读文本作为兜底
             if (response && typeof response === 'string' && response.trim().length > 0) {
@@ -4923,8 +4923,23 @@ async function loadFromSlot(slot) {
             }
         }
         if (!data) {
-            UI.toast('该存档位为空');
-            return;
+            // 【P3-3】非自动存档加载失败时，尝试回退到自动存档（slot 0）
+            if (slot !== 0) {
+                console.warn('[loadFromSlot] 槽位 ' + slot + ' 为空，尝试回退到自动存档');
+                try {
+                    var _fallbackData = await SaveDB.get(0);
+                    if (_fallbackData && SaveDB._verifyChecksum(_fallbackData)) {
+                        UI.toast('该存档位为空，已加载最近自动存档');
+                        data = _fallbackData;
+                    }
+                } catch (e) {
+                    console.warn('[loadFromSlot] 回退自动存档也失败:', e);
+                }
+            }
+            if (!data) {
+                UI.toast('该存档位为空');
+                return;
+            }
         }
 
         if (!SaveDB._verifyChecksum(data)) {
