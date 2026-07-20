@@ -7728,8 +7728,17 @@ function openSettingsModal() {
     var msgCount = _hist.length;
     var estimated = estimateTokensForMessagesUtil(_hist);
     var contextInfo = document.getElementById('contextInfo');
-    if (contextInfo) contextInfo.textContent = '上下文: ' + msgCount + ' 条 | 约 ' + (estimated > 1000 ? (
-        estimated / 1000).toFixed(1) + 'k' : estimated) + ' token';
+    if (contextInfo) {
+        contextInfo.textContent = '上下文: ' + msgCount + ' 条 | 约 ' + (estimated > 1000 ? (
+            estimated / 1000).toFixed(1) + 'k' : estimated) + ' token';
+        // 【P0-3 Context Viewer】添加点击事件展示详细 token 分解
+        contextInfo.style.cursor = 'pointer';
+        contextInfo.title = '点击查看 Token 分解详情';
+        contextInfo.onclick = function() { _showContextViewerModal(); };
+    }
+
+    // 【P0-3 Context Viewer】更新上下文分解摘要
+    _updateContextBreakdownSummary();
 
     // 更新剧情长度
     var lengthEl = document.getElementById('settingStoryLength');
@@ -8927,3 +8936,94 @@ function openNpcDetail(name) {
 // RuntimeBridge 注册：将 phone-ui.js 中定义的函数注入桥接对象
 if (typeof window.RuntimeBridge === 'undefined') window.RuntimeBridge = {};
 window.RuntimeBridge.renderNpcList = renderNpcList;
+
+// ========================================
+// 【P0-3 Context Viewer】上下文查看器
+// ========================================
+
+// 更新上下文分解摘要（在设置面板中展示）
+function _updateContextBreakdownSummary() {
+    var breakdown = (typeof gameState !== 'undefined' && gameState) ? gameState._lastContextBreakdown : null;
+    if (!breakdown && typeof window !== 'undefined') breakdown = window._lastContextBreakdown;
+    if (!breakdown) return;
+
+    // 如果存在 contextBreakdownSummary 元素，更新它
+    var summaryEl = document.getElementById('contextBreakdownSummary');
+    if (!summaryEl) {
+        // 动态创建摘要元素
+        var contextInfo = document.getElementById('contextInfo');
+        if (contextInfo && contextInfo.parentNode) {
+            summaryEl = document.createElement('div');
+            summaryEl.id = 'contextBreakdownSummary';
+            summaryEl.style.cssText = 'font-size:0.8em;color:var(--text-muted,#888);margin-top:4px;cursor:pointer;';
+            contextInfo.parentNode.insertBefore(summaryEl, contextInfo.nextSibling);
+            summaryEl.onclick = function() { _showContextViewerModal(); };
+        }
+    }
+    if (summaryEl && breakdown.sections && breakdown.sections.length > 0) {
+        var top3 = breakdown.sections.slice(0, 3).map(function(s) {
+            return s.label + ' ' + s.percentage + '%';
+        }).join(' · ');
+        summaryEl.textContent = 'Token分布: ' + top3 + ' (点击查看详情)';
+    }
+}
+
+// 显示 Context Viewer 模态框
+function _showContextViewerModal() {
+    var breakdown = (typeof gameState !== 'undefined' && gameState) ? gameState._lastContextBreakdown : null;
+    if (!breakdown && typeof window !== 'undefined') breakdown = window._lastContextBreakdown;
+
+    // 移除已有模态框
+    var existing = document.getElementById('contextViewerModal');
+    if (existing) existing.remove();
+
+    var modal = document.createElement('div');
+    modal.id = 'contextViewerModal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+    var card = document.createElement('div');
+    card.style.cssText = 'background:var(--bg-card,#1a1a2e);border-radius:12px;padding:24px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;color:var(--text-primary,#eee);';
+
+    var html = '<h3 style="margin:0 0 16px;color:#fff;font-size:1.1em;">📊 上下文 Token 分解</h3>';
+
+    if (!breakdown || !breakdown.sections || breakdown.sections.length === 0) {
+        html += '<p style="color:#888;text-align:center;padding:20px 0;">暂无数据（发送一条消息后可查看）</p>';
+    } else {
+        html += '<div style="margin-bottom:16px;font-size:0.85em;color:#888;">';
+        html += '总消息: ' + breakdown.totalMessages + ' 条 · 估算Token: ' + breakdown.totalTokens + ' / ' + breakdown.maxTokens;
+        var usage = (breakdown.totalTokens / breakdown.maxTokens * 100).toFixed(1);
+        var usageColor = usage > 80 ? '#f85149' : (usage > 60 ? '#d29922' : '#3fb950');
+        html += ' <span style="color:' + usageColor + ';font-weight:600;">(' + usage + '%)</span>';
+        html += '</div>';
+
+        html += '<div style="space-y:8px;">';
+        for (var i = 0; i < breakdown.sections.length; i++) {
+            var s = breakdown.sections[i];
+            var barWidth = Math.min(100, parseFloat(s.percentage));
+            var barColor = ['#58a6ff', '#3fb950', '#bc8cff', '#d29922', '#f85149', '#ff7b72', '#79c0ff', '#7ee787'][i % 8];
+            html += '<div style="margin-bottom:10px;">';
+            html += '<div style="display:flex;justify-content:space-between;font-size:0.85em;margin-bottom:4px;">';
+            html += '<span>' + s.label + ' <span style="color:#666;">(' + s.count + '条)</span></span>';
+            html += '<span style="color:#aaa;">' + s.tokens + ' tok · ' + s.percentage + '%</span>';
+            html += '</div>';
+            html += '<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden;">';
+            html += '<div style="background:' + barColor + ';height:100%;width:' + barWidth + '%;border-radius:4px;transition:width 0.3s;"></div>';
+            html += '</div>';
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    html += '<button id="contextViewerClose" style="margin-top:20px;width:100%;padding:10px;background:var(--accent,#58a6ff);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.9em;">关闭</button>';
+
+    card.innerHTML = html;
+    modal.appendChild(card);
+    document.body.appendChild(modal);
+
+    // 关闭事件
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal || e.target.id === 'contextViewerClose') {
+            modal.remove();
+        }
+    });
+}

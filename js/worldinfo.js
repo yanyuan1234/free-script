@@ -9,6 +9,13 @@ var WorldInfo = {
         tokenBudget: 25,
         tokenBudgetCap: 0,  // token预算硬上限（0=无限制）
         recursive: true,
+        // [P1-4] 递归扫描（级联激活）开关
+        // 启用后第一轮关键词匹配命中的条目 content 会加入扫描缓冲区，
+        // 触发第二轮及后续扫描，间接激活依赖条目（A→B→C 链式激活）
+        // 向后兼容：旧数据只读 recursive 字段时，本字段会被同步填充
+        recursiveScanning: true,
+        // [P1-4] 递归扫描最大步数（防止无限循环，与酒馆默认值一致）
+        recursiveScanMaxSteps: 3,
         // [P2] 语义检索开关（启用后用向量检索补充关键词匹配）
         vectorRetrieval: false
     },
@@ -140,6 +147,17 @@ var WorldInfo = {
                     this.settings.tokenBudget = budget;
                 }
             this.settings.recursive = data.settings.recursive !== false;
+            // [P1-4] 读取递归扫描开关（recursiveScanning 为新名字，向后兼容 recursive）
+            // 新数据优先 recursiveScanning；旧数据未设置时回退到 recursive
+            if (data.settings.recursiveScanning !== undefined) {
+                this.settings.recursiveScanning = !!data.settings.recursiveScanning;
+            } else {
+                this.settings.recursiveScanning = data.settings.recursive !== false;
+            }
+            // [P1-4] 读取递归扫描最大步数（默认 3，防止无限循环）
+            if (data.settings.recursiveScanMaxSteps != null) {
+                this.settings.recursiveScanMaxSteps = data.settings.recursiveScanMaxSteps;
+            }
             // [P2] 读取语义检索开关（默认 false）
             this.settings.vectorRetrieval = !!data.settings.vectorRetrieval;
         }
@@ -279,7 +297,11 @@ var WorldInfo = {
         var vectorEl = document.getElementById('wiVectorRetrieval');
         if (depthEl) depthEl.value = this.settings.scanDepth;
         if (budgetEl) budgetEl.value = this.settings.tokenBudget;
-        if (recursiveEl) recursiveEl.checked = this.settings.recursive;
+        // [P1-4] 同步递归扫描开关到 UI（recursiveScanning 为主，向后兼容 recursive）
+        var _recursiveChecked = (this.settings.recursiveScanning !== undefined)
+            ? !!this.settings.recursiveScanning
+            : !!this.settings.recursive;
+        if (recursiveEl) recursiveEl.checked = _recursiveChecked;
         if (vectorEl) vectorEl.checked = !!this.settings.vectorRetrieval;
 
         // 重置到书籍列表视图
@@ -1443,7 +1465,11 @@ var WorldInfo = {
         var vectorEl = document.getElementById('wiVectorRetrieval');
         if (depthEl) this.settings.scanDepth = safeInt(depthEl.value, 2);
         if (budgetEl) this.settings.tokenBudget = safeInt(budgetEl.value, 25);
-        if (recursiveEl) this.settings.recursive = recursiveEl.checked;
+        // [P1-4] 同步递归扫描开关（recursiveScanning 为新名字，同时写 recursive 保持向后兼容）
+        if (recursiveEl) {
+            this.settings.recursive = recursiveEl.checked;
+            this.settings.recursiveScanning = recursiveEl.checked;
+        }
         // [P2] 同步语义检索开关，并联动 VectorRetriever
         if (vectorEl) {
             var newVectorVal = vectorEl.checked;
@@ -1647,10 +1673,16 @@ var WorldInfo = {
     activated.push(entry);
     });
 
-    // 递归扫描
-    if (this.settings.recursive) {
-
-        activated = this.recursiveScan(activated, plainText, scanText, 3, allEntries);
+    // [P1-4] 递归扫描（级联激活）
+    // 第一轮关键词匹配命中的条目 content 会被加入扫描缓冲区，
+    // recursiveScan 检测是否有新条目被间接激活（A→B→C 链式），上限 recursiveScanMaxSteps 步
+    // recursiveScanning 为新开关名，未设置时回退到旧 recursive 字段（向后兼容）
+    var _recursiveEnabled = (this.settings.recursiveScanning !== undefined)
+        ? !!this.settings.recursiveScanning
+        : !!this.settings.recursive;
+    if (_recursiveEnabled) {
+        var _recursiveMaxSteps = this.settings.recursiveScanMaxSteps || 3;
+        activated = this.recursiveScan(activated, plainText, scanText, _recursiveMaxSteps, allEntries);
     }
 
 
@@ -1889,7 +1921,9 @@ var WorldInfo = {
         });
     },
 
-    // 递归扫描
+    // [P1-4] 递归扫描（级联激活）
+    // 将已激活条目的 content 加入扫描缓冲区，检测间接激活的条目（A→B→C 链式）
+    // maxSteps 限制最大递归步数（默认 3，由 settings.recursiveScanMaxSteps 控制），防止无限循环
     recursiveScan: function(activated, plainText, scanText, maxSteps, allEntries) {
         const self = this;
         var activatedIds = {};
@@ -2268,6 +2302,182 @@ var WorldInfo = {
         groups: groups,
         positionTexts: positionTexts
         };
+    },
+
+    // [P1-3] AI Lore 生成器
+    // 从剧情文本中提取新出现的角色、地点、物品、规则，生成可加入世界书的条目
+    // storyText: 剧情文本（通常是一段对话/叙事）
+    // existingEntries: 现有条目（用于防重复），可为数组或 { uid: entry } 对象，null 表示无
+    // 返回 Promise，resolve 为新生成的条目数组（每条结构与 addEntry 一致，可直接加入 book.entries）
+    generateLoreFromStory: async function(storyText, existingEntries) {
+        var self = this;
+        // 参数校验：storyText 过短或非字符串直接返回空数组
+        if (!storyText || typeof storyText !== 'string' || storyText.trim().length < 10) {
+            console.warn('[WorldInfo] generateLoreFromStory: storyText 过短或无效');
+            return [];
+        }
+        // 依赖检查：callAI 在 core.js 中定义
+        if (typeof callAI === 'undefined') {
+            console.warn('[WorldInfo] generateLoreFromStory: callAI 不可用，请确认 API 已配置');
+            return [];
+        }
+
+        // 构建 AI 请求消息
+        // 要求 JSON 格式输出，每条包含 keys（触发关键词数组）和 content（描述文本）
+        var systemPrompt = '你是一个剧情设定提取助手。从以下剧情中提取新出现的角色、地点、物品、规则，' +
+            '以JSON格式返回，每条包含 keys（触发关键词数组）和 content（描述文本）。' +
+            '只输出JSON对象，格式为 {"entries": [{"category":"character|location|item|rule","keys":["关键词"],"content":"描述"}]}，' +
+            '不要添加额外解释或markdown代码块标记。';
+        var messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: storyText }
+        ];
+
+        // 调用 AI 提取设定
+        var rawText;
+        try {
+            // 非流式调用，低 temperature 保证结构稳定
+            // jsonSchema:'auto' 让 core.js 根据模型自动选 strict/json_object，失败时自动降级
+            rawText = await callAI(messages, {
+                stream: false,
+                max_tokens: 1024,
+                temperature: 0.3,
+                jsonSchema: 'auto'
+            });
+        } catch (e) {
+            console.warn('[WorldInfo] generateLoreFromStory: callAI 调用失败:', e);
+            return [];
+        }
+
+        if (!rawText || typeof rawText !== 'string') {
+            console.warn('[WorldInfo] generateLoreFromStory: AI 返回为空');
+            return [];
+        }
+
+        // 解析 JSON（兼容 markdown 代码块包裹及附加文字）
+        var parsed = self._parseLoreJSON(rawText);
+        if (!parsed || !parsed.entries || !Array.isArray(parsed.entries)) {
+            console.warn('[WorldInfo] generateLoreFromStory: JSON 解析失败或结构不匹配，原文:', rawText.substring(0, 200));
+            return [];
+        }
+
+        // 构建现有 keys 索引（用于防重复）
+        // existingEntries 兼容两种形态：数组 或 { uid: entry } 对象
+        var existingKeysIndex = {};
+        var entriesList = existingEntries;
+        if (existingEntries && !Array.isArray(existingEntries) && typeof existingEntries === 'object') {
+            entriesList = [];
+            Object.keys(existingEntries).forEach(function(uid) {
+                entriesList.push(existingEntries[uid]);
+            });
+        }
+        if (entriesList && Array.isArray(entriesList)) {
+            entriesList.forEach(function(e) {
+                if (!e || !e.key || !Array.isArray(e.key)) return;
+                e.key.forEach(function(k) {
+                    if (k) existingKeysIndex[String(k).toLowerCase()] = true;
+                });
+            });
+        }
+
+        // 过滤 + 去重 + 构建返回条目
+        var newEntries = [];
+        var seenKeys = {};  // 本次生成内部去重索引
+        parsed.entries.forEach(function(item) {
+            if (!item || !item.keys || !Array.isArray(item.keys) || item.keys.length === 0) return;
+            if (!item.content || typeof item.content !== 'string' || !item.content.trim()) return;
+
+            // 规范化 keys：去空、去重
+            var cleanKeys = [];
+            item.keys.forEach(function(k) {
+                if (!k) return;
+                var ks = String(k).trim();
+                if (ks && cleanKeys.indexOf(ks) === -1) cleanKeys.push(ks);
+            });
+            if (cleanKeys.length === 0) return;
+
+            // 防重复：任一 key 命中现有条目或本次已加入条目，即视为重复
+            var dup = false;
+            for (var i = 0; i < cleanKeys.length; i++) {
+                var kl = cleanKeys[i].toLowerCase();
+                if (existingKeysIndex[kl]) { dup = true; break; }
+                if (seenKeys[kl]) { dup = true; break; }
+            }
+            if (dup) return;
+
+            // 标记本次已加入的 keys
+            cleanKeys.forEach(function(k) { seenKeys[k.toLowerCase()] = true; });
+
+            // 构建符合世界书条目结构的对象（字段与 addEntry 一致，调用方可直接加入 book.entries）
+            var category = item.category || 'rule';
+            newEntries.push({
+                key: cleanKeys,
+                keysecondary: [],
+                content: item.content.trim(),
+                comment: item.comment || ('AI生成-' + category),
+                constant: false,
+                selective: false,
+                enabled: true,
+                order: 100,
+                probability: 100,
+                depth: 4,
+                position: 0,
+                role: 0,
+                group: '',
+                groupOverride: false,
+                groupWeight: 100,
+                scanDepth: null,
+                caseSensitive: null,
+                matchWholeWords: null,
+                excludeRecursion: false,
+                preventRecursion: false,
+                selectiveLogic: 0,
+                sticky: null,
+                cooldown: null,
+                delay: null,
+                delayUntilRecursion: false,
+                ignoreBudget: false,
+                addMemo: false,
+                useGroupScoring: null,
+                useProbability: true,
+                triggers: [],
+                _category: category,
+                _source: 'aiLore'
+            });
+        });
+
+        console.log('[WorldInfo] generateLoreFromStory: 从 ' + parsed.entries.length + ' 条原始提取中生成 ' + newEntries.length + ' 条新设定');
+        return newEntries;
+    },
+
+    // [P1-3] 解析 AI 返回的 Lore JSON
+    // 兼容三种返回形态：纯 JSON / markdown 代码块包裹 / JSON 前后附带文字
+    _parseLoreJSON: function(rawText) {
+        if (!rawText || typeof rawText !== 'string') return null;
+        var text = rawText.trim();
+
+        // 1. 尝试剥离 markdown 代码块 ```json ... ``` 或 ``` ... ```
+        var codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+        if (codeBlockMatch) {
+            text = codeBlockMatch[1].trim();
+        }
+
+        // 2. 尝试直接解析
+        try {
+            return JSON.parse(text);
+        } catch (e) { /* 继续尝试下面的提取 */ }
+
+        // 3. 尝试提取第一个 { ... } 块（AI 可能附带额外文字）
+        var firstBrace = text.indexOf('{');
+        var lastBrace = text.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+            var candidate = text.substring(firstBrace, lastBrace + 1);
+            try {
+                return JSON.parse(candidate);
+            } catch (e2) { /* 解析失败，返回 null */ }
+        }
+
+        return null;
     }
 
 };

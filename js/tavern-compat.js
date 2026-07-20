@@ -1738,6 +1738,9 @@ var GameMemory = {
     workingMemory: { recentMessages: [], currentTopic: null, turns: [], messages: [] },
     // 变化驱动注入快照（Horae风格：无变化零Token）
     _injectionSnapshots: {},
+    // P2-2 瞬时上下文（Ephemeral Context）：按回合衰减的临时注入，过期自动移除
+    // 结构: { text, remainingTurns, duration, position, createdTurn, id }
+    _ephemeralContexts: [],
     // 逐层摘要系统（Qvink风格：近详细→远压缩）
     _summaryLayers: { near: [], mid: [], far: [] },
     // 开局设定分层系统
@@ -1787,6 +1790,7 @@ var GameMemory = {
         var loaded = this.loadFromStorage();
         if (!loaded) this._migrateFromOldFormat();
         if (!this._injectionSnapshots) this._injectionSnapshots = {};
+        if (!this._ephemeralContexts) this._ephemeralContexts = [];
         if (!this._summaryLayers) this._summaryLayers = { near: [], mid: [], far: [] };
         if (!this._setupLayers) this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         if (!this._setupLayers.setupKeywords) this._setupLayers.setupKeywords = [];
@@ -1977,6 +1981,14 @@ var GameMemory = {
 
             // 【AI叙事驱动】更新所有角色/物品/任务的休眠状态
             self._updateDormantStatus(message);
+
+            // P2-2 瞬时上下文衰减：每回合调用，减少剩余回合数，移除过期的
+            // 放在 currentTurn++ 之后，确保 addEphemeralContext(duration=N) 严格持续 N 回合
+            try {
+                self.decayEphemeralContexts();
+            } catch (e) {
+                console.warn('[GameMemory.processMessage] 瞬时上下文衰减失败（已忽略，游戏继续）:', e);
+            }
         } catch (e) {
 
             console.error('[GameMemory.processMessage] 内部错误（已记录，游戏继续）:', e);
@@ -2876,6 +2888,12 @@ var GameMemory = {
         var topic = self.detectCurrentTopic();
         var parts = [];
         
+        // ═══ 第零层：瞬时上下文（P2-2，按回合衰减，最高优先级确保 AI 必见）═══
+        var ephemeralLines = self._buildEphemeralContextsSection();
+        if (ephemeralLines.length > 0) {
+            parts.push({ key: 'ephemeralContexts', priority: 11, lines: ephemeralLines, changed: true });
+        }
+        
         // ═══ 第一层：永久事实（始终注入，最高优先级）═══
         var factLines = self._buildPermanentFactsSection();
         if (factLines.length > 0) {
@@ -2935,6 +2953,7 @@ var GameMemory = {
         
         // 注入头尾模板——标题不仅标注分类，还告诉AI这层信息的用途
         var headers = {
+            ephemeralContexts: '【瞬时上下文（本轮临时注入，剩余回合数后自动失效）】\n',
             permanentFacts: '【核心设定（始终生效，冲突时以此为准）】\n',
             changes: '【本轮变化（第' + currentTurn + '回合，比旧状态更准确）】\n',
             plot: '【剧情进展（当前故事线）】\n',
@@ -2948,6 +2967,7 @@ var GameMemory = {
             storytellingReminders: '【编剧提醒（AI剧情引导提示）】\n'
         };
         var footers = {
+            ephemeralContexts: '\n',
             permanentFacts: '\n', changes: '\n', plot: '\n', quests: '\n',
             characters: '\n', events: '\n', memoryLayers: '\n', items: '\n', sceneState: '\n', summaryLayers: '\n', storytellingReminders: '\n'
         };
@@ -3003,6 +3023,30 @@ var GameMemory = {
                     excess -= (originalLen - m.text.length - saved);
                 } else if (excess > 0) {
                     excess -= (originalLen - m.text.length - saved);
+                }
+            }
+
+            // P1-5 四级 Trim 降级策略：智能压缩 + 关键行选择后仍超预算时的最终安全网
+            // 按优先级从低到高逐模块调用 _trimWithFallback，确保总量压到 maxChars 以内
+            if (excess > 0) {
+                var trimSorted = moduleTexts.slice()
+                    .filter(function(m) { return m.text && m.text.length > 0; })
+                    .sort(function(a, b) { return a.priority - b.priority; });
+                for (var ti = 0; ti < trimSorted.length && excess > 0; ti++) {
+                    var tm = trimSorted[ti];
+                    var beforeLen = tm.text.length;
+                    // 当前模块的目标长度：原长度 - 仍需削减的 excess（下限 0）
+                    var targetLen = Math.max(0, tm.text.length - excess);
+                    // 永久事实/瞬时上下文等核心模块给 1.2 倍宽限，尽量避免 trim
+                    var isCore = (tm.key === 'permanentFacts' || tm.key === 'ephemeralContexts');
+                    if (isCore) targetLen = Math.floor(targetLen * 1.2);
+                    tm.text = self._trimWithFallback(tm.text, targetLen, {
+                        prefix: '[内容开头…',
+                        suffix: '…内容结尾]',
+                        ellipsis: '…（' + tm.key + ' 部分内容省略）…',
+                        moduleKey: tm.key
+                    });
+                    excess -= (beforeLen - tm.text.length);
                 }
             }
         }
@@ -3110,6 +3154,168 @@ var GameMemory = {
                 // 通用：默认不截断，保留完整语义
                 return text;
         }
+    },
+
+    // ============================================================================
+    // P1-5 四级 Trim 降级策略
+    // 当智能压缩 + 关键行选择仍无法把模块压到预算内时，作为最终安全网调用。
+    // 注：本系统预算以字符为单位（与 budget.maxChars 一致），maxTokens 参数名沿用
+    //     任务规范，实际按字符数处理。如需按真实 token 计算，可在此处接入 tokenizer.js。
+    // 降级顺序：No Trim → Newline → Sentence → Token（Prefix/Suffix 包裹）
+    // ============================================================================
+    _trimWithFallback: function(text, maxTokens, options) {
+        if (!text || typeof text !== 'string') return '';
+        if (typeof maxTokens !== 'number' || isNaN(maxTokens) || maxTokens <= 0) return '';
+        options = options || {};
+        // 默认 Prefix/Suffix 包裹格式：[内容开头…中间省略…内容结尾]
+        var prefix = options.prefix || '[内容开头…';
+        var suffix = options.suffix || '…内容结尾]';
+        var ellipsis = options.ellipsis || '…（中间内容省略）…';
+
+        // 级别1 No Trim：未超预算，完整保留
+        if (text.length <= maxTokens) return text;
+
+        // 预留 Prefix/Suffix 包裹的额外字符开销，避免包裹后反而超预算
+        var wrapperOverhead = prefix.length + suffix.length + ellipsis.length;
+        var effectiveMax = Math.max(Math.floor(maxTokens * 0.6), maxTokens - wrapperOverhead);
+
+        // 级别2 Newline：在最近的换行处截断（保留完整段落）
+        var nlIdx = text.lastIndexOf('\n', effectiveMax);
+        if (nlIdx > effectiveMax * 0.3) {
+            return text.substring(0, nlIdx) + '\n' + ellipsis + suffix;
+        }
+
+        // 级别3 Sentence：在最近的句号处截断（中英文标点）
+        var sentenceEnders = ['。', '！', '？', '．', '!', '?', '.', '…'];
+        var bestIdx = -1;
+        for (var si = 0; si < sentenceEnders.length; si++) {
+            var idx = text.lastIndexOf(sentenceEnders[si], effectiveMax);
+            if (idx > bestIdx) bestIdx = idx;
+        }
+        if (bestIdx > effectiveMax * 0.3) {
+            return text.substring(0, bestIdx + 1) + ellipsis + suffix;
+        }
+
+        // 级别4 Token：在 Token 边界截断，保留头尾，用 Prefix/Suffix 包裹
+        // 头部占 70%、尾部占 20%，中间用 ellipsis 占位
+        var headLen = Math.floor(effectiveMax * 0.7);
+        var tailLen = Math.floor(effectiveMax * 0.2);
+        // 找头部最近的词边界（空格），避免截断单词
+        var headBoundary = headLen;
+        var headSpace = text.lastIndexOf(' ', headLen);
+        if (headSpace > headLen * 0.5) headBoundary = headSpace;
+        // 找尾部最近的词边界
+        var tailStart = text.length - tailLen;
+        var tailSpace = text.indexOf(' ', tailStart);
+        if (tailSpace >= 0 && tailSpace <= tailStart + 20) tailStart = tailSpace;
+
+        var head = text.substring(0, headBoundary);
+        var tail = text.substring(tailStart);
+        return prefix + head + ellipsis + tail + suffix;
+    },
+
+    // ============================================================================
+    // P2-2 瞬时上下文（Ephemeral Context）
+    // 短期注入：按回合数衰减，过期自动移除。适用于"本回合必须记住但下回合可忘"的
+    // 临时信息（如当前情绪锚点、临时NPC状态、玩家近期选择倾向等）。
+    // ============================================================================
+
+    /**
+     * 添加瞬时上下文
+     * @param {string} text 注入的文本内容
+     * @param {number} duration 持续回合数（如 3 表示持续3回合）
+     * @param {number} position 注入位置（如 +1 表示距末尾1条消息；0 表示末尾）
+     * @returns {object|null} 创建的瞬时上下文对象，参数非法时返回 null
+     */
+    addEphemeralContext: function(text, duration, position) {
+        if (!text || typeof text !== 'string' || !text.trim()) return null;
+        var dur = parseInt(duration, 10);
+        if (isNaN(dur) || dur <= 0) return null;
+        var pos = parseInt(position, 10);
+        if (isNaN(pos)) pos = 0;
+        if (!Array.isArray(this._ephemeralContexts)) this._ephemeralContexts = [];
+        var entry = {
+            text: text.trim(),
+            remainingTurns: dur,
+            duration: dur,
+            position: pos,
+            createdTurn: (typeof this.currentTurn === 'number') ? this.currentTurn : 0,
+            id: 'eph_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6)
+        };
+        this._ephemeralContexts.push(entry);
+        this._markLtmDirty();
+        // 失效注入缓存，确保下次 buildInjection 重新生成
+        this._cachedInjection = null;
+        this._cachedInjectionTurn = -1;
+        return entry;
+    },
+
+    /**
+     * 获取当前回合仍有效的瞬时上下文
+     * @param {number} [currentTurn] 当前回合数（可选，默认 this.currentTurn）
+     * @returns {Array} 有效的瞬时上下文数组（按 position 升序排列）
+     */
+    getActiveEphemeralContexts: function(currentTurn) {
+        if (!Array.isArray(this._ephemeralContexts)) return [];
+        if (typeof currentTurn !== 'number') {
+            currentTurn = (typeof this.currentTurn === 'number') ? this.currentTurn : 0;
+        }
+        var active = this._ephemeralContexts.filter(function(ctx) {
+            return ctx && typeof ctx.remainingTurns === 'number' && ctx.remainingTurns > 0;
+        });
+        // 按 position 升序排列，便于按注入位置分组使用
+        active.sort(function(a, b) {
+            var pa = (typeof a.position === 'number') ? a.position : 0;
+            var pb = (typeof b.position === 'number') ? b.position : 0;
+            return pa - pb;
+        });
+        return active;
+    },
+
+    /**
+     * 衰减瞬时上下文：每回合调用，减少剩余回合数，移除过期的
+     * 应在 processMessage 中 currentTurn++ 之后调用
+     * @returns {number} 本次移除的过期上下文数量
+     */
+    decayEphemeralContexts: function() {
+        if (!Array.isArray(this._ephemeralContexts) || this._ephemeralContexts.length === 0) return 0;
+        var before = this._ephemeralContexts.length;
+        var survived = [];
+        for (var i = 0; i < this._ephemeralContexts.length; i++) {
+            var ctx = this._ephemeralContexts[i];
+            if (!ctx || typeof ctx.remainingTurns !== 'number') continue;
+            ctx.remainingTurns -= 1;
+            if (ctx.remainingTurns > 0) survived.push(ctx);
+        }
+        this._ephemeralContexts = survived;
+        var removed = before - this._ephemeralContexts.length;
+        if (removed > 0) {
+            this._markLtmDirty();
+            // 衰减后可能有过期项被移除，失效缓存
+            this._cachedInjection = null;
+            this._cachedInjectionTurn = -1;
+        }
+        return removed;
+    },
+
+    /**
+     * 构建瞬时上下文注入段落（供 buildInjection 调用）
+     * @returns {Array<string>} 注入行数组
+     */
+    _buildEphemeralContextsSection: function() {
+        var lines = [];
+        var active = this.getActiveEphemeralContexts();
+        if (!active || active.length === 0) return lines;
+        for (var i = 0; i < active.length; i++) {
+            var ctx = active[i];
+            if (ctx && ctx.text) {
+                var posTag = (typeof ctx.position === 'number' && ctx.position !== 0)
+                    ? ' @深度' + ctx.position
+                    : '';
+                lines.push('• ' + ctx.text + '（剩余' + ctx.remainingTurns + '回合' + posTag + '）');
+            }
+        }
+        return lines;
     },
 
     // 永久事实单行格式化：情绪标签前置，便于 AI 识别高情绪记忆
@@ -4692,7 +4898,7 @@ var GameMemory = {
             console.log('[GameMemory] 迁移到 v4 完成');
         }
         // 顶层字段映射（data.key → self.key，按顺序应用；undefined 不覆盖）
-        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', '_shortTermEntries', '_milestoneEntries', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
+        var topFields = ['currentTurn', 'lastInjectionTurn', 'gameClock', 'permanentFacts', 'tables', 'plot', 'events', 'timeline', 'quests', 'workingMemory', '_shortTermEntries', '_milestoneEntries', 'budget', 'compressionConfig', 'stats', '_changeLog', '_injectionSnapshots', '_ephemeralContexts', '_summaryLayers', '_setupLayers', '_dormantTracking', '_storytellingConfig', '_worldNotes'];
         for (let i = 0; i < topFields.length; i++) { var k = topFields[i]; if (data[k] !== undefined) self[k] = data[k]; }
         // 【第4轮优化】加载后强制同步 currentTurn 到 gameState._stats.totalTurns
         // 避免双源不同步导致 shouldTriggerCompression 用 _stats.totalTurns、其他逻辑用 self.currentTurn 产生偏差
@@ -4710,6 +4916,7 @@ var GameMemory = {
         if (!self.workingMemory.recentMessages) self.workingMemory.recentMessages = [];
         if (!self.plot.pendingMysteries) self.plot.pendingMysteries = [];
         if (!self._injectionSnapshots) self._injectionSnapshots = {};
+        if (!self._ephemeralContexts) self._ephemeralContexts = [];
         if (!self._summaryLayers) self._summaryLayers = { near: [], mid: [], far: [] };
         if (!self._setupLayers) self._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         if (!self._setupLayers.setupKeywords) self._setupLayers.setupKeywords = [];
@@ -4752,6 +4959,8 @@ var GameMemory = {
             if (!migrated._worldNotes) migrated._worldNotes = [];
             if (!migrated._summaryLayers) migrated._summaryLayers = { near: [], mid: [], far: [] };
             if (!migrated._setupLayers) migrated._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
+            // P2-2 瞬时上下文：旧存档无此字段，补全为空数组
+            if (!Array.isArray(migrated._ephemeralContexts)) migrated._ephemeralContexts = [];
 
             // （与 QuestMutator schema 对齐，消除 title↔content 别名映射）
             // 注：_dormantTracking.quests 的 key 是任务标识字符串本身（非字段名），无需迁移
@@ -4801,6 +5010,7 @@ var GameMemory = {
         this.stats = { totalMessages: 0, totalSummaries: 0, lastUpdateTime: null, tokenSaved: 0 };
         this._changeLog = []; this.summaryHistory = [];
         this._injectionSnapshots = {};
+        this._ephemeralContexts = [];
         this._summaryLayers = { near: [], mid: [], far: [] };
         this._setupLayers = { coreRules: '', worldSummary: '', fullSetup: '', compressed: false, extractTurn: -1, setupKeywords: [] };
         this._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };

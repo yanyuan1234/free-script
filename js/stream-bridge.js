@@ -116,6 +116,29 @@ var StreamBridge = (function() {
                 try { req.onChunk(msg.delta, msg.fullText); }
                 catch (cbErr) { console.warn('[StreamBridge] onChunk 回调异常:', cbErr); }
             }
+            // 【P1-2 流式渐进渲染】Worker 路径同样提取部分 story 并派发 UI 事件
+            // 与 core.js 主线程路径保持一致，确保两条路径都有渐进渲染
+            // 不影响最终解析（最终仍用完整 JSON 解析）
+            if (msg.fullText && typeof _extractPartialStory === 'function') {
+                // 快速预筛：仅当 fullText 包含 "story" 字段时才跑正则
+                if (msg.fullText.indexOf('"story"') !== -1) {
+                    try {
+                        var _partial = _extractPartialStory(msg.fullText);
+                        if (_partial) {
+                            var _lastLen = req._lastPartialStoryLen || 0;
+                            // 仅在 story 内容有新增时派发，避免重复刷新
+                            if (_partial.length > _lastLen) {
+                                req._lastPartialStoryLen = _partial.length;
+                                if (typeof _dispatchPartialStory === 'function') {
+                                    _dispatchPartialStory(_partial, msg.fullText);
+                                }
+                            }
+                        }
+                    } catch (_psErr) {
+                        console.warn('[StreamBridge] 部分故事提取异常:', _psErr);
+                    }
+                }
+            }
         } else if (msg.type === 'DONE') {
             // 设置 reasoning 透出（与原 executeAIStream 一致）
             try {

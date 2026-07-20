@@ -3583,6 +3583,162 @@ if (Object.keys(theaterContent).length > 0) {
         success: !!(parsedByContract && parsedByContract.success === true && data && !data._isDefaultSkeleton)
     };
 }
+
+// 【P0-1 前端重复退化检测】
+// 检测 AI 输出中的重复退化现象：字符级重复（"苏苏苏苏苏"）、短语级循环、段落级重复
+// 返回 null 表示正常，返回字符串表示检测到的退化类型描述
+function _detectRepetitionDegeneration(text) {
+    if (!text || text.length < 10) return null;
+    var _len = text.length;
+
+    // 检测1：字符级重复（同一字符连续出现 10+ 次）
+    // 这是之前测试中"苏苏苏苏苏"bug 的根因
+    var _charRun = 1, _maxCharRun = 1, _repChar = '';
+    for (var i = 1; i < _len; i++) {
+        if (text[i] === text[i - 1]) {
+            _charRun++;
+            if (_charRun > _maxCharRun) { _maxCharRun = _charRun; _repChar = text[i]; }
+        } else {
+            _charRun = 1;
+        }
+    }
+    if (_maxCharRun >= 10) {
+        return '字符级重复："' + _repChar + '" 连续 ' + _maxCharRun + ' 次';
+    }
+
+    // 检测2：短语级循环（2-10字的短语重复 5+ 次）
+    // 检查文本后半部分的短语重复
+    var _checkText = text.length > 500 ? text.substring(text.length - 500) : text;
+    for (var plen = 2; plen <= 10; plen++) {
+        if (_checkText.length < plen * 6) continue;
+        var _phrase = _checkText.substring(_checkText.length - plen);
+        var _count = 0;
+        var _pos = _checkText.length - plen;
+        while (_pos >= 0 && _checkText.substring(_pos, _pos + plen) === _phrase) {
+            _count++;
+            _pos -= plen;
+        }
+        if (_count >= 5 && _phrase.trim().length > 0) {
+            return '短语级循环："' + _phrase + '" 重复 ' + _count + ' 次';
+        }
+    }
+
+    // 检测3：段落级重复（同一句子/段落出现 3+ 次）
+    // 按句号/换行分割，检查重复段落
+    var _sentences = text.split(/[。\n！？!?]/).filter(function(s) { return s.trim().length > 15; });
+    if (_sentences.length > 3) {
+        var _seen = {};
+        for (var si = 0; si < _sentences.length; si++) {
+            var _s = _sentences[si].trim();
+            if (_seen[_s]) {
+                _seen[_s]++;
+                if (_seen[_s] >= 3) {
+                    return '段落级重复："' + _s.substring(0, 30) + (_s.length > 30 ? '...' : '') + '" 出现 ' + _seen[_s] + ' 次';
+                }
+            } else {
+                _seen[_s] = 1;
+            }
+        }
+    }
+
+    // 检测4：文本后半部分重复率过高（退化标志）
+    if (_len > 200) {
+        var _secondHalf = text.substring(Math.floor(_len / 2));
+        var _uniqueChars = {};
+        for (var ci = 0; ci < _secondHalf.length; ci++) {
+            _uniqueChars[_secondHalf[ci]] = true;
+        }
+        var _uniqueRatio = Object.keys(_uniqueChars).length / _secondHalf.length;
+        if (_uniqueRatio < 0.1 && _secondHalf.length > 50) {
+            return '字符多样性极低（' + (_uniqueRatio * 100).toFixed(1) + '%），疑似退化输出';
+        }
+    }
+
+    return null;
+}
+
+// 【P0-3 Context Viewer】记录上下文 token 分配
+// 分析 messages 数组中各部分的 token 数，存入 gameState 供 UI 展示
+function _recordContextBreakdown(messages, options) {
+    if (!messages || !messages.length) return;
+    var breakdown = {
+        timestamp: Date.now(),
+        totalMessages: messages.length,
+        sections: [],
+        totalTokens: 0,
+        maxTokens: 0
+    };
+
+    // 获取 max_tokens 预算
+    var presetParams = {};
+    if (typeof PresetManager !== 'undefined' && PresetManager.getParams) {
+        presetParams = PresetManager.getParams();
+    }
+    breakdown.maxTokens = presetParams.max_context || 32000;
+
+    // 按 role 和内容特征分类
+    var categories = {
+        system: { label: '系统提示词', tokens: 0, count: 0 },
+        worldSetting: { label: '世界设定', tokens: 0, count: 0 },
+        characters: { label: '角色信息', tokens: 0, count: 0 },
+        worldInfo: { label: '世界书(已激活)', tokens: 0, count: 0 },
+        summary: { label: '对话摘要', tokens: 0, count: 0 },
+        vectorResults: { label: '向量检索结果', tokens: 0, count: 0 },
+        authorNote: { label: '作者备注', tokens: 0, count: 0 },
+        conversation: { label: '近期对话', tokens: 0, count: 0 },
+        other: { label: '其他', tokens: 0, count: 0 }
+    };
+
+    for (var i = 0; i < messages.length; i++) {
+        var msg = messages[i];
+        if (!msg || !msg.content) continue;
+        var content = String(msg.content);
+        // 粗略估算 token 数（1 token ≈ 3.5 字符）
+        var tokens = Math.ceil(content.length / 3.5);
+
+        // 分类
+        var cat = 'other';
+        if (msg.role === 'system') {
+            if (/世界设定|世界观|worldSetting/i.test(content)) cat = 'worldSetting';
+            else if (/角色|人物|character|npc/i.test(content)) cat = 'characters';
+            else if (/世界知识库|世界书|lore/i.test(content)) cat = 'worldInfo';
+            else if (/摘要|总结|summary/i.test(content)) cat = 'summary';
+            else if (/向量|检索|vector/i.test(content)) cat = 'vectorResults';
+            else if (/作者备注|Author|AN/i.test(content)) cat = 'authorNote';
+            else cat = 'system';
+        } else if (msg.role === 'user' || msg.role === 'assistant') {
+            cat = 'conversation';
+        }
+
+        categories[cat].tokens += tokens;
+        categories[cat].count++;
+        breakdown.totalTokens += tokens;
+    }
+
+    // 转换为数组
+    for (var key in categories) {
+        if (categories[key].tokens > 0) {
+            breakdown.sections.push({
+                label: categories[key].label,
+                tokens: categories[key].tokens,
+                count: categories[key].count,
+                percentage: (categories[key].tokens / breakdown.totalTokens * 100).toFixed(1)
+            });
+        }
+    }
+
+    // 按 token 数降序
+    breakdown.sections.sort(function(a, b) { return b.tokens - a.tokens; });
+
+    // 存入全局状态
+    if (typeof gameState !== 'undefined' && gameState) {
+        gameState._lastContextBreakdown = breakdown;
+    }
+    if (typeof window !== 'undefined') {
+        window._lastContextBreakdown = breakdown;
+    }
+}
+
 // 返回 { valid: Boolean, missing: Array, storyField: String }
 function validateAIResponse(data) {
     if (!isObject(data)) {
@@ -5537,6 +5693,89 @@ function buildAIRequestBody(messages, options, config) {
 }
 
 
+// 【P1-2 流式渐进渲染】从累积的流式文本中提取部分 story 字段内容
+// 用途：JSON 流式响应未完成时，提前提取 story 字段并渲染到 UI，提升用户感知速度
+// 注意：此函数仅用于实时渲染预览，不影响最终解析（最终仍用完整 JSON 解析）
+// 正则匹配未闭合的 story 字段值（支持部分内容，无需等待闭合引号）
+// 兼容 ES5：使用 var、function 声明，避免 let/const/箭头函数
+var _partialStoryRegex = /"story"\s*:\s*"((?:[^"\\]|\\.)*)/;
+function _extractPartialStory(accumulatedText) {
+    if (!accumulatedText || typeof accumulatedText !== 'string') return '';
+    // 快速预筛：仅当文本包含 "story" 字段时才进入正则匹配，避免无谓开销
+    if (accumulatedText.indexOf('"story"') === -1) return '';
+    var match = _partialStoryRegex.exec(accumulatedText);
+    if (!match || !match[1]) return '';
+    var raw = match[1];
+    // 解析 JSON 字符串转义字符：\n \t \r \b \f \" \\ \/ \uXXXX
+    // 仅处理常见转义；未识别的转义保留反斜杠+字符原样
+    var result = '';
+    var i = 0;
+    var len = raw.length;
+    while (i < len) {
+        var ch = raw.charAt(i);
+        if (ch === '\\' && i + 1 < len) {
+            var next = raw.charAt(i + 1);
+            switch (next) {
+                case 'n': result += '\n'; i += 2; break;
+                case 't': result += '\t'; i += 2; break;
+                case 'r': result += '\r'; i += 2; break;
+                case 'b': result += '\b'; i += 2; break;
+                case 'f': result += '\f'; i += 2; break;
+                case '"': result += '"'; i += 2; break;
+                case '\\': result += '\\'; i += 2; break;
+                case '/': result += '/'; i += 2; break;
+                case 'u':
+                    var hex = raw.substring(i + 2, i + 6);
+                    if (/^[0-9a-fA-F]{4}$/.test(hex)) {
+                        result += String.fromCharCode(parseInt(hex, 16));
+                        i += 6;
+                    } else {
+                        // \u 后不足4位十六进制（流式截断），保留原样
+                        result += ch;
+                        i++;
+                    }
+                    break;
+                default:
+                    // 未识别转义，保留反斜杠+字符
+                    result += ch + next;
+                    i += 2;
+            }
+        } else {
+            result += ch;
+            i++;
+        }
+    }
+    return result;
+}
+
+// 【P1-2 流式渐进渲染】将部分 story 推送到 UI
+// 通过自定义事件 + 全局回调钩子通知 UI 层更新，不影响最终 JSON 解析
+// UI 层可任选一种方式订阅：
+//   1. window.addEventListener('stream:partialStory', function(e){ ... e.detail.story ... })
+//   2. window._onPartialStoryUpdate = function(story, fullText){ ... }
+function _dispatchPartialStory(partialStory, fullText) {
+    if (!partialStory) return;
+    try {
+        if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined' && window.dispatchEvent) {
+            window.dispatchEvent(new CustomEvent('stream:partialStory', {
+                detail: {
+                    story: partialStory,
+                    fullText: fullText || '',
+                    timestamp: Date.now()
+                }
+            }));
+        }
+        // 兼容回调钩子：UI 层可挂载 window._onPartialStoryUpdate
+        if (typeof window !== 'undefined' && typeof window._onPartialStoryUpdate === 'function') {
+            try { window._onPartialStoryUpdate(partialStory, fullText || ''); }
+            catch (cbErr) { console.warn('[_dispatchPartialStory] 回调异常:', cbErr); }
+        }
+    } catch (e) {
+        console.warn('[_dispatchPartialStory] 派发事件异常:', e);
+    }
+}
+
+
 // 统一前缀处理：兼容 "data:" 和 "data: " 两种格式
 
 //              剧情正文走 content 字段。两者必须分离——只把 content 给用户看，
@@ -5583,6 +5822,9 @@ function parseSSEEventText(eventText, ctx) {
                 ctx._pendingChunkDelta = '';
                 try { ctx.onChunk(flushDelta, flushFull); }
                 catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
+                // 【P1-2 流式渐进渲染】在节流刷新点尝试提取部分 story 并推送 UI
+                // 仅当累积文本包含 "story": 字段时提取，不影响最终 JSON 解析
+                _tryDispatchPartialStoryForCtx(ctx, flushFull);
                 // 下一次刷新至少等待 60ms
                 setTimeout(function() {
                     ctx._chunkFlushScheduled = false;
@@ -5592,10 +5834,29 @@ function parseSSEEventText(eventText, ctx) {
                         ctx._pendingChunkDelta = '';
                         try { ctx.onChunk(d2, f2); }
                         catch (e2) { console.warn('[callAI] onChunk 回调异常(延迟):', e2); }
+                        // 延迟刷新点同样尝试推送部分 story
+                        _tryDispatchPartialStoryForCtx(ctx, f2);
                     }
                 }, 60);
             }
         }
+    }
+}
+
+// 【P1-2 流式渐进渲染】ctx 级别的部分 story 提取与派发
+// 通过 ctx._lastPartialStoryLen 记录上次派发的 story 长度，避免重复派发相同内容
+// 仅当新提取的 story 长度大于上次时才派发，确保 UI 收到的是增量更新
+function _tryDispatchPartialStoryForCtx(ctx, fullText) {
+    if (!fullText || typeof _extractPartialStory !== 'function') return;
+    // 快速预筛：避免对每个 chunk 都跑正则
+    if (fullText.indexOf('"story"') === -1) return;
+    var partial = _extractPartialStory(fullText);
+    if (!partial) return;
+    var lastLen = ctx._lastPartialStoryLen || 0;
+    // 仅在 story 内容有新增时派发，避免重复刷新
+    if (partial.length > lastLen) {
+        ctx._lastPartialStoryLen = partial.length;
+        _dispatchPartialStory(partial, fullText);
     }
 }
 
@@ -5772,6 +6033,9 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
                 try { ctx.onChunk(_finalDelta, _finalFull); }
                 catch (_finalErr) { console.warn('[callAI] onChunk 最终刷新异常:', _finalErr); }
             }
+            // 【P1-2 流式渐进渲染】流结束前做最后一次部分 story 派发，
+            // 确保用户在最终 JSON 解析完成前看到完整的 story 预览
+            _tryDispatchPartialStoryForCtx(ctx, ctx.fullText);
             break;
         }
         _hasFirstChunk = true;
@@ -5809,6 +6073,9 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
                 try { ctx.onChunk(_abortDelta, _abortFull); }
                 catch (e) { console.warn('[callAI] onChunk 中断刷新异常:', e); }
             }
+            // 【P1-2 流式渐进渲染】流被中断时也派发已收到的部分 story，
+            // 避免中断瞬间 UI 闪回空白
+            _tryDispatchPartialStoryForCtx(ctx, ctx.fullText);
         } else {
             throw _streamErr;  // 没有收到任何内容，抛出原始错误
         }
@@ -5957,6 +6224,11 @@ async function callAI(messages, options = {}) {
     if (!initialCfg || !initialCfg.baseUrl || !initialCfg.apiKey) {
         throw new Error('请先配置API（设置 → API配置）');
     }
+
+    // 【P0-3 Context Viewer】记录本次请求的 token 分配，供 UI 展示
+    try {
+        _recordContextBreakdown(messages, options);
+    } catch(e) { /* 不影响主流程 */ }
 
 
     // 旧代码 5 分钟超时对部分推理模型不够，导致正常请求被误杀

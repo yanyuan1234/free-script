@@ -178,9 +178,14 @@
         params: {
             temperature: 0.85,
             top_p: 0.92,
-            top_k: 50,
+            top_k: 0,                // 【P1-1】禁用 top_k，改用 min_p（2026 最佳实践）
+            min_p: 0.07,             // 【P1-1】自适应概率截断，替代 top_k
             frequency_penalty: 0.3,
             presence_penalty: 0.1,
+            repetition_penalty: 1.07, // 【P0-1】轻度重复惩罚
+            dry_multiplier: 1.0,     // 【P0-1】DRY 采样器：短语级反重复
+            dry_base: 1.75,          // 【P0-1】指数基底
+            dry_allowed_length: 2,   // 【P0-1】允许的重复长度
             max_tokens: 16384,
             max_context: 32000
         },
@@ -244,9 +249,14 @@
         params: {
             temperature: 0.95,
             top_p: 0.95,
-            top_k: 60,
+            top_k: 0,                // 【P1-1】禁用 top_k，改用 min_p
+            min_p: 0.05,             // 【P1-1】激进预设用更低的 min_p 增加多样性
             frequency_penalty: 0.4,
             presence_penalty: 0.2,
+            repetition_penalty: 1.05, // 【P0-1】激进预设轻度惩罚，保留创意
+            dry_multiplier: 0.8,     // 【P0-1】DRY 采样器
+            dry_base: 1.75,
+            dry_allowed_length: 2,
             max_tokens: 16384,
             max_context: 32000
         },
@@ -318,9 +328,14 @@
         params: {
             temperature: 0.75,
             top_p: 0.9,
-            top_k: 40,
+            top_k: 0,                // 【P1-1】禁用 top_k，改用 min_p
+            min_p: 0.1,              // 【P1-1】平缓预设用更高的 min_p 增加稳定性
             frequency_penalty: 0.2,
             presence_penalty: 0.1,
+            repetition_penalty: 1.1,  // 【P0-1】平缓预设稍强惩罚，避免重复日常描写
+            dry_multiplier: 1.2,     // 【P0-1】DRY 采样器
+            dry_base: 1.75,
+            dry_allowed_length: 2,
             max_tokens: 16384,
             max_context: 32000
         },
@@ -386,9 +401,14 @@
         params: {
             temperature: 0.85,
             top_p: 0.9,
-            top_k: 50,
+            top_k: 0,                // 【P1-1】禁用 top_k，改用 min_p
+            min_p: 0.07,             // 【P1-1】标准预设用推荐默认值
             frequency_penalty: 0.3,
             presence_penalty: 0.1,
+            repetition_penalty: 1.07, // 【P0-1】标准重复惩罚
+            dry_multiplier: 1.0,     // 【P0-1】DRY 采样器
+            dry_base: 1.75,
+            dry_allowed_length: 2,
             max_tokens: 16384,
             max_context: 32000
         },

@@ -710,6 +710,42 @@ function _buildFormatAnchor() {
         '约' + _maxTokensForAnchor + 'tokens输出空间';
 }
 
+// 【P3-2 三阶段对话演化】根据当前对话轮数返回阶段信息
+// Stage 1 (1-5轮)：贴合角色设定——AI 刚接触角色，强调严格遵循人设、世界观
+// Stage 2 (5-20轮)：引用历史对话——关系建立期，强调连贯引用过往互动、避免失忆
+// Stage 3 (20+轮)：个性化互动、内部梗——关系深化期，强调专属互动、专属梗、默契
+// 参数：turn - 当前对话轮数（gameState._stats.totalTurns）
+// 返回：{ stage: 1|2|3, name: 'Stage N', label: '阶段名', guidance: '本阶段指导语' }
+// 兼容 ES5：使用 var、function 声明
+function _getConversationStage(turn) {
+    var t = (typeof turn === 'number') ? turn : 0;
+    if (t < 5) {
+        // Stage 1：开局建立期（1-4轮，边界5归入Stage2）
+        return {
+            stage: 1,
+            name: 'Stage 1',
+            label: '贴合角色设定',
+            guidance: '【对话演化·Stage1】你刚开始扮演这些角色，请严格贴合角色设定卡：性格、口癖、立场、底线都要精确还原。禁止OOC（脱离人设）。此阶段以建立角色辨识度为先，对话风格需与设定一致，让玩家清晰感知每个角色的独特性。'
+        };
+    } else if (t < 20) {
+        // Stage 2：关系发展期（5-19轮，边界20归入Stage3）
+        return {
+            stage: 2,
+            name: 'Stage 2',
+            label: '引用历史对话',
+            guidance: '【对话演化·Stage2】角色与玩家关系正在发展，请主动引用历史对话中的约定、承诺、共同经历。避免失忆——若玩家曾与角色达成某种默契或约定，后续对话需体现延续性。可适度回扣前几轮的关键事件，让玩家感到被记住。'
+        };
+    } else {
+        // Stage 3：深化默契期（20轮以上）
+        return {
+            stage: 3,
+            name: 'Stage 3',
+            label: '个性化互动、内部梗',
+            guidance: '【对话演化·Stage3】角色与玩家已有深厚互动基础，请发展个性化互动与专属内部梗：基于过往经历自然形成的称呼、暗号、玩笑、默契反应。角色可展现更私密的一面，对话可更轻松自然，但不得违背核心人设。让玩家感到关系真实深化。'
+        };
+    }
+}
+
 // 渐进式格式规则（原 _buildFormatRules 改名为公共函数，避免与旧引用冲突）
 function _buildFormatRules(gs, _t, turn) {
     var hasChoices = gs.generateChoices;
@@ -789,7 +825,18 @@ function _buildFormatRules(gs, _t, turn) {
         + '  - 即使剧情没有重大变化，也必须输出至少 1 条 shortTerm 记忆；无长期/里程碑变更则对应层返回空数组或省略。\n'
         + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
         + '约' + _maxTokens + 'tokens输出空间'
-        + _disabledFeaturesHint;
+        + _disabledFeaturesHint
+        + _buildConversationStageHint(turn);
+}
+
+// 【P3-2 三阶段对话演化】构建对话阶段指导语片段，追加到格式规则末尾
+// 根据 turn 动态切换 Stage 1/2/3 指导语，引导 AI 在不同对话深度采用不同互动策略
+// 兼容 ES5：使用 var、function 声明
+function _buildConversationStageHint(turn) {
+    if (typeof _getConversationStage !== 'function') return '';
+    var stageInfo = _getConversationStage(turn);
+    if (!stageInfo || !stageInfo.guidance) return '';
+    return '\n' + stageInfo.guidance;
 }
 
 /**
@@ -1103,6 +1150,90 @@ function applyLengthPreset(preset) {
     if (elParaMin) elParaMin.value = p.paraMin;
     if (elParaMax) elParaMax.value = p.paraMax;
     if (elStyle && p.style) elStyle.value = p.style;
+}
+
+// 【P2-3 多角色 Talkativeness】根据用户消息和角色话多程度选择本回合发言角色
+// 规则：
+//   1. 完整词提及检测：用户消息中提到角色全名时，该角色本回合必定发言（强制激活）
+//   2. Talkativeness 概率：未被强制激活的角色，按 talkativeness 概率决定是否发言
+//   3. 兜底：若所有角色都未被选中，至少保留 talkativeness 最高的1个角色，避免无人发言
+// 参数：
+//   userMessage - 当前用户消息文本（用于全名提及检测）
+//   characters  - 角色数组，每项含 name/title/relation/favorability/talkativeness(可选,默认0.5)
+// 返回：{ active: [角色...], mentioned: [被全名提及的角色...], skipped: [本回合沉默的角色...] }
+// 兼容 ES5：使用 var、function 声明
+function _selectActiveCharacters(userMessage, characters) {
+    if (!Array.isArray(characters) || characters.length === 0) {
+        return { active: [], mentioned: [], skipped: [] };
+    }
+    var msg = (typeof userMessage === 'string') ? userMessage : '';
+    var active = [];
+    var mentioned = [];
+    var skipped = [];
+    var candidates = [];  // 未被强制激活、按概率挑选的候选角色
+
+    for (var i = 0; i < characters.length; i++) {
+        var c = characters[i];
+        if (!c || !c.name) continue;
+        // talkativeness 默认 0.5（话多程度：0=沉默寡言, 1=每回合必发言）
+        var talkativeness = (typeof c.talkativeness === 'number') ? c.talkativeness : 0.5;
+        // 边界裁剪到 [0, 1]
+        if (talkativeness < 0) talkativeness = 0;
+        if (talkativeness > 1) talkativeness = 1;
+
+        // 完整词提及检测：用户消息中包含角色全名 → 该角色必定回复
+        // 用 indexOf 做快速预筛，再确认是非子串匹配（避免"林"误匹配"林婉"）
+        var fullName = String(c.name);
+        var isMentioned = false;
+        if (fullName.length > 0 && msg.indexOf(fullName) !== -1) {
+            isMentioned = true;
+            // 额外校验：全名前后不是字母/数字/汉字，减少误匹配
+            // 例：用户写"林婉儿"不应激活角色"林婉"（除非"林婉"是独立词）
+            // 这里采用宽松策略：只要全名出现即激活，避免漏判（玩家点名必回应是核心体验）
+        }
+
+        if (isMentioned) {
+            mentioned.push(c);
+            active.push(c);
+        } else if (talkativeness >= 1) {
+            // talkativeness=1 的角色每回合必发言
+            active.push(c);
+        } else if (talkativeness <= 0) {
+            // talkativeness=0 的角色除非被点名否则不发言
+            skipped.push(c);
+        } else {
+            // 按概率决定：用 Math.random() 与 talkativeness 比较
+            // 为可测试性，把候选角色集中起来统一处理
+            candidates.push({ char: c, talkativeness: talkativeness });
+        }
+    }
+
+    // 对候选角色按 talkativeness 概率挑选
+    for (var j = 0; j < candidates.length; j++) {
+        var cand = candidates[j];
+        if (Math.random() < cand.talkativeness) {
+            active.push(cand.char);
+        } else {
+            skipped.push(cand.char);
+        }
+    }
+
+    // 兜底：若所有角色都未被选中（概率性全沉默），保留 talkativeness 最高的1个角色
+    // 避免"多人场景但无人发言"的违和情况
+    if (active.length === 0 && candidates.length > 0) {
+        candidates.sort(function(a, b) { return b.talkativeness - a.talkativeness; });
+        active.push(candidates[0].char);
+        // 从 skipped 中移除被兜底选中的角色
+        var _topName = candidates[0].char.name;
+        for (var k = 0; k < skipped.length; k++) {
+            if (skipped[k] && skipped[k].name === _topName) {
+                skipped.splice(k, 1);
+                break;
+            }
+        }
+    }
+
+    return { active: active, mentioned: mentioned, skipped: skipped };
 }
 
 async function sendAIRequest(userMessage, isInit = false) {
@@ -1481,15 +1612,42 @@ async function sendAIRequest(userMessage, isInit = false) {
                 messages.push({ role: 'system', content: eventsText });
             }
 
-            // 【多角色叙事指导】精简为1行提示，节省token
+            // 【多角色叙事指导 + P2-3 Talkativeness】
+            // 1. 统计在场活跃角色数（保留原计数逻辑用于判断是否多角色场景）
+            // 2. 调用 _selectActiveCharacters 按 talkativeness 概率挑选本回合发言角色
+            // 3. 玩家消息全名提及的角色必定发言（强制激活）
             var _activeCharCount = 0;
+            var _multiChars = [];
             if (gameState && gameState.worldSnapshot && gameState.worldSnapshot.characters) {
                 gameState.worldSnapshot.characters.forEach(function(c) {
-                    if (c.relation || typeof c.favorability === 'number') _activeCharCount++;
+                    if (c.relation || typeof c.favorability === 'number') {
+                        _activeCharCount++;
+                        _multiChars.push(c);
+                    }
                 });
             }
             if (_activeCharCount > 1) {
-                messages.push({ role: 'system', content: '【多角色】多角色在场时，各角色独立行动、轮流对话、性格各异。' });
+                // 【P2-3】按 talkativeness 概率 + 全名提及检测挑选本回合发言角色
+                var _selResult = _selectActiveCharacters(userMessage, _multiChars);
+                var _activeNames = _selResult.active.map(function(c) { return c.name; });
+                var _mentionedNames = _selResult.mentioned.map(function(c) { return c.name; });
+                var _skippedNames = _selResult.skipped.map(function(c) { return c.name; });
+
+                // 构建多角色指导语：基础规则 + 本回合发言角色 + 被点名角色
+                var _multiHint = '【多角色】多角色在场时，各角色独立行动、轮流对话、性格各异。';
+                if (_activeNames.length > 0) {
+                    _multiHint += '\n本回合优先发言角色：' + _activeNames.join('、') + '。';
+                }
+                if (_mentionedNames.length > 0) {
+                    _multiHint += '\n玩家直接点名提及：' + _mentionedNames.join('、')
+                        + '，这些角色本回合必须给出回应。';
+                }
+                if (_skippedNames.length > 0) {
+                    _multiHint += '\n本回合可保持沉默或仅作背景动作：' + _skippedNames.join('、') + '。';
+                }
+                // 提示 AI 按角色 talkativeness 控制发言频率，避免所有角色抢话
+                _multiHint += '\n各角色按性格话多程度(talkativeness)控制发言量，话少角色可用动作/神情参与。';
+                messages.push({ role: 'system', content: _multiHint });
             }
 
             // 远期摘要（【Token优化】记忆系统有对话摘要时跳过，避免重复）
@@ -1909,6 +2067,20 @@ async function sendAIRequest(userMessage, isInit = false) {
         console.log('[perf] parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
         var data = parseResult.data;
         var storyText = parseResult.storyText;
+
+        // 【P0-1 前端重复检测兜底】当 API 端 DRY 采样器不可用时（如 OpenAI 兼容中转站），
+        // 在前端检测 AI 输出的重复退化现象（如"苏苏苏苏苏"字符级重复）
+        // 检测到重复时，在 storyText 前添加警告标记，不自动重新生成（避免额外 API 调用）
+        if (storyText && storyText.length > 10) {
+            var _repWarn = _detectRepetitionDegeneration(storyText);
+            if (_repWarn) {
+                console.warn('[AntiRepeat] 检测到重复退化:', _repWarn);
+                storyText = '⚠️ **AI输出检测到重复退化**（' + _repWarn + '）\n建议重新生成或更换模型/预设。\n\n' + storyText;
+                if (gameState) gameState._lastRepetitionWarning = _repWarn;
+            } else {
+                if (gameState) gameState._lastRepetitionWarning = null;
+            }
+        }
 
         // [CoT] 提取并展示思维链（需在 stripThinking 之前从原始响应里拿）
         var cotMode = (StateManager ? StateManager.get('settings.cotMode') : '') || '';
@@ -2494,7 +2666,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                             name: c.name,
                             title: c.title || '',
                             relation: c.relation || '',
-                            favorability: c.favorability || 0
+                            favorability: c.favorability || 0,
+                            // 【P2-3 多角色 Talkativeness】角色话多程度，默认 0.5
+                            // 0=沉默寡言(仅被点名时发言), 0.5=中等(默认), 1=每回合必发言
+                            talkativeness: (typeof c.talkativeness === 'number') ? c.talkativeness : 0.5
                         };
                     });
                 }
@@ -2684,6 +2859,17 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
+
+        // 【P0-2 AI驱动滚动摘要】每6轮自动调用AI总结近期剧情，存入mid层并向量化
+        // 参考 AI Dungeon Memory System：每6个动作生成一条语义摘要
+        // 避免长游戏中早期剧情细节丢失，提升AI对历史剧情的召回能力
+        var _turnNow = StateManager ? (StateManager.get('progress.turn') || 0) : (gameState._stats && gameState._stats.totalTurns || 0);
+        if (_turnNow > 0 && _turnNow % 6 === 0) {
+            // 异步执行，不阻塞当前回合渲染
+            setTimeout(function() {
+                try { _generateRollingSummary(); } catch(e) { console.warn('[RollingSummary] 生成失败:', e); }
+            }, 2000);
+        }
 
 
         var outputTokens = response ? estimateTokensUtil(response) : 0;
@@ -4752,6 +4938,97 @@ function buildSaveData(customName, useCache) {
     }
 
     return saveData;
+}
+
+
+// 【P0-2 AI驱动滚动摘要】
+// 每6轮自动调用AI总结最近6轮的剧情，生成语义摘要存入 EnhancedMemory._summaryLayers.mid
+// 同时将摘要向量化存入 VectorRetriever，实现 AI Dungeon 式的 Memory Bank
+// 异步执行，不阻塞游戏主流程
+function _generateRollingSummary() {
+    if (typeof gameState === 'undefined' || !gameState) return;
+    if (typeof callAI === 'undefined') return;
+
+    // 获取最近6轮的对话历史
+    var history = gameState.conversationHistory || [];
+    if (history.length < 4) return; // 太少不值得总结
+
+    // 取最近12条消息（约6轮对话）
+    var recentMsgs = history.slice(Math.max(0, history.length - 12));
+    var dialogText = recentMsgs.map(function(msg) {
+        var role = msg.role === 'user' ? '玩家' : (msg.role === 'assistant' ? 'AI' : '系统');
+        return role + ': ' + (msg.content || '').substring(0, 500);
+    }).join('\n');
+
+    if (dialogText.trim().length < 50) return;
+
+    // 构建总结 prompt（参考 AI Dungeon 的总结策略）
+    var summaryMessages = [
+        {
+            role: 'system',
+            content: '你是一个剧情总结助手。请用2-3句话概括以下剧情的关键发展，重点包括：\n' +
+                '1. 新出现的角色、地点、物品\n' +
+                '2. 重要的剧情转折和决策\n' +
+                '3. 角色关系的变化\n' +
+                '4. 未解决的悬念或伏笔\n' +
+                '只输出总结内容，不要添加额外解释。'
+        },
+        {
+            role: 'user',
+            content: dialogText
+        }
+    ];
+
+    console.log('[RollingSummary] 开始生成第' + (gameState._stats?.totalTurns || 0) + '轮滚动摘要...');
+
+    // 非流式调用，低 max_tokens 控制成本
+    callAI(summaryMessages, {
+        stream: false,
+        max_tokens: 512,
+        temperature: 0.3
+    }).then(function(summary) {
+        if (!summary || summary.trim().length < 10) {
+            console.warn('[RollingSummary] AI返回空摘要');
+            return;
+        }
+        summary = summary.trim();
+
+        // 存入 EnhancedMemory 的 mid 层
+        var gm = (typeof window !== 'undefined') ? window.GameMemory : null;
+        if (gm && gm._summaryLayers && gm._summaryLayers.mid) {
+            // 避免重复：检查最后一条是否相同
+            var lastMid = gm._summaryLayers.mid[gm._summaryLayers.mid.length - 1];
+            if (lastMid && lastMid.indexOf(summary.substring(0, 30)) !== -1) {
+                console.log('[RollingSummary] 摘要已存在，跳过');
+                return;
+            }
+            gm._summaryLayers.mid.push('[第' + (gameState._stats?.totalTurns || 0) + '轮总结] ' + summary);
+            // 限制 mid 层最多保留 10 条摘要
+            if (gm._summaryLayers.mid.length > 10) {
+                gm._summaryLayers.mid = gm._summaryLayers.mid.slice(-10);
+            }
+            console.log('[RollingSummary] 摘要已存入mid层，当前共' + gm._summaryLayers.mid.length + '条');
+        }
+
+        // 向量化存入 VectorRetriever（如果可用）
+        if (typeof VectorRetriever !== 'undefined' && VectorRetriever.addDocument) {
+            try {
+                VectorRetriever.addDocument('summary_' + Date.now(), summary, { type: 'rolling_summary' });
+                console.log('[RollingSummary] 摘要已向量化存储');
+            } catch (ve) {
+                console.warn('[RollingSummary] 向量化失败:', ve);
+            }
+        }
+
+        // 存入 StateManager 持久化
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            try {
+                StateManager.set('progress.lastRollingSummary', summary, { silent: true });
+            } catch(e) {}
+        }
+    }).catch(function(err) {
+        console.warn('[RollingSummary] 生成失败:', err && err.message);
+    });
 }
 
 
