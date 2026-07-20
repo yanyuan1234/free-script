@@ -143,18 +143,21 @@ AIResponseMutator.apply({
     success: true,
     data: {
         memoryUpdates: [
-            { op: 'add', category: 'settings', layer: 'shortTerm', importance: 5, content: '短期事实' },
-            { op: 'add', category: 'promises', layer: 'milestone', importance: 8, content: '里程碑事件' },
-            { op: 'add', category: 'npcProfiles', layer: 'longTerm', importance: 6, content: '长期事实' }
+            // 【BUG-T1 修复】原 fixture 内容"短期事实"/"里程碑事件"/"长期事实"过短（<10 字符），
+            // 被 _applyMemoryUpdates 的 MIN_CONTENT_LENGTH=10 校验跳过，导致 capturedShortTerm.length=0。
+            // 改为更长的中文 fixture（>10 字符），与生产环境实际写入行为保持一致。
+            { op: 'add', category: 'settings', layer: 'shortTerm', importance: 5, content: '玩家在第三章受了重伤' },
+            { op: 'add', category: 'promises', layer: 'milestone', importance: 8, content: '完成了主线任务第一章的剧情' },
+            { op: 'add', category: 'npcProfiles', layer: 'longTerm', importance: 6, content: '酒馆老板是退役的北方剑士' }
         ]
     }
 });
 assertEq(capturedShortTerm.length, 1, 'shortTerm captured');
-assertEq(capturedShortTerm[0].content, '短期事实', 'shortTerm content');
+assertEq(capturedShortTerm[0].content, '玩家在第三章受了重伤', 'shortTerm content');
 assertEq(capturedMilestones.length, 1, 'milestone captured');
-assertEq(capturedMilestones[0].content, '里程碑事件', 'milestone content');
+assertEq(capturedMilestones[0].content, '完成了主线任务第一章的剧情', 'milestone content');
 assertEq(capturedLongTerm.length, 1, 'longTerm captured');
-assertEq(capturedLongTerm[0].content, '长期事实', 'longTerm content');
+assertEq(capturedLongTerm[0].content, '酒馆老板是退役的北方剑士', 'longTerm content');
 delete global.EnhancedMemory;
 
 console.log('AIResponseMutator tests passed');
