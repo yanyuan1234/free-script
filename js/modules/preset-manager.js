@@ -67,6 +67,41 @@ var PresetManager = {
             if (p && p.builtinId) existingIds[p.builtinId] = true;
         });
 
+        // 【BUG修复】预设参数迁移：更新已存在的内置预设的采样参数
+        // 旧版预设没有 DRY/min_p 参数，需要从新版内置预设同步
+        var _paramsMigrated = 0;
+        for (var j = 0; j < window.BUILT_IN_PRESETS.length; j++) {
+            var _bp = window.BUILT_IN_PRESETS[j];
+            for (var k = 0; k < this.presets.length; k++) {
+                var _stored = this.presets[k];
+                if (_stored && _stored.builtinId === _bp.builtinId && _stored.params) {
+                    var _sp = _stored.params;
+                    var _nsp = _bp.params;
+                    // 同步缺失的 DRY/min_p/repetition_penalty 参数
+                    if (typeof _sp.dry_multiplier === 'undefined' && typeof _nsp.dry_multiplier !== 'undefined') {
+                        _sp.dry_multiplier = _nsp.dry_multiplier;
+                        _sp.dry_base = _nsp.dry_base || 1.75;
+                        _sp.dry_allowed_length = _nsp.dry_allowed_length || 2;
+                        _paramsMigrated++;
+                    }
+                    if (typeof _sp.min_p === 'undefined' && typeof _nsp.min_p !== 'undefined') {
+                        _sp.min_p = _nsp.min_p;
+                    }
+                    if (typeof _sp.repetition_penalty === 'undefined' && typeof _nsp.repetition_penalty !== 'undefined') {
+                        _sp.repetition_penalty = _nsp.repetition_penalty;
+                    }
+                    // 确保 top_k=0（禁用，改用 min_p）
+                    if (_sp.top_k === undefined || _sp.top_k > 0) {
+                        _sp.top_k = 0;
+                    }
+                    break;
+                }
+            }
+        }
+        if (_paramsMigrated > 0) {
+            console.log('[PresetManager] 预设参数迁移：更新了 ' + _paramsMigrated + ' 个预设的 DRY/min_p 参数');
+        }
+
         for (var i = 0; i < window.BUILT_IN_PRESETS.length; i++) {
             var bp = window.BUILT_IN_PRESETS[i];
             if (existingIds[bp.builtinId]) continue;
@@ -85,8 +120,8 @@ var PresetManager = {
             added++;
         }
 
-        if (cleaned > 0 || added > 0) {
-            console.log('[PresetManager] 内置预设同步：清理 ' + cleaned + ' 个旧版，注入 ' + added + ' 个新版');
+        if (cleaned > 0 || added > 0 || _paramsMigrated > 0) {
+            console.log('[PresetManager] 内置预设同步：清理 ' + cleaned + ' 个旧版，注入 ' + added + ' 个新版，迁移 ' + _paramsMigrated + ' 个参数');
             this.save();
         }
     },
