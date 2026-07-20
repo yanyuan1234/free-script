@@ -304,6 +304,11 @@ const AIOutputJSONSchema = {
         // 已知不支持的：少数老模型或本地小模型
         // 保守起见，不在黑名单的都认为支持
         if (/text-davinci|davinci|curie|babbage|ada/.test(m)) return false;
+        // 【P0-json_object 修复】DeepSeek 模型在 response_format: json_object 时
+        // 会输出 "我们{}" 等截断内容（仅输出 reasoning 的前几个 token），
+        // 而非完整 JSON 故事。DeepSeek 本身已能通过系统提示词输出高质量 JSON，
+        // 不需要 json_object 强制约束。关闭 json_object 让模型自由输出 JSON 即可。
+        if (/deepseek/.test(m)) return false;
         return true;
     }
 };
