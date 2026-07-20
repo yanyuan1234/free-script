@@ -1087,6 +1087,9 @@ var LocalGameAPI = {
         const MAX_RETRIES = 3; // 每个配置最多重试3次
         const RETRY_DELAY_BASE = 1000; // 基础延迟1秒
 
+        // 【P1 修复】清理过期的失败记录，避免堆积导致所有配置被跳过
+        this._cleanupExpiredFailures();
+
         var startTs = Date.now();
 
         if (!this._autoRotate) {
@@ -1163,7 +1166,23 @@ var LocalGameAPI = {
         }
         // 更详细的错误信息
         if (attemptedCount === 0) {
-            throw new Error('没有可用的API配置，请检查API设置（URL和Key是否完整）');
+            // 【P1 修复】收集所有跳过的原因，给出更具体的错误提示
+            var skipReasons = [];
+            for (var si = 0; si < totalSlots; si++) {
+                var scfg = this._configs[si];
+                if (!scfg || !scfg.baseUrl || !scfg.apiKey) continue;
+                if (this.isSlotTimeoutRecent(si)) {
+                    var srec = this._failedModels[si + '|' + scfg.model];
+                    var sreason = this._getFailedReason(srec || {});
+                    skipReasons.push(scfg.name || scfg.model || ('配置' + (si + 1)) + ': ' + (sreason || '近期失败'));
+                }
+            }
+            var msg = '没有可用的API配置，请检查API设置（URL和Key是否完整）';
+            if (skipReasons.length > 0) {
+                msg += '\n\n所有配置当前处于冷却期：\n' + skipReasons.join('\n');
+                msg += '\n\n请等待冷却期结束后重试，或刷新页面清除冷却状态。';
+            }
+            throw new Error(msg);
         }
 
         // 只保留前 3 条原因避免过长，每条截断到 100 字符
@@ -1174,20 +1193,33 @@ var LocalGameAPI = {
             : ''));
     },
     // [T1-P1-3] 单次请求 + 指数退避重试，拆出 tryWithFallback 内部闭包减少嵌套层级
+    // 【P2 修复】增加限流（429/ResourceExhausted）重试：API 限流通常是瞬时负载，
+    // 等待 2-5 秒后重试有较高成功率，避免立即标记失败导致配置被跳过。
     async _retrySingleRequest(requestFn, slotIdx, attempt, maxRetries, retryDelayBase) {
         try {
             return await requestFn(slotIdx);
         } catch (e) {
             // 用户主动取消（AbortError）不重试，直接抛出
             if (e && e.name === 'AbortError') throw e;
+            var errMsg = String(e && e.message ? e.message : e);
+            var isRateLimit = /ResourceExhausted|rate.?limit|request limit reached|quota exceeded|too many requests|429/i.test(errMsg);
             // translateError 之后文案是中文的，一旦未来改 i18n 这里就漏判
-            var isRetryable =
-                (e && e.name === 'TypeError' && /fetch|network/i.test(String(e.message || ''))) ||
+            var isNetworkError =
+                (e && e.name === 'TypeError' && /fetch|network/i.test(errMsg)) ||
                 (e && (e.code === 'ECONNREFUSED' || e.code === 'ECONNRESET' || e.code === 'ETIMEDOUT' || e.code === 'ENOTFOUND' || e.code === 'EAI_AGAIN')) ||
-                (e && /network|fetch failed|timeout/i.test(String(e.message || '')));
+                (e && /network|fetch failed|timeout/i.test(errMsg));
 
-            if (isRetryable && attempt < maxRetries - 1) {
-                var delay = retryDelayBase * Math.pow(2, attempt); // 指数退避
+            // 限流重试：最多重试 2 次，使用更长的基础延迟（3秒），指数退避（3s → 6s）
+            if (isRateLimit && attempt < 2) {
+                var rateLimitDelay = 3000 * Math.pow(2, attempt);
+                console.log('[限流重试] 配置 ' + (slotIdx + 1) + ' 触发限流，' + rateLimitDelay + 'ms后重试（第' + (attempt + 1) + '次）...');
+                await new Promise(function(resolve) { setTimeout(resolve, rateLimitDelay); });
+                return this._retrySingleRequest(requestFn, slotIdx, attempt + 1, maxRetries, retryDelayBase);
+            }
+
+            // 网络错误重试：指数退避 1s → 2s → 4s
+            if (isNetworkError && attempt < maxRetries - 1) {
+                var delay = retryDelayBase * Math.pow(2, attempt);
                 console.log('[重试] 配置 ' + (slotIdx + 1) + ' 第' + (attempt + 1) + '次失败，' + delay + 'ms后重试...');
                 await new Promise(function(resolve) { setTimeout(resolve, delay); });
                 return this._retrySingleRequest(requestFn, slotIdx, attempt + 1, maxRetries, retryDelayBase);
@@ -1307,8 +1339,34 @@ var LocalGameAPI = {
         if (!record) return false;
         var reason = this._getFailedReason(record);
         var failedAt = this._getFailedTime(record);
-        if (!/timeout|timed out|超时/i.test(reason)) return false;
-        return (Date.now() - failedAt) < (withinMs || 5 * 60 * 1000);
+        // 【P1 修复】不仅跳过超时，也跳过限流/资源耗尽错误，给 API 恢复时间
+        if (!/timeout|timed out|超时|ResourceExhausted|rate.?limit|request limit reached|quota/i.test(reason)) return false;
+        var cooldownMs = withinMs || 5 * 60 * 1000;
+        // 限流错误用更短的冷却时间（30秒），因为限流通常是瞬时负载
+        if (/ResourceExhausted|rate.?limit|request limit reached|quota/i.test(reason)) {
+            cooldownMs = withinMs || 30 * 1000;
+        }
+        return (Date.now() - failedAt) < cooldownMs;
+    },
+    // 【P1 修复】清理过期的失败记录
+    // 超时记录5分钟后过期，限流记录30秒后过期，其他错误2分钟后过期
+    _cleanupExpiredFailures() {
+        var now = Date.now();
+        var changed = false;
+        for (var k in this._failedModels) {
+            var record = this._failedModels[k];
+            var failedAt = this._getFailedTime(record);
+            var reason = this._getFailedReason(record);
+            var ttl = 5 * 60 * 1000; // 默认5分钟
+            if (/ResourceExhausted|rate.?limit|request limit reached|quota/i.test(reason)) {
+                ttl = 30 * 1000; // 限流：30秒
+            }
+            if (now - failedAt > ttl) {
+                delete this._failedModels[k];
+                changed = true;
+            }
+        }
+        if (changed) this.save();
     },
     getFailedModels() {
         var result = [];
@@ -5183,6 +5241,16 @@ function buildAIRequestBody(messages, options, config) {
         max_tokens: presetParams.max_tokens,
         top_p: presetParams.top_p
     };
+
+    // 【P1 修复】DeepSeek 等推理模型需要额外 headroom 容纳 reasoning tokens
+    // reasoning tokens 与 output tokens 共享 max_tokens 预算，需要预留空间
+    var _modelLower = (config.model || '').toLowerCase();
+    if (/deepseek/.test(_modelLower) && params.max_tokens > 0) {
+        var _origMax = params.max_tokens;
+        // reasoning tokens 通常占 20-40% 预算，这里预留 50% headroom
+        params.max_tokens = Math.min(Math.floor(_origMax * 1.5), DEFAULT_MAX_TOKENS);
+        console.log('[API] DeepSeek 推理模型：max_tokens ' + _origMax + ' → ' + params.max_tokens + ' (预留 reasoning 空间)');
+    }
 
     if (!isCompatibleMode) {
         // 正常模式：补完整高级采样参数

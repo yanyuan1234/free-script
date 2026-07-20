@@ -2441,15 +2441,35 @@ var GameMemory = {
     },
 
     // 逐层摘要系统（Qvink风格）
+    // 【P2 修复】原实现使用 workingMemory.turns（MAX_TURNS=3）作为数据源，
+    // 导致 totalTurns 永远 ≤3，mid（>3）和 far（>10）层始终为空。
+    // 改为使用 conversationHistory（完整对话历史）作为数据源。
     _updateSummaryLayers: function() {
         var self = this;
-        var turns = self.workingMemory.turns || [];
+
+        // 从 conversationHistory 获取完整对话历史，按 user+assistant 配对成 turns
+        var rawMessages = (typeof gameState !== 'undefined' && Array.isArray(gameState.conversationHistory))
+            ? gameState.conversationHistory
+            : [];
+        var turns = [];
+        var currentTurn = null;
+        for (var i = 0; i < rawMessages.length; i++) {
+            var msg = rawMessages[i];
+            if (!msg) continue;
+            if (msg.role === 'user') {
+                if (currentTurn) turns.push(currentTurn);
+                currentTurn = { user: (msg.content || ''), assistant: '' };
+            } else if (msg.role === 'assistant' && currentTurn) {
+                currentTurn.assistant = msg.content || '';
+            }
+        }
+        if (currentTurn && (currentTurn.user || currentTurn.assistant)) {
+            turns.push(currentTurn);
+        }
         var totalTurns = turns.length;
 
-
-        // 但 conversationHistory 也会把最近 N 轮原文作为 messages 发送给 API，
-        // 导致同一份内容在 system prompt 和 messages 数组中重复出现，浪费大量 token。
-        // 改为：near 层置空，最近3轮由 conversationHistory 唯一承载。
+        // near 层置空：最近3轮由 conversationHistory 作为 messages 发送给 API，
+        // 若在 system prompt 中再注入会重复，浪费 token。
         // summaryLayers 只负责4轮以前的压缩（mid/far），避免剧情断层。
         self._summaryLayers.near = [];
 
@@ -2466,10 +2486,6 @@ var GameMemory = {
 
         // 远层：10轮以前，提取关键句（不截断单句，选择最重要的句子）
         if (totalTurns > 10) {
-            // 【优化】旧实现用正则关键词 /(约定|承诺|获得|失去|死亡|突破|发现|决定|重要|关键|转折)/
-            // 但 AI 文游里这些词命中率低，且会漏掉 AI 自己标记的关键事件。
-            // 改为：优先用 gameState.keyEvents 子串匹配（与 _compressConversation 一致，line 2463），
-            //       回退到正则关键词（保留旧逻辑兜底，避免 keyEvents 为空时 far 层全空）。
             var _keyEventStrs = (typeof gameState !== 'undefined' && Array.isArray(gameState.keyEvents)) ? gameState.keyEvents : [];
             var _hasKeyEvents = _keyEventStrs.length > 0;
             var farTurns = turns.slice(0, totalTurns - 10);
@@ -2498,7 +2514,13 @@ var GameMemory = {
             }).filter(function(s) { return s && s.length > 0; });
         }
 
-
+        // 调试日志：仅在摘要层非空时输出，便于验证修复效果
+        if (self._summaryLayers.mid.length > 0 || self._summaryLayers.far.length > 0) {
+            console.log('[逐层摘要] totalTurns=' + totalTurns
+                + ' near=' + self._summaryLayers.near.length
+                + ' mid=' + self._summaryLayers.mid.length
+                + ' far=' + self._summaryLayers.far.length);
+        }
     },
 
     // 变化驱动：检测某模块是否有变化（Horae风格）

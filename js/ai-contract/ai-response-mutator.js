@@ -549,6 +549,17 @@ const AIResponseMutator = {
             const u = updates[i];
             if (!u || !u.category) { stats.skipped++; continue; }
 
+            // 【P1 修复】校验 content 最小长度，防止截断文本（如"但你不知道"）被写入永久记忆
+            // delete 操作不需要 content 校验（定位用，短文本是合理的）
+            if (u.content && u.op !== 'delete') {
+                const MIN_CONTENT_LENGTH = 10;
+                if (u.content.length < MIN_CONTENT_LENGTH) {
+                    stats.skipped++;
+                    console.warn('[memoryUpdates] 跳过过短内容 (len=' + u.content.length + ', op=' + u.op + '): "' + u.content + '"');
+                    continue;
+                }
+            }
+
             const layer = u.layer || 'longTerm';
 
             // [Mufy] shortTerm：进入短期记忆池，满 10 条自动归档为长期记忆
