@@ -1166,10 +1166,13 @@ var LocalGameAPI = {
             }
         }
         // totalSlots 改为 orderedSlots 长度，外层循环上限也对应调整
-        totalSlots = orderedSlots.length;
+        // 【BUG-009 修复】totalSlots 在上面 1148 行已声明为 const，不能再赋值！
+        // 改用新的局部变量 _effectiveTotalSlots，避免 Assignment to constant variable 错误
+        const _effectiveTotalSlots = orderedSlots.length;
 
         var failReasons = [];
-        for (let attempt = 0; attempt < totalSlots; attempt++) {
+        // 【BUG-009 修复】for 循环上限也要用 _effectiveTotalSlots，确保只遍历可用配置
+        for (let attempt = 0; attempt < _effectiveTotalSlots; attempt++) {
             const slotIdx = orderedSlots[attempt];
             const cfg = this._configs[slotIdx];
             // 【BUG-004 修复】防御性检查：理论上 orderedSlots 已经过滤过空配置，但保险起见再查一次
