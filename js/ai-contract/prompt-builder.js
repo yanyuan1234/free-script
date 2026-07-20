@@ -240,7 +240,14 @@ const PromptBuilder = {
         this.registerSection('gametime', function(ctx) {
             const time = ctx.gameTime || {};
             if (!time.date && !time.time && !time.period) {
-                return '当前是游戏开始，请设定初始时间。';
+                // 【P2 修复】注入当前真实日期，避免 AI 生成固定时间戳 "2024-03-15 06:30"
+                var now = new Date();
+                var _currentDate = now.getFullYear() + '-' +
+                    String(now.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(now.getDate()).padStart(2, '0');
+                var _currentTime = String(now.getHours()).padStart(2, '0') + ':' +
+                    String(now.getMinutes()).padStart(2, '0');
+                return '当前是游戏开始，请设定初始时间（真实日期: ' + _currentDate + ' ' + _currentTime + '，可根据故事背景调整）。';
             }
             return '当前游戏时间：' + (time.date || '') + ' ' + (time.time || '') + ' ' + (time.period || '');
         }, { order: 90 });

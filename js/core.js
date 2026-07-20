@@ -1365,7 +1365,48 @@ var LocalGameAPI = {
             });
             if (res.ok) {
                 const data = await res.json();
-                return (data.data || []).map(m => m.id).sort();
+                const allModels = (data.data || []).map(function(m) {
+                    return { id: m.id, type: m.type || m.capabilities || '', owned_by: m.owned_by || '' };
+                });
+                // 【P1 修复】过滤非文本模型：排除音频、图像、视频、嵌入、审核等非对话模型
+                var NON_TEXT_PATTERNS = [
+                    /audio/i, /tts/i, /speech/i, /whisper/i, /stt/i, /voice/i, /sound/i,
+                    /image/i, /dall-e/i, /vision/i, /img/i, /picture/i, /photo/i,
+                    /video/i, /sora/i, /movie/i,
+                    /embed/i, /vector/i,
+                    /moderat/i, /guard/i, /safety/i,
+                    /stepaudio/i, /step-tts/i, /step-asr/i,
+                    /gpt-4o-audio/i, /gpt-4o-mini-audio/i,
+                    /realtime/i
+                ];
+                // 检查模型是否为非文本类型
+                function _isTextModel(model) {
+                    var modelId = model.id || '';
+                    var modelType = model.type || '';
+                    var ownedBy = model.owned_by || '';
+                    // 如果 API 明确返回了类型字段，优先使用
+                    if (modelType && /audio|image|video|embed|moderat|tts|speech|asr/i.test(modelType)) {
+                        return false;
+                    }
+                    // 检查模型 ID 是否匹配非文本模式
+                    for (var i = 0; i < NON_TEXT_PATTERNS.length; i++) {
+                        if (NON_TEXT_PATTERNS[i].test(modelId)) return false;
+                    }
+                    return true;
+                }
+                var textModels = [];
+                for (var i = 0; i < allModels.length; i++) {
+                    if (_isTextModel(allModels[i])) {
+                        textModels.push(allModels[i].id);
+                    }
+                }
+                // 如果过滤后没有模型，返回全部模型（避免误杀）
+                if (textModels.length === 0) {
+                    console.warn('[fetchModels] 过滤后无文本模型，返回全部模型');
+                    return allModels.map(function(m) { return m.id; }).sort();
+                }
+                console.log('[fetchModels] 过滤前: ' + allModels.length + ' 个模型，过滤后: ' + textModels.length + ' 个文本模型');
+                return textModels.sort();
                 } else {
                 throw new Error(translateError('HTTP错误: ' + res.status));
             }
@@ -3236,8 +3277,45 @@ function parseAIResponse(reply) {
         if (cleanedReply) storyText = cleanedReply;
     }
 
+    // 【P0 修复】检测 storyText 是否为原始 JSON 泄露
+    // 当解析器失败时，AI 返回的原始 JSON 可能被当作 storyText 显示
+    if (storyText && storyText.trim().startsWith('{') && /\}\s*$/.test(storyText.trim())) {
+        var _trimmed = storyText.trim();
+        // 尝试从原始 JSON 中提取 story 字段
+        try {
+            var _parsed = JSON.parse(_trimmed);
+            if (_parsed && _parsed.story) {
+                storyText = _parsed.story;
+                console.warn('[parseAIResponse] 从原始 JSON 中提取 story 字段');
+            }
+        } catch(_jsonErr) {
+            // JSON 解析失败，尝试用正则提取 story 字段
+            var _storyMatch = _trimmed.match(/"story"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+            if (_storyMatch) {
+                storyText = _storyMatch[1].replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\r/g, '\r').replace(/\\t/g, '\t');
+                console.warn('[parseAIResponse] 从原始 JSON 中正则提取 story 字段');
+            } else {
+                // 无法提取，显示友好提示
+                storyText = '⚠️ **AI 回复格式异常**（返回了原始 JSON 数据）\n\n💡 建议点击 🔄 重新生成，或检查 API 模型配置。';
+                console.warn('[parseAIResponse] 检测到原始 JSON 泄露，已拦截');
+            }
+        }
+    }
 
     // 复用 game.js 全局 _isThinkingContent 函数（阶段2-B1 统一），避免正则数组重复定义
+    // 【P3 修复】若 data 有内容但 story 为空，尝试从其他字段映射
+    if (data && (!storyText || storyText.trim() === '') && typeof data === 'object') {
+        var _altFields = ['content', 'text', 'narrative', 'storyText', 'description'];
+        for (var _afIdx = 0; _afIdx < _altFields.length; _afIdx++) {
+            var _af = _altFields[_afIdx];
+            if (data[_af] && typeof data[_af] === 'string' && data[_af].trim()) {
+                storyText = data[_af].trim();
+                data.story = storyText;
+                console.warn('[parseAIResponse] story 为空，从 "' + _af + '" 字段映射');
+                break;
+            }
+        }
+    }
     if (storyText && typeof RuntimeBridge !== 'undefined' && RuntimeBridge._isThinkingContent && RuntimeBridge._isThinkingContent(storyText)) {
         console.warn('[parseAIResponse] 检测到 AI 思维链泄漏到剧情，已拦截');
         storyText = '⚠️ **AI 回复格式异常**（输出了推理过程而非剧情）\n\n💡 建议点击 🔄 重新生成，或检查预设是否要求 JSON 输出格式。';
