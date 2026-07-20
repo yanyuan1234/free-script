@@ -5667,7 +5667,8 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // idle 看门狗不触发，需等 10 分钟总超时。这里加 240s fetch 阶段超时
     // 【复审 v2 修复 NEW-001】30s 对中转站过于激进（api.iamhc.cn 复杂 JSON Schema 请求首字节 >30s），
     // 全部延长到 240s，给中转站和推理模型充足反应时间
-    var CONNECT_TIMEOUT_MS = 60 * 1000; // 60s 连接/首字节总超时，避免中转站无限 keep-alive 挂起
+    // 【用户要求】所有API超时延长到4分钟（240秒），不在乎等待时间，要求完整剧情
+    var CONNECT_TIMEOUT_MS = 240 * 1000; // 240s 连接/首字节总超时，给推理模型充足时间
     var _connectTimer = null;
     var _connectAC = null;
     if (typeof AbortController !== 'undefined') {
@@ -5865,8 +5866,8 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
 
 async function executeAINormal(url, body, apiKey, signal) {
     // P3 修复 BUG-007 真正缺口：fetch 阶段加 60s connect 超时（与 executeAIStream 一致）
-    // 60s 足够普通模型响应；避免中转站 keep-alive 导致前端无限挂起
-    var CONNECT_TIMEOUT_MS = 60 * 1000;
+    // 【用户要求】延长到240s，与 executeAIStream 保持一致，给推理模型充足时间
+    var CONNECT_TIMEOUT_MS = 240 * 1000;
     var _connectTimer = null;
     var _connectAC = null;
     if (typeof AbortController !== 'undefined') {
@@ -6721,9 +6722,9 @@ if (typeof GameTimeSystem !== 'undefined') {
 // 期间 sendAIRequest 永远不会被调用，游戏卡死在"正在解析设定..."界面。
 // 超时后直接跳过设定提取，进入开局。
 var _setupAbortAC = new AbortController();
-var _setupTimeoutMs = 30000; // 30 秒超时
+var _setupTimeoutMs = 240000; // 240 秒超时（用户要求4分钟，给推理模型充足时间）
 TimerManager.setTimeout('extractSetupTimeout', function() {
-    try { _setupAbortAC.abort(new Error('设定提取超时（30s）')); } catch(e) {}
+    try { _setupAbortAC.abort(new Error('设定提取超时（240s）')); } catch(e) {}
 }, _setupTimeoutMs);
 
 var _setupPromise = extractSetupToMemory({ signal: _setupAbortAC.signal });

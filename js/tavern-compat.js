@@ -1315,7 +1315,8 @@ var GameMemory = {
         return {
             blob: blob,
             worldSetting: blob,
-            worldSettingCompressed: blob.slice(0, 500),
+            // 【用户要求】绝对不可截断剧情；fallback时无AI可用，直接使用完整blob，不截断
+            worldSettingCompressed: blob,
             protagonist: {},
             characters: [],
             openingScene: '',
@@ -1333,7 +1334,8 @@ var GameMemory = {
         var self = this;
         var onProgress = typeof options.onProgress === 'function' ? options.onProgress : null;
         // 【BG-002 修复】每轮独立超时：避免单轮 callAI 挂起导致整个锻造流程卡死
-        var _passTimeoutMs = options.passTimeoutMs || 30000;
+        // 【用户要求】延长到240秒，给推理模型充足时间，不在乎等待时间，要求完整剧情
+        var _passTimeoutMs = options.passTimeoutMs || 240000;
 
         return new Promise(function(resolve, reject) {
             if (!blob || typeof blob !== 'string' || !blob.trim()) {
@@ -1382,7 +1384,8 @@ var GameMemory = {
                 });
 
                 Promise.race([
-                    callAI(messages, { max_tokens: 2048, temperature: 0.4 }),
+                    // 【用户要求】max_tokens从2048提升到8192，确保设定提取/精炼不被API截断，保留完整剧情设定
+                    callAI(messages, { max_tokens: 8192, temperature: 0.4 }),
                     _passTimer
                 ]).then(function(raw) {
                     // 超时兜底：用当前已精炼结果继续，避免卡死
@@ -1428,9 +1431,9 @@ var GameMemory = {
                         }
                         // openingScene 补充：检查是否为空字符串
                         if (!parsed.data.openingScene || !String(parsed.data.openingScene).trim()) {
-                            // 用 blob 的前 300 字作为开场场景（至少有内容显示，而非"未提取"）
-                            parsed.data.openingScene = _blob.slice(0, 300) + (_blob.length > 300 ? '...' : '');
-                            console.warn('[SetupForge] openingScene 缺失，从 blob 补充（前300字）');
+                            // 【用户要求】绝对不可截断剧情；使用完整blob作为开场场景，保留全部内容
+                            parsed.data.openingScene = _blob;
+                            console.warn('[SetupForge] openingScene 缺失，从 blob 补充（完整内容，不截断）');
                         }
                         state.extraction = parsed.data;
                         state.refined = parsed.data;
@@ -2617,13 +2620,13 @@ var GameMemory = {
         // 按次计费优化：长设定需要更多输出token来完整解析，无上限
         var parseMaxTokens = Math.max(2000, Math.floor(fullSetup.length / 2));
 
-        // 【P0 修复】给 _aiParseSetup 的 callAI 加 60 秒超时保护
-        // 此 callAI 为非流式调用，默认 10 分钟超时太长，若 API 不响应会长期占用资源
+        // 【P0 修复】给 _aiParseSetup 的 callAI 加超时保护
+        // 【用户要求】延长到240秒，给推理模型充足时间，不在乎等待时间，要求完整剧情
         var _parseAbortAC = new AbortController();
-        var _parseTimeoutMs = 60000; // 60 秒超时（设定解析比设定提取可能需要更长时间）
+        var _parseTimeoutMs = 240000; // 240 秒超时（设定解析比设定提取可能需要更长时间）
         if (typeof TimerManager !== 'undefined') {
             TimerManager.setTimeout('aiParseSetupTimeout', function() {
-                try { _parseAbortAC.abort(new Error('设定解析超时（60s）')); } catch(e) {}
+                try { _parseAbortAC.abort(new Error('设定解析超时（240s）')); } catch(e) {}
             }, _parseTimeoutMs);
         }
 
@@ -3403,14 +3406,15 @@ var GameMemory = {
                 lines.push(line);
 
                 // Mufy 风格详细档案（超限时由 _smartCompressModule 字段级精简）
+                // 【用户要求】不可截断角色信息；大幅提升字段长度上限，保留完整角色设定
                 var details = [];
-                var appearanceSummary = self._summarizeRichField(c.appearance, 40);
+                var appearanceSummary = self._summarizeRichField(c.appearance, 200);
                 if (appearanceSummary) details.push('外貌:' + appearanceSummary);
-                var personalitySummary = self._summarizeRichField(c.personality, 40);
+                var personalitySummary = self._summarizeRichField(c.personality, 200);
                 if (personalitySummary) details.push('性格:' + personalitySummary);
-                var backgroundSummary = self._summarizeRichField(c.background, 50);
+                var backgroundSummary = self._summarizeRichField(c.background, 300);
                 if (backgroundSummary) details.push('背景:' + backgroundSummary);
-                if (c.speechHabits) details.push('口癖:' + self._summarizeRichField(c.speechHabits, 30));
+                if (c.speechHabits) details.push('口癖:' + self._summarizeRichField(c.speechHabits, 100));
                 if (c.emotionalTriggers && c.emotionalTriggers.length) {
                     details.push('情绪触发:' + c.emotionalTriggers.map(function(t) { return (t && t.topic) ? t.topic : String(t); }).join(','));
                 }
@@ -4013,7 +4017,9 @@ var GameMemory = {
                 self.plot.currentChapter = summary.storySummary;
             } else {
                 self.plot.currentChapter += '\n' + summary.storySummary;
-                if (Array.from(self.plot.currentChapter).length > 800) self.plot.currentChapter = self._smartTruncateSummary(self.plot.currentChapter, 600);
+                // 【用户要求】绝对不可截断剧情；大幅提升上限从800→5000，截断预算从600→4000
+                // 仅在极端长度时才触发智能精简（保留首尾段落），正常游戏不会触发
+                if (Array.from(self.plot.currentChapter).length > 5000) self.plot.currentChapter = self._smartTruncateSummary(self.plot.currentChapter, 4000);
                 lastPlot.summary = self.plot.currentChapter;
                 lastPlot.endTurn = currentTurn;
             }
@@ -4086,7 +4092,8 @@ var GameMemory = {
         if (!Array.isArray(this._shortTermEntries) || this._shortTermEntries.length === 0) return null;
         var entries = this._shortTermEntries.slice();
         var summaryContent = entries.map(function(e, i) { return (i + 1) + '. ' + e.content; }).join('；');
-        if (summaryContent.length > 300) summaryContent = summaryContent.substring(0, 297) + '…';
+        // 【用户要求】不可截断剧情/记忆；大幅提升上限从300→2000，保留完整短期记忆
+        if (summaryContent.length > 2000) summaryContent = summaryContent.substring(0, 1997) + '…';
         var fact = this.addWorldAnchor('settings',
             '【阶段回顾】' + this.getGameTimeStr() + '：' + summaryContent,
             'shortTermSummary',

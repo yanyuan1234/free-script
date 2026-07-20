@@ -4151,7 +4151,7 @@ function renderRecapPage() {
                 '<div class="recap-timeline"><div class="timeline-item current">' +
                 '<div class="timeline-item-head"><span class="timeline-item-title">从记忆恢复</span></div>' +
                 '<div class="timeline-item-summary" style="white-space:pre-wrap;line-height:1.6;">' +
-                escapeHtml(memSummary.substring(0, 500)) + '</div></div></div>';
+                escapeHtml(memSummary.substring(0, 2000)) + '</div></div></div>';
         } else {
             container.innerHTML = renderSvgEmptyState(
                 '<svg role="img" aria-label="暂无剧情记录" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>',
@@ -4830,7 +4830,13 @@ function bindEvents() {
         var sceneEl = document.getElementById('forgeOpeningScene');
         var factsEl = document.getElementById('forgeFacts');
 
-        if (worldEl) worldEl.textContent = (data.worldSettingCompressed || data.worldSetting || '').slice(0, 600) + (data.worldSetting && data.worldSetting.length > 600 ? '...' : '');
+        if (worldEl) {
+            // 【用户要求】不可截断世界设定；显示完整内容，用CSS滚动条控制可视区域
+            worldEl.textContent = data.worldSettingCompressed || data.worldSetting || '';
+            worldEl.style.maxHeight = '300px';
+            worldEl.style.overflowY = 'auto';
+            worldEl.style.whiteSpace = 'pre-wrap';
+        }
         if (protagEl) protagEl.textContent = data.protagonist ? _formatForgeProtagonist(data.protagonist) : '未提取';
         if (charsEl) charsEl.innerHTML = data.characters && data.characters.length > 0 ? data.characters.map(_formatForgeCharacter).join('') : '未提取';
         if (sceneEl) sceneEl.textContent = data.openingScene || '未提取';
@@ -5725,7 +5731,8 @@ async function _generateEndingRender(stories) {
         }]);
         var result = await callAI(_endingMsg, {
             stream: false,
-            max_tokens: 2048,
+            // 【用户要求】max_tokens从2048提升到4096，确保结局生成完整，不被API截断
+            max_tokens: 4096,
             temperature: 0.7
         });
         var parsed = parseJSONHelper(result);

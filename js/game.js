@@ -718,7 +718,9 @@ function _buildFormatRules(gs, _t, turn) {
     var _maxTokens = getEffectiveMaxTokens();
     // [优化#10] 基于原版单 HTML 测试反馈，把原本"建议性"字段提升为必填/最低要求，
     // 解决新版输出 world 模块过少、story 过短、npcMessages/relationships 缺失的问题。
-    var _storyTarget = Math.min(1800, Math.max(800, Math.floor(_maxTokens * 0.35)));
+    // 【用户要求】大幅提升story目标长度上限，要求完整完善的剧情，不可因长度限制导致剧情缺失
+    // 上限从1800提升到5000，比例从0.35提升到0.45，给AI充足的剧情写作空间
+    var _storyTarget = Math.min(5000, Math.max(800, Math.floor(_maxTokens * 0.45)));
 
     // [日志功能开关] 根据玩家在设置里启用的功能动态调整格式要求
     var _logFeatureLabels = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
@@ -5240,7 +5242,8 @@ async function requestNpcReply(playerText) {
         var response = await callAI(chatMessages, {
             stream: false,
 
-            max_tokens: 1024,
+            // 【用户要求】max_tokens从1024提升到4096，确保NPC对话完整，不被API截断
+            max_tokens: 4096,
             antiRepeat: true,
 
             signal: npcChatState.abortController ? npcChatState.abortController.signal : undefined
