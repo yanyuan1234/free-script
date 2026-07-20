@@ -4739,6 +4739,13 @@ try {
         EnhancedMemory.saveToStorage();
     }
 } catch(memE) {}
+// 【P0 性能】强制把 VariableStore defer 队列里的全局变量同步落盘
+// 避免 setTimeout(0) 未触发时页面已关闭导致数据丢失
+try {
+    if (typeof VariableStore !== 'undefined' && VariableStore.flushPersist) {
+        VariableStore.flushPersist();
+    }
+} catch(varE) {}
 });
 function parseMarkdown(text) {
     if (!text) return '';

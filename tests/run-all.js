@@ -24,7 +24,9 @@ var testFiles = [
     // P1 修复回归
     'p1-verification.test.js',
     // BUG-011 v2 修复验证
-    'verify-bug-011-v2.js'
+    'verify-bug-011-v2.js',
+    // P0 VariableStore defer 性能优化验证
+    'verify-varstore-defer.js'
 ];
 
 var failures = 0;

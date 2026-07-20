@@ -6373,7 +6373,7 @@ window.MemoryManagerUI = MemoryManagerUI;
     },
     setGlobal(name, value) {
         this.global.set(name, String(value));
-        this._persistGlobal();
+        this._schedulePersist();
         this._notifyChange('global', name, value);
     },
     getGlobal(name, defaultValue = '') {
@@ -6391,6 +6391,38 @@ window.MemoryManagerUI = MemoryManagerUI;
     },
     setCurrentCharacter(charId) { this.currentCharacterId = charId; },
     getCurrentCharacter() { return this.currentCharacterId; },
+
+    // 【P0 性能优化】批量 defer 持久化
+    // 原实现：每次 setGlobal 都同步写 localStorage（_persistGlobal 调用 Storage.setJSON
+    //   → safeSetItem → StorageMonitor.checkCapacity + localStorage.setItem）
+    // 问题：injectPresetGlobalVars 内会调用 20-30+ 次 setGlobalVar，每次都同步写 localStorage
+    //   实测导致 sendAIRequest 中 injectPresetGlobalVars 阶段阻塞 300-500ms，
+    //   并触发浏览器主线程长任务，evaluate/snapshot 频繁 30s 超时
+    // 新实现：用 _persistScheduled 标志 + 0ms setTimeout 把同一 tick 内的多次 setGlobal
+    //   合并为一次 localStorage.write。flushPersist 可在关键节点（页面卸载前）强制同步落盘
+    _persistScheduled: false,
+    _persistTimer: null,
+    _schedulePersist() {
+        if (this._persistScheduled) return;
+        this._persistScheduled = true;
+        var self = this;
+        this._persistTimer = setTimeout(function() {
+            self._persistScheduled = false;
+            self._persistTimer = null;
+            self._persistGlobal();
+        }, 0);
+    },
+    flushPersist() {
+        // 强制立即落盘：用于 beforeunload / 关键节点，避免 defer 导致数据丢失
+        if (this._persistTimer) {
+            clearTimeout(this._persistTimer);
+            this._persistTimer = null;
+        }
+        if (this._persistScheduled) {
+            this._persistScheduled = false;
+            this._persistGlobal();
+        }
+    },
 
     _persistGlobal() {
         try {
