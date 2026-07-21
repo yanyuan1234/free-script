@@ -4033,6 +4033,10 @@ function onStreamChunk(delta, fullText) {
     if (_perfElapsed > 50) {
         console.warn('[onStreamChunk] SLOW: ' + _perfElapsed.toFixed(1) + 'ms, bufLen=' + streamBuffer.length + ', storyLen=' + (story?story.length:0) + ', pushed=' + _streamLastPushedLen);
     }
+    // 【P0冻结诊断】记录慢 onStreamChunk 调用
+    if (_perfElapsed > 20 && typeof window._logPerf === 'function') {
+        window._logPerf('onStreamChunk', _perfElapsed, 'buf=' + streamBuffer.length + ' story=' + (story?story.length:0));
+    }
 }
 
 // 【性能诊断】主线程心跳，检测主线程是否被阻塞
@@ -4395,6 +4399,8 @@ function formatStory(text) {
     // 【性能监控】记录 formatStory 执行时间，文本超过 2000 字符时输出
     var _fmtStartTime = (text.length > 2000) ? Date.now() : 0;
     var _fmtTextLen = text.length;
+    // 【P0冻结诊断】所有 formatStory 调用都记录（不只是 >2000 字的）
+    var _fsStart = performance.now();
 
     // 某些路径下 text 可能已被 escapeHtml 处理过，需要先还原
 
@@ -4733,6 +4739,11 @@ function formatStory(text) {
         }
         // 永远记录 perf 标签供诊断
         console.log('[perf] formatStory: ' + _fmtElapsed + 'ms (len=' + _fmtTextLen + ', typing=' + TypewriterBuffer.isTyping + ')');
+    }
+    // 【P0冻结诊断】记录所有 formatStory 调用
+    var _fsElapsed = performance.now() - _fsStart;
+    if (typeof window._logPerf === 'function') {
+        window._logPerf('formatStory', _fsElapsed, 'len=' + _fmtTextLen + ' typing=' + TypewriterBuffer.isTyping);
     }
 
     return sanitizeHtml(finalOutput);

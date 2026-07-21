@@ -2496,6 +2496,9 @@ var TypewriterBuffer = {
 
     _cachedCompletedHtml: '',
     _cachedCompletedKey: '',
+    _cachedParaCount: 0,       // 【P0冻结修复】已渲染到DOM的段落数，用于增量追加
+    _lastCompletedCount: 0,    // 【P0冻结修复】上次脏检查时的段落数
+    _lastCurrentLen: 0,        // 【P0冻结修复】上次脏检查时的当前段落长度
     _lastCurrentPara: '',
     // 【BUG-011 修复】isFinished 方法缺失：phone-ui.js 4493 有一个同名方法，
     // 但 game.js 2630 调用的是 core.js 的 TypewriterBuffer，访问不到 phone-ui 的扩展。
@@ -2596,6 +2599,10 @@ var TypewriterBuffer = {
         if (this.displayed.length === 0) {
             this._completedParagraphs = [];
             this._currentParaChars = '';
+            // 【P0冻结修复】同步重置增量渲染计数器
+            this._cachedParaCount = 0;
+            this._lastCompletedCount = 0;
+            this._lastCurrentLen = 0;
         }
         // 【用户需求】打字机开始时显示「跳过」按钮（无长按快进、无点击屏幕快进）
         try { _showSkipButton(); } catch (e) {}
@@ -2705,6 +2712,9 @@ var TypewriterBuffer = {
         this.onComplete = null;
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';
+        this._cachedParaCount = 0;       // 【P0冻结修复】重置段落数计数器
+        this._lastCompletedCount = 0;    // 【P0冻结修复】重置脏检查缓存
+        this._lastCurrentLen = 0;        // 【P0冻结修复】重置脏检查缓存
         this._currentParaEl = null;
         this._currentParaTextEl = null;
         this._cursorEl = null;
@@ -2751,47 +2761,62 @@ var TypewriterBuffer = {
     render() {
         var storyEl = DOMCache.get('storyText', true);
         if (!storyEl) return;
-        var allText = this._completedParagraphs.join('\n') + (this._completedParagraphs.length > 0 ? '\n' : '') + this._currentParaChars;
-        // 脏检查：内容未变化则跳过重绘
-        if (allText === this._lastRendered) return;
-        this._lastRendered = allText;
 
+        // 【P0 冻结修复】用轻量脏检查替代 join('\n') 全量字符串构建
+        // 原实现：每 25ms tick 都 join('\n') 所有段落 → O(N) per tick
+        //   5000字故事 × 40tick/s = 200,000 ops/s 纯浪费
+        // 新实现：用段落数 + 当前段落长度做 O(1) 脏检查
+        var _completedCount = this._completedParagraphs.length;
+        var _currentLen = this._currentParaChars.length;
+        if (_completedCount === this._lastCompletedCount &&
+            _currentLen === this._lastCurrentLen) return;
+        this._lastCompletedCount = _completedCount;
+        this._lastCurrentLen = _currentLen;
 
-        // 旧逻辑：每 50ms 都执行 storyEl.innerHTML = completedHtml + currentHtml
-        //         → 浏览器必须重新解析"已完成段落"那部分 HTML（已经渲染过 N 次）
-        // 新逻辑：已完成段落变更时（罕见，段尾换行时）才全量重渲染
-        //         当前段落变化时（每 tick）只更新最后一个 <p> 的 textContent
-        var completedKey = this._completedParagraphs.join('\n');
-        if (completedKey !== this._cachedCompletedKey) {
-            // 段落列表变了：全量重渲染
-            this._cachedCompletedKey = completedKey;
-            // 【P0 性能修复】打字期间用轻量渲染，避免 O(P²×L) 累积冻结
-            // 原实现：每次段落切换都 formatStory(全量已完成段落)
-            //   P 段累计：formatStory(P×L) + formatStory((P-1)×L) + ... = O(P²×L)
-            //   第三轮 P=20+ 段时冻结浏览器 30-60 秒
-            // 新实现：打字期间用 escapeHtml 轻量渲染 O(P×L)
-            //   打字完成后 _doFinalRender 一次性 formatStory(fullStory) 做完整格式化
+        // 【P0 冻结修复】增量追加段落替代全量 innerHTML 重建
+        // 原实现：每次新段落完成 → split('\n') + escapeHtml(ALL) + innerHTML = ALL
+        //   P 段累计：P × O(N) = O(P×N)，P=50 N=5000 时 = 250,000 ops + 50次 innerHTML
+        // 新实现：只 appendChild 新段落的 <p> 元素，O(L) per new paragraph
+        if (_completedCount < this._cachedParaCount) {
+            // 段落被重置（如 push 长文本路径、stop 后重新开始）：清空容器
+            storyEl.innerHTML = '';
+            this._cachedParaCount = 0;
+            this._currentParaEl = null;
+            this._currentParaTextEl = null;
+            this._cursorEl = null;
+            this._lastCleanedPara = '';
+        }
+        if (_completedCount > this._cachedParaCount) {
+            var _newCount = _completedCount - this._cachedParaCount;
             if (this.isTyping) {
-                // 打字流程中：_doFinalRender 会做完整 formatStory，这里用轻量渲染
-                var _paras = completedKey.split('\n');
-                var _lightHtml = '';
-                for (var _pi = 0; _pi < _paras.length; _pi++) {
-                    if (_paras[_pi]) {
-                        _lightHtml += '<p>' + escapeHtml(_paras[_pi]) + '</p>';
+                // 打字流程中：增量追加新段落
+                if (this._cachedParaCount === 0) {
+                    // 首次渲染：清空容器
+                    storyEl.innerHTML = '';
+                }
+                for (var _ni = 0; _ni < _newCount; _ni++) {
+                    var _paraIdx = this._cachedParaCount + _ni;
+                    var _paraText = this._completedParagraphs[_paraIdx];
+                    if (_paraText) {
+                        var _p = document.createElement('p');
+                        _p.className = 'story-completed-para';
+                        _p.textContent = _paraText;  // textContent 自动转义，比 escapeHtml + innerHTML 快
+                        storyEl.appendChild(_p);
                     }
                 }
-                this._cachedCompletedHtml = _lightHtml;
+                this._cachedParaCount = _completedCount;
             } else {
                 // 非打字流程（如加载存档、直接渲染）：完整格式化
-                this._cachedCompletedHtml = (completedKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(completedKey) : '';
+                var _fullKey = this._completedParagraphs.join('\n');
+                this._cachedCompletedHtml = (_fullKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(_fullKey) : '';
+                storyEl.innerHTML = this._cachedCompletedHtml;
+                this._cachedParaCount = _completedCount;
             }
             this._currentParaEl = null;  // 强制重建当前段落元素
             this._currentParaTextEl = null;
             this._cursorEl = null;
-            // 【打字机重复修复】段落切换时必须清空 _lastCleanedPara 缓存，
-            // 否则新段落会复用旧段落的清理结果，导致旧段落文本重复显示在新段落中
+            // 【打字机重复修复】段落切换时必须清空 _lastCleanedPara 缓存
             this._lastCleanedPara = '';
-            storyEl.innerHTML = this._cachedCompletedHtml;
         }
 
         // 当前段落：增量更新（极快）
@@ -2900,6 +2925,24 @@ var TypewriterBuffer = {
                 lastTextNode.nodeValue = lastTextNode.nodeValue.slice(0, -1);
             }
         }
+    }
+};
+
+// 【P0 冻结诊断】性能日志缓冲区，写入 localStorage 以便冻结后恢复查看
+window._perfLog = window._perfLog || [];
+window._logPerf = function(op, ms, extra) {
+    var entry = { t: Date.now(), op: op, ms: Math.round(ms), extra: extra || '' };
+    window._perfLog.push(entry);
+    // 只保留最近 100 条
+    if (window._perfLog.length > 100) window._perfLog.shift();
+    // 慢操作（>100ms）立即写入 localStorage
+    if (ms > 100) {
+        try {
+            var existing = JSON.parse(localStorage.getItem('_perfLog') || '[]');
+            existing.push(entry);
+            if (existing.length > 50) existing = existing.slice(-50);
+            localStorage.setItem('_perfLog', JSON.stringify(existing));
+        } catch(e) {}
     }
 };
 
