@@ -2684,12 +2684,31 @@ var GameMemory = {
     _aiParseSetup: function(fullSetup) {
         var self = this;
 
-        // 【BUG修复】延迟5秒再调用AI，避免与 extractSetupToMemory 并发触发429限流
-        // extractSetupToMemory 在游戏启动时立即调用，本函数也在同时调用
-        // 两个API请求同时发出会导致API端429限流
+        // 【P0 修复】延迟15秒再调用AI，并等待 API 空闲后才执行
+        // 原延迟5秒不够：extractSetupToMemory + sendAIRequest 持续占用API 30-60秒
+        // 三路并发导致持续429限流
+        // 新策略：15秒后检查 API 是否空闲（isWaiting=false），不空闲则每5秒重试检查
         TimerManager.setTimeout('aiParseSetupDelay', function() {
-            self._aiParseSetupInner(fullSetup);
-        }, 5000);
+            self._aiParseSetupWhenIdle(fullSetup, 0);
+        }, 15000);
+    },
+
+    _aiParseSetupWhenIdle: function(fullSetup, checkCount) {
+        var self = this;
+        // 检查 API 是否正在使用中（主故事生成/设定提取等）
+        if (typeof RuntimeState !== 'undefined' && RuntimeState.isWaiting) {
+            // 最多等待6次（30秒），超时后放弃（设定解析非关键路径）
+            if (checkCount < 6) {
+                TimerManager.setTimeout('aiParseSetupRetry', function() {
+                    self._aiParseSetupWhenIdle(fullSetup, checkCount + 1);
+                }, 5000);
+            } else {
+                console.log('[设定解析] 等待API空闲超时（30s），跳过AI解析');
+            }
+            return;
+        }
+        // API 空闲，执行解析
+        self._aiParseSetupInner(fullSetup);
     },
 
     _aiParseSetupInner: function(fullSetup) {
