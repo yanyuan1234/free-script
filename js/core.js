@@ -989,6 +989,9 @@ var LocalGameAPI = {
     _requestLog: [], // [{slot, model, time, success, error}]
     _failedModels: {}, // {modelName: timestamp}
     _MAX_LOG: 50,
+    // [P0优化] 主动限流：追踪每个slot的剩余配额（从响应头读取）
+    // _rateLimitInfo[slot] = { remaining: number|null, resetAt: number|null, lastUpdated: number }
+    _rateLimitInfo: {},
     init() {
         try {
             const saved = Storage.get(Storage.KEYS.API_CONFIG);
@@ -1193,6 +1196,11 @@ var LocalGameAPI = {
                 console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 近期超时，跳过');
                 continue;
             }
+            // [P0优化] 主动限流：配额即将耗尽的slot也跳过
+            if (this.isSlotRateLimitLow(slotIdx)) {
+                console.log('[API轮换] 配置 ' + (slotIdx + 1) + ' 配额即将耗尽(' + this.getRateLimitSummary(slotIdx) + ')，跳过');
+                continue;
+            }
             // 注意：不再自动跳过"近期失败"的模型——失败只是 UI 提醒，玩家想用就能用
             // 如果某个模型一直挂，玩家会在 UI 上看到 ⚠️ 提醒，自然会换或调整
             attemptedCount++;
@@ -1204,6 +1212,8 @@ var LocalGameAPI = {
                 const result = await this._retrySingleRequest(requestFn, slotIdx, 0, MAX_RETRIES, RETRY_DELAY_BASE);
                 this._logRequest(slotIdx, true, '', Date.now() - startTs);
                 this._globalRetryCount = 0; // 【BUG-001 修复】成功 → 重置全局计数
+                // [P0优化] 断路器：成功时重置该slot的失败状态
+                this._markModelSuccess(slotIdx);
                 if (attempt > 0 && slotIdx !== this._currentSlot) {
                     this.setCurrentSlot(slotIdx);
                     UI.toast('已自动切换到 ' + cfgLabel);
@@ -1318,6 +1328,9 @@ var LocalGameAPI = {
             // 限流重试：最多重试 2 次，使用更长的基础延迟（3秒），指数退避（3s → 6s）
             if (isRateLimit && attempt < 2) {
                 var rateLimitDelay = 3000 * Math.pow(2, attempt);
+                // [P1优化] 添加全抖动(Jitter)，防止多客户端同步重试导致惊群效应
+                rateLimitDelay = rateLimitDelay * (0.75 + Math.random() * 0.5); // ±25% 随机
+                rateLimitDelay = Math.round(rateLimitDelay);
                 console.log('[限流重试] 配置 ' + (slotIdx + 1) + ' 触发限流，' + rateLimitDelay + 'ms后重试（第' + (attempt + 1) + '次）...');
                 await new Promise(function(resolve) { setTimeout(resolve, rateLimitDelay); });
                 return this._retrySingleRequest(requestFn, slotIdx, attempt + 1, maxRetries, retryDelayBase);
@@ -1326,6 +1339,9 @@ var LocalGameAPI = {
             // 网络错误重试：指数退避 1s → 2s → 4s
             if (isNetworkError && attempt < maxRetries - 1) {
                 var delay = retryDelayBase * Math.pow(2, attempt);
+                // [P1优化] 添加全抖动(Jitter)
+                delay = delay * (0.75 + Math.random() * 0.5); // ±25% 随机
+                delay = Math.round(delay);
                 console.log('[重试] 配置 ' + (slotIdx + 1) + ' 第' + (attempt + 1) + '次失败，' + delay + 'ms后重试...');
                 await new Promise(function(resolve) { setTimeout(resolve, delay); });
                 return this._retrySingleRequest(requestFn, slotIdx, attempt + 1, maxRetries, retryDelayBase);
@@ -1364,7 +1380,28 @@ var LocalGameAPI = {
         // 之前用 model 名，两个 slot 用同模型时一个挂会误标记另一个
         var key = slot + '|' + cfg.model;
 
-        this._failedModels[key] = { time: Date.now(), reason: reason || 'unknown' };
+        // [P0优化] 断路器模式：记录连续失败次数，达到阈值后进入 open 态直接跳过
+        // 三态：closed(正常) → open(熔断，直接跳过) → half_open(冷却后放行1个探测)
+        var existing = this._failedModels[key] || {};
+        var prevCount = existing.failureCount || 0;
+        // 若距上次失败已超过冷却期，重置计数（给恢复机会）
+        var prevTime = this._getFailedTime(existing);
+        var cooldownMs = this._getCircuitCooldownMs(existing);
+        if (prevTime && (Date.now() - prevTime) > cooldownMs) {
+            prevCount = 0; // 冷却期已过，重新计数
+        }
+
+        var newCount = prevCount + 1;
+        var circuitState = 'closed';
+        if (newCount >= 5) circuitState = 'open';      // 连续5次失败 → 熔断
+        else if (newCount >= 3) circuitState = 'half_open'; // 3次后进入半开（谨慎探测）
+
+        this._failedModels[key] = {
+            time: Date.now(),
+            reason: reason || 'unknown',
+            failureCount: newCount,
+            circuitState: circuitState
+        };
         // 复用延迟保存机制，避免重试循环中频繁写 localStorage
         if (!this._savePending) {
             this._savePending = true;
@@ -1374,6 +1411,124 @@ var LocalGameAPI = {
                 self.save();
             }, 2000);
         }
+    },
+
+    // [P0优化] 断路器：根据失败原因返回冷却时间
+    _getCircuitCooldownMs(record) {
+        var reason = this._getFailedReason(record);
+        if (/ResourceExhausted|rate.?limit|request limit reached|quota/i.test(reason)) {
+            return 30 * 1000;       // 限流：30秒
+        }
+        if (/timeout|timed out|超时/i.test(reason)) {
+            return 5 * 60 * 1000;   // 超时：5分钟
+        }
+        return 2 * 60 * 1000;       // 其他：2分钟
+    },
+
+    // [P0优化] 断路器：检查slot是否应被跳过
+    // 返回 true 表示应跳过（open态且未过冷却期）
+    // 返回 false 表示可以尝试（closed / half_open探测 / 冷却期已过）
+    _isCircuitOpen(slot) {
+        var cfg = this._configs[slot];
+        if (!cfg || !cfg.model) return false;
+        var key = slot + '|' + cfg.model;
+        var record = this._failedModels[key];
+        if (!record) return false;
+
+        var state = record.circuitState || 'closed';
+        var failedAt = this._getFailedTime(record);
+        var cooldownMs = this._getCircuitCooldownMs(record);
+        var elapsed = Date.now() - failedAt;
+
+        // 冷却期已过 → 重置为 closed，允许尝试
+        if (elapsed >= cooldownMs) {
+            record.circuitState = 'closed';
+            record.failureCount = 0;
+            return false;
+        }
+
+        // open 态：直接跳过
+        if (state === 'open') return true;
+
+        // half_open 态：允许1次探测（不跳过），但若再失败会升级为 open
+        if (state === 'half_open') return false;
+
+        // closed 态：允许尝试
+        return false;
+    },
+
+    // [P0优化] 断路器：请求成功时重置状态
+    _markModelSuccess(slot) {
+        var cfg = this._configs[slot];
+        if (!cfg || !cfg.model) return;
+        var key = slot + '|' + cfg.model;
+        if (this._failedModels[key]) {
+            delete this._failedModels[key];
+            if (!this._savePending) {
+                this._savePending = true;
+                var self = this;
+                TimerManager.setTimeout('apiLogSuccessSave', function() {
+                    self._savePending = false;
+                    self.save();
+                }, 2000);
+            }
+        }
+    },
+
+    // [P0优化] 主动限流：从响应头更新剩余配额信息
+    // 支持 x-ratelimit-remaining-requests / x-ratelimit-remaining-tokens / retry-after
+    updateRateLimitInfo(slot, headers) {
+        if (!headers) return;
+        var info = this._rateLimitInfo[slot] || { remaining: null, resetAt: null, lastUpdated: 0 };
+        try {
+            var remainingReq = headers.get('x-ratelimit-remaining-requests')
+                || headers.get('x-ratelimit-remaining');
+            var resetAt = headers.get('x-ratelimit-reset-requests')
+                || headers.get('x-ratelimit-reset');
+            if (remainingReq !== null) {
+                info.remaining = parseInt(remainingReq, 10);
+                info.lastUpdated = Date.now();
+            }
+            if (resetAt !== null) {
+                // 可能是秒数或 HTTP 日期
+                var resetSec = parseInt(resetAt, 10);
+                if (!isNaN(resetSec) && String(resetSec) === String(resetAt).trim()) {
+                    info.resetAt = Date.now() + resetSec * 1000;
+                } else {
+                    var resetDate = Date.parse(resetAt);
+                    if (!isNaN(resetDate)) info.resetAt = resetDate;
+                }
+            }
+            this._rateLimitInfo[slot] = info;
+        } catch (e) {
+            // headers 读取失败不影响主流程
+        }
+    },
+
+    // [P0优化] 主动限流：检查slot是否配额即将耗尽
+    // 返回 true 表示应跳过（剩余配额 ≤ 2 且未到重置时间）
+    isSlotRateLimitLow(slot) {
+        var info = this._rateLimitInfo[slot];
+        if (!info || info.remaining === null) return false;
+        // 配额已重置（过了resetAt时间）→ 不跳过
+        if (info.resetAt && Date.now() > info.resetAt) {
+            info.remaining = null;
+            return false;
+        }
+        // 剩余 ≤ 2 → 主动跳过，避免撞429
+        return info.remaining <= 2;
+    },
+
+    // [P0优化] 主动限流：获取slot的配额状态摘要（UI展示用）
+    getRateLimitSummary(slot) {
+        var info = this._rateLimitInfo[slot];
+        if (!info || info.remaining === null) return '';
+        var resetStr = '';
+        if (info.resetAt) {
+            var remainingSec = Math.max(0, Math.ceil((info.resetAt - Date.now()) / 1000));
+            if (remainingSec > 0) resetStr = ' (重置: ' + remainingSec + 's)';
+        }
+        return '剩余配额: ' + info.remaining + resetStr;
     },
 
     isModelFailedForSlot(slot) {
@@ -1438,6 +1593,9 @@ var LocalGameAPI = {
     },
 
     isSlotTimeoutRecent(slot, withinMs) {
+        // [P0优化] 断路器模式：open 态直接返回 true（跳过），half_open/closed 允许尝试
+        if (this._isCircuitOpen(slot)) return true;
+
         var cfg = this._configs[slot];
         if (!cfg || !cfg.model) return false;
         var key = slot + '|' + cfg.model;
@@ -5855,6 +6013,38 @@ function buildAIRequestBody(messages, options, config) {
         }
     }
     // 注：不再强制下限 512——某些模型支持小 max_tokens 做摘要，应由调用方/预设决定
+
+    // [P1优化] Prompt Cache：对系统提示添加 cache_control 标记
+    // 如果中转站/模型支持（如Claude/OpenRouter），会缓存系统提示减少重复Token消耗
+    // 不支持的服务商会忽略此字段，无副作用
+    if (filtered.messages && Array.isArray(filtered.messages)) {
+        var _model = (config && config.model) || '';
+        var _supportCache = /claude|anthropic|openrouter/i.test(_model);
+        if (_supportCache) {
+            // 找到第一条 system 消息，添加 cache_control
+            for (var _ci = 0; _ci < filtered.messages.length; _ci++) {
+                if (filtered.messages[_ci] && filtered.messages[_ci].role === 'system') {
+                    var _sysMsg = filtered.messages[_ci];
+                    // 如果content是字符串，转为带cache_control的结构
+                    if (typeof _sysMsg.content === 'string') {
+                        _sysMsg.content = [{
+                            type: 'text',
+                            text: _sysMsg.content,
+                            cache_control: { type: 'ephemeral' }
+                        }];
+                    } else if (Array.isArray(_sysMsg.content) && _sysMsg.content.length > 0) {
+                        // 已是数组结构，给最后一段加 cache_control
+                        var _lastBlock = _sysMsg.content[_sysMsg.content.length - 1];
+                        if (!_lastBlock.cache_control) {
+                            _lastBlock.cache_control = { type: 'ephemeral' };
+                        }
+                    }
+                    break; // 只缓存第一条system消息
+                }
+            }
+        }
+    }
+
     return filtered;
 }
 
@@ -6153,7 +6343,16 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
             var _retryAfter = res.headers.get('Retry-After');
             if (_retryAfter) _err.retryAfter = _retryAfter;
         }
+        // [P0优化] 主动限流：即使是错误响应，也读取限流头更新配额信息
+        if (typeof LocalGameAPI !== 'undefined' && typeof options !== 'undefined' && options._currentSlotIdx !== undefined) {
+            LocalGameAPI.updateRateLimitInfo(options._currentSlotIdx, res.headers);
+        }
         throw _err;
+    }
+
+    // [P0优化] 主动限流：成功响应也读取限流头，更新剩余配额
+    if (typeof LocalGameAPI !== 'undefined' && typeof options !== 'undefined' && options._currentSlotIdx !== undefined) {
+        LocalGameAPI.updateRateLimitInfo(options._currentSlotIdx, res.headers);
     }
 
     var reader = res.body.getReader();
@@ -6453,6 +6652,8 @@ async function callAI(messages, options = {}) {
                     var config = LocalGameAPI._configs[slotIdx];
                     var url = LocalGameAPI.normalizeUrl(config.baseUrl) + '/chat/completions';
                     var body = buildAIRequestBody(messages, options, config);
+                    // [P0优化] 主动限流：将当前slotIdx传入options，供executeAIStream读取响应头时更新配额
+                    options._currentSlotIdx = slotIdx;
                     if (options.stream) {
                         // 【架构升级】优先通过 Web Worker 执行流式解析，避免主线程被 SSE 解析 + JSON.parse 占满。
                         // 长回答（50-150KB）时主线程保持响应，用户可随时点击取消/其他按钮。
@@ -6543,7 +6744,10 @@ async function callAI(messages, options = {}) {
                         }
                     }
                 }
-                var _statusMsg = '速率限制，' + (_waitMs / 1000) + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')';
+                // [P1优化] 添加抖动(Jitter)，防止多客户端同步重试
+                _waitMs = _waitMs * (0.85 + Math.random() * 0.3); // ±15% 随机（Retry-After场景抖动较小）
+                _waitMs = Math.round(_waitMs);
+                var _statusMsg = '速率限制，' + (_waitMs / 1000).toFixed(1) + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')';
                 console.warn('[callAI] ' + _statusMsg + (e429 && e429.retryAfter ? ' [Retry-After: ' + e429.retryAfter + ']' : ''));
                 if (typeof UI !== 'undefined' && UI.toast) {
                     UI.toast(_statusMsg);
@@ -6687,6 +6891,8 @@ async function _fetchWithContextRetry(url, options, maxRetries) {
             // 导致 /models API 遇 429 直接返回，detectContextSize 跳过动态检测
             if ((resp.status === 429 || resp.status >= 500) && attempt < maxRetries) {
                 var retryDelay = 500 * Math.pow(2, attempt);
+                // [P1优化] 添加抖动(Jitter)
+                retryDelay = Math.round(retryDelay * (0.75 + Math.random() * 0.5));
                 console.log('[Context检测] HTTP ' + resp.status + '，' + retryDelay + 'ms 后重试 (' + (attempt + 1) + '/' + maxRetries + ')');
                 await new Promise(function(r) { setTimeout(r, retryDelay); });
                 continue;
@@ -6699,6 +6905,8 @@ async function _fetchWithContextRetry(url, options, maxRetries) {
             if (/401|403|abort|AbortError/i.test(msg)) throw e;
             if (attempt < maxRetries) {
                 var delay = 500 * Math.pow(2, attempt); // 500ms, 1000ms, 2000ms
+                // [P1优化] 添加抖动(Jitter)
+                delay = Math.round(delay * (0.75 + Math.random() * 0.5));
                 console.log('[Context检测] 网络错误，' + delay + 'ms 后重试 (' + (attempt + 1) + '/' + maxRetries + '):', msg);
                 await new Promise(function(r) { setTimeout(r, delay); });
             }

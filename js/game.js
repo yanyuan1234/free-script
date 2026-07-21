@@ -2046,6 +2046,31 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         console.log('[Token] 输入: ' + inputTokens + '/' + contextSize + ' (' + (gameState && gameState._lastContextUsage) + '%)');
 
+        // [P0优化] Token预估前置：输入超过上下文窗口90%时，主动触发上下文压缩
+        // 避免发送后收到400错误（context_length_exceeded），节省一次API往返
+        if (contextSize > 0 && inputTokens > contextSize * 0.9) {
+            console.warn('[Token预估] 输入已占上下文 ' + Math.round(inputTokens / contextSize * 100) + '%，主动触发压缩');
+            try {
+                if (typeof autoCompressContext === 'function' && !isCompressing && !isWaiting) {
+                    await autoCompressContext();
+                    // 压缩后重新计算 inputTokens（messages 可能已被裁剪）
+                    inputTokens = 0;
+                    for (var _mi = 0; _mi < messages.length; _mi++) {
+                        if (messages[_mi] && messages[_mi].content) {
+                            inputTokens += Math.ceil(String(messages[_mi].content).length / 4);
+                        }
+                    }
+                    if (gameState) {
+                        gameState._lastInputTokens = inputTokens;
+                        gameState._lastContextUsage = Math.round(inputTokens / contextSize * 100);
+                    }
+                    console.log('[Token预估] 压缩后输入: ' + inputTokens + '/' + contextSize + ' (' + (gameState && gameState._lastContextUsage) + '%)');
+                }
+            } catch (e) {
+                console.warn('[Token预估] 主动压缩失败，继续发送请求:', e);
+            }
+        }
+
         try {
             window._perfDebug&&(document.title='PERF:6-callAI');
             response = await callAI(messages, options);
