@@ -1392,7 +1392,19 @@ var GameMemory = {
                     if (raw && raw.__timeout) {
                         console.warn('[SetupForge] 第' + state.currentPass + '轮超时(' + _passTimeoutMs + 'ms)，使用当前结果继续');
                         if (state.currentPass >= passes) {
+                            // 【BUG修复】超时时也进行字段补充，避免"未提取"
                             var _toResult = state.refined || self._fallbackFromBlob(state.blob);
+                            // 补充缺失字段
+                            if (!_toResult.worldSetting && state.blob) {
+                                _toResult.worldSetting = state.blob;
+                            }
+                            if (!_toResult.openingScene && state.blob) {
+                                _toResult.openingScene = state.blob;
+                            }
+                            if (!_toResult.protagonist || Object.keys(_toResult.protagonist).length === 0) {
+                                var _tpName = self._extractProtagonistName(state.blob);
+                                _toResult.protagonist = { name: _tpName || '主角' };
+                            }
                             self._applyForgedSetup(_toResult);
                             return resolve(_toResult);
                         }
@@ -1445,8 +1457,9 @@ var GameMemory = {
 
                     // 【BUG修复】最终轮（pass 3）字段完整性校验
                     // AI在pass 3可能遗漏pass 1已提取的字段，需要从extraction补充
-                    if (state.currentPass >= passes && state.extraction && state.refined) {
-                        var _ext = state.extraction;
+                    // 同时处理pass 1超时导致extraction为null的情况：从blob补充
+                    if (state.currentPass >= passes && state.refined) {
+                        var _ext = state.extraction || {};
                         var _ref = state.refined;
                         // worldSetting 补充
                         if (!_ref.worldSetting && _ext.worldSetting) {
@@ -1462,6 +1475,11 @@ var GameMemory = {
                             if (_ext.protagonist && Object.keys(_ext.protagonist).length > 0) {
                                 _ref.protagonist = _ext.protagonist;
                                 console.warn('[SetupForge] final protagonist 缺失，从 extraction 补充');
+                            } else if (state.blob) {
+                                // extraction也为空（pass 1超时），从blob提取主角名
+                                var _pName = self._extractProtagonistName(state.blob);
+                                _ref.protagonist = { name: _pName || '主角' };
+                                console.warn('[SetupForge] final protagonist 缺失，从 blob 补充: ' + (_pName || '主角'));
                             }
                         }
                         // openingScene 补充

@@ -5521,7 +5521,7 @@ function buildAIRequestBody(messages, options, config) {
 
     var isCompatibleMode = config.compatibleMode === true;
     if (isCompatibleMode) {
-        console.log('[API] 使用兼容模式，只发送基本参数');
+        console.log('[API] 使用兼容模式，发送基本参数+反重复参数(DRY/min_p)');
     }
 
     // 基础参数（兼容模式只发这些）
