@@ -4554,10 +4554,14 @@ var CotPanelController = {
             return typeof gameState !== 'undefined' && gameState && gameState.cotAutoExpand === true;
         } catch (e) { return false; }
     },
+    // [BUG-003 修复] 思维链面板默认不显示，除非用户明确启用
+    // 原代码: return !(gameState.showCotPanel === false) → 默认 true
+    // 问题: 思维链内容包含AI内部推理，默认展示会破坏沉浸感
+    // 修复: 默认 false，仅当 gameState.showCotPanel === true 时显示
     get showPanel() {
         try {
-            return !(typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === false);
-        } catch (e) { return true; }
+            return typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === true;
+        } catch (e) { return false; }
     },
 
     // === 核心方法 ===
