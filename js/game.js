@@ -2068,6 +2068,39 @@ async function sendAIRequest(userMessage, isInit = false) {
         var data = parseResult.data;
         var storyText = parseResult.storyText;
 
+        // 【P0 修复】流式提取与最终解析不一致时的安全回退
+        // 场景：流式期间 _extractStoryIncremental 提取了 1987 字符的 story，
+        // 但 parseAIResponse 返回了仅 14 字符的 storyText（可能因 JSON 截断修复
+        // 丢弃了 story 字段、或 _stripThinkingTokens 误删了 JSON 内容）。
+        // 此时最终渲染会用短文本覆盖打字机已显示的长文本，导致剧情"消失"。
+        // 回退策略：如果流式提取的故事比最终解析的长 3 倍以上，使用流式提取的版本。
+        var _streamStoryForFallback = '';
+        try {
+            // _streamExtractedStory 在 _appendStreamStory 后会被设为 null，
+            // 必须通过 _getStreamExtractedStory() 触发 join 才能拿到实际值
+            if (typeof _getStreamExtractedStory === 'function') {
+                _streamStoryForFallback = _getStreamExtractedStory() || '';
+            } else if (typeof _streamExtractedStory !== 'undefined' &&
+                       typeof _streamExtractedStory === 'string') {
+                _streamStoryForFallback = _streamExtractedStory;
+            }
+        } catch(_sErr) { /* 忽略 */ }
+        // 【诊断日志】流式提取与最终解析不一致时记录详情
+        // 不自动回退到流式版本（可能来自思维链中的 "story" 字段）
+        // 根因修复在 onStreamChunk 中：跳过思维链内的 "story" 匹配
+        if (_streamStoryForFallback && storyText &&
+            _streamStoryForFallback.length > storyText.length * 3 &&
+            _streamStoryForFallback.length > 200) {
+            console.warn('[storyMismatch] 流式提取(' + _streamStoryForFallback.length +
+                '字符) vs 最终解析(' + storyText.length + '字符)' +
+                ' | responseLen=' + (response||'').length +
+                ' | storyClosed=' + (typeof _streamStoryClosed !== 'undefined' ? _streamStoryClosed : '?') +
+                ' | parseSuccess=' + parseResult.success);
+            console.warn('[storyMismatch] storyText前100字符:', storyText.substring(0, 100));
+            console.warn('[storyMismatch] streamStory前100字符:', _streamStoryForFallback.substring(0, 100));
+            console.warn('[storyMismatch] response前200字符:', (response||'').substring(0, 200));
+        }
+
         // 【P0-1 前端重复检测兜底】当 API 端 DRY 采样器不可用时（如 OpenAI 兼容中转站），
         // 在前端检测 AI 输出的重复退化现象（如"苏苏苏苏苏"字符级重复）
         // 检测到重复时，在 storyText 前添加警告标记，不自动重新生成（避免额外 API 调用）
@@ -3854,8 +3887,50 @@ function onStreamChunk(delta, fullText) {
         // 新实现：只扫描上次未扫描的部分（_streamJsonScanPos），O(delta) per chunk。
         if (typeof _streamJsonScanPos === 'undefined') _streamJsonScanPos = 0;
         var _storyFound = false;
-        // 只在新增部分搜索 "story" 字段
-        var _searchFrom = Math.max(0, _streamJsonScanPos - 10); // 回退10字符防跨chunk断裂
+
+        // 【P0 修复】跳过思维链内的 "story" 匹配
+        // AI 推理模型（DeepSeek-R1, auto 等）在正式 JSON 前输出 <think>...</think> 等思考块，
+        // 思考块内可能包含 "story" 字段（如规划响应格式），导致流式提取器误匹配。
+        // 修复：搜索前检查是否有未闭合的思维链标签，有则等待更多数据；已闭合则从闭合位置后搜索。
+        var _thinkEndPos = 0;
+        var _inThinking = false;
+        var _cotTags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
+            ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'ECoT'];
+        for (var _ti = 0; _ti < _cotTags.length; _ti++) {
+            var _cotTag = _cotTags[_ti];
+            var _openIdx = streamBuffer.lastIndexOf('<' + _cotTag);
+            if (_openIdx !== -1) {
+                var _closeIdx = streamBuffer.lastIndexOf('</' + _cotTag);
+                if (_closeIdx < _openIdx) {
+                    _inThinking = true;
+                    break;
+                }
+                var _closeEnd = _closeIdx + _cotTag.length + 3; // </tag>
+                if (_closeEnd > _thinkEndPos) _thinkEndPos = _closeEnd;
+            }
+        }
+        // 💭 标记对检查
+        if (!_inThinking) {
+            var _marker = '\u{1F4AD}'; // 💭
+            var _markerCount = streamBuffer.split(_marker).length - 1;
+            if (_markerCount % 2 === 1) {
+                _inThinking = true;
+            } else if (_markerCount >= 2) {
+                var _lastMarker = streamBuffer.lastIndexOf(_marker);
+                if (_lastMarker + _marker.length > _thinkEndPos) {
+                    _thinkEndPos = _lastMarker + _marker.length;
+                }
+            }
+        }
+
+        if (_inThinking) {
+            // 思维链未闭合，等待更多数据（不更新 _streamJsonScanPos，下次重新扫描）
+            _showStreamWaitingHint();
+            return;
+        }
+
+        // 从思维链结束位置或上次扫描位置开始搜索
+        var _searchFrom = Math.max(_thinkEndPos, Math.max(0, _streamJsonScanPos - 10)); // 回退10字符防跨chunk断裂
         var _storyIdx = streamBuffer.indexOf('"story"', _searchFrom);
         if (_storyIdx !== -1) {
             // 验证后面是否跟 : " 格式
