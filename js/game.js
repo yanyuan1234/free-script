@@ -3892,16 +3892,24 @@ function onStreamChunk(delta, fullText) {
         // AI 推理模型（DeepSeek-R1, auto 等）在正式 JSON 前输出 <think>...</think> 等思考块，
         // 思考块内可能包含 "story" 字段（如规划响应格式），导致流式提取器误匹配。
         // 修复：搜索前检查是否有未闭合的思维链标签，有则等待更多数据；已闭合则从闭合位置后搜索。
+        // 【P0 冻结修复】只扫描新增部分，避免对大缓冲区做全量 split/lastIndexOf
         var _thinkEndPos = 0;
         var _inThinking = false;
         var _cotTags = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.THINKING_TAGS)
             ? OutputSanitizer.THINKING_TAGS : ['think', 'thinking', 'reasoning', 'thought', 'ECoT'];
+        
+        // 【P0 冻结修复】用缓存的上次扫描位置，只扫描新增部分
+        if (typeof _streamThinkScanPos === 'undefined') _streamThinkScanPos = 0;
+        var _scanStart = Math.max(0, _streamThinkScanPos - 20); // 回退20字符防跨chunk断裂
+        
         for (var _ti = 0; _ti < _cotTags.length; _ti++) {
             var _cotTag = _cotTags[_ti];
-            var _openIdx = streamBuffer.lastIndexOf('<' + _cotTag);
+            // 只在新增部分查找开标签
+            var _openIdx = streamBuffer.indexOf('<' + _cotTag, _scanStart);
             if (_openIdx !== -1) {
-                var _closeIdx = streamBuffer.lastIndexOf('</' + _cotTag);
-                if (_closeIdx < _openIdx) {
+                // 找到开标签后，从开标签位置查找闭标签
+                var _closeIdx = streamBuffer.indexOf('</' + _cotTag, _openIdx);
+                if (_closeIdx === -1) {
                     _inThinking = true;
                     break;
                 }
@@ -3909,19 +3917,27 @@ function onStreamChunk(delta, fullText) {
                 if (_closeEnd > _thinkEndPos) _thinkEndPos = _closeEnd;
             }
         }
-        // 💭 标记对检查
+        
+        // 💭 标记对检查（【P0 冻结修复】用 indexOf 循环替代 split，避免创建大数组）
         if (!_inThinking) {
             var _marker = '\u{1F4AD}'; // 💭
-            var _markerCount = streamBuffer.split(_marker).length - 1;
+            var _markerCount = 0;
+            var _markerPos = streamBuffer.indexOf(_marker, _scanStart);
+            var _lastMarkerPos = -1;
+            while (_markerPos !== -1) {
+                _markerCount++;
+                _lastMarkerPos = _markerPos;
+                _markerPos = streamBuffer.indexOf(_marker, _markerPos + _marker.length);
+            }
             if (_markerCount % 2 === 1) {
                 _inThinking = true;
-            } else if (_markerCount >= 2) {
-                var _lastMarker = streamBuffer.lastIndexOf(_marker);
-                if (_lastMarker + _marker.length > _thinkEndPos) {
-                    _thinkEndPos = _lastMarker + _marker.length;
+            } else if (_markerCount >= 2 && _lastMarkerPos >= 0) {
+                if (_lastMarkerPos + _marker.length > _thinkEndPos) {
+                    _thinkEndPos = _lastMarkerPos + _marker.length;
                 }
             }
         }
+        _streamThinkScanPos = streamBuffer.length;
 
         if (_inThinking) {
             // 思维链未闭合，等待更多数据（不更新 _streamJsonScanPos，下次重新扫描）
@@ -3933,8 +3949,8 @@ function onStreamChunk(delta, fullText) {
         var _searchFrom = Math.max(_thinkEndPos, Math.max(0, _streamJsonScanPos - 10)); // 回退10字符防跨chunk断裂
         var _storyIdx = streamBuffer.indexOf('"story"', _searchFrom);
         if (_storyIdx !== -1) {
-            // 验证后面是否跟 : " 格式
-            var _afterKey = streamBuffer.substring(_storyIdx + 7);
+            // 验证后面是否跟 : " 格式（【P0冻结修复】只取前20字符做匹配，不创建大子字符串）
+            var _afterKey = streamBuffer.substring(_storyIdx + 7, Math.min(_storyIdx + 27, streamBuffer.length));
             var _colonMatch = _afterKey.match(/^\s*:\s*"/);
             if (_colonMatch) {
                 _streamStoryStartIdx = _storyIdx + 7 + _colonMatch[0].length;
