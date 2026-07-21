@@ -2754,7 +2754,7 @@ var GameMemory = {
 
         // 调用AI解析
         if (typeof callAI === 'function') {
-            callAI(messages, { max_tokens: parseMaxTokens, signal: _parseAbortAC.signal }).then(function(response) {
+            callAI(messages, { max_tokens: parseMaxTokens, signal: _parseAbortAC.signal, _isBackground: true }).then(function(response) {
                 try {
                     var content = response;
                     if (response && typeof response === 'object') {

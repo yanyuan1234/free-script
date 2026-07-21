@@ -3498,7 +3498,7 @@ async function _compressConversation(removed, sys) {
             '目标是让一个没读过原文的人读摘要也能 30 秒内 get 到「这段剧情发生了什么」。';
     }
     var summaryMessages = [{ role: 'system', content: summaryPrompt }, { role: 'user', content: '请对以上内容进行处理：\n\n' + summaryContent }];
-    var summary = await callAI(summaryMessages, { temperature: 0.3 });
+    var summary = await callAI(summaryMessages, { temperature: 0.3, _isBackground: true });
     // Step 4: 保存摘要到历史记录
     if (typeof EnhancedMemory !== 'undefined') {
         EnhancedMemory.longTermMemory.masterSummary = summary;
@@ -3671,16 +3671,8 @@ async function autoCompressContext() {
     isCompressing = true;
     var _wasWaiting = isWaiting;
     isWaiting = true;
-    // Fix Issue 17: Use independent AbortController for compression
-    var _compressAbort = new AbortController();
-    var _origCurrentAbort = window._currentAbort;
-    window._currentAbort = _compressAbort;
-
-    var _restoreAbort = function() {
-        if (window._currentAbort === _compressAbort) {
-            window._currentAbort = _origCurrentAbort;
-        }
-    };
+    // 【P0-1 修复】移除 window._currentAbort save/restore 逻辑
+    // 后台请求现在通过 _isBackground:true 隔离，不再需要操作全局 AbortController
     try {
 
         // 旧逻辑：记忆系统激活后 rollingSummary 永不注入，但 autoCompressContext 仍消耗 API 调用生成它
@@ -3691,7 +3683,6 @@ async function autoCompressContext() {
             console.log('[压缩跳过] 记忆系统已有摘要数据，rollingSummary 不会注入，跳过 API 调用');
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
-            _restoreAbort();
             return;
         }
 
@@ -3702,7 +3693,6 @@ async function autoCompressContext() {
 
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
-            _restoreAbort();
             return;
         }
 
@@ -3712,7 +3702,6 @@ async function autoCompressContext() {
             console.log('[摘要跳过] 历史仅' + _historyTurns + '轮 (<10), 不生成摘要');
             isCompressing = false;
             if (!_wasWaiting) isWaiting = false;
-            _restoreAbort();
             return;
         }
         var summary = await _compressConversation(prep.removed, prep.sys);
@@ -3738,7 +3727,6 @@ async function autoCompressContext() {
     } finally {
         isCompressing = false;
         if (!_wasWaiting) isWaiting = false;
-        _restoreAbort();
     }
 }
 // ========================================
@@ -3746,33 +3734,23 @@ async function autoCompressContext() {
 // ========================================
 async function manualCompress(btn) {
     // 添加try-catch包裹整个异步操作
-    // Fix Issue 17: Use independent AbortController for compression
-    var _compressAbort = new AbortController();
-    var _origCurrentAbort = window._currentAbort;
-    window._currentAbort = _compressAbort;
-
-    var _restoreAbort = function() {
-        if (window._currentAbort === _compressAbort) {
-            window._currentAbort = _origCurrentAbort;
-        }
-    };
+    // 【P0-1 修复】移除 window._currentAbort save/restore 逻辑
+    // 后台请求现在通过 _isBackground:true 隔离，不再需要操作全局 AbortController
     try {
         var msgCount = (gameState && gameState.conversationHistory) ? gameState.conversationHistory.filter(function(m) {
             return m.role !== 'system';
         }).length : 0;
         if (msgCount <= COMPRESS_KEEP_LIMIT) {
             UI.toast('对话只有 ' + msgCount + ' 条，不需要压缩（大于' + COMPRESS_KEEP_LIMIT + '条才有意义）');
-            _restoreAbort();
             return;
         }
         var ok = await UI.confirm('压缩对话', '将用AI总结前面的剧情，只保留最近' + COMPRESS_KEEP_LIMIT + '条原文，确定吗？');
-        if (!ok) { _restoreAbort(); return; }
+        if (!ok) return;
 
 
         var prep = _prepareCompressionData(gameState.conversationHistory);
         if (prep.removed.length === 0) {
             UI.toast('没有需要压缩的内容');
-            _restoreAbort();
             return;
         }
         var summary = await _compressConversation(prep.removed, prep.sys);
@@ -3786,8 +3764,6 @@ async function manualCompress(btn) {
     } catch (e) {
         console.error('手动压缩失败:', e);
         UI.toast('压缩失败: ' + translateError(e.message || '未知错误'));
-    } finally {
-        _restoreAbort();
     }
 }
 (function() {
@@ -5176,7 +5152,8 @@ function _generateRollingSummary() {
     callAI(summaryMessages, {
         stream: false,
         max_tokens: 512,
-        temperature: 0.3
+        temperature: 0.3,
+        _isBackground: true  // 【P0-1 修复】后台请求，不被 safeAbort() 误杀
     }).then(function(summary) {
         if (!summary || summary.trim().length < 10) {
             console.warn('[RollingSummary] AI返回空摘要');
@@ -5713,7 +5690,7 @@ async function requestNpcReply(playerText) {
             // 【用户要求】max_tokens从1024提升到4096，确保NPC对话完整，不被API截断
             max_tokens: 4096,
             antiRepeat: true,
-
+            _isBackground: true,  // 【P0-1 修复】NPC对话是独立请求，不被 safeAbort() 误杀
             signal: npcChatState.abortController ? npcChatState.abortController.signal : undefined
         });
         // 移除loading

@@ -6620,15 +6620,19 @@ async function callAI(messages, options = {}) {
     // 清空上一次的 reasoning 透出值，避免上一轮残留进入本轮 CoT 面板
     try { if (typeof window !== 'undefined') window._lastReasoningText = ''; } catch (e) {}
     var localAC = new AbortController();
-    // 【BUG修复】将 localAC 赋值给 window._currentAbort，使 safeAbort() 能取消当前请求
-    window._currentAbort = localAC;
+    // 【P0-1 修复】仅主请求才设置 window._currentAbort，后台请求（_isBackground）使用独立 signal
+    // 避免 safeAbort() 误杀后台请求（设定解析、上下文压缩、NPC对话等）
+    if (!options._isBackground) {
+        window._currentAbort = localAC;
+    }
     TimerManager.setTimeout('aiRequestTimeout', function() {
         try { localAC.abort(new Error('AI请求超时（' + Math.round(_timeoutMs / 60000) + '分钟）')); }
         catch (e) { /* 忽略 */ }
     }, _timeoutMs);
 
-    // 串联外部 signal：options.signal 优先，其次兼容旧的 window._currentAbort（safeAbort）
-    var externalSignal = options.signal || (window._currentAbort && window._currentAbort.signal);
+    // 串联外部 signal：options.signal 优先
+    // 【P0-1 修复】后台请求不读取 window._currentAbort（避免读取到主请求的 controller）
+    var externalSignal = options.signal || (!options._isBackground && window._currentAbort && window._currentAbort.signal);
     var externalListener = null;
     if (externalSignal) {
         if (externalSignal.aborted) {
@@ -6692,7 +6696,9 @@ async function callAI(messages, options = {}) {
                                     console.warn('[callAI] Worker 流式失败，降级到主线程:', wErr && wErr.message);
                                 }
                                 // 降级到原 executeAIStream（主线程同步解析）
-                                return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
+                                // 【P1-2 修复】降级时不传 onChunk，避免 Worker 已派发的 partial chunk 被重复派发
+                                // 主线程解析会返回完整文本，上层用完整文本替换 UI 即可
+                                return await executeAIStream(url, body, config.apiKey, localAC.signal, null);
                             }
                         } else {
                             return await executeAIStream(url, body, config.apiKey, localAC.signal, options.onChunk);
@@ -6808,7 +6814,16 @@ async function callAI(messages, options = {}) {
                 var _retryOpts = Object.assign({}, options);
                 delete _retryOpts.onChunk;
                 _retryOpts.stream = false;
-                return await callAI(messages, _retryOpts);
+                try {
+                    return await callAI(messages, _retryOpts);
+                } catch (retryErr) {
+                    // 【P0-3 修复】递归重试失败时，调度延时重置降级标志
+                    // 如果失败是非 schema 错误（429/网络等），标志会卡在 'json_object' 永不重置
+                    setTimeout(function() {
+                        if (gameState) gameState._jsonSchemaDowngrade = null;
+                    }, 60000);
+                    throw retryErr;
+                }
             } else if (_curDowngrade === 'json_object') {
                 // 第二次降级：json_object → off
                 gameState._jsonSchemaDowngrade = 'off';
@@ -6816,12 +6831,19 @@ async function callAI(messages, options = {}) {
                 var _retryOpts2 = Object.assign({}, options);
                 delete _retryOpts2.onChunk;
                 _retryOpts2.stream = false;
-                var _result = await callAI(messages, _retryOpts2);
-                // 重置降级标志，下次恢复正常尝试（可能只是临时问题）
-                setTimeout(function() {
+                try {
+                    var _result = await callAI(messages, _retryOpts2);
+                    // 成功：60秒后重置降级标志，下次恢复正常尝试
+                    setTimeout(function() {
+                        if (gameState) gameState._jsonSchemaDowngrade = null;
+                    }, 60000);
+                    return _result;
+                } catch (retryErr2) {
+                    // 【P0-3 修复】'off' 模式也失败时，立即重置标志，让下次请求重新尝试 strict
+                    // 如果不重置，标志会永远卡在 'off'，所有后续请求都不使用 response_format
                     if (gameState) gameState._jsonSchemaDowngrade = null;
-                }, 60000);
-                return _result;
+                    throw retryErr2;
+                }
             }
         }
         throw e;
@@ -6830,8 +6852,8 @@ async function callAI(messages, options = {}) {
         if (externalListener && externalSignal) {
             try { externalSignal.removeEventListener('abort', externalListener); } catch (e) { /* 忽略 */ }
         }
-        // 【BUG修复】清理 window._currentAbort，避免 safeAbort() 误触发已完成的请求
-        if (window._currentAbort === localAC) {
+        // 【P0-1 修复】仅主请求清理 window._currentAbort，后台请求不应碰此全局变量
+        if (!options._isBackground && window._currentAbort === localAC) {
             window._currentAbort = null;
         }
     }
@@ -7111,7 +7133,8 @@ async function extractSetupToMemory(opts) {
             stream: false,
             temperature: 0.3,
             max_tokens: 4096,
-            signal: opts.signal || null  // 【P0 修复】透传 AbortSignal，支持外部超时取消
+            signal: opts.signal || null,  // 【P0 修复】透传 AbortSignal，支持外部超时取消
+            _isBackground: true  // 【P0-1 修复】后台请求，不被 safeAbort() 误杀
         });
 
         var parsed = parseJSONHelper(result);

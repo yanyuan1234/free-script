@@ -13,7 +13,11 @@ var StreamBridge = (function() {
     var _nextRequestId = 1;
     // [BUG-001 修复] 主线程侧请求超时（兜底机制）
     // 若 Worker 崩溃且 error 事件未触发，req.promise 将永久 pending，导致 UI 卡死
-    var REQUEST_TIMEOUT_MS = 120 * 1000;  // 120秒超时
+    // 【P0-2 修复】将固定 120 秒超时改为 10 分钟（与 callAI 默认超时一致）
+    // 120 秒对推理模型（DeepSeek-R1 等 3-5 分钟思考）远远不够，导致正常请求被误杀
+    // 同时引入"活动超时"机制：每收到 CHUNK 消息就重置计时器，只有真正无响应才超时
+    var REQUEST_TIMEOUT_MS = 10 * 60 * 1000;  // 10分钟总超时（兜底）
+    var ACTIVITY_TIMEOUT_MS = 120 * 1000;     // 120秒无活动超时（收到chunk时重置）
 
     // 【P1 修复】懒初始化 Worker（异步，首次调用时创建）
     // 原实现使用同步 XHR 获取 Worker 源码，阻塞主线程
@@ -114,6 +118,9 @@ var StreamBridge = (function() {
         if (!req) return;
 
         if (msg.type === 'CHUNK') {
+            // 【P0-2 修复】收到 CHUNK 时重置活动超时计时器
+            // 推理模型可能先输出 reasoning（思考过程），再输出 content（正文），期间持续有 CHUNK
+            _resetActivityTimeout(msg.requestId);
             // 转发 chunk 给上层 onChunk 回调
             // 【酒馆式思维链】同时传递 reasoningDelta，让上层实时显示思考过程
             if (req.onChunk && msg.delta) {
@@ -195,6 +202,24 @@ var StreamBridge = (function() {
         }
     }
 
+    // 【P0-2 修复】活动超时重置：每次收到 CHUNK 时重置 120 秒无响应计时器
+    // 只有无活动（Worker 崩溃/网络断开）才超时，推理模型长时间思考不受影响
+    function _resetActivityTimeout(requestId) {
+        var req = _pendingRequests[requestId];
+        if (!req) return;
+        if (req.timeoutId) {
+            clearTimeout(req.timeoutId);
+        }
+        req.timeoutId = setTimeout(function() {
+            var r = _pendingRequests[requestId];
+            if (r) {
+                console.warn('[StreamBridge] 请求无活动超时(' + ACTIVITY_TIMEOUT_MS + 'ms)，Worker 可能已崩溃或网络断开');
+                _cleanupRequest(requestId);
+                r.reject(new Error('STREAM_TIMEOUT: 请求无响应超时(' + (ACTIVITY_TIMEOUT_MS / 1000) + '秒无数据)，请重试'));
+            }
+        }, ACTIVITY_TIMEOUT_MS);
+    }
+
     // 清理请求状态
     function _cleanupRequest(requestId) {
         var req = _pendingRequests[requestId];
@@ -206,6 +231,11 @@ var StreamBridge = (function() {
         if (req.timeoutId) {
             clearTimeout(req.timeoutId);
             req.timeoutId = null;
+        }
+        // 【P0-2 修复】清理总超时定时器
+        if (req.totalTimeoutId) {
+            clearTimeout(req.totalTimeoutId);
+            req.totalTimeoutId = null;
         }
         delete _pendingRequests[requestId];
     }
@@ -272,12 +302,15 @@ var StreamBridge = (function() {
 
         // [BUG-001 修复] 设置主线程侧请求超时
         // 若 Worker 崩溃且未触发 error 事件，超时后自动 reject 防止 UI 永久卡死
-        _pendingRequests[requestId].timeoutId = setTimeout(function() {
+        // 【P0-2 修复】使用活动超时机制：120秒无 CHUNK 响应才超时，推理模型长时间思考不会被误杀
+        _resetActivityTimeout(requestId);
+        // 总超时兜底：10 分钟后无论如何都超时（防止活动超时被无限重置）
+        _pendingRequests[requestId].totalTimeoutId = setTimeout(function() {
             var req = _pendingRequests[requestId];
             if (req) {
-                console.warn('[StreamBridge] 请求超时(' + REQUEST_TIMEOUT_MS + 'ms)，Worker 可能已崩溃');
+                console.warn('[StreamBridge] 请求总超时(' + REQUEST_TIMEOUT_MS + 'ms)，Worker 可能已崩溃');
                 _cleanupRequest(requestId);
-                req.reject(new Error('STREAM_TIMEOUT: 请求超时(' + (REQUEST_TIMEOUT_MS / 1000) + '秒)，请重试'));
+                req.reject(new Error('STREAM_TIMEOUT: 请求总超时(' + (REQUEST_TIMEOUT_MS / 1000) + '秒)，请重试'));
             }
         }, REQUEST_TIMEOUT_MS);
 
