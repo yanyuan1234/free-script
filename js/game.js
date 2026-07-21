@@ -3109,7 +3109,17 @@ async function sendAIRequest(userMessage, isInit = false) {
                 // 此处补递增。玩家已发出消息并收到 AI 响应，turn 应前进。
                 // 注意：_aiMutatorApplied=true 时下方 deleteLastTurn 会回滚，那时 turn 会随之回退；
                 //       但若 mutator 未执行（_aiMutatorApplied=false），不递增会导致回合数永久卡在 0。
-                if (!_turnIncremented && !_aiMutatorApplied) {
+                // [BUG-006 修复] 当 API 完全失败（无任何响应内容）时，不应递增 turn
+                // 原代码: if (!_turnIncremented && !_aiMutatorApplied)
+                // 问题: API限流/网络错误等导致完全无响应时，turn 仍被递增，与实际剧情进度不匹配
+                // 修复: 检查 error 是否为 API 级错误（无响应内容），若是则不递增
+                var _isAPILevelError = error && (
+                    (error.message && error.message.indexOf('没有可用的API配置') !== -1) ||
+                    (error.message && error.message.indexOf('ResourceExhausted') !== -1) ||
+                    (error.message && error.message.indexOf('STREAM_TIMEOUT') !== -1) ||
+                    (error.message && error.message.indexOf('所有API配置均调用失败') !== -1)
+                );
+                if (!_turnIncremented && !_aiMutatorApplied && !_isAPILevelError) {
                     var _curT = StateManager.get('progress.turn') || 0;
                     StateManager.set('progress.turn', _curT + 1, { silent: true });
                     _turnIncremented = true;
