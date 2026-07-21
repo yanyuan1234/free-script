@@ -9,19 +9,50 @@
 // StateManager._syncLegacyMirror 自动同步 gameState.relationships 旧字段。
 // ========================================
 const RelationshipMutator = {
+    // 【BUG修复】规范化实体名称：将 "主角" / "玩家" 等通配名统一为实际玩家名
+    // 避免同一关系因 from 名称不同（"主角" vs "林远"）而被当作不同条目重复添加
+    _normalizeEntityName(name, playerName) {
+        if (!name) return '';
+        var n = String(name).trim();
+        // 通配名统一为玩家实际名称
+        var aliases = ['主角', '玩家', '我', '你', 'player', 'Player', '主角（玩家）'];
+        if (aliases.indexOf(n) !== -1 && playerName) {
+            return playerName;
+        }
+        return n;
+    },
+
     // 合并关系图谱条目 [{from, to, type, desc}]
     // 重复关系对（A→B 或 B→A）合并/更新，上限 10 条
     mergeRelationships(newRels, options) {
         const inputList = Array.isArray(newRels) ? newRels : (newRels ? [newRels] : []);
         const current = StateManager.get('entities.relationships');
         const list = Array.isArray(current) ? current.slice() : [];
+
+        // 获取玩家实际名称用于规范化
+        var playerName = '';
+        try {
+            var player = StateManager.get('entities.player');
+            if (player && player.name) playerName = player.name;
+        } catch(e) {}
+        if (!playerName && typeof gameState !== 'undefined') {
+            playerName = (gameState.playerData && gameState.playerData.name) || gameState.playerName || '';
+        }
+
         inputList.forEach(function(nr) {
             if (!nr || !nr.from || !nr.to) return;
+            // 规范化 from/to：将 "主角" 等通配名替换为实际玩家名
+            nr.from = RelationshipMutator._normalizeEntityName(nr.from, playerName);
+            nr.to = RelationshipMutator._normalizeEntityName(nr.to, playerName);
+
             // 找已有的相同关系对（A→B 或 B→A 算同一对）
             var existIdx = -1;
             for (var i = 0; i < list.length; i++) {
                 var r = list[i];
-                if ((r.from === nr.from && r.to === nr.to) || (r.from === nr.to && r.to === nr.from)) {
+                // 也对已有条目做规范化（防止旧数据中有 "主角"）
+                var rFrom = RelationshipMutator._normalizeEntityName(r.from, playerName);
+                var rTo = RelationshipMutator._normalizeEntityName(r.to, playerName);
+                if ((rFrom === nr.from && rTo === nr.to) || (rFrom === nr.to && rTo === nr.from)) {
                     existIdx = i;
                     break;
                 }
@@ -40,8 +71,23 @@ const RelationshipMutator = {
                 list.push(nr);
             }
         });
+
+        // 【BUG修复】去除可能因并发/旧数据产生的完全重复条目（from+to+type 完全相同）
+        var deduped = [];
+        var seen = {};
+        for (var i = 0; i < list.length; i++) {
+            var item = list[i];
+            // 双向 key：A→B 和 B→A 视为同一条
+            var key1 = item.from + '→' + item.to + ':' + item.type;
+            var key2 = item.to + '→' + item.from + ':' + item.type;
+            if (seen[key1] || seen[key2]) continue;
+            seen[key1] = true;
+            seen[key2] = true;
+            deduped.push(item);
+        }
+
         // 上限 10 条
-        const trimmed = list.length > 10 ? list.slice(-10) : list;
+        const trimmed = deduped.length > 10 ? deduped.slice(-10) : deduped;
         return StateManager.set('entities.relationships', trimmed, options);
     },
 
