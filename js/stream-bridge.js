@@ -9,8 +9,11 @@ var StreamBridge = (function() {
     var _workerAvailable = false;
     var _workerInitAttempted = false;
     var _workerInitPromise = null;  // 【P1 修复】异步初始化 Promise，避免重复初始化
-    var _pendingRequests = {};  // requestId -> { resolve, reject, onChunk, signal, abortListener }
+    var _pendingRequests = {};  // requestId -> { resolve, reject, onChunk, signal, abortListener, timeoutId }
     var _nextRequestId = 1;
+    // [BUG-001 修复] 主线程侧请求超时（兜底机制）
+    // 若 Worker 崩溃且 error 事件未触发，req.promise 将永久 pending，导致 UI 卡死
+    var REQUEST_TIMEOUT_MS = 120 * 1000;  // 120秒超时
 
     // 【P1 修复】懒初始化 Worker（异步，首次调用时创建）
     // 原实现使用同步 XHR 获取 Worker 源码，阻塞主线程
@@ -199,6 +202,11 @@ var StreamBridge = (function() {
         if (req.abortListener && req.signal) {
             try { req.signal.removeEventListener('abort', req.abortListener); } catch (e) {}
         }
+        // [BUG-001 修复] 清理超时定时器，避免内存泄漏
+        if (req.timeoutId) {
+            clearTimeout(req.timeoutId);
+            req.timeoutId = null;
+        }
         delete _pendingRequests[requestId];
     }
 
@@ -258,8 +266,20 @@ var StreamBridge = (function() {
             reject: rejecter,
             onChunk: onChunk,
             signal: signal,
-            abortListener: null
+            abortListener: null,
+            timeoutId: null  // [BUG-001 修复] 请求超时定时器
         };
+
+        // [BUG-001 修复] 设置主线程侧请求超时
+        // 若 Worker 崩溃且未触发 error 事件，超时后自动 reject 防止 UI 永久卡死
+        _pendingRequests[requestId].timeoutId = setTimeout(function() {
+            var req = _pendingRequests[requestId];
+            if (req) {
+                console.warn('[StreamBridge] 请求超时(' + REQUEST_TIMEOUT_MS + 'ms)，Worker 可能已崩溃');
+                _cleanupRequest(requestId);
+                req.reject(new Error('STREAM_TIMEOUT: 请求超时(' + (REQUEST_TIMEOUT_MS / 1000) + '秒)，请重试'));
+            }
+        }, REQUEST_TIMEOUT_MS);
 
         // 监听外部 signal 的 abort（用户取消）
         if (signal) {

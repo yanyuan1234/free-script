@@ -4040,12 +4040,11 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
                     '{"narrative"', '{"content"', '{"storyText"', '{"scene"'];
                 var _jsonStartIdx = -1;
                 for (var pi = 0; pi < _jsonStartKeys.length; pi++) {
-                    // 只在新增部分搜索
+                    // [BUG-001 修复] 只在新增部分搜索，移除全量回退搜索
+                    // 原代码: if (_idx === -1 && _searchFrom > 0) { _idx = streamBuffer.indexOf(_jsonStartKeys[pi]); }
+                    // 问题: 全量回退搜索导致 O(n²) 性能退化，大缓冲区时冻结浏览器
+                    // 修复: 仅搜索新增部分。JSON起始位置不可能在已扫描过的区域内（已扫描部分已确认不含JSON起始键）
                     var _idx = streamBuffer.indexOf(_jsonStartKeys[pi], _searchFrom);
-                    // 也检查缓冲区开头（推理前缀场景，JSON 可能在任意位置）
-                    if (_idx === -1 && _searchFrom > 0) {
-                        _idx = streamBuffer.indexOf(_jsonStartKeys[pi]);
-                    }
                     if (_idx !== -1) {
                         // 容错：key 后可能跟空格，如 { "story"
                         var _afterBracket = streamBuffer.substring(_idx + 1);

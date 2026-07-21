@@ -5398,7 +5398,7 @@ function safeAbort() { if (window._currentAbort) { try { window._currentAbort.ab
 function updateGenStatus(text) {
     if (typeof document === 'undefined') return;
     var el = document.getElementById('genStatusText');
-    if (el) el.textContent = text || '正在生成...';
+    if (el) el.textContent = text || '';  // [BUG-001 修复] 空文本时清空而非默认显示"正在生成..."
 }
 
 // 缓存 setWaiting 重复 DOM 查询的元素引用
@@ -5470,8 +5470,10 @@ function setWaiting(w) {
         if (w) genControl.classList.add('active');
         else genControl.classList.remove('active');
     }
-    // 结束等待时恢复默认提示文本
-    if (!w) updateGenStatus('正在生成...');
+    // [BUG-001 修复] 结束等待时清空状态文本，而非设置为"正在生成..."
+    // 原代码: if (!w) updateGenStatus('正在生成...');
+    // 问题: 生成结束后仍显示"正在生成..."，误导用户
+    if (!w) updateGenStatus('');
     // 显示/隐藏流式输出进度条
     var progressBar = _getSetWaitingEl('progressBar');
     if (progressBar) {
