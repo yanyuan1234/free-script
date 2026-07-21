@@ -2684,6 +2684,17 @@ var GameMemory = {
     _aiParseSetup: function(fullSetup) {
         var self = this;
 
+        // 【BUG修复】延迟5秒再调用AI，避免与 extractSetupToMemory 并发触发429限流
+        // extractSetupToMemory 在游戏启动时立即调用，本函数也在同时调用
+        // 两个API请求同时发出会导致API端429限流
+        TimerManager.setTimeout('aiParseSetupDelay', function() {
+            self._aiParseSetupInner(fullSetup);
+        }, 5000);
+    },
+
+    _aiParseSetupInner: function(fullSetup) {
+        var self = this;
+
         // 【提示词重设计】从「7条硬性提取要点」改为「场景化引导 + 信任模型」
         // 思路：让 AI 理解「两种设定稿的不同读法」和「为什么需要这些字段」
         var parsePrompt = '你正在帮一位游戏编剧解读一份设定稿——把它拆解成结构化卡片，方便后续剧情生成时按需调用。\n\n' +
