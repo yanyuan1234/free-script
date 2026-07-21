@@ -6144,10 +6144,12 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
     // 【第5轮优化】分层 idle 超时（参考业界 SSE 看门狗最佳实践）
     // 单一 60 秒超时的问题：首 token 慢时（推理模型思考 30-50 秒）会被误杀，但服务端真挂起时 60 秒又太久
     // 业界方案：首 token 用较长超时（容忍思考），后续 chunk 间隔用较短超时（真挂起快速判定）
-    // 60s 作为 idle 总超时：足够普通模型首 token + 故事/JSON 元数据切换间隔；
-    // 同时避免中转站在 429 限流时用 keep-alive 无限挂起前端。
-    var FIRST_TOKEN_TIMEOUT_MS = 240 * 1000;   // 首 token 240 秒
-    var CHUNK_IDLE_TIMEOUT_MS = 240 * 1000;   // 后续 chunk 间隔 240 秒
+    // [BUG-002 修复] 将首 token 超时从 240 秒降至 90 秒，后续 chunk 间隔从 240 秒降至 60 秒
+    // 原值: FIRST_TOKEN_TIMEOUT_MS = 240 * 1000 (4分钟), CHUNK_IDLE_TIMEOUT_MS = 240 * 1000
+    // 问题: 推理模型生成时间过长（平均3-5分钟/轮），用户等待时间超出可接受范围
+    // 修复: 首 token 90秒（容忍推理模型思考），后续 chunk 间隔 60秒（快速检测服务端挂起）
+    var FIRST_TOKEN_TIMEOUT_MS = 90 * 1000;   // 首 token 90 秒（原 240 秒）
+    var CHUNK_IDLE_TIMEOUT_MS = 60 * 1000;   // 后续 chunk 间隔 60 秒（原 240 秒）
     var _hasFirstChunk = false;
 
     // 【P1 修复跟进】流被 idle timeout 取消时，如果已收到内容，不要丢弃
