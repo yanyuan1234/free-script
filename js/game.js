@@ -3217,6 +3217,20 @@ async function sendAIRequest(userMessage, isInit = false) {
     } finally {
         window._currentAbort = null;
         setWaiting(false);
+        // [BUG-005 修复] 生成失败时重置思维链面板状态
+        // 原代码缺少CotPanelController状态重置，导致生成失败时思维链一直显示"正在思考..."
+        try {
+            if (typeof CotPanelController !== 'undefined' && CotPanelController.state === 'thinking') {
+                // 如果思维链仍在"thinking"状态，说明生成未正常完成
+                // 保存已收到的部分内容到历史，然后将状态设为'done'
+                if (CotPanelController.currentText && CotPanelController.currentText.trim()) {
+                    CotPanelController.finishThinking();
+                } else {
+                    // 没有任何思维链内容，直接隐藏
+                    CotPanelController.hide();
+                }
+            }
+        } catch (e) { console.warn('[BUG-005] CotPanel状态重置异常:', e); }
         // 【日志页面】AI 请求结束（成功/失败/取消），自动关闭生成弹窗
         try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
         // 【BG-001 修复】延迟兜底：finally 执行后若弹窗状态因异步竞态仍残留，
