@@ -2697,13 +2697,16 @@ var GameMemory = {
         var self = this;
         // 检查 API 是否正在使用中（主故事生成/设定提取等）
         if (typeof RuntimeState !== 'undefined' && RuntimeState.isWaiting) {
-            // 最多等待6次（30秒），超时后放弃（设定解析非关键路径）
-            if (checkCount < 6) {
+            // [BUG-004 修复] 将等待窗口从30秒(6次×5秒)延长至5分钟(60次×5秒)
+            // 原代码: if (checkCount < 6) → 最多30秒
+            // 问题: 推理模型生成需要3-5分钟，30秒窗口必然超时，设定解析被跳过
+            // 修复: 60次×5秒=300秒(5分钟)，足以覆盖推理模型的最长生成时间
+            if (checkCount < 60) {
                 TimerManager.setTimeout('aiParseSetupRetry', function() {
                     self._aiParseSetupWhenIdle(fullSetup, checkCount + 1);
                 }, 5000);
             } else {
-                console.log('[设定解析] 等待API空闲超时（30s），跳过AI解析');
+                console.log('[设定解析] 等待API空闲超时（300s），跳过AI解析');
             }
             return;
         }

@@ -1258,7 +1258,35 @@ var LocalGameAPI = {
             var msg = '没有可用的API配置，请检查API设置（URL和Key是否完整）';
             if (skipReasons.length > 0) {
                 msg += '\n\n所有配置当前处于冷却期：\n' + skipReasons.join('\n');
-                msg += '\n\n请等待冷却期结束后重试，或刷新页面清除冷却状态。';
+                // [BUG-007 修复] 显示冷却期剩余时间，让用户知道何时可以重试
+                // 原代码: msg += '\n\n请等待冷却期结束后重试，或刷新页面清除冷却状态。';
+                // 问题: 未告知用户冷却期时长，用户不知道何时可以重试
+                // 修复: 计算并显示最近的冷却期剩余时间
+                var _now = Date.now();
+                var _minRemaining = Infinity;
+                for (var si2 = 0; si2 < totalSlots; si2++) {
+                    var scfg2 = this._configs[si2];
+                    if (!scfg2 || !scfg2.baseUrl || !scfg2.apiKey) continue;
+                    var key2 = si2 + '|' + scfg2.model;
+                    var rec2 = this._failedModels[key2];
+                    if (rec2) {
+                        var failedAt2 = this._getFailedTime(rec2);
+                        var cooldownMs2 = 5 * 60 * 1000; // 默认5分钟冷却
+                        var remaining = cooldownMs2 - (_now - failedAt2);
+                        if (remaining > 0 && remaining < _minRemaining) {
+                            _minRemaining = remaining;
+                        }
+                    }
+                }
+                if (_minRemaining !== Infinity && _minRemaining > 0) {
+                    var _remainSec = Math.ceil(_minRemaining / 1000);
+                    var _remainMin = Math.floor(_remainSec / 60);
+                    var _remainSecRemain = _remainSec % 60;
+                    msg += '\n\n⏱ 最近配置冷却剩余: ' + _remainMin + '分' + _remainSecRemain + '秒';
+                    msg += '\n冷却期结束后可自动重试，或刷新页面立即清除冷却状态。';
+                } else {
+                    msg += '\n\n请等待冷却期结束后重试，或刷新页面清除冷却状态。';
+                }
             }
             throw new Error(msg);
         }
@@ -5188,11 +5216,14 @@ function showError(msg, errObj) {
         el.insertAdjacentHTML('beforeend', errBanner);
     } else {
         // 真正空时才覆盖
+        // [BUG-008 修复] 生成失败后添加重试按钮，让用户可以方便地重新生成
         el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--danger);">' +
             '<div style="font-size:16px;margin-bottom:8px;">△ 生成失败</div>' +
             '<div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
             (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:8px;">◎ 错误位置: ' + escapeHtml(fileLine) + '</div>' : '') +
             (action ? '<div style="margin-bottom:12px;">' + action + '</div>' : '') +
+            // [BUG-008 修复] 添加重试按钮，点击后调用重新生成
+            '<div style="margin-bottom:12px;"><button onclick="if(typeof regenerateLastTurn===\'function\'){regenerateLastTurn();}else{location.reload();}" style="padding:8px 20px;background:var(--accent, #6366f1);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">🔄 重新生成</button></div>' +
             '<details style="font-size:11px;color:var(--text-tertiary);text-align:left;"><summary style="cursor:pointer;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
             '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
