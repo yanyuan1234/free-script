@@ -3966,12 +3966,10 @@ var _heartbeatLast = Date.now();
 TimerManager.setInterval('heartbeat', function() {
     var now = Date.now();
     var gap = now - _heartbeatLast;
-    if (gap > 1500) {
-        // 降级阈值：>1500ms 也告警，便于发现中度阻塞
+    // 【BUG修复】阈值从1500提升到3000，避免setInterval本身的2秒漂移触发误报
+    // setInterval(2000)的实际间隔可能是2001-2050ms，原1500ms阈值会持续误报
+    if (gap > 3000) {
         console.warn('[heartbeat] 主线程阻塞 ' + gap + 'ms (streamBuf=' + (typeof streamBuffer !== 'undefined' ? streamBuffer.length : '?') + ')');
-    } else if (gap > 500) {
-        // 轻量记录：>500ms 标注为 [perf] 供诊断使用
-        console.log('[perf] heartbeat: ' + gap + 'ms gap');
     }
     _heartbeatLast = now;
 }, 2000);
