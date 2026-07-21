@@ -4727,8 +4727,8 @@ var CotPanelController = {
 
         if (!panel) return;
 
-        // 隐藏状态或无内容
-        if (this.state === 'hidden' || !this.currentText) {
+        // 隐藏状态或无内容（但 thinking 状态即使无内容也显示"正在思考..."）
+        if (this.state === 'hidden' || (!this.currentText && this.state !== 'thinking')) {
             panel.style.display = 'none';
             return;
         }
