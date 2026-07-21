@@ -2618,9 +2618,9 @@ var TypewriterBuffer = {
         }
     return;
     }
-    // 【BUG修复】自适应打字速度：队列越长，每tick处理越多字符
-    // 原实现每tick只处理1字符（25ms/char = 40字/秒），26000字需要10+分钟
-    // 新实现：队列>100字时每tick处理3字符，>500字时处理8字符，>2000字时处理20字符
+    // 【P0 性能修复】自适应打字速度 + 批量字符串操作
+    // 原实现：每tick循环中 self.displayed += ch（20次），每次创建新字符串 → O(n²) 累积
+    // 新实现：用 substring 一次提取批次，一次性拼接 → O(n)
     var _remaining = self.queue.length - self._queueIdx;
     var _charsPerTick = 1;
     if (_remaining > 2000) _charsPerTick = 20;
@@ -2628,23 +2628,28 @@ var TypewriterBuffer = {
     else if (_remaining > 500) _charsPerTick = 8;
     else if (_remaining > 100) _charsPerTick = 3;
 
-    // 批量处理字符，只在最后一个字符处做段落分割和标点停顿判断
-    var _lastCh = '';
-    for (var _ci = 0; _ci < _charsPerTick && self._queueIdx < self.queue.length; _ci++) {
-        ch = self.queue[self._queueIdx++];
-        self.displayed += ch;
-        _lastCh = ch;
+    // 批量提取字符：一次 substring 替代 N 次 += ch
+    var _actualEnd = Math.min(self._queueIdx + _charsPerTick, self.queue.length);
+    var _batch = self.queue.substring(self._queueIdx, _actualEnd);
+    self._queueIdx = _actualEnd;
+    self.displayed += _batch;
+    var _lastCh = _batch.charAt(_batch.length - 1);
 
-        // 段落分割：遇到换行且当前段落有内容时，完成当前段落
-        if (ch === '\n' && self._currentParaChars.length > 0) {
+    // 批量处理换行：在批次内查找所有 \n，完成对应段落
+    var _nlPos = _batch.indexOf('\n');
+    while (_nlPos >= 0) {
+        self._currentParaChars += _batch.substring(0, _nlPos);
+        if (self._currentParaChars.length > 0) {
             self._completedParagraphs.push(self._currentParaChars);
             self._currentParaChars = '';
             self._renderCached();
-        } else {
-            self._currentParaChars += ch;
         }
+        _batch = _batch.substring(_nlPos + 1);
+        _nlPos = _batch.indexOf('\n');
     }
-    // 批量渲染当前段落（每tick只渲染一次，而非每字符一次）
+    self._currentParaChars += _batch;
+
+    // 渲染当前段落（render 内部有脏检查 + textContent 优化）
     self._renderCurrentPara();
 
     // 标点智能停顿（只检查最后一个字符，避免批量处理时频繁停顿）
@@ -2701,6 +2706,8 @@ var TypewriterBuffer = {
         this._cachedCompletedHtml = '';
         this._cachedCompletedKey = '';
         this._currentParaEl = null;
+        this._currentParaTextEl = null;
+        this._cursorEl = null;
         this._lastCurrentPara = '';
 
         // stop() 会在 catch 块、renderStory 等多处被调用，统一在此清理覆盖所有路径
@@ -2779,6 +2786,8 @@ var TypewriterBuffer = {
                 this._cachedCompletedHtml = (completedKey && typeof RuntimeBridge !== 'undefined' && RuntimeBridge.formatStory) ? RuntimeBridge.formatStory(completedKey) : '';
             }
             this._currentParaEl = null;  // 强制重建当前段落元素
+            this._currentParaTextEl = null;
+            this._cursorEl = null;
             // 【打字机重复修复】段落切换时必须清空 _lastCleanedPara 缓存，
             // 否则新段落会复用旧段落的清理结果，导致旧段落文本重复显示在新段落中
             this._lastCleanedPara = '';
@@ -2811,14 +2820,40 @@ var TypewriterBuffer = {
                 this._currentParaEl = document.createElement('p');
                 this._currentParaEl.className = 'story-typing-para';
                 storyEl.appendChild(this._currentParaEl);
+                // 【P0 性能修复】预创建文本节点和光标元素，后续 tick 只更新 nodeValue
+                // 原实现：每 tick 都 escapeHtml(currentText) + innerHTML = → HTML 解析 + 布局重排
+                // 新实现：textContent via nodeValue → O(1) 文本节点更新，零布局重排
+                this._currentParaTextEl = document.createTextNode('');
+                this._currentParaEl.appendChild(this._currentParaTextEl);
+                this._cursorEl = null;  // 光标元素延迟创建
             }
 
-            var cursorHtml = (this.isTyping || this._queueIdx < this.queue.length) ? '<span class="typing-cursor">▌</span>' : '';
-            // currentText 已经过标签清理，innerHTML 安全
-            this._currentParaEl.innerHTML = escapeHtml(currentText) + cursorHtml;
+            // 【P0 性能修复】用 textContent (nodeValue) 替代 innerHTML + escapeHtml
+            // escapeHtml 做 6 次正则替换 O(n)，innerHTML 触发 HTML 解析器 + 布局
+            // textContent 只更新文本节点的 nodeValue，浏览器只做最小量文本变更
+            if (this._currentParaTextEl.nodeValue !== currentText) {
+                this._currentParaTextEl.nodeValue = currentText;
+            }
+
+            // 光标管理：独立元素，避免每 tick 重建 HTML
+            var _needCursor = (this.isTyping || this._queueIdx < this.queue.length);
+            if (_needCursor) {
+                if (!this._cursorEl) {
+                    this._cursorEl = document.createElement('span');
+                    this._cursorEl.className = 'typing-cursor';
+                    this._cursorEl.textContent = '▌';
+                }
+                if (this._cursorEl.parentNode !== this._currentParaEl) {
+                    this._currentParaEl.appendChild(this._cursorEl);
+                }
+            } else if (this._cursorEl && this._cursorEl.parentNode) {
+                this._cursorEl.parentNode.removeChild(this._cursorEl);
+            }
         } else if (this._currentParaEl) {
             // 当前段落清空：清掉元素引用，下一次会创建新的
             this._currentParaEl = null;
+            this._currentParaTextEl = null;
+            this._cursorEl = null;
         }
 
         if (!this.isTyping && this._queueIdx >= this.queue.length) {
