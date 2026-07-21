@@ -2287,6 +2287,7 @@ _diary: [],
 // 【酒馆预设融合】新增叙事增强字段
 writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
 cotMode: '',                 // 思维链模式（来自蛾摩拉预设）
+cotAutoExpand: false,        // 思维链完成后自动展开
 summaryThreshold: 6,         // 摘要阈值（来自月读预设）
 _squashSystemMessages: true, // 合并system消息（来自果实预设，默认开启）
 // === 章节模式（来自果实预设的长篇剧情规范） ===
@@ -5945,14 +5946,20 @@ function parseSSEEventText(eventText, ctx) {
         // 【P1 修复】主线程流式 onChunk 节流
         // 原实现：每个 SSE token 都同步调用 onChunk，长回复时触发上千次回调
         // 新实现：60ms 节流，用 requestAnimationFrame 批量刷新，与 Worker 路径一致
-        if (ctx.onChunk && content) {
+        // 【酒馆式思维链】reasoning delta 也需要通过 onChunk 传递，实时推送思考过程
+        if (reasoningChunk) {
+            ctx._pendingReasoningDelta = (ctx._pendingReasoningDelta || '') + reasoningChunk;
+        }
+        if (ctx.onChunk && (content || reasoningChunk)) {
             ctx._pendingChunkDelta = (ctx._pendingChunkDelta || '') + content;
             if (!ctx._chunkFlushScheduled) {
                 ctx._chunkFlushScheduled = true;
                 var flushDelta = ctx._pendingChunkDelta;
                 var flushFull = ctx.fullText;
+                var flushReasoning = ctx._pendingReasoningDelta || '';
                 ctx._pendingChunkDelta = '';
-                try { ctx.onChunk(flushDelta, flushFull); }
+                ctx._pendingReasoningDelta = '';
+                try { ctx.onChunk(flushDelta, flushFull, flushReasoning); }
                 catch (chunkErr) { console.warn('[callAI] onChunk 回调异常:', chunkErr); }
                 // 【P1-2 流式渐进渲染】在节流刷新点尝试提取部分 story 并推送 UI
                 // 仅当累积文本包含 "story": 字段时提取，不影响最终 JSON 解析
@@ -5960,11 +5967,13 @@ function parseSSEEventText(eventText, ctx) {
                 // 下一次刷新至少等待 60ms
                 setTimeout(function() {
                     ctx._chunkFlushScheduled = false;
-                    if (ctx._pendingChunkDelta && ctx.onChunk) {
-                        var d2 = ctx._pendingChunkDelta;
+                    if ((ctx._pendingChunkDelta || ctx._pendingReasoningDelta) && ctx.onChunk) {
+                        var d2 = ctx._pendingChunkDelta || '';
                         var f2 = ctx.fullText;
+                        var r2 = ctx._pendingReasoningDelta || '';
                         ctx._pendingChunkDelta = '';
-                        try { ctx.onChunk(d2, f2); }
+                        ctx._pendingReasoningDelta = '';
+                        try { ctx.onChunk(d2, f2, r2); }
                         catch (e2) { console.warn('[callAI] onChunk 回调异常(延迟):', e2); }
                         // 延迟刷新点同样尝试推送部分 story
                         _tryDispatchPartialStoryForCtx(ctx, f2);
@@ -6158,11 +6167,14 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
                 parseSSEEventText(sseBuffer, ctx);
             }
             // 【P1 修复】流结束时刷新剩余的 pending chunk，确保最后一段文本不丢失
-            if (ctx._pendingChunkDelta && ctx.onChunk) {
-                var _finalDelta = ctx._pendingChunkDelta;
+            // 【酒馆式思维链】同时刷新剩余的 reasoning delta
+            if ((ctx._pendingChunkDelta || ctx._pendingReasoningDelta) && ctx.onChunk) {
+                var _finalDelta = ctx._pendingChunkDelta || '';
                 var _finalFull = ctx.fullText;
+                var _finalReasoning = ctx._pendingReasoningDelta || '';
                 ctx._pendingChunkDelta = '';
-                try { ctx.onChunk(_finalDelta, _finalFull); }
+                ctx._pendingReasoningDelta = '';
+                try { ctx.onChunk(_finalDelta, _finalFull, _finalReasoning); }
                 catch (_finalErr) { console.warn('[callAI] onChunk 最终刷新异常:', _finalErr); }
             }
             // 【P1-2 流式渐进渲染】流结束前做最后一次部分 story 派发，
@@ -6197,12 +6209,14 @@ async function executeAIStream(url, body, apiKey, signal, onChunk) {
         if (ctx.fullText) {
             _streamAborted = true;
             console.warn('[callAI] 流被中断但已收到 ' + ctx.fullText.length + ' 字符内容，尝试使用已有数据:', _streamErr && _streamErr.message);
-            // 刷新剩余的 pending chunk
-            if (ctx._pendingChunkDelta && ctx.onChunk) {
-                var _abortDelta = ctx._pendingChunkDelta;
+            // 刷新剩余的 pending chunk（含 reasoning delta）
+            if ((ctx._pendingChunkDelta || ctx._pendingReasoningDelta) && ctx.onChunk) {
+                var _abortDelta = ctx._pendingChunkDelta || '';
                 var _abortFull = ctx.fullText;
+                var _abortReasoning = ctx._pendingReasoningDelta || '';
                 ctx._pendingChunkDelta = '';
-                try { ctx.onChunk(_abortDelta, _abortFull); }
+                ctx._pendingReasoningDelta = '';
+                try { ctx.onChunk(_abortDelta, _abortFull, _abortReasoning); }
                 catch (e) { console.warn('[callAI] onChunk 中断刷新异常:', e); }
             }
             // 【P1-2 流式渐进渲染】流被中断时也派发已收到的部分 story，

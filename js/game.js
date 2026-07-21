@@ -1264,7 +1264,10 @@ async function sendAIRequest(userMessage, isInit = false) {
     RuntimeState.streamModeLocked = false;
     RuntimeState.streamMode = null;
     TypewriterBuffer.stop();
-    if (typeof hideCotPanel === 'function') hideCotPanel();
+    // 【酒馆式思维链】新一轮请求开始，重置面板进入"等待思考"状态
+    if (typeof CotPanelController !== 'undefined') {
+        CotPanelController.startThinking();
+    } else if (typeof hideCotPanel === 'function') hideCotPanel();
     else { var _cotPanel = document.getElementById('cotPanel'); if (_cotPanel) _cotPanel.style.display = 'none'; }
     // 【NEW-003 修复】新一轮请求开始时清掉等待提示（避免上一轮残留）
     _clearStreamWaitingHint();
@@ -2009,8 +2012,8 @@ async function sendAIRequest(userMessage, isInit = false) {
             stream: _useStreamNow,
 
             // 此前 options.temperature 来自 gameState.temperature，会覆盖 PresetManager 的值，导致预设温度不生效
-            onChunk: function(delta, fullText) {
-                onStreamChunk(delta, fullText);
+            onChunk: function(delta, fullText, reasoningDelta) {
+                onStreamChunk(delta, fullText, reasoningDelta);
             }
         };
         // 【JSON Schema strict 模式】仅在 JSON 模式（非 pureTextMode）下启用
@@ -2059,6 +2062,12 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _t_streamEnd = performance.now();
         window._perfDebug&&(document.title='PERF:7-streamDone');
         console.log('[perf] 流完成, responseLen=' + (response ? response.length : 0));
+        // 【酒馆式思维链】流式结束，标记思考完成
+        // 如果有流式 reasoning（reasoning_content 字段），此时面板已显示实时思考内容
+        // 如果没有流式 reasoning（标签式 CoT），后面 parseAIResponse 会提取并通过 show() 显示
+        if (typeof CotPanelController !== 'undefined') {
+            CotPanelController.finishThinking();
+        }
         // 流式空回检测
         var _t0 = performance.now();
         window._perfDebug&&(document.title='PERF:8-parse');
@@ -2119,10 +2128,17 @@ async function sendAIRequest(userMessage, isInit = false) {
         var cotMode = (StateManager ? StateManager.get('settings.cotMode') : '') || '';
         if (cotMode === 'enabled') {
             var cotText = (typeof ResponseParser !== 'undefined' && ResponseParser.extractThinking) ? ResponseParser.extractThinking(response) : '';
-            if (cotText && typeof showCotPanel === 'function') showCotPanel(cotText);
-            else if (typeof hideCotPanel === 'function') hideCotPanel();
-        } else if (typeof hideCotPanel === 'function') {
-            hideCotPanel();
+            if (cotText) {
+                // 【酒馆式思维链】优先使用 CotPanelController
+                if (typeof CotPanelController !== 'undefined') {
+                    if (!CotPanelController.hasContent()) {
+                        CotPanelController.show(cotText);
+                    }
+                } else if (typeof showCotPanel === 'function') {
+                    showCotPanel(cotText);
+                }
+            }
+            // 不在这里 hideCotPanel，后面 _hasAnyCot 逻辑统一处理
         }
 
         // 【方案C】JSON Schema 解析失败时，尝试 StateTagParser 解析 <state> 块
@@ -2289,24 +2305,41 @@ async function sendAIRequest(userMessage, isInit = false) {
             var _mergedCot = _allCotParts.join('\n---\n');
             if (gameState) gameState._lastCotContent = _mergedCot;
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段标签 +', _reasoningFromField ? 1 : 0, '段 reasoning_content');
-            // 【P2 CoT 面板】渲染到可折叠面板
+            // 【酒馆式思维链】渲染到面板
             // 受设置项 showCotPanel 控制（默认开启，可在设置中关闭）
-            if (typeof renderCotPanel === 'function') {
-                var _showCot = true;
-                try {
-                    if (typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === false) {
-                        _showCot = false;
-                    }
-                } catch (e) {}
-                if (_showCot) {
-                    renderCotPanel(_mergedCot);
-                } else {
-                    renderCotPanel('');
+            var _showCot = true;
+            try {
+                if (typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === false) {
+                    _showCot = false;
                 }
+            } catch (e) {}
+            if (_showCot && typeof CotPanelController !== 'undefined') {
+                // 如果面板已有流式 reasoning 内容（reasoning_content 实时推送过）
+                if (CotPanelController.hasContent()) {
+                    // 只补充标签式 CoT（如果有且不重复）
+                    if (cotMatches.length > 0) {
+                        var _tagCot = cotMatches.join('\n---\n');
+                        CotPanelController.appendContent(_tagCot);
+                    }
+                    // reasoning_content 字段与流式内容相同，不重复显示
+                } else {
+                    // 没有流式内容（非流式模式或标签式 CoT），用 show() 显示
+                    CotPanelController.show(_mergedCot);
+                }
+            } else if (_showCot && typeof renderCotPanel === 'function') {
+                renderCotPanel(_mergedCot);
+            } else if (typeof CotPanelController !== 'undefined') {
+                CotPanelController.hide();
+            } else if (typeof renderCotPanel === 'function') {
+                renderCotPanel('');
             }
         } else {
-            // 无 CoT 内容时隐藏面板
-            if (typeof renderCotPanel === 'function') {
+            // 无 CoT 内容时：如果面板已有流式 reasoning 内容则保留，否则隐藏
+            if (typeof CotPanelController !== 'undefined') {
+                if (!CotPanelController.hasContent()) {
+                    CotPanelController.hide();
+                }
+            } else if (typeof renderCotPanel === 'function') {
                 renderCotPanel('');
             }
         }
@@ -3844,14 +3877,24 @@ function _extractStoryIncremental() {
 
 // 流式模式锁定语义：一旦确定模式（json/plaintext），不再切换，避免每帧正则扫描。
 
-function onStreamChunk(delta, fullText) {
+function onStreamChunk(delta, fullText, reasoningDelta) {
     // 【性能诊断】监控 onStreamChunk 执行时间
     var _perfStart = performance.now();
     if (!window._chunkCount) window._chunkCount = 0;
     window._chunkCount++;
     if (window._chunkCount % 50 === 1) window._perfDebug&&(document.title='PERF:chunk-' + window._chunkCount + '-buf=' + (streamBuffer||'').length);
 
-    if ((!delta && fullText === '') || (fullText !== undefined && !fullText && !delta)) return;
+    // 【酒馆式思维链】实时推送 reasoning delta 到面板
+    // 推理模型思考阶段 content 为空，但 reasoningDelta 有内容
+    if (reasoningDelta && typeof CotPanelController !== 'undefined') {
+        CotPanelController.appendReasoning(reasoningDelta);
+    }
+
+    if ((!delta && fullText === '') || (fullText !== undefined && !fullText && !delta)) {
+        // reasoning-only chunk：content 为空但有 reasoning，不 return，让上面的 reasoning 推送已经执行了
+        if (reasoningDelta) return;
+        return;
+    }
     if (fullText !== undefined && fullText !== '') {
         streamBuffer = fullText;
     } else if (fullText === '') {

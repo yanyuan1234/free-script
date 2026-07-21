@@ -112,9 +112,15 @@ var StreamBridge = (function() {
 
         if (msg.type === 'CHUNK') {
             // 转发 chunk 给上层 onChunk 回调
+            // 【酒馆式思维链】同时传递 reasoningDelta，让上层实时显示思考过程
             if (req.onChunk && msg.delta) {
-                try { req.onChunk(msg.delta, msg.fullText); }
+                try { req.onChunk(msg.delta, msg.fullText, msg.reasoningDelta || ''); }
                 catch (cbErr) { console.warn('[StreamBridge] onChunk 回调异常:', cbErr); }
+            }
+            // 即使 content delta 为空，reasoning delta 也需要传递（推理模型思考阶段 content 为空）
+            if (req.onChunk && !msg.delta && msg.reasoningDelta) {
+                try { req.onChunk('', msg.fullText || '', msg.reasoningDelta); }
+                catch (cbErr) { console.warn('[StreamBridge] onChunk reasoning 回调异常:', cbErr); }
             }
             // 【P1-2 流式渐进渲染】Worker 路径同样提取部分 story 并派发 UI 事件
             // 与 core.js 主线程路径保持一致，确保两条路径都有渐进渲染

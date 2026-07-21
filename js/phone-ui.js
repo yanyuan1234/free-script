@@ -4529,31 +4529,365 @@ var CotTypewriter = {
     }
 };
 
+// ========================================
+// 【酒馆式思维链】CotPanelController
+// 参考 SillyTavern 的 ReasoningHandler 设计：
+// - 状态生命周期：hidden → thinking → done
+// - 流式实时推送：appendReasoning(delta) 逐字显示
+// - 非流式模式：show(text) 使用打字机效果
+// - 最近三条思维链历史存储，可切换查看
+// - 折叠/展开 UI，支持 autoExpand 设置
+// ========================================
+var CotPanelController = {
+    // === 状态 ===
+    state: 'hidden',            // 'hidden' | 'thinking' | 'done'
+    currentText: '',            // 当前思维链完整文本
+    history: [],                // 最近三条思维链 [{text, timestamp, model}]
+    maxHistory: 3,              // 最多保存3条
+    _isExpanded: false,         // 面板是否展开
+    _renderTimer: null,         // 渲染节流定时器
+    _viewingHistoryIdx: -1,     // 正在查看的历史索引（-1=当前）
+
+    // === 设置 ===
+    get autoExpand() {
+        try {
+            return typeof gameState !== 'undefined' && gameState && gameState.cotAutoExpand === true;
+        } catch (e) { return false; }
+    },
+    get showPanel() {
+        try {
+            return !(typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === false);
+        } catch (e) { return true; }
+    },
+
+    // === 核心方法 ===
+
+    // 新一轮请求开始，重置面板进入"等待思考"状态
+    startThinking: function() {
+        // 如果当前有内容且已完成，先保存到历史
+        if (this.currentText && this.currentText.trim() && this.state === 'done') {
+            // 已在 finishThinking 中保存过，不重复
+        } else if (this.currentText && this.currentText.trim()) {
+            this._saveToHistory();
+        }
+        this.currentText = '';
+        this.state = 'thinking';
+        this._isExpanded = false;
+        this._viewingHistoryIdx = -1;
+        // 如果用户关闭了思维链显示，不显示面板
+        if (!this.showPanel) {
+            var panel = document.getElementById('cotPanel');
+            if (panel) panel.style.display = 'none';
+            return;
+        }
+        this._render();
+    },
+
+    // 追加流式 reasoning delta（实时调用，高频）
+    appendReasoning: function(delta) {
+        if (!delta) return;
+        this.currentText += delta;
+        if (this.state === 'hidden') {
+            this.state = 'thinking';
+        }
+        if (this._viewingHistoryIdx >= 0) {
+            this._viewingHistoryIdx = -1;  // 新内容来了，切回当前
+        }
+        // 节流渲染，避免高频更新卡顿
+        this._scheduleRender();
+    },
+
+    // 追加额外内容（标签式 CoT 补充到已有内容后面）
+    appendContent: function(text) {
+        if (!text) return;
+        if (this.currentText) {
+            this.currentText += '\n---\n' + text;
+        } else {
+            this.currentText = text;
+        }
+        this._viewingHistoryIdx = -1;
+        this._render();
+    },
+
+    // 思考完成（流式结束）
+    finishThinking: function() {
+        if (this.state === 'thinking') {
+            this.state = 'done';
+            // 保存到历史
+            this._saveToHistory();
+            // autoExpand：完成后自动展开
+            if (this.autoExpand) {
+                this._isExpanded = true;
+            }
+            this._render();
+        }
+    },
+
+    // 非流式显示（带打字机效果）
+    show: function(text) {
+        if (!text || !text.trim()) {
+            this.hide();
+            return;
+        }
+        // 如果当前有流式内容且已完成，不需要重复显示
+        if (this.state === 'done' && this.currentText && this.currentText.trim()) {
+            // 流式已完成，检查是否需要补充
+            if (text !== this.currentText) {
+                this.currentText = text;
+                this._saveToHistory();
+            }
+        } else {
+            this.currentText = text;
+            this.state = 'done';
+            this._saveToHistory();
+        }
+        this._viewingHistoryIdx = -1;
+        this._isExpanded = false;
+        if (!this.showPanel) {
+            var panel = document.getElementById('cotPanel');
+            if (panel) panel.style.display = 'none';
+            return;
+        }
+        // 显示面板
+        this._render();
+        // 使用打字机效果（非流式模式）
+        if (typeof CotTypewriter !== 'undefined') {
+            CotTypewriter.start(text);
+        }
+    },
+
+    // 隐藏面板
+    hide: function() {
+        this.state = 'hidden';
+        this._isExpanded = false;
+        this._viewingHistoryIdx = -1;
+        if (typeof CotTypewriter !== 'undefined') {
+            CotTypewriter.stop();
+        }
+        var panel = document.getElementById('cotPanel');
+        if (panel) panel.style.display = 'none';
+    },
+
+    // 折叠/展开
+    toggle: function() {
+        this._isExpanded = !this._isExpanded;
+        var content = document.getElementById('cotContent');
+        var toggleBtn = document.getElementById('cotToggle');
+        if (content) {
+            content.style.display = this._isExpanded ? 'block' : 'none';
+        }
+        if (toggleBtn) {
+            toggleBtn.setAttribute('aria-expanded', String(this._isExpanded));
+        }
+        // 展开时如果正在用打字机，跳过直接显示全部
+        if (this._isExpanded && typeof CotTypewriter !== 'undefined' && CotTypewriter.isTyping) {
+            CotTypewriter.skip();
+        }
+    },
+
+    // 是否有内容
+    hasContent: function() {
+        return !!(this.currentText && this.currentText.trim());
+    },
+
+    // === 内部方法 ===
+
+    // 保存到历史
+    _saveToHistory: function() {
+        if (!this.currentText || !this.currentText.trim()) return;
+        var entry = {
+            text: this.currentText,
+            timestamp: Date.now(),
+            model: (typeof gameState !== 'undefined' && gameState) ? (gameState.currentModel || '') : ''
+        };
+        this.history.unshift(entry);
+        if (this.history.length > this.maxHistory) {
+            this.history = this.history.slice(0, this.maxHistory);
+        }
+    },
+
+    // 节流渲染
+    _scheduleRender: function() {
+        if (this._renderTimer) return;
+        var self = this;
+        this._renderTimer = setTimeout(function() {
+            self._renderTimer = null;
+            self._render();
+        }, 50);  // 50ms 节流，约 20fps
+    },
+
+    // 渲染面板
+    _render: function() {
+        var panel = document.getElementById('cotPanel');
+        var content = document.getElementById('cotContent');
+        var toggleBtn = document.getElementById('cotToggle');
+        var label = document.getElementById('cotLabel');
+        var statusEl = document.getElementById('cotStatus');
+        var iconEl = document.getElementById('cotIcon');
+
+        if (!panel) return;
+
+        // 隐藏状态或无内容
+        if (this.state === 'hidden' || !this.currentText) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        // 检查设置
+        if (!this.showPanel) {
+            panel.style.display = 'none';
+            return;
+        }
+
+        panel.style.display = 'block';
+
+        // 更新状态标签和图标
+        if (this.state === 'thinking') {
+            if (label) label.textContent = '思维链';
+            if (statusEl) {
+                statusEl.textContent = '正在思考...';
+                statusEl.className = 'cot-status cot-status-thinking';
+            }
+            if (iconEl) iconEl.textContent = '💭';
+            if (panel) panel.setAttribute('data-cot-state', 'thinking');
+        } else {
+            var _len = this.currentText.length;
+            if (label) label.textContent = '思维链';
+            if (statusEl) {
+                statusEl.textContent = '思考完成 · ' + _len + ' 字';
+                statusEl.className = 'cot-status cot-status-done';
+            }
+            if (iconEl) iconEl.textContent = '✓';
+            if (panel) panel.setAttribute('data-cot-state', 'done');
+        }
+
+        // 更新内容（流式模式直接设置，不打字机）
+        if (content) {
+            if (typeof CotTypewriter !== 'undefined') {
+                CotTypewriter.stop();
+            }
+            var _text = this.currentText;
+            // 如果正在查看历史，显示历史内容
+            if (this._viewingHistoryIdx >= 0 && this.history[this._viewingHistoryIdx]) {
+                _text = this.history[this._viewingHistoryIdx].text;
+            }
+            // 转义 HTML 防注入，保留换行
+            var escaped = String(_text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            content.innerHTML = escaped;
+        }
+
+        // 更新展开状态
+        if (content) {
+            content.style.display = this._isExpanded ? 'block' : 'none';
+        }
+        if (toggleBtn) {
+            toggleBtn.setAttribute('aria-expanded', String(this._isExpanded));
+        }
+
+        // 更新历史切换按钮
+        this._renderHistoryBar();
+    },
+
+    // 渲染历史切换按钮
+    _renderHistoryBar: function() {
+        var bar = document.getElementById('cotHistoryBar');
+        if (!bar) return;
+
+        if (this.history.length <= 1) {
+            bar.style.display = 'none';
+            return;
+        }
+
+        bar.style.display = 'flex';
+        var html = '';
+        for (var i = 0; i < this.history.length; i++) {
+            var time = new Date(this.history[i].timestamp);
+            var timeStr = time.getHours() + ':' + String(time.getMinutes()).padStart(2, '0');
+            var active = '';
+            if (this._viewingHistoryIdx >= 0) {
+                active = (i === this._viewingHistoryIdx) ? ' active' : '';
+            } else if (i === 0 && this.state !== 'hidden') {
+                active = ' active';
+            }
+            html += '<button class="cot-history-btn' + active + '" data-idx="' + i + '" title="' + timeStr + ' 思维链">' + (i + 1) + '</button>';
+        }
+        bar.innerHTML = html;
+
+        // 绑定点击事件（事件委托）
+        var self = this;
+        var buttons = bar.querySelectorAll('.cot-history-btn');
+        for (var j = 0; j < buttons.length; j++) {
+            (function(btn) {
+                if (btn._cotHistBound) return;
+                btn._cotHistBound = true;
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var idx = parseInt(btn.getAttribute('data-idx'));
+                    self._viewHistory(idx);
+                });
+            })(buttons[j]);
+        }
+    },
+
+    // 查看历史思维链
+    _viewHistory: function(idx) {
+        if (!this.history[idx]) return;
+        this._viewingHistoryIdx = idx;
+        var content = document.getElementById('cotContent');
+        if (content) {
+            var escaped = String(this.history[idx].text)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+            content.innerHTML = escaped;
+        }
+        // 自动展开
+        this._isExpanded = true;
+        if (content) content.style.display = 'block';
+        var toggleBtn = document.getElementById('cotToggle');
+        if (toggleBtn) toggleBtn.setAttribute('aria-expanded', 'true');
+
+        // 更新历史按钮状态
+        var bar = document.getElementById('cotHistoryBar');
+        if (bar) {
+            var buttons = bar.querySelectorAll('.cot-history-btn');
+            for (var i = 0; i < buttons.length; i++) {
+                buttons[i].classList.toggle('active', i === idx);
+            }
+        }
+
+        // 更新状态标签
+        var statusEl = document.getElementById('cotStatus');
+        var time = new Date(this.history[idx].timestamp);
+        var timeStr = time.getHours() + ':' + String(time.getMinutes()).padStart(2, '0');
+        if (statusEl) {
+            statusEl.textContent = '历史 · ' + timeStr + ' · ' + this.history[idx].text.length + ' 字';
+            statusEl.className = 'cot-status cot-status-history';
+        }
+    }
+};
+
+// === 兼容旧接口 ===
+// showCotPanel / hideCotPanel / toggleCotPanel 保留为 CotPanelController 的包装
 function showCotPanel(text) {
-    var panel = document.getElementById('cotPanel');
-    var content = document.getElementById('cotContent');
-    var toggle = document.getElementById('cotToggle');
-    if (!panel || !content) return;
-    if (!text || !text.trim()) { hideCotPanel(); return; }
-    panel.style.display = '';
-    content.style.display = 'none';
-    if (toggle) toggle.setAttribute('aria-expanded', 'false');
-    CotTypewriter.start(text);
+    if (typeof CotPanelController !== 'undefined') {
+        CotPanelController.show(text);
+    }
 }
-
 function hideCotPanel() {
-    var panel = document.getElementById('cotPanel');
-    if (panel) panel.style.display = 'none';
-    CotTypewriter.stop();
+    if (typeof CotPanelController !== 'undefined') {
+        CotPanelController.hide();
+    }
 }
-
 function toggleCotPanel() {
-    var content = document.getElementById('cotContent');
-    var toggle = document.getElementById('cotToggle');
-    if (!content) return;
-    var expanded = content.style.display !== 'none';
-    content.style.display = expanded ? 'none' : '';
-    if (toggle) toggle.setAttribute('aria-expanded', String(!expanded));
+    if (typeof CotPanelController !== 'undefined') {
+        CotPanelController.toggle();
+    }
 }
 
 // ========================================
@@ -5566,6 +5900,15 @@ function bindEvents() {
     // 思维链模式
     bindEvent('settingCotMode', 'change', function() {
         StateManager.set('settings.cotMode', this.value, { silent: true });
+    });
+
+    // 思维链自动展开
+    bindEvent('settingCotAutoExpand', 'change', function() {
+        StateManager.set('settings.cotAutoExpand', this.value === 'true', { silent: true });
+        // 同步到 gameState
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState.cotAutoExpand = (this.value === 'true');
+        }
     });
 
     // 写作节奏
@@ -7278,6 +7621,8 @@ function saveGameSettings() {
     if (writingStyleEl) StateManager.set('settings.writingStyle', writingStyleEl.value, { silent: true });
     var cotModeEl = document.getElementById('settingCotMode');
     if (cotModeEl) StateManager.set('settings.cotMode', cotModeEl.value, { silent: true });
+    var cotAutoExpandEl = document.getElementById('settingCotAutoExpand');
+    if (cotAutoExpandEl) StateManager.set('settings.cotAutoExpand', cotAutoExpandEl.value === 'true', { silent: true });
 
     // squashSystemMessages 已固定开启，不需要从UI读取
     // === 酒馆预设融合：叙事融合层 v2 ===
@@ -7305,6 +7650,7 @@ function saveGameSettings() {
         // 【酒馆预设融合】叙事增强设置
         writingStyle: _sm('settings.writingStyle') || '',
         cotMode: _sm('settings.cotMode') || '',
+        cotAutoExpand: _sm('settings.cotAutoExpand') === true,
         // === 酒馆预设融合 v2 ===
         chapterMode: _sm('settings.chapterMode') || '',
         narrativeEyes: _sm('settings.narrativeEyes') || 'first',
@@ -7684,6 +8030,7 @@ function _syncSettingsToUI(d) {
         d = {
             writingStyle: gameState.writingStyle,
             cotMode: gameState.cotMode,
+            cotAutoExpand: gameState.cotAutoExpand,
             chapterMode: gameState.chapterMode,
             narrativeEyes: gameState.narrativeEyes,
             presetArchetype: gameState.presetArchetype,
@@ -7695,6 +8042,7 @@ function _syncSettingsToUI(d) {
     // 叙事增强
     if (d.writingStyle !== undefined) { var ws = get('settingWritingStyle'); if (ws) ws.value = d.writingStyle || ''; }
     if (d.cotMode !== undefined) { var cm = get('settingCotMode'); if (cm) cm.value = d.cotMode || ''; }
+    if (d.cotAutoExpand !== undefined) { var cae = get('settingCotAutoExpand'); if (cae) cae.value = d.cotAutoExpand ? 'true' : ''; }
     // 章节模式
     if (d.chapterMode !== undefined) { var chm = get('settingChapterMode'); if (chm) chm.value = d.chapterMode || 'off'; }
     // 视角开关（narrativeEyes）
@@ -7802,6 +8150,7 @@ function loadGameSettings() {
             // 【酒馆预设融合】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
+            if (d.cotAutoExpand !== undefined) gameState.cotAutoExpand = d.cotAutoExpand;
 
             // squashSystemMessages 固定开启，不再从存档恢复（预设可覆盖）
             // === 酒馆预设融合 v2 恢复 ===
@@ -7818,6 +8167,7 @@ function loadGameSettings() {
                 compressThreshold: _savedThreshold,
                 writingStyle: gameState.writingStyle,
                 cotMode: gameState.cotMode,
+                cotAutoExpand: gameState.cotAutoExpand,
                 chapterMode: gameState.chapterMode,
                 narrativeEyes: gameState.narrativeEyes,
                 presetArchetype: gameState.presetArchetype,

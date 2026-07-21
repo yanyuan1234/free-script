@@ -524,14 +524,17 @@
                             </div>
                         </div>
                         <div class="swipe-switcher" id="swipeSwitcher" style="display:none;"></div>
-                        <!-- 【P2 CoT】思维链折叠面板：AI 思考过程展示，默认折叠 -->
-                        <div class="cot-panel" id="cotPanel" style="display:none;">
+                        <!-- 【酒馆式思维链】折叠面板：AI 思考过程展示，默认折叠 -->
+                        <!-- 参考 SillyTavern 的 <details> 设计：状态指示 + 折叠内容 + 历史切换 -->
+                        <div class="cot-panel" id="cotPanel" style="display:none;" data-cot-state="hidden">
                             <button class="cot-toggle" id="cotToggle" type="button" aria-expanded="false">
-                                <span class="cot-icon">💭</span>
-                                <span class="cot-label">思维链</span>
+                                <span class="cot-icon" id="cotIcon">💭</span>
+                                <span class="cot-label" id="cotLabel">思维链</span>
+                                <span class="cot-status" id="cotStatus"></span>
                                 <span class="cot-arrow">›</span>
                             </button>
                             <div class="cot-content" id="cotContent" style="display:none;"></div>
+                            <div class="cot-history-bar" id="cotHistoryBar" style="display:none;"></div>
                         </div>
                         <div class="story-text" id="storyText" aria-live="polite">
                             <p class="text-soft">点击「开始创造你的故事」或输入自定义设定，AI将为你生成独一无二的游戏世界...</p>
@@ -2480,6 +2483,14 @@
                                         <select id="settingCotMode" class="select-field">
                                             <option value="" selected>关闭</option>
                                             <option value="enabled">开启（自动解析thinking标签）</option>
+                                        </select>
+                                    </div>
+                                    <!-- 思维链自动展开 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">思维链自动展开</label>
+                                        <select id="settingCotAutoExpand" class="select-field">
+                                            <option value="" selected>关闭（思考完成后保持折叠）</option>
+                                            <option value="true">开启（思考完成后自动展开）</option>
                                         </select>
                                     </div>
                                     <!-- 写作节奏（决定每段/每章的篇幅） -->

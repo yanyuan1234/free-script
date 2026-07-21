@@ -464,13 +464,19 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* [P2 CoT] 思维链折叠面板 */
+/* [酒馆式思维链] 折叠面板 - 参考 SillyTavern reasoning details 设计 */
 .cot-panel {
     margin: 4px 0 6px;
     border: 1px solid var(--border);
     border-radius: 4px;
     background: var(--bg-alt, rgba(0,0,0,0.03));
     overflow: hidden;
+    transition: border-color .2s;
+}
+/* thinking 状态：边框微亮，提示正在思考 */
+.cot-panel[data-cot-state="thinking"] {
+    border-color: var(--accent, #6366f1);
+    border-color: color-mix(in srgb, var(--accent, #6366f1) 40%, var(--border));
 }
 .cot-toggle {
     width: 100%;
@@ -491,14 +497,53 @@
 }
 .cot-toggle .cot-icon {
     font-size: 13px;
+    flex-shrink: 0;
 }
 .cot-toggle .cot-label {
+    flex-shrink: 0;
+    font-weight: 500;
+}
+/* 状态指示器 */
+.cot-toggle .cot-status {
     flex: 1;
+    font-size: 11px;
+    opacity: .7;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+/* thinking 状态动画 */
+.cot-status-thinking {
+    color: var(--accent, #6366f1);
+    opacity: .8 !important;
+}
+.cot-status-thinking::after {
+    content: '';
+    display: inline-block;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: var(--accent, #6366f1);
+    margin-left: 4px;
+    animation: cot-pulse 1s ease-in-out infinite;
+    vertical-align: middle;
+}
+@keyframes cot-pulse {
+    0%, 100% { opacity: .3; transform: scale(.8); }
+    50% { opacity: 1; transform: scale(1.2); }
+}
+.cot-status-done {
+    color: var(--text-tertiary, inherit);
+}
+.cot-status-history {
+    color: var(--text-tertiary, inherit);
+    font-style: italic;
 }
 .cot-toggle .cot-arrow {
     transition: transform .2s;
     font-size: 14px;
     opacity: .6;
+    flex-shrink: 0;
 }
 .cot-toggle[aria-expanded="true"] .cot-arrow {
     transform: rotate(90deg);
@@ -511,9 +556,37 @@
     white-space: pre-wrap;
     word-break: break-word;
     border-top: 1px dashed var(--border);
-    max-height: 180px;
+    max-height: 240px;
     overflow-y: auto;
     font-family: var(--font-mono, monospace);
+}
+/* 历史切换按钮栏 */
+.cot-history-bar {
+    display: flex;
+    gap: 4px;
+    padding: 4px 10px 6px;
+    border-top: 1px dashed var(--border);
+}
+.cot-history-btn {
+    flex: 1;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    background: none;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    cursor: pointer;
+    transition: all .15s;
+    text-align: center;
+}
+.cot-history-btn:hover {
+    background: rgba(0,0,0,0.04);
+    border-color: var(--text-secondary);
+}
+.cot-history-btn.active {
+    background: var(--accent, #6366f1);
+    color: #fff;
+    border-color: var(--accent, #6366f1);
 }
 
 .story-text {

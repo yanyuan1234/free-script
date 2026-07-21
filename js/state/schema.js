@@ -101,6 +101,7 @@ const StateSchema = {
                 pinnedModules: {},
 
                 cotMode: false,                  // 是否启用 CoT(思维链)输出
+                cotAutoExpand: false,            // 思维链完成后是否自动展开
                 chapterMode: false,              // 是否按章节生成
                 presetArchetype: 'standard',     // 预设原型(standard / coc / etc.)
                 wordCountConfig: { min: 200, max: 800 },  // 每次 AI 输出字数范围
@@ -158,6 +159,7 @@ const StateSchema = {
         'pinnedModules': 'settings.pinnedModules',
 
         'cotMode': 'settings.cotMode',
+        'cotAutoExpand': 'settings.cotAutoExpand',
         'chapterMode': 'settings.chapterMode',
         'presetArchetype': 'settings.presetArchetype',
         'wordCountConfig': 'settings.wordCountConfig',

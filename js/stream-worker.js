@@ -81,6 +81,10 @@ function _parseSSEEventText(eventText, ctx) {
         if (content) {
             ctx.lastDelta = content;
         }
+        // 【酒馆式思维链】追踪 reasoning delta，用于流式实时推送
+        if (reasoningChunk) {
+            ctx.lastReasoningDelta = (ctx.lastReasoningDelta || '') + reasoningChunk;
+        }
     }
 }
 
@@ -113,9 +117,11 @@ function _throttledPostChunk(requestId, ctx) {
             type: 'CHUNK',
             requestId: requestId,
             delta: ctx.lastDelta,
-            fullText: _getFullText(ctx)
+            fullText: _getFullText(ctx),
+            reasoningDelta: ctx.lastReasoningDelta || ''
         });
         ctx.lastDelta = '';
+        ctx.lastReasoningDelta = '';
     } else {
         // 缓冲，等下一个 timer 发送
         _pendingChunkMsg = { requestId: requestId, ctx: ctx };
@@ -137,22 +143,26 @@ function _flushPendingChunk() {
             type: 'CHUNK',
             requestId: msg.requestId,
             delta: msg.ctx.lastDelta,
-            fullText: _getFullText(msg.ctx)
+            fullText: _getFullText(msg.ctx),
+            reasoningDelta: msg.ctx.lastReasoningDelta || ''
         });
         msg.ctx.lastDelta = '';
+        msg.ctx.lastReasoningDelta = '';
     }
 }
 
 // flush 残留的 chunk（流结束前确保最后一段文本已发送）
 function _flushFinalChunk(requestId, ctx) {
-    if (ctx.lastDelta) {
+    if (ctx.lastDelta || ctx.lastReasoningDelta) {
         _workerCtx.postMessage({
             type: 'CHUNK',
             requestId: requestId,
             delta: ctx.lastDelta,
-            fullText: _getFullText(ctx)
+            fullText: _getFullText(ctx),
+            reasoningDelta: ctx.lastReasoningDelta || ''
         });
         ctx.lastDelta = '';
+        ctx.lastReasoningDelta = '';
     }
     _pendingChunkMsg = null;
 }
@@ -163,7 +173,8 @@ async function _executeStream(requestId, url, body, apiKey) {
         fullText: '',
         reasoningText: '',
         streamError: null,
-        lastDelta: ''
+        lastDelta: '',
+        lastReasoningDelta: ''
     };
 
     // 连接超时（与 core.js executeAIStream 一致：240s）
