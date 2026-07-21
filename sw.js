@@ -1,12 +1,17 @@
 // ========================================
 // Service Worker - Free-Script PWA 离线支持
 // 策略：
-// - 静态资源（js/css/png/svg/json/manifest）：缓存优先，回退网络
 // - HTML 页面：网络优先，失败回退缓存（保证更新）
+// - JS/CSS 文件：stale-while-revalidate（先返回缓存，后台更新网络版本）
+//   【修复】之前用 cache-first 导致代码更新后用户永远加载旧 JS
+// - 其他静态资源（png/svg/json/manifest）：缓存优先，回退网络
 // - API 请求（fetch 到 OpenAI/DeepSeek 等）：不拦截，直接放行
 // - install 时预缓存核心资源，activate 时清理旧缓存
 // ========================================
-var CACHE_NAME = 'free-script-v1';
+
+// 【修复】缓存名包含时间戳，每次部署新代码时自动失效旧缓存
+// 手动更新：修改此时间戳 → activate 时清理旧缓存 → 用户拿到新代码
+var CACHE_NAME = 'free-script-v2-2026-07-21';
 var CORE_ASSETS = [
     './',
     './index.html',
@@ -38,12 +43,16 @@ var CORE_ASSETS = [
     './js/ai-contract/ai-response-mutator.js',
     './js/ai-contract/prompt-builder.js',
     './js/core.js',
+    './js/stream-bridge.js',
     './js/vector-retriever.js',
     './js/worldinfo.js',
     './js/modules/smart-config-engine.js',
+    './js/modules/built-in-presets.js',
     './js/modules/preset-manager.js',
     './js/modules/regex-manager.js',
     './js/modules/macro-engine.js',
+    './js/modules/bookmark.js',
+    './js/modules/share-card.js',
     './js/swipe-manager.js',
     './js/game.js',
     './js/phone-ui.js',
@@ -51,7 +60,8 @@ var CORE_ASSETS = [
     './js/tavern-compat.js',
     './js/init.js',
     './js/ai-contract/stscript-bridge.js',
-    './js/version-badge.js'
+    './js/version-badge.js',
+    './js/sw-register.js'
 ];
 
 // install：预缓存核心资源
@@ -89,6 +99,11 @@ self.addEventListener('activate', function(event) {
     );
 });
 
+// 判断是否为 JS/CSS 文件（需要 stale-while-revalidate 策略）
+function isJSCSS(url) {
+    return /\.(js|css)(\?|$)/.test(url);
+}
+
 // fetch：按资源类型路由
 self.addEventListener('fetch', function(event) {
     var req = event.request;
@@ -118,7 +133,30 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // 静态资源：缓存优先，回退网络
+    // 【修复】JS/CSS 文件：stale-while-revalidate
+    // 先返回缓存（快速加载），同时后台从网络获取最新版本更新缓存
+    // 这确保用户总能拿到最新代码（下次加载时），同时不影响当前页面加载速度
+    if (isJSCSS(url.pathname)) {
+        event.respondWith(
+            caches.match(req).then(function(cached) {
+                // 后台更新缓存（不阻塞响应）
+                var fetchPromise = fetch(req).then(function(res) {
+                    if (res.ok && res.type === 'basic') {
+                        var clone = res.clone();
+                        caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
+                    }
+                    return res;
+                }).catch(function() {
+                    // 网络失败时忽略，下次再用缓存
+                });
+                // 先返回缓存（如果有），否则等网络
+                return cached || fetchPromise;
+            })
+        );
+        return;
+    }
+
+    // 其他静态资源：缓存优先，回退网络
     event.respondWith(
         caches.match(req).then(function(cached) {
             if (cached) return cached;
