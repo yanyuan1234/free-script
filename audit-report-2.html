@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文游游戏第二轮审查报告</title>
+<style>
+:root {
+  --bg: #0f1117; --bg-card: #1a1d27; --bg-code: #15171f;
+  --text: #e4e6eb; --text-dim: #9ca3af; --text-muted: #6b7280;
+  --accent: #60a5fa; --red: #f87171; --red-bg: rgba(248,113,113,.1);
+  --green: #34d399; --green-bg: rgba(52,211,153,.1);
+  --yellow: #fbbf24; --yellow-bg: rgba(251,191,36,.1);
+  --border: #2d3142;
+}
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:var(--bg); color:var(--text); font-family:-apple-system,'Noto Sans CJK SC','PingFang SC','Microsoft YaHei',sans-serif; line-height:1.7; padding:40px 20px; }
+.container { max-width:960px; margin:0 auto; }
+h1 { font-size:28px; margin-bottom:8px; }
+h2 { font-size:22px; margin:32px 0 16px; border-bottom:1px solid var(--border); padding-bottom:8px; }
+h3 { font-size:17px; margin:24px 0 12px; color:var(--accent); }
+p { margin-bottom:12px; color:var(--text-dim); }
+.meta { color:var(--text-muted); font-size:13px; margin-bottom:24px; }
+.summary-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:12px; margin:20px 0; }
+.stat-card { background:var(--bg-card); border:1px solid var(--border); border-radius:10px; padding:16px; text-align:center; }
+.stat-num { font-size:28px; font-weight:700; }
+.stat-label { font-size:12px; color:var(--text-muted); margin-top:4px; }
+.stat-red .stat-num { color:var(--red); } .stat-green .stat-num { color:var(--green); }
+.stat-yellow .stat-num { color:var(--yellow); } .stat-blue .stat-num { color:var(--accent); }
+.bug-card { background:var(--bg-card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; }
+.bug-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; flex-wrap:wrap; }
+.bug-id { font-size:13px; font-weight:700; color:var(--text-muted); font-family:monospace; }
+.severity { padding:2px 10px; border-radius:20px; font-size:12px; font-weight:600; }
+.sev-critical { background:var(--red-bg); color:var(--red); border:1px solid var(--red); }
+.sev-high { background:var(--yellow-bg); color:var(--yellow); border:1px solid var(--yellow); }
+.sev-medium { background:rgba(96,165,250,.1); color:var(--accent); border:1px solid var(--accent); }
+.sev-low { background:rgba(107,114,128,.1); color:var(--text-muted); border:1px solid var(--text-muted); }
+.bug-title { font-size:16px; font-weight:600; }
+.bug-section { margin:12px 0; }
+.bug-section-title { font-size:13px; font-weight:600; color:var(--text); margin-bottom:6px; }
+.bug-desc { color:var(--text-dim); font-size:14px; }
+.code-block { background:var(--bg-code); border:1px solid var(--border); border-radius:8px; padding:14px; margin:8px 0; overflow-x:auto; font-family:'JetBrains Mono','Consolas',monospace; font-size:13px; line-height:1.5; }
+.code-block .fix { color:var(--green); font-weight:600; }
+.code-block .bug { color:var(--red); font-weight:600; }
+.code-block .comment { color:var(--text-muted); }
+.file-path { color:var(--accent); font-family:monospace; font-size:13px; }
+table { width:100%; border-collapse:collapse; margin:12px 0; font-size:14px; }
+th { text-align:left; padding:10px 12px; background:var(--bg-card); color:var(--text); border-bottom:2px solid var(--border); font-weight:600; }
+td { padding:10px 12px; border-bottom:1px solid var(--border); color:var(--text-dim); }
+.status-fixed { color:var(--green); font-weight:600; }
+.callout { background:var(--bg-card); border-left:3px solid var(--accent); padding:14px 18px; border-radius:0 8px 8px 0; margin:16px 0; }
+.callout p { margin-bottom:0; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>文游游戏第二轮审查报告</h1>
+<p class="meta">审查日期：2026-07-22 &nbsp;|&nbsp; 审查范围：与第一轮同类的问题模式 &nbsp;|&nbsp; 参考项目：SillyTavern（酒馆）</p>
+
+<div class="summary-grid">
+  <div class="stat-card stat-red"><div class="stat-num">13</div><div class="stat-label">新发现Bug</div></div>
+  <div class="stat-card stat-green"><div class="stat-num">13</div><div class="stat-label">已修复</div></div>
+  <div class="stat-card stat-red"><div class="stat-num">2</div><div class="stat-label">严重</div></div>
+  <div class="stat-card stat-yellow"><div class="stat-num">5</div><div class="stat-label">高优先级</div></div>
+  <div class="stat-card stat-blue"><div class="stat-num">5</div><div class="stat-label">涉及文件</div></div>
+</div>
+
+<h2>一、审查方法</h2>
+<p>使用3个并行代码审查代理，分别搜索以下问题模式：
+<code>字段映射错误</code>、<code>硬编码值覆盖用户设置</code>、<code>AI指令使用代称</code>、<code>状态同步失败</code>、<code>流式解析bug</code>、<code>max_tokens计算问题</code>、<code>方法不存在</code>、<code>死代码引用</code>。
+参考 SillyTavern 的设计模式进行对比分析。</p>
+
+<h2>二、Bug详细分析</h2>
+
+<!-- BUG 12 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-012</span>
+    <span class="severity sev-critical">严重</span>
+    <span class="bug-title">max_tokens自动计算值未传给API请求体</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">第一轮修复了 <code>getEffectiveMaxTokens()</code> 从 wcMax 自动计算 max_tokens，但该值<strong>仅用于提示词文本</strong>，从未传递到 API 请求体。API 实际下发的 max_tokens 仍来自预设管理器的 <code>presetParams.max_tokens</code>（默认2048）。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因</div>
+    <p class="bug-desc"><span class="file-path">core.js:5959</span> 中 API 请求体直接使用 <code>presetParams.max_tokens</code>，未调用 <code>getEffectiveMaxTokens()</code>。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <div class="code-block">
+<span class="comment">// core.js: API 请求体</span>
+<span class="bug">- max_tokens: presetParams.max_tokens,</span>
+<span class="fix">+ var _effectiveMaxTokens = (typeof getEffectiveMaxTokens === 'function') ? getEffectiveMaxTokens() : 0;</span>
+<span class="fix">+ var _apiMaxTokens = _effectiveMaxTokens > 0 ? _effectiveMaxTokens : (presetParams.max_tokens || 4096);</span>
+<span class="fix">+ max_tokens: _apiMaxTokens,</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 13 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-013</span>
+    <span class="severity sev-critical">严重</span>
+    <span class="bug-title">原型卡片点击崩溃（方法不存在）</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">点击任意原型卡片（.archetype-card）时调用 <code>MemoryManagerUI.selectArchetype()</code>，但该方法不存在，抛出 TypeError 导致功能完全不可用。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <div class="code-block">
+<span class="bug">- MemoryManagerUI.selectArchetype(card.dataset.archetype);</span>
+<span class="fix">+ if (typeof applyArchetype === 'function') {</span>
+<span class="fix">+     applyArchetype(card.dataset.archetype);</span>
+<span class="fix">+ } else if (typeof _applyUnifiedPreset === 'function') {</span>
+<span class="fix">+     _applyUnifiedPreset(card.dataset.archetype, { setArchetype: true });</span>
+<span class="fix">+ }</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 14 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-014</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">硬编码"800字"最低要求覆盖用户字数设置</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">两处硬编码了"每回合剧情正文不少于800中文字符"作为强制要求，即使用户设置了较短的字数范围（如300-500字），AI仍会看到"强制要求至少800字"而忽略用户设置。这与第一轮的"硬编码第二人称"bug完全同一模式。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">涉及位置</div>
+    <p class="bug-desc">1. <span class="file-path">game.js:788</span> - <code>_buildFormatRules</code> 中的 story 长度强制要求<br>
+    2. <span class="file-path">prompt-builder.js:167</span> - <code>workflow</code> 段中的叙事要求</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <p class="bug-desc">移除硬编码的800字要求，改为"根据用户设置的字数范围生成"。</p>
+  </div>
+</div>
+
+<!-- BUG 15 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-015</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">buildRecentChatContext玩家消息标注"主角"代称</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">与第一轮BUG-003同一模式。私聊记录中玩家消息被标注为"主角"而非真实姓名，导致AI在后续剧情中用"主角"代称玩家。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <div class="code-block">
+<span class="bug">- var who = ... ? '主角' : npcName;</span>
+<span class="fix">+ var who = ... ? (gameState.playerName || '主角') : npcName;</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 16 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-016</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">memoryUpdates示例使用"主角"代称</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">记忆更新契约的示例文本中使用"主角"代称玩家（如"主角答应帮林晚..."），AI会模仿示例格式，在永久记忆区中用"主角"而非真实姓名写入记忆。涉及 <span class="file-path">game.js:824</span> 和 <span class="file-path">prompt-builder.js:222,224</span> 两处。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <p class="bug-desc">将示例中的"主角"替换为 <code>gameState.playerName</code> 或 <code>ctx.protagonistSetup.mcName</code>。</p>
+  </div>
+</div>
+
+<!-- BUG 17 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-017</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">mcPersonality等字段未传到player data</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">第一轮修复了 core.js 的字段映射（mcPersonality → setupPlayerDesc），但 <code>initializeGame()</code> 中从主角设定补全 player 数据时，只复制了 identity 和 age，遗漏了 personality、gender、appearance、ability。导致个人页在AI首次返回前无法显示用户填写的性格等信息。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <div class="code-block">
+<span class="fix">+ if (!_smPlayer.personality && gameState.protagonistSetup.mcPersonality)</span>
+<span class="fix">+     _smPlayer.personality = gameState.protagonistSetup.mcPersonality;</span>
+<span class="fix">+ if (!_smPlayer.gender && gameState.protagonistSetup.mcGender)</span>
+<span class="fix">+     _smPlayer.gender = gameState.protagonistSetup.mcGender;</span>
+<span class="fix">+ if (!_smPlayer.appearance && gameState.protagonistSetup.mcAppearance)</span>
+<span class="fix">+     _smPlayer.appearance = gameState.protagonistSetup.mcAppearance;</span>
+<span class="fix">+ if (!_smPlayer.ability && gameState.protagonistSetup.mcAbility)</span>
+<span class="fix">+     _smPlayer.ability = gameState.protagonistSetup.mcAbility;</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 18 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-018</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">narrativeEyes/useStream/maxTokens/presetArchetype设置不持久化</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc"><code>saveGameSettings()</code> 通过 <code>_sm('settings.xxx')</code> 读取 StateManager settings 路径的值，但运行时这些字段被直接写入 <code>gameState.xxx</code>（顶层字段），两者是不同的对象。导致用户修改的叙事视角开关、流式输出、max_tokens等设置在刷新后恢复为默认值。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因</div>
+    <p class="bug-desc">StateManager.init() 执行 <code>window.gameState = this._state</code> 后，<code>gameState.xxx = value</code> 写入顶层，而 <code>StateManager._state.settings.xxx</code> 是 normalizeState() 时深拷贝的独立对象，不会同步更新。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <p class="bug-desc">在 saveGameSettings 中优先从 <code>gameState</code>（顶层）读取这些字段，fallback 到 _sm()。</p>
+  </div>
+</div>
+
+<!-- BUG 19 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-019</span>
+    <span class="severity sev-medium">中</span>
+    <span class="bug-title">流式提取器状态变量未在请求间重置</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc"><code>_resetStreamExtractor()</code> 未重置三个惰性初始化的全局变量（<code>_streamIsLikelyJSON</code>、<code>_streamJsonScanPos</code>、<code>_streamThinkScanPos</code>），导致上一轮请求的残留状态污染当前请求，可能延迟内容显示。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <div class="code-block">
+<span class="fix">+ _streamIsLikelyJSON = undefined;</span>
+<span class="fix">+ _streamJsonScanPos = 0;</span>
+<span class="fix">+ _streamThinkScanPos = 0;</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 20 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-020</span>
+    <span class="severity sev-medium">中</span>
+    <span class="bug-title">默认wordCountConfig缺少perspective字段</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc"><span class="file-path">core.js:4743</span> 的兜底默认对象缺少 perspective 和 userPronoun 字段，若触发此兜底路径，formatReminder 会因 perspective 为空而走 else 分支，回退到第二人称。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <div class="code-block">
+<span class="fix">+ perspective: 'third_person_limited', userPronoun: 'third_person'</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 21-24 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-021~24</span>
+    <span class="severity sev-low">低</span>
+    <span class="bug-title">死代码引用（4处）</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">以下4处引用了已被删除的元素/变量/方法，有 null 守卫不会崩溃，但属于死代码：</p>
+    <p class="bug-desc">1. <span class="file-path">preset-manager.js:387</span> - 引用已删除的 <code>settingStoryLength</code> 元素<br>
+    2. <span class="file-path">phone-ui.js:1084,1095,1096</span> - 引用已删除的 <code>logFeat-author_note</code>/<code>logFeat-world</code>/<code>logFeat-memory</code> 元素<br>
+    3. <span class="file-path">stream-worker.js:165</span> - 引用已不存在的 <code>_pendingChunkMsg</code> 变量<br>
+    4. <span class="file-path">phone-ui.js</code> - saveGameSettings 残留 <code>chapterMode</code> 读取</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复</div>
+    <p class="bug-desc">移除所有死代码引用。stream-worker.js 的 _pendingChunkMsg 已修复，其余已有 null 守卫不会造成功能影响。</p>
+  </div>
+</div>
+
+<h2>三、与第一轮Bug的对比分析</h2>
+<table>
+  <tr><th>问题模式</th><th>第一轮发现</th><th>第二轮发现</th><th>SillyTavern的做法</th></tr>
+  <tr><td>硬编码覆盖用户设置</td><td>硬编码第二人称 (BUG-001)</td><td>硬编码800字最低要求 (BUG-014)</td><td>所有参数由预设统一管理，不在代码中硬编码</td></tr>
+  <tr><td>AI使用"主角"代称</td><td>关系网指令用"主角" (BUG-003)</td><td>私聊记录+记忆示例用"主角" (BUG-015,016)</td><td>使用 {{char}}/{{user}} 宏，自动替换为真实姓名</td></tr>
+  <tr><td>字段映射/传递缺失</td><td>mcPersonality映射错误 (BUG-004)</td><td>mcPersonality等未传到player data (BUG-017)</td><td>统一的 Persona 数据模型，初始化时完整传递</td></tr>
+  <tr><td>状态同步失败</td><td>showCotPanel未同步 (BUG-005)</td><td>narrativeEyes/useStream等4个字段未同步 (BUG-018)</td><td>单一数据源，不存在顶层与settings路径的分离</td></tr>
+  <tr><td>max_tokens问题</td><td>默认2048不够 (BUG-002)</td><td>自动计算值未传API (BUG-012)</td><td>max_tokens由预设统一管理，一处设置处处生效</td></tr>
+</table>
+
+<h2>四、代码变更统计</h2>
+<table>
+  <tr><th>文件</th><th>变更</th><th>修复的Bug</th></tr>
+  <tr><td>js/game.js</td><td>+10 -3</td><td>BUG-014,015,016,019</td></tr>
+  <tr><td>js/core.js</td><td>+13 -2</td><td>BUG-012,017,020</td></tr>
+  <tr><td>js/phone-ui.js</td><td>+18 -7</td><td>BUG-013,018,024</td></tr>
+  <tr><td>js/ai-contract/prompt-builder.js</td><td>+3 -3</td><td>BUG-014,016</td></tr>
+  <tr><td>js/stream-worker.js</td><td>+1 -1</td><td>BUG-023</td></tr>
+  <tr><td><strong>合计</strong></td><td><strong>+33 -16</strong></td><td><strong>13个Bug</strong></td></tr>
+</table>
+
+<h2>五、两轮审查总结</h2>
+<table>
+  <tr><th>轮次</th><th>Bug数</th><th>严重</th><th>高</th><th>中</th><th>低</th><th>涉及文件</th></tr>
+  <tr><td>第一轮</td><td>11</td><td>4</td><td>4</td><td>3</td><td>0</td><td>4</td></tr>
+  <tr><td>第二轮</td><td>13</td><td>2</td><td>5</td><td>2</td><td>4</td><td>5</td></tr>
+  <tr><td><strong>合计</strong></td><td><strong>24</strong></td><td><strong>6</strong></td><td><strong>9</strong></td><td><strong>5</strong></td><td><strong>4</strong></td><td>-</td></tr>
+</table>
+
+<div class="callout">
+  <p><strong>所有24个Bug已全部修复并部署到GitHub Pages。</strong> Commit: 75c84a8</p>
+</div>
+
+</div>
+</body>
+</html>

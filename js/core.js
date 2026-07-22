@@ -5983,8 +5983,10 @@ function buildAIRequestBody(messages, options, config) {
 
     // 【P1 修复】DeepSeek 等推理模型需要额外 headroom 容纳 reasoning tokens
     // reasoning tokens 与 output tokens 共享 max_tokens 预算，需要预留空间
+    // 【BUG-026 修复】仅对真正的推理模型（R1/Reasoner）预留 reasoning 空间
+    // DeepSeek-V4-Flash、DeepSeek-V3、DeepSeek-Chat 等非推理模型不应被误判
     var _modelLower = (config.model || '').toLowerCase();
-    if (/deepseek/.test(_modelLower) && params.max_tokens > 0) {
+    if (/deepseek.*r1|deepseek.*reason/.test(_modelLower) && params.max_tokens > 0) {
         var _origMax = params.max_tokens;
         // reasoning tokens 通常占 20-40% 预算，这里预留 50% headroom
         params.max_tokens = Math.min(Math.floor(_origMax * 1.5), DEFAULT_MAX_TOKENS);

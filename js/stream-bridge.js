@@ -286,6 +286,11 @@ var StreamBridge = (function() {
             clearTimeout(req.totalTimeoutId);
             req.totalTimeoutId = null;
         }
+        // 【BUG-025 修复】清理 abort 兜底超时定时器
+        if (req.abortFallbackId) {
+            clearTimeout(req.abortFallbackId);
+            req.abortFallbackId = null;
+        }
         // 【BUG-002 修复】清理 rAF 批处理状态
         if (_chunkBatchRaf[requestId]) {
             if (typeof cancelAnimationFrame !== 'undefined') {
@@ -380,8 +385,22 @@ var StreamBridge = (function() {
                     try { _worker.postMessage({ type: 'ABORT', requestId: requestId }); }
                     catch (e) {}
                 }
-                // 不立即 reject，等 Worker 回 ERROR(isAbort=true) 再 reject
+                // 【BUG-025 修复】不立即 reject，等 Worker 回 ERROR(isAbort=true) 再 reject
                 // 这样能保证 fullText 已经累积的部分被正确处理
+                // 但设置 5 秒兜底超时，防止 Worker 无响应时活动超时(300s)继续运行
+                // 导致旧定时器在新请求中误触发"请求无活动超时"警告
+                var req = _pendingRequests[requestId];
+                if (req) {
+                    if (req.abortFallbackId) clearTimeout(req.abortFallbackId);
+                    req.abortFallbackId = setTimeout(function() {
+                        var r = _pendingRequests[requestId];
+                        if (r) {
+                            console.warn('[StreamBridge] Abort 确认超时(5s)，强制清理请求');
+                            _cleanupRequest(requestId);
+                            r.reject(Object.assign(new Error('AbortError'), { name: 'AbortError', aborted: true }));
+                        }
+                    }, 5000);
+                }
             };
             _pendingRequests[requestId].abortListener = abortListener;
             if (signal.aborted) {
