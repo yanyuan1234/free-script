@@ -27,8 +27,9 @@ var _activeRequests = {};
 // 易触发 ResourceExhausted。提高到 60ms (~16fps) 降低 API 侧请求频率，
 // 同时仍保持流式体验的流畅度。
 var _CHUNK_THROTTLE_MS = 60;
-var _LAST_CHUNK_TIME = 0;  // 全局：所有请求共享一个节流时钟，避免多请求时 postMessage 风暴
-var _pendingChunkMsg = null;  // 待发送的 chunk 消息（节流缓冲）
+// 【BUG-006 修复】将节流变量从全局改为每请求独立，避免并发请求时 chunk 发送互相干扰
+// 原：_LAST_CHUNK_TIME / _pendingChunkMsg / _chunkTimerScheduled 全局共享
+// 新：每请求在 ctx 中维护独立的节流状态
 
 // 错误消息提取（与 core.js extractErrorMessage 等价的简化版，Worker 内不能访问主线程函数）
 function _extractErrMsg(errObj, fallback) {
@@ -108,11 +109,11 @@ function _getReasoningText(ctx) {
 // 高频 chunk 合并为一条消息，避免 postMessage 风暴
 function _throttledPostChunk(requestId, ctx) {
     var now = Date.now();
-    var elapsed = now - _LAST_CHUNK_TIME;
+    var elapsed = now - (ctx.lastChunkTime || 0);
     if (elapsed >= _CHUNK_THROTTLE_MS) {
         // 立即发送
-        _LAST_CHUNK_TIME = now;
-        _pendingChunkMsg = null;
+        ctx.lastChunkTime = now;
+        ctx.pendingChunk = false;
         _workerCtx.postMessage({
             type: 'CHUNK',
             requestId: requestId,
@@ -124,30 +125,27 @@ function _throttledPostChunk(requestId, ctx) {
         ctx.lastReasoningDelta = '';
     } else {
         // 缓冲，等下一个 timer 发送
-        _pendingChunkMsg = { requestId: requestId, ctx: ctx };
-        if (!_chunkTimerScheduled) {
-            _chunkTimerScheduled = true;
-            setTimeout(_flushPendingChunk, _CHUNK_THROTTLE_MS - elapsed);
+        ctx.pendingChunk = true;
+        if (!ctx.chunkTimerScheduled) {
+            ctx.chunkTimerScheduled = true;
+            // 【BUG-006 修复】使用闭包捕获 ctx，避免全局 _pendingChunkMsg 跨请求污染
+            setTimeout(function() {
+                ctx.chunkTimerScheduled = false;
+                if (ctx.pendingChunk) {
+                    ctx.pendingChunk = false;
+                    ctx.lastChunkTime = Date.now();
+                    _workerCtx.postMessage({
+                        type: 'CHUNK',
+                        requestId: requestId,
+                        delta: ctx.lastDelta,
+                        fullText: _getFullText(ctx),
+                        reasoningDelta: ctx.lastReasoningDelta || ''
+                    });
+                    ctx.lastDelta = '';
+                    ctx.lastReasoningDelta = '';
+                }
+            }, _CHUNK_THROTTLE_MS - elapsed);
         }
-    }
-}
-
-var _chunkTimerScheduled = false;
-function _flushPendingChunk() {
-    _chunkTimerScheduled = false;
-    if (_pendingChunkMsg) {
-        var msg = _pendingChunkMsg;
-        _pendingChunkMsg = null;
-        _LAST_CHUNK_TIME = Date.now();
-        _workerCtx.postMessage({
-            type: 'CHUNK',
-            requestId: msg.requestId,
-            delta: msg.ctx.lastDelta,
-            fullText: _getFullText(msg.ctx),
-            reasoningDelta: msg.ctx.lastReasoningDelta || ''
-        });
-        msg.ctx.lastDelta = '';
-        msg.ctx.lastReasoningDelta = '';
     }
 }
 
@@ -174,7 +172,11 @@ async function _executeStream(requestId, url, body, apiKey) {
         reasoningText: '',
         streamError: null,
         lastDelta: '',
-        lastReasoningDelta: ''
+        lastReasoningDelta: '',
+        // 【BUG-006 修复】每请求独立的节流状态
+        lastChunkTime: 0,
+        pendingChunk: false,
+        chunkTimerScheduled: false
     };
 
     // 连接超时（与 core.js executeAIStream 一致：240s）
@@ -293,7 +295,10 @@ async function _executeStream(requestId, url, body, apiKey) {
             _parseSSEEventText(events[i], ctx);
         }
         // 节流发送累积的 delta
-        if (ctx.lastDelta) {
+        // 【BUG-001 修复】推理模型在思考阶段仅输出 reasoning_content，不输出 content。
+        // 原代码仅检查 ctx.lastDelta (content)，导致思考阶段无 CHUNK 发送，主线程 120s 超时误判。
+        // 修复：同时检查 ctx.lastReasoningDelta，确保推理阶段也发送 CHUNK 保持活动状态。
+        if (ctx.lastDelta || ctx.lastReasoningDelta) {
             _throttledPostChunk(requestId, ctx);
         }
     }
@@ -348,6 +353,18 @@ _workerCtx.onmessage = function(e) {
 
         _executeStream(requestId, msg.url, msg.body, msg.apiKey).then(function(result) {
             if (_activeRequests[requestId] && _activeRequests[requestId].aborted) {
+                // 【BUG-005 修复】流被中断但已有部分内容时，仍发送 DONE 保留部分内容
+                // 原代码直接 return 丢弃已接收的内容，用户看不到任何已生成的文本
+                if (result && result.fullText) {
+                    console.warn('[Worker] 流被中断但已保留 ' + result.fullText.length + ' 字符部分内容');
+                    _workerCtx.postMessage({
+                        type: 'DONE',
+                        requestId: requestId,
+                        fullText: result.fullText,
+                        reasoningText: result.reasoningText || '',
+                        interrupted: true
+                    });
+                }
                 delete _activeRequests[requestId];
                 return;
             }

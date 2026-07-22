@@ -6579,15 +6579,18 @@ async function executeAINormal(url, body, apiKey, signal) {
             return _content;
         }
 
-        // FIX-C1：与原版单 HTML 保持一致，不再把 reasoning_content 当正文回退。
-        // reasoning 仅用于 CoT 面板展示；content 为空时说明模型未输出正文。
+        // 【BUG-004 修复】推理模型（如 DeepSeek-V4-Flash, o1）在 Context 检测探测时
+        // 可能只返回 reasoning_content 而不返回 content。原代码直接抛错导致 Context 检测失败。
+        // 修复：当 content 为空但 reasoning_content 存在时，返回 reasoning_content 作为回退。
+        // - Context 检测：能从推理内容中提取数字（如"我的上下文是128000"）
+        // - 主游戏请求：parseAIResponse 会尝试 JSON 解析，失败后走兜底逻辑，不影响游戏
         if (_reasoning) {
-            console.warn('[executeAINormal] content 为空，忽略 reasoning_content（' + _reasoning.length + ' 字符），不将其作为正文');
+            console.warn('[executeAINormal] content 为空，使用 reasoning_content（' + _reasoning.length + ' 字符）作为回退');
             try { if (typeof window !== 'undefined') window._lastReasoningText = _reasoning; } catch (e) {}
+            return _reasoning;
         }
 
-        // 旧代码返回 ''，上游 parseAIResponse 兜底显示"AI未返回剧情内容"，用户不知道是模型问题
-        // 新错误信息明确告知是模型兼容性问题，引导用户更换模型（不硬编码具体模型名）
+        // content 和 reasoning_content 均为空，说明模型不兼容
         console.warn('[executeAINormal] 模型返回 200 但 content 和 reasoning_content 均为空，可能是不兼容的模型');
         throw new Error('该模型返回了空内容（content 和 reasoning_content 均为空）→ 可能是不支持文本生成的模型，请更换为支持文本对话的模型');
     }

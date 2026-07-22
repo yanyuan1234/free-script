@@ -17,7 +17,10 @@ var StreamBridge = (function() {
     // 120 秒对推理模型（DeepSeek-R1 等 3-5 分钟思考）远远不够，导致正常请求被误杀
     // 同时引入"活动超时"机制：每收到 CHUNK 消息就重置计时器，只有真正无响应才超时
     var REQUEST_TIMEOUT_MS = 10 * 60 * 1000;  // 10分钟总超时（兜底）
-    var ACTIVITY_TIMEOUT_MS = 120 * 1000;     // 120秒无活动超时（收到chunk时重置）
+    // 【BUG-007 修复】将活动超时从 120s 提升到 300s，支持推理模型长时间思考阶段
+    // DeepSeek-R1 / o1 等模型思考阶段可能持续 3-5 分钟，120s 会误杀正常请求
+    // 配合 BUG-001 修复（推理阶段也发送 CHUNK），300s 足以覆盖绝大多数推理场景
+    var ACTIVITY_TIMEOUT_MS = 300 * 1000;     // 300秒无活动超时（收到chunk/reasoning时重置）
 
     // 【P1 修复】懒初始化 Worker（异步，首次调用时创建）
     // 原实现使用同步 XHR 获取 Worker 源码，阻塞主线程
@@ -112,6 +115,49 @@ var StreamBridge = (function() {
     }
 
     // 处理 Worker 发来的消息
+    // 【BUG-002 修复】使用 rAF 批处理 CHUNK 消息，避免高频 chunk 导致主线程冻结
+    // Worker 每 60ms 发送一个 CHUNK，每个 CHUNK 触发 onChunk + _extractPartialStory + _dispatchPartialStory
+    // 当缓冲区增大时，正则匹配 + 事件派发开销累积，导致主线程被阻塞
+    // 修复：用 rAF 合并同一帧内的多个 CHUNK，每帧最多处理一次 onChunk + partialStory
+    var _chunkBatchPending = {};  // requestId -> { delta: '', fullText: '', reasoningDelta: '' }
+    var _chunkBatchRaf = {};      // requestId -> rAF id
+
+    function _flushChunkBatch(requestId) {
+        var batch = _chunkBatchPending[requestId];
+        if (!batch) return;
+        delete _chunkBatchPending[requestId];
+        delete _chunkBatchRaf[requestId];
+
+        var req = _pendingRequests[requestId];
+        if (!req) return;
+
+        // 合并后一次性调用 onChunk
+        if (req.onChunk && (batch.delta || batch.reasoningDelta)) {
+            try { req.onChunk(batch.delta, batch.fullText, batch.reasoningDelta || ''); }
+            catch (cbErr) { console.warn('[StreamBridge] onChunk 批处理回调异常:', cbErr); }
+        }
+
+        // 部分故事提取（每帧最多一次）
+        if (batch.fullText && typeof _extractPartialStory === 'function') {
+            if (batch.fullText.indexOf('"story"') !== -1) {
+                try {
+                    var _partial = _extractPartialStory(batch.fullText);
+                    if (_partial) {
+                        var _lastLen = req._lastPartialStoryLen || 0;
+                        if (_partial.length > _lastLen) {
+                            req._lastPartialStoryLen = _partial.length;
+                            if (typeof _dispatchPartialStory === 'function') {
+                                _dispatchPartialStory(_partial, batch.fullText);
+                            }
+                        }
+                    }
+                } catch (_psErr) {
+                    console.warn('[StreamBridge] 部分故事提取异常:', _psErr);
+                }
+            }
+        }
+    }
+
     function _onWorkerMessage(e) {
         var msg = e.data || {};
         var req = _pendingRequests[msg.requestId];
@@ -119,43 +165,41 @@ var StreamBridge = (function() {
 
         if (msg.type === 'CHUNK') {
             // 【P0-2 修复】收到 CHUNK 时重置活动超时计时器
-            // 推理模型可能先输出 reasoning（思考过程），再输出 content（正文），期间持续有 CHUNK
             _resetActivityTimeout(msg.requestId);
-            // 转发 chunk 给上层 onChunk 回调
-            // 【酒馆式思维链】同时传递 reasoningDelta，让上层实时显示思考过程
-            if (req.onChunk && msg.delta) {
-                try { req.onChunk(msg.delta, msg.fullText, msg.reasoningDelta || ''); }
-                catch (cbErr) { console.warn('[StreamBridge] onChunk 回调异常:', cbErr); }
-            }
-            // 即使 content delta 为空，reasoning delta 也需要传递（推理模型思考阶段 content 为空）
-            if (req.onChunk && !msg.delta && msg.reasoningDelta) {
-                try { req.onChunk('', msg.fullText || '', msg.reasoningDelta); }
-                catch (cbErr) { console.warn('[StreamBridge] onChunk reasoning 回调异常:', cbErr); }
-            }
-            // 【P1-2 流式渐进渲染】Worker 路径同样提取部分 story 并派发 UI 事件
-            // 与 core.js 主线程路径保持一致，确保两条路径都有渐进渲染
-            // 不影响最终解析（最终仍用完整 JSON 解析）
-            if (msg.fullText && typeof _extractPartialStory === 'function') {
-                // 快速预筛：仅当 fullText 包含 "story" 字段时才跑正则
-                if (msg.fullText.indexOf('"story"') !== -1) {
-                    try {
-                        var _partial = _extractPartialStory(msg.fullText);
-                        if (_partial) {
-                            var _lastLen = req._lastPartialStoryLen || 0;
-                            // 仅在 story 内容有新增时派发，避免重复刷新
-                            if (_partial.length > _lastLen) {
-                                req._lastPartialStoryLen = _partial.length;
-                                if (typeof _dispatchPartialStory === 'function') {
-                                    _dispatchPartialStory(_partial, msg.fullText);
-                                }
-                            }
-                        }
-                    } catch (_psErr) {
-                        console.warn('[StreamBridge] 部分故事提取异常:', _psErr);
-                    }
+
+            // 【BUG-002 修复】rAF 批处理：合并同一帧内的多个 CHUNK
+            var rid = msg.requestId;
+            if (!_chunkBatchPending[rid]) {
+                _chunkBatchPending[rid] = {
+                    delta: msg.delta || '',
+                    fullText: msg.fullText || '',
+                    reasoningDelta: msg.reasoningDelta || ''
+                };
+                // 调度 rAF 刷新（如果 rAF 不可用，降级为 setTimeout 0）
+                if (typeof requestAnimationFrame !== 'undefined') {
+                    _chunkBatchRaf[rid] = requestAnimationFrame(function() { _flushChunkBatch(rid); });
+                } else {
+                    _chunkBatchRaf[rid] = setTimeout(function() { _flushChunkBatch(rid); }, 0);
                 }
+            } else {
+                // 合并到已有批次
+                var batch = _chunkBatchPending[rid];
+                if (msg.delta) batch.delta += msg.delta;
+                if (msg.fullText) batch.fullText = msg.fullText;  // fullText 是累积的，直接覆盖
+                if (msg.reasoningDelta) batch.reasoningDelta += msg.reasoningDelta;
             }
         } else if (msg.type === 'DONE') {
+            // 【BUG-002 修复】DONE 前先刷新批处理中剩余的 CHUNK
+            if (_chunkBatchPending[msg.requestId]) {
+                if (_chunkBatchRaf[msg.requestId]) {
+                    if (typeof cancelAnimationFrame !== 'undefined') {
+                        cancelAnimationFrame(_chunkBatchRaf[msg.requestId]);
+                    } else {
+                        clearTimeout(_chunkBatchRaf[msg.requestId]);
+                    }
+                }
+                _flushChunkBatch(msg.requestId);
+            }
             // 设置 reasoning 透出（与原 executeAIStream 一致）
             try {
                 if (typeof window !== 'undefined') {
@@ -214,6 +258,11 @@ var StreamBridge = (function() {
             var r = _pendingRequests[requestId];
             if (r) {
                 console.warn('[StreamBridge] 请求无活动超时(' + ACTIVITY_TIMEOUT_MS + 'ms)，Worker 可能已崩溃或网络断开');
+                // 【BUG-003 修复】超时降级前先中止 Worker 中的请求，避免旧请求继续占用 API 配额
+                // 导致降级请求触发连锁 ResourceExhausted 限流
+                if (_worker) {
+                    try { _worker.postMessage({ type: 'ABORT', requestId: requestId }); } catch (e) {}
+                }
                 _cleanupRequest(requestId);
                 r.reject(new Error('STREAM_TIMEOUT: 请求无响应超时(' + (ACTIVITY_TIMEOUT_MS / 1000) + '秒无数据)，请重试'));
             }
@@ -237,6 +286,16 @@ var StreamBridge = (function() {
             clearTimeout(req.totalTimeoutId);
             req.totalTimeoutId = null;
         }
+        // 【BUG-002 修复】清理 rAF 批处理状态
+        if (_chunkBatchRaf[requestId]) {
+            if (typeof cancelAnimationFrame !== 'undefined') {
+                cancelAnimationFrame(_chunkBatchRaf[requestId]);
+            } else {
+                clearTimeout(_chunkBatchRaf[requestId]);
+            }
+            delete _chunkBatchRaf[requestId];
+        }
+        delete _chunkBatchPending[requestId];
         delete _pendingRequests[requestId];
     }
 
