@@ -2074,9 +2074,9 @@
 
 /* 大标题 */
 .mail-big-title {
-    font-size: 36px;
+    font-size: 26px;
     font-weight: 900;
-    padding: 10px 15px 15px;
+    padding: 8px 12px 12px;
     letter-spacing: 2px;
 }
 
@@ -2103,7 +2103,7 @@
 }
 
 .mail-list-item {
-    padding: 16px 15px 16px 24px;
+    padding: 12px 14px 12px 22px;
     border-bottom: 1px solid var(--bg-tertiary);
     position: relative;
 }
