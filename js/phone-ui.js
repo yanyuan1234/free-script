@@ -1080,17 +1080,17 @@ function updateLogFeatureVisibility() {
         var el = document.getElementById(id);
         if (el) el.style.display = visible ? '' : 'none';
     }
-    setVisible('logFeat-calendar', settings.calendar && mods.some(function(m) { return m.type === 'calendar'; }));
-    setVisible('logFeat-author_note', settings.author_note && mods.some(function(m) { return m.type === 'author_note'; }));
+    setVisible('logFeat-calendar', settings.calendar);
+    setVisible('logFeat-author_note', settings.author_note);
     setVisible('logFeat-chat', settings.chat);
-    setVisible('logFeat-forum', settings.forum && mods.some(function(m) { return m.type === 'forum' || m.type === 'comments'; }));
-    setVisible('logFeat-rank', settings.rank && mods.some(function(m) { return m.type === 'ranking'; }));
-    setVisible('logFeat-shop', settings.shop && mods.some(function(m) { return m.type === 'shop'; }));
-    setVisible('logFeat-moments', settings.moments && mods.some(function(m) { return m.type === 'moments'; }));
-    setVisible('logFeat-diary', settings.diary && mods.some(function(m) { return m.type === 'diary'; }));
-    setVisible('logFeat-mail', settings.mail && mods.some(function(m) { return m.type === 'mail'; }));
-    setVisible('logFeat-achieve', settings.achieve && mods.some(function(m) { return m.type === 'achievement' || m.type === 'achievements'; }));
-    setVisible('logFeat-quests', settings.quests && quests.length > 0);
+    setVisible('logFeat-forum', settings.forum);
+    setVisible('logFeat-rank', settings.rank);
+    setVisible('logFeat-shop', settings.shop);
+    setVisible('logFeat-moments', settings.moments);
+    setVisible('logFeat-diary', settings.diary);
+    setVisible('logFeat-mail', settings.mail);
+    setVisible('logFeat-achieve', settings.achieve);
+    setVisible('logFeat-quests', settings.quests);
     setVisible('logFeat-items', settings.items);
     setVisible('logFeat-world', settings.world);
     setVisible('logFeat-memory', settings.memory);
