@@ -781,9 +781,10 @@ function _buildFormatRules(gs, _t, turn) {
         : '';
 
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
-        + '{ "title": "4-8字章节标题", "story": "本回合剧情正文（必须是JSON第一个字段）", '
+        + '{ "thinking": "你的思考过程：分析当前局势、规划剧情走向、考虑角色动机，200-500字", "title": "4-8字章节标题", "story": "本回合剧情正文", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
-        + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请留在 reasoning_content（如果 API 支持），不要写入 story。**\n'
+        + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请写入 thinking 字段（如果 API 支持 reasoning_content 则写入 reasoning_content，否则写入 JSON 的 thinking 字段），不要写入 story。**\n'
+        + '\n**thinking 字段规则：在 story 之前先输出 thinking 字段，写明你本回合的思考过程——分析用户选择、规划剧情走向、决定NPC反应、考虑关系变化等。thinking 字段内容不会显示给玩家看（以折叠卡片形式展示），只用于思维链面板。**\n'
         + '\n**story 长度强制要求：每回合剧情正文至少 800 中文字符，推荐 1000-1500 中文字符。场景铺垫、NPC反应、环境细节、心理描写都要充分展开，避免几句话草草带过。优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
@@ -2173,7 +2174,18 @@ async function sendAIRequest(userMessage, isInit = false) {
         // [CoT] 提取并展示思维链（需在 stripThinking 之前从原始响应里拿）
         var cotMode = (StateManager ? StateManager.get('settings.cotMode') : '') || '';
         if (cotMode === 'enabled') {
+            // 【修复】优先从 JSON 的 thinking 字段提取思维链（支持非推理模型）
+            var _jsonThinkingText = '';
+            if (data && data.thinking && typeof data.thinking === 'string') {
+                _jsonThinkingText = data.thinking.trim();
+            }
             var cotText = (typeof ResponseParser !== 'undefined' && ResponseParser.extractThinking) ? ResponseParser.extractThinking(response) : '';
+            // 合并 JSON thinking 字段和标签式 CoT
+            if (_jsonThinkingText && cotText) {
+                cotText = _jsonThinkingText + '\n---\n' + cotText;
+            } else if (_jsonThinkingText) {
+                cotText = _jsonThinkingText;
+            }
             if (cotText) {
                 // 【酒馆式思维链】优先使用 CotPanelController
                 if (typeof CotPanelController !== 'undefined') {
@@ -2345,9 +2357,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) gameState._lastOriginalContent = storyText;
         }
         // 合并所有思维链内容供调试查看 / 面板展示
+        // 【修复】同时检查 JSON 的 thinking 字段（非推理模型的思维链来源）
+        var _jsonCotText = '';
+        try {
+            if (data && data.thinking && typeof data.thinking === 'string') {
+                _jsonCotText = data.thinking.trim();
+            }
+        } catch(e) {}
+        if (_jsonCotText && !_hasAnyCot) {
+            _hasAnyCot = true;
+        }
         if (_hasAnyCot) {
             var _allCotParts = cotMatches.slice();
             if (_reasoningFromField) _allCotParts.push(_reasoningFromField);
+            if (_jsonCotText) _allCotParts.push(_jsonCotText);
             var _mergedCot = _allCotParts.join('\n---\n');
             if (gameState) gameState._lastCotContent = _mergedCot;
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段标签 +', _reasoningFromField ? 1 : 0, '段 reasoning_content');

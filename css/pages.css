@@ -548,6 +548,7 @@
 .cot-toggle[aria-expanded="true"] .cot-arrow {
     transform: rotate(90deg);
 }
+/* 折叠状态：小卡片样式 */
 .cot-content {
     padding: 6px 10px 8px;
     font-size: 12px;
@@ -559,6 +560,52 @@
     max-height: 240px;
     overflow-y: auto;
     font-family: var(--font-mono, monospace);
+}
+/* 展开状态：全屏覆盖页面 */
+.cot-panel.cot-expanded {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    margin: 0;
+    border-radius: 0;
+    background: var(--bg, #fff);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+.cot-panel.cot-expanded .cot-toggle {
+    padding: 12px 16px;
+    font-size: 14px;
+    min-height: 48px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-alt, rgba(0,0,0,0.03));
+    flex-shrink: 0;
+}
+.cot-panel.cot-expanded .cot-toggle .cot-label {
+    font-size: 15px;
+    font-weight: 600;
+}
+.cot-panel.cot-expanded .cot-toggle .cot-status {
+    font-size: 13px;
+}
+.cot-panel.cot-expanded .cot-content {
+    flex: 1;
+    max-height: none;
+    padding: 16px 20px;
+    font-size: 14px;
+    line-height: 1.8;
+    border-top: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+.cot-panel.cot-expanded .cot-history-bar {
+    flex-shrink: 0;
+    padding: 8px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg-alt, rgba(0,0,0,0.03));
 }
 /* 历史切换按钮栏 */
 .cot-history-bar {

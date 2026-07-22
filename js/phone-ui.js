@@ -4583,7 +4583,10 @@ var CotPanelController = {
         // 如果用户关闭了思维链显示，不显示面板
         if (!this.showPanel) {
             var panel = document.getElementById('cotPanel');
-            if (panel) panel.style.display = 'none';
+            if (panel) {
+                panel.style.display = 'none';
+                panel.classList.remove('cot-expanded');
+            }
             return;
         }
         this._render();
@@ -4651,7 +4654,10 @@ var CotPanelController = {
         this._isExpanded = false;
         if (!this.showPanel) {
             var panel = document.getElementById('cotPanel');
-            if (panel) panel.style.display = 'none';
+            if (panel) {
+                panel.style.display = 'none';
+                panel.classList.remove('cot-expanded');
+            }
             return;
         }
         // 显示面板
@@ -4671,14 +4677,26 @@ var CotPanelController = {
             CotTypewriter.stop();
         }
         var panel = document.getElementById('cotPanel');
-        if (panel) panel.style.display = 'none';
+        if (panel) {
+            panel.style.display = 'none';
+            panel.classList.remove('cot-expanded');
+        }
     },
 
     // 折叠/展开
     toggle: function() {
         this._isExpanded = !this._isExpanded;
+        var panel = document.getElementById('cotPanel');
         var content = document.getElementById('cotContent');
         var toggleBtn = document.getElementById('cotToggle');
+        // 【修复】展开时添加 cot-expanded 类，触发全屏覆盖样式
+        if (panel) {
+            if (this._isExpanded) {
+                panel.classList.add('cot-expanded');
+            } else {
+                panel.classList.remove('cot-expanded');
+            }
+        }
         if (content) {
             content.style.display = this._isExpanded ? 'block' : 'none';
         }
@@ -4792,6 +4810,14 @@ var CotPanelController = {
         }
         if (toggleBtn) {
             toggleBtn.setAttribute('aria-expanded', String(this._isExpanded));
+        }
+        // 【修复】同步 cot-expanded 类
+        if (panel) {
+            if (this._isExpanded) {
+                panel.classList.add('cot-expanded');
+            } else {
+                panel.classList.remove('cot-expanded');
+            }
         }
 
         // 更新历史切换按钮
