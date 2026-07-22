@@ -5796,7 +5796,7 @@ function bindEvents() {
             if (group) {
                 var body = group.querySelector('.setting-body');
                 if (body) {
-                    var isHidden = body.style.display === 'none' || !body.style.display;
+                    var isHidden = body.style.display === 'none';
                     body.style.display = isHidden ? '' : 'none';
                     // 旋转箭头图标
                     var icon = settingHeader.querySelector('.toggle-icon');
