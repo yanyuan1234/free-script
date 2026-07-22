@@ -7601,6 +7601,17 @@ Promise.race([_setupPromise, _setupTimeoutPromise]).then(function() {
     }
 }).catch(function(e) {
     console.warn('[开局设定提取] 失败/超时，直接开局:', e && e.message);
+    // 【BUG-027 修复】设定提取超时不影响主游戏生成
+    // 大预设(几千字)的设定提取可能超过240s超时，此时API配置会被标记为"近期超时"
+    // 如果不清除，主游戏生成将跳过该配置导致"没有可用API配置"错误
+    if (typeof LocalGameAPI !== 'undefined' && LocalGameAPI._configs) {
+        for (var i = 0; i < LocalGameAPI._configs.length; i++) {
+            if (LocalGameAPI._markModelSuccess) {
+                LocalGameAPI._markModelSuccess(i);
+            }
+        }
+        console.log('[开局设定提取] 已清除API配置冷却状态，确保主游戏生成可用');
+    }
     if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
         RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
     }
