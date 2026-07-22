@@ -1082,7 +1082,7 @@ function updateLogFeatureVisibility() {
     }
     setVisible('logFeat-calendar', settings.calendar && mods.some(function(m) { return m.type === 'calendar'; }));
     setVisible('logFeat-author_note', settings.author_note && mods.some(function(m) { return m.type === 'author_note'; }));
-    setVisible('logFeat-chat', settings.chat && (mods.some(function(m) { return m.type === 'chat'; }) || !!(gameState._chatLogs && gameState._chatLogs.length)));
+    setVisible('logFeat-chat', settings.chat);
     setVisible('logFeat-forum', settings.forum && mods.some(function(m) { return m.type === 'forum' || m.type === 'comments'; }));
     setVisible('logFeat-rank', settings.rank && mods.some(function(m) { return m.type === 'ranking'; }));
     setVisible('logFeat-shop', settings.shop && mods.some(function(m) { return m.type === 'shop'; }));
