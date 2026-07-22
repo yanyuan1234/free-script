@@ -187,7 +187,7 @@
             dry_base: 1.75,          // 【P0-1】指数基底
             dry_allowed_length: 2,   // 【P0-1】允许的重复长度
             max_tokens: 16384,
-            max_context: 32000
+            max_context: 0  // 【动态化修复】设为0启用动态上下文检测，不硬编码
         },
         prompts: [
             {
@@ -258,7 +258,7 @@
             dry_base: 1.75,
             dry_allowed_length: 2,
             max_tokens: 16384,
-            max_context: 32000
+            max_context: 0  // 【动态化修复】设为0启用动态上下文检测，不硬编码
         },
         prompts: [
             {
@@ -337,7 +337,7 @@
             dry_base: 1.75,
             dry_allowed_length: 2,
             max_tokens: 16384,
-            max_context: 32000
+            max_context: 0  // 【动态化修复】设为0启用动态上下文检测，不硬编码
         },
         prompts: [
             {
@@ -410,7 +410,7 @@
             dry_base: 1.75,
             dry_allowed_length: 2,
             max_tokens: 16384,
-            max_context: 32000
+            max_context: 0  // 【动态化修复】设为0启用动态上下文检测，不硬编码
         },
         prompts: [
             {

@@ -4139,7 +4139,7 @@ function _recordContextBreakdown(messages, options) {
     if (typeof PresetManager !== 'undefined' && PresetManager.getParams) {
         presetParams = PresetManager.getParams();
     }
-    breakdown.maxTokens = presetParams.max_context || 32000;
+    breakdown.maxTokens = presetParams.max_context || (typeof DEFAULT_CONTEXT_SIZE !== 'undefined' ? DEFAULT_CONTEXT_SIZE : 128000);
 
     // 按 role 和内容特征分类
     var categories = {
@@ -6004,11 +6004,14 @@ function buildAIRequestBody(messages, options, config) {
     // reasoning tokens 与 output tokens 共享 max_tokens 预算，需要预留空间
     // 【BUG-026 修正】iamhc.cn 代理的 DeepSeek-V4-Flash 也会返回 reasoning_content，
     // 因此保留对所有 DeepSeek 模型的 max_tokens 预留，避免推理token吃满输出预算
+    // 【动态化修复】移除 DEFAULT_MAX_TOKENS 硬编码封顶，改为仅乘 1.5 倍预留 reasoning 空间
+    // 实际上限由 contextSize - inputTokens 动态约束（buildAIRequestBody 中的裁剪逻辑）
     var _modelLower = (config.model || '').toLowerCase();
     if (/deepseek/.test(_modelLower) && params.max_tokens > 0) {
         var _origMax = params.max_tokens;
         // reasoning tokens 通常占 20-40% 预算，这里预留 50% headroom
-        params.max_tokens = Math.min(Math.floor(_origMax * 1.5), DEFAULT_MAX_TOKENS);
+        // 不再用 DEFAULT_MAX_TOKENS 封顶，让上下文窗口动态决定实际可用空间
+        params.max_tokens = Math.floor(_origMax * 1.5);
         console.log('[API] DeepSeek 推理模型：max_tokens ' + _origMax + ' → ' + params.max_tokens + ' (预留 reasoning 空间)');
     }
 
@@ -7047,13 +7050,14 @@ async function callAI(messages, options = {}) {
 // Context Size 自动检测（动态，不硬编码模型列表）
 // ========================================
 
-// 用于 detectContextSize 优先级 3 的快速 fallback，避免 /models API 因 429 等限速失败后
-// 回退到过低的 8192（远低于实际模型上下文如 128K），导致上下文预算被严重压缩、过早裁剪历史。
-// 仅收录常见模型的保守下限，宁可小不可大（避免上下文超限报错）。
+// 【动态化修复】此表已降级为最后兜底（在 AI 自报、正则匹配之后才使用）
+// 原设计将 DeepSeek V4 设为 64000（实际支持 1M），导致上下文预算被严重压缩
+// 现更新为各模型的实际官方上下文窗口大小，作为静态 fallback
+// 注意：detectContextSize 的优先级已调整，AI 自报优先于此表
 var _KNOWN_MODEL_CONTEXT = {
-    // DeepSeek 系（官方上下文 64K-128K，按 64K 保守取）
-    'deepseek-v4-flash': 64000,
-    'deepseek-v4': 64000,
+    // DeepSeek 系（V4 官方支持 1M 上下文，V3 64K）
+    'deepseek-v4-flash': 1000000,
+    'deepseek-v4': 1000000,
     'deepseek-chat': 64000,
     'deepseek-r1': 64000,
     'deepseek-reasoner': 64000,
@@ -7074,9 +7078,9 @@ var _KNOWN_MODEL_CONTEXT = {
     'gpt-4o': 128000,
     'gpt-4o-mini': 128000,
     'gpt-4-turbo': 128000,
-    // Gemini 系（1M，按 128K 保守取避免触发上下文预算策略）
-    'gemini-1.5-pro': 128000,
-    'gemini-1.5-flash': 128000,
+    // Gemini 系（1M 官方支持）
+    'gemini-1.5-pro': 1000000,
+    'gemini-1.5-flash': 1000000,
     // Qwen 系（128K）
     'qwen-max': 128000,
     'qwen-plus': 128000,
@@ -7177,44 +7181,13 @@ async function detectContextSize() {
         }
     }
 
-    // 优先级3：从模型名中提取数字推断
+    // 优先级3：动态探测 + 静态 fallback
+    // 【动态化修复】调整优先级顺序：AI 自报 > 正则匹配 > 硬编码表
+    // 原设计硬编码表（3a）优先于 AI 自报（3d），导致 DeepSeek V4 被错误匹配为 64000
+    // 现在 AI 自报优先，让模型自己报告上下文窗口，完全避免硬编码限制
     var ctxSize = 0;
 
-    // 3a. 已知模型硬编码表（优先于正则，避免模型名不带数字时漏判）
-    //     如 "auto"、"glm-4-flash" 等不带上下文数字标识的模型
-    // 【NEW-006 修复】改用 includes 匹配，兼容 API 返回带前缀的模型名
-    //   如 "deepseek/deepseek-v4-flash"、"provider:gpt-4o" 等场景
-    //   精确匹配会回退到正则，可能取到错误的 32k/8192
-    if (ctxSize === 0) {
-        var _matchedKey = null;
-        for (var _k in _KNOWN_MODEL_CONTEXT) {
-            if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
-                _matchedKey = _k;
-                break;
-            }
-        }
-        if (_matchedKey) {
-            ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
-            console.log('[Context检测] 来自硬编码模型表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
-        }
-    }
-
-    // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
-    if (ctxSize === 0) {
-        var kMatch = model.match(/(\d+)k/);
-        if (kMatch) ctxSize = parseInt(kMatch[1], 10) * 1024;
-    }
-
-    // 3c. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
-    if (ctxSize === 0) {
-        var numMatch = model.match(/[-_](\d{4,})/);
-        if (numMatch) {
-            var num = parseInt(numMatch[1], 10);
-            if (num >= 2048) ctxSize = num;
-        }
-    }
-
-    // 3d. 动态询问AI自身的context size（完全动态，带 1 次重试）
+    // 3a. 动态询问AI自身的context size（最可靠，完全无硬编码，带 1 次重试）
     if (ctxSize === 0 && baseUrl && apiKey) {
         try {
             var probeMessages = [
@@ -7249,18 +7222,47 @@ async function detectContextSize() {
                 }
             }
         } catch (e) {
-            console.log('[Context检测] AI自报context失败（已重试），使用兜底值');
+            console.log('[Context检测] AI自报context失败（已重试），尝试其他方式');
         }
     }
 
-    // 兜底：默认 32K（【P1修复BUG-002】从 8192 提升到 32000）
-    // 旧值 8192 远低于现代模型实际容量（多数 64K-128K），导致智能上下文裁剪过早淘汰历史消息。
-    // 32000 是较保守的中间值，既能覆盖多数模型的实际需求，又不会因高估导致上下文超限。
-    // 【ISSUE-010 说明】contextSize 是"输入窗口"预算，与 max_tokens（输出预算）是不同参数。
-    // 兜底 32000 不影响输出预算（由预设 max_tokens 决定），两者不存在"不匹配"问题。
+    // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
     if (ctxSize === 0) {
-        ctxSize = 32000;
-        console.log('[Context检测] 所有探测均失败，使用兜底值 32000（此为输入窗口预算，不影响输出max_tokens）');
+        var kMatch = model.match(/(\d+)k/);
+        if (kMatch) ctxSize = parseInt(kMatch[1], 10) * 1024;
+    }
+
+    // 3c. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
+    if (ctxSize === 0) {
+        var numMatch = model.match(/[-_](\d{4,})/);
+        if (numMatch) {
+            var num = parseInt(numMatch[1], 10);
+            if (num >= 2048) ctxSize = num;
+        }
+    }
+
+    // 3d. 已知模型硬编码表（最后兜底，在 AI 自报和正则都失败时使用）
+    //     【动态化修复】降级为最后手段，避免硬编码值覆盖模型的实际能力
+    //     改用 includes 匹配，兼容 API 返回带前缀的模型名
+    if (ctxSize === 0) {
+        var _matchedKey = null;
+        for (var _k in _KNOWN_MODEL_CONTEXT) {
+            if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
+                _matchedKey = _k;
+                break;
+            }
+        }
+        if (_matchedKey) {
+            ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
+            console.log('[Context检测] 来自硬编码模型表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
+        }
+    }
+
+    // 兜底：使用 DEFAULT_CONTEXT_SIZE（动态化后默认 128000）
+    // 多数现代模型支持 128K+，原值 32000 严重低估导致上下文预算被压缩
+    if (ctxSize === 0) {
+        ctxSize = (typeof DEFAULT_CONTEXT_SIZE !== 'undefined') ? DEFAULT_CONTEXT_SIZE : 128000;
+        console.log('[Context检测] 所有探测均失败，使用兜底值 ' + ctxSize + '（此为输入窗口预算，不影响输出max_tokens）');
     }
 
     gameState.contextSize = ctxSize;

@@ -551,9 +551,25 @@ function getEffectiveMaxTokens() {
     try {
         var pp = PresetManager.getParams();
         var presetMax = (pp && pp.max_tokens) || 0;
-        if (presetMax > 0) effective = Math.max(effective, Math.min(presetMax, 32000));
+        if (presetMax > 0) effective = Math.max(effective, presetMax);
     } catch (e) {}
-    return Math.min(effective, 32000);
+    // 【动态化修复】移除 Math.min(effective, 32000) 硬编码上限
+    // 改为基于上下文窗口大小动态约束：最多使用上下文窗口的 60% 用于输出
+    // 留 40% 给输入（prompt + 历史消息 + 世界信息），实际裁剪在 buildAIRequestBody 中完成
+    // 这样不同模型的不同上下文窗口都能自动适配，无需硬编码
+    try {
+        var ctxSize = (typeof getContextSizeSafe === 'function') ? getContextSizeSafe() : 0;
+        if (ctxSize > 0) {
+            var dynamicCap = Math.floor(ctxSize * 0.6);
+            effective = Math.min(effective, dynamicCap);
+            console.log('[MaxTokens] 动态上限: ctx=' + ctxSize + ' → cap=' + dynamicCap + ', effective=' + effective);
+        }
+    } catch (e) {
+        // 如果无法获取上下文大小，使用 DEFAULT_MAX_TOKENS 作为兜底
+        var fallbackCap = (typeof DEFAULT_MAX_TOKENS !== 'undefined') ? DEFAULT_MAX_TOKENS : 65536;
+        effective = Math.min(effective, fallbackCap);
+    }
+    return effective;
 }
 
 // [日志功能开关] 全局读取玩家在剧情页设置的日志功能启停状态
