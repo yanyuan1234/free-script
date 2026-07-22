@@ -75,6 +75,23 @@ async function initApp() {
     // 防止重复初始化
     if (initApp._initialized) return;
     initApp._initialized = true;
+        // 【P1-1】请求持久化存储权限，防止浏览器在存储压力下清除数据
+        // persist() 在 Chrome/Edge 通常自动批准，Firefox 会提示用户
+        if (navigator.storage && navigator.storage.persist) {
+            navigator.storage.persist().then(function(persisted) {
+                if (persisted) {
+                    console.log('✅ 存储已持久化，数据不会被浏览器自动清除');
+                } else {
+                    console.warn('⚠️ 持久化存储请求未批准，数据可能在存储压力下被清除');
+                }
+            }).catch(function(e) {
+                console.warn('⚠️ persist() 请求失败:', e);
+            });
+        }
+        // 【P0-1】初始化存储配额探测（非阻塞异步）
+        if (typeof StorageMonitor !== 'undefined' && StorageMonitor.initEstimate) {
+            StorageMonitor.initEstimate();
+        }
         // 初始化统一状态层（接管全局 gameState）
         if (typeof StateManager !== 'undefined') {
             StateManager.init(typeof gameState !== 'undefined' ? gameState : null);
@@ -108,9 +125,16 @@ async function initApp() {
 
         // 导致崩溃后备份就在 localStorage 里却无法恢复。这里检查备份是否比自动存档更新
         try {
-            var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
-            if (_backupRaw) {
-                var _backupData = JSON.parse(_backupRaw);
+            // 【P0-4】优先从 IndexedDB 读取备份，回退 localStorage
+            var _backupData = null;
+            if (typeof SaveDB !== 'undefined' && SaveDB.kvGet) {
+                _backupData = await SaveDB.kvGet(Storage.KEYS.AUTO_SAVE_BACKUP);
+            }
+            if (!_backupData) {
+                var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
+                if (_backupRaw) _backupData = JSON.parse(_backupRaw);
+            }
+            if (_backupData) {
                 // 读取自动存档（slot 0）的时间戳做比较
                 var _autoSlot = await SaveDB.get(0);
                 var _autoTime = (_autoSlot && _autoSlot.time) ? _autoSlot.time : 0;

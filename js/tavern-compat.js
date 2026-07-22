@@ -1863,8 +1863,8 @@ var GameMemory = {
         /我(一定要|必须|迟早会)([一-龥]{1,8}(报仇|血债|偿命|复仇))/g
     ],
 
-    init: function() {
-        var loaded = this.loadFromStorage();
+    init: async function() {
+        var loaded = await this.loadFromStorage();
         if (!loaded) this._migrateFromOldFormat();
         if (!this._injectionSnapshots) this._injectionSnapshots = {};
         if (!this._ephemeralContexts) this._ephemeralContexts = [];
@@ -4943,8 +4943,21 @@ var GameMemory = {
             // 保存前清理 _changeLog，只保留最近20条
             if (self._changeLog && self._changeLog.length > 20) self._changeLog = self._changeLog.slice(-20);
             var data = { version: self.version, currentTurn: self.currentTurn, lastInjectionTurn: self.lastInjectionTurn, gameClock: self.gameClock, permanentFacts: self.permanentFacts, tables: self.tables, plot: self.plot, events: self.events, timeline: self.timeline, quests: self.quests, workingMemory: self.workingMemory, _shortTermEntries: self._shortTermEntries || [], _milestoneEntries: self._milestoneEntries || [], budget: self.budget, compressionConfig: self.compressionConfig, stats: self.stats, _changeLog: self._changeLog, _injectionSnapshots: self._injectionSnapshots, _summaryLayers: self._summaryLayers, _setupLayers: self._setupLayers, _dormantTracking: self._dormantTracking, _storytellingConfig: self._storytellingConfig, _worldNotes: self._worldNotes || [], savedAt: Date.now() };
-            var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
-            if (!result || result.success === false) self._handleSaveFailure(result, data);
+            // 【P0-3】优先写入 IndexedDB（突破 5MB 限制），失败时降级到 localStorage
+            if (typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
+                SaveDB.kvSet(Storage.KEYS.MEMORY, data).then(function(ok) {
+                    if (!ok) {
+                        var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
+                        if (!result || result.success === false) self._handleSaveFailure(result, data);
+                    }
+                }).catch(function(e) {
+                    var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
+                    if (!result || result.success === false) self._handleSaveFailure(result, data);
+                });
+            } else {
+                var result = Storage.setJSON(Storage.KEYS.MEMORY, data);
+                if (!result || result.success === false) self._handleSaveFailure(result, data);
+            }
         } catch(e) { self._handleSaveFailure({ error: 'serialize_error', message: e.message }, null); }
         finally { self._saving = false; if (self._pendingSave) { self._pendingSave = false; if (typeof TimerManager !== 'undefined' && TimerManager.setTimeout) { TimerManager.setTimeout('gameMemoryDeferredSave', function() { self.saveToStorage(); }, 50); } else { setTimeout(function() { self.saveToStorage(); }, 50); } } }
     },
@@ -4961,14 +4974,40 @@ var GameMemory = {
             if (this.events && this.events.length > 20) this.events = this.events.slice(-20);
             this._changeLog = [];
             var reduced = { version: this.version, currentTurn: this.currentTurn, lastInjectionTurn: this.lastInjectionTurn, gameClock: this.gameClock, permanentFacts: this.permanentFacts, tables: this.tables, plot: this.plot, events: this.events, timeline: this.timeline, quests: this.quests, workingMemory: this.workingMemory, _shortTermEntries: this._shortTermEntries || [], _milestoneEntries: this._milestoneEntries || [], _injectionSnapshots: this._injectionSnapshots, _summaryLayers: this._summaryLayers, _setupLayers: this._setupLayers, _dormantTracking: this._dormantTracking, _storytellingConfig: this._storytellingConfig, _worldNotes: this._worldNotes || [], stats: this.stats, savedAt: Date.now() };
-            var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
-            if (r2 && r2.success) {
-                console.log('[GameMemory] 降级保存成功');
-                this._saveFailureCount = 0;
+            // 【P0-3】降级保存也优先尝试 IndexedDB
+            if (typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
+                var self2 = this;
+                SaveDB.kvSet(Storage.KEYS.MEMORY, reduced).then(function(ok) {
+                    if (ok) {
+                        console.log('[GameMemory] 降级保存成功 (IndexedDB)');
+                        self2._saveFailureCount = 0;
+                    } else {
+                        var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
+                        if (r2 && r2.success) {
+                            console.log('[GameMemory] 降级保存成功 (localStorage)');
+                            self2._saveFailureCount = 0;
+                        } else if (self2._saveFailureCount >= 3 && typeof UI !== 'undefined' && UI.toast) {
+                            UI.toast('存档连续失败，请检查浏览器存储空间');
+                        }
+                    }
+                }).catch(function() {
+                    var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
+                    if (r2 && r2.success) {
+                        self2._saveFailureCount = 0;
+                    } else if (self2._saveFailureCount >= 3 && typeof UI !== 'undefined' && UI.toast) {
+                        UI.toast('存档连续失败，请检查浏览器存储空间');
+                    }
+                });
             } else {
-                console.error('[GameMemory] 降级保存仍然失败：', r2);
-                if (this._saveFailureCount >= 3 && typeof UI !== 'undefined' && UI.toast) {
-                    UI.toast('存档连续失败，请检查浏览器存储空间');
+                var r2 = Storage.setJSON(Storage.KEYS.MEMORY, reduced);
+                if (r2 && r2.success) {
+                    console.log('[GameMemory] 降级保存成功');
+                    this._saveFailureCount = 0;
+                } else {
+                    console.error('[GameMemory] 降级保存仍然失败：', r2);
+                    if (this._saveFailureCount >= 3 && typeof UI !== 'undefined' && UI.toast) {
+                        UI.toast('存档连续失败，请检查浏览器存储空间');
+                    }
                 }
             }
         } catch(e2) {
@@ -4979,9 +5018,18 @@ var GameMemory = {
         }
     },
 
-    loadFromStorage: function() {
+    loadFromStorage: async function() {
         var self = this; var data = null;
-        try { data = Storage.getJSON(Storage.KEYS.MEMORY, null); } catch(e) { data = null; }
+        // 【P0-3】优先从 IndexedDB 读取，失败时回退 localStorage
+        if (typeof SaveDB !== 'undefined' && SaveDB.kvGet) {
+            try {
+                data = await SaveDB.kvGet(Storage.KEYS.MEMORY);
+            } catch(e) { data = null; }
+        }
+        // IndexedDB 没有数据时，尝试 localStorage（可能是旧数据尚未迁移）
+        if (!data) {
+            try { data = Storage.getJSON(Storage.KEYS.MEMORY, null); } catch(e) { data = null; }
+        }
 
         // 旧代码 `if (!data || data.version !== 3) return false;` 会让 v2 数据被静默丢弃
 
@@ -5126,6 +5174,10 @@ var GameMemory = {
         this._dormantTracking = { characters: {}, items: {}, quests: {}, foreshadowings: {} };
         this._storytellingConfig = { dormantWarningThreshold: 20, dormantUrgentThreshold: 30, foreshadowWarningThreshold: 15, maxForeshadowings: 20, aiGuidanceEnabled: true };
         Storage.remove(Storage.KEYS.MEMORY); Storage.remove(Storage.KEYS.ENHANCED_MEMORY);
+        // 【P0-3】同时清除 IndexedDB 中的记忆数据
+        if (typeof SaveDB !== 'undefined' && SaveDB.kvRemove) {
+            SaveDB.kvRemove(Storage.KEYS.MEMORY).catch(function(){});
+        }
 
         this._cachedInjection = null;
         this._cachedInjectionTurn = -1;
@@ -6755,16 +6807,31 @@ window.MemoryManagerUI = MemoryManagerUI;
         try {
             const d = {};
             this.global.forEach((v, k) => d[k] = v);
+            // 【P0-5】优先写入 IndexedDB，同时写 localStorage 作为快速缓存
+            if (typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
+                SaveDB.kvSet(Storage.KEYS.GLOBAL_VARS, d).catch(function(){});
+            }
             Storage.setJSON(Storage.KEYS.GLOBAL_VARS, d);
             } catch (e) {
 
                 console.warn('[VariableStore] 全局变量持久化失败:', e && e.message);
             }
-        },
+    },
     loadGlobal() {
         try {
             const d = Storage.getJSON(Storage.KEYS.GLOBAL_VARS, {});
             Object.entries(d).forEach(([k, v]) => this.global.set(k, v));
+            // 【P0-5】异步从 IndexedDB 加载更新版本
+            if (typeof SaveDB !== 'undefined' && SaveDB.kvGet) {
+                var self = this;
+                SaveDB.kvGet(Storage.KEYS.GLOBAL_VARS).then(function(idbData) {
+                    if (idbData && typeof idbData === 'object') {
+                        // 清除旧数据，用 IndexedDB 的数据替换
+                        self.global.clear();
+                        Object.entries(idbData).forEach(([k, v]) => self.global.set(k, v));
+                    }
+                }).catch(function(){});
+            }
             } catch (e) {
 
                 console.warn('[VariableStore] 全局变量加载失败:', e && e.message);

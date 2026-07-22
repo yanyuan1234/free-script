@@ -260,6 +260,15 @@ var PresetManager = {
             if (this.presets.length !== arr.length) {
                 this.save();
             }
+            // 【P0-5】异步从 IndexedDB 加载更新版本（如果有）
+            if (typeof SaveDB !== 'undefined' && SaveDB.kvGet) {
+                var self = this;
+                SaveDB.kvGet(Storage.KEYS.API_PRESETS).then(function(idbData) {
+                    if (idbData && Array.isArray(idbData) && idbData.length > 0) {
+                        self.presets = idbData.filter(function(p) { return p && !(p._isBuiltin && !p.builtinId); });
+                    }
+                }).catch(function(){});
+            }
         } catch(e) {
             console.error('[APIPresetManager] 读取apiPresets失败:', e);
             this.presets = [];
@@ -268,6 +277,10 @@ var PresetManager = {
 
     // 保存预设列表
     save: function() {
+        // 【P0-5】优先写入 IndexedDB，同时写 localStorage 作为快速缓存
+        if (typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
+            SaveDB.kvSet(Storage.KEYS.API_PRESETS, this.presets).catch(function(){});
+        }
         Storage.setJSON(Storage.KEYS.API_PRESETS, this.presets);
         },
 

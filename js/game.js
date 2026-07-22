@@ -5403,8 +5403,14 @@ async function loadFromSlot(slot) {
 
         if (slot === '__autoSaveBackup__') {
             try {
-                var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
-                if (_backupRaw) data = JSON.parse(_backupRaw);
+                // 【P0-4】优先从 IndexedDB 读取备份，回退 localStorage
+                if (typeof SaveDB !== 'undefined' && SaveDB.kvGet) {
+                    data = await SaveDB.kvGet(Storage.KEYS.AUTO_SAVE_BACKUP);
+                }
+                if (!data) {
+                    var _backupRaw = Storage.get(Storage.KEYS.AUTO_SAVE_BACKUP);
+                    if (_backupRaw) data = JSON.parse(_backupRaw);
+                }
             } catch (e) {
                 console.warn('[loadFromSlot] 读取崩溃备份失败:', e);
             }

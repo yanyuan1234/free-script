@@ -451,21 +451,22 @@ function safeSetItem(key, value) {
         if (capacity.percentage > 90) {
             Logger.warn('localStorage接近满载:', capacity.percentage.toFixed(1) + '%');
         }
-    if (capacity.used + dataSize > capacity.total) {
-        return { success: false, error: 'quota_exceeded', message: '存储空间不足', required: dataSize, available: capacity.total - capacity.used };
-    }
-localStorage.setItem(key, value);
+        // 【P0修复】移除写入前阻断逻辑：容量估算只是近似值，
+        // 提前拒绝会导致误报"存储空间不足"。改为直接尝试写入，
+        // 仅在浏览器实际抛出 QuotaExceededError 时才报告失败。
+        // 这样配合 IndexedDB 迁移后，localStorage 不应再接近上限。
+        localStorage.setItem(key, value);
 
-if (typeof StorageMonitor !== 'undefined') StorageMonitor.invalidateCache();
-return { success: true, used: dataSize };
-} catch(e) {
-if (e.name === 'QuotaExceededError' || e.code === 22) {
-    Logger.error('localStorage存储已满:', key);
-    return { success: false, error: 'quota_exceeded', message: '存储配额已超', key: key };
-}
-Logger.error('localStorage写入失败:', e.message);
-return { success: false, error: 'write_error', message: e.message, key: key };
-}
+        if (typeof StorageMonitor !== 'undefined') StorageMonitor.invalidateCache();
+        return { success: true, used: dataSize };
+    } catch(e) {
+        if (e.name === 'QuotaExceededError' || e.code === 22) {
+            Logger.error('localStorage存储已满:', key);
+            return { success: false, error: 'quota_exceeded', message: '存储配额已超', key: key };
+        }
+        Logger.error('localStorage写入失败:', e.message);
+        return { success: false, error: 'write_error', message: e.message, key: key };
+    }
 }
 
 
@@ -536,6 +537,37 @@ const StorageMonitor = {
     _capacityCache: null,
     _capacityCacheTime: 0,
     _CAPACITY_CACHE_TTL: 30000, // 30秒缓存
+    // navigator.storage.estimate() 异步结果缓存
+    _estimatedQuota: null,
+    _estimateInProgress: false,
+
+    // 后台异步获取浏览器存储配额（不阻塞主线程）
+    // 使用 navigator.storage.estimate() 替代侵入式二分探测
+    // estimate() 返回 { quota, usage }，quota 是浏览器分配给当前 origin 的总配额
+    // 注意：localStorage 有独立的 5MB 硬限制，即使 estimate() 返回更大的 quota
+    // 这里用 estimate().quota 作为上限参考，但实际 localStorage 容量仍受 5MB 限制
+    async _refreshEstimate() {
+        if (this._estimateInProgress) return;
+        this._estimateInProgress = true;
+        try {
+            if (navigator.storage && navigator.storage.estimate) {
+                var est = await navigator.storage.estimate();
+                // localStorage 硬限制为 5-10MB，即使 estimate 返回更大值
+                // 取 estimate().quota 和 MAX_LIMIT 的较小值作为总容量
+                this._estimatedQuota = Math.min(est.quota || this.DEFAULT_LIMIT, this.MAX_LIMIT);
+            }
+        } catch(e) {
+            // estimate() 不可用时保持默认值
+        } finally {
+            this._estimateInProgress = false;
+        }
+    },
+
+    // 触发后台配额探测（非阻塞，可在启动时调用）
+    initEstimate() {
+        this._refreshEstimate();
+    },
+
     getUsedSpace() {
         let used = 0;
         try {
@@ -545,56 +577,70 @@ const StorageMonitor = {
                     const value = localStorage.getItem(key);
                     used += (key.length + (value ? value.length : 0)) * 2;
                 }
+            }
+        } catch(e) {
+            Logger.error('计算localStorage使用量失败:', e.message);
         }
-} catch(e) {
-Logger.error('计算localStorage使用量失败:', e.message);
-}
-return used;
-},
+        return used;
+    },
 
-checkCapacity() {
-
-    const now = Date.now();
-    if (this._capacityCache && (now - this._capacityCacheTime < this._CAPACITY_CACHE_TTL)) {
+    checkCapacity() {
+        const now = Date.now();
+        if (this._capacityCache && (now - this._capacityCacheTime < this._CAPACITY_CACHE_TTL)) {
+            return this._capacityCache;
+        }
+        const used = this.getUsedSpace();
+        // 使用 navigator.storage.estimate() 的缓存值，如果还没有则用默认值
+        // 并在后台异步刷新配额信息
+        var total = this._estimatedQuota || this.DEFAULT_LIMIT;
+        if (!this._estimatedQuota) {
+            this._refreshEstimate(); // 后台异步获取，不阻塞
+        }
+        this._capacityCache = { used: used, total: total, percentage: (used / total) * 100 };
+        this._capacityCacheTime = now;
         return this._capacityCache;
+    },
+
+    invalidateCache() {
+        this._capacityCache = null;
+        this._capacityCacheTime = 0;
     }
-    const used = this.getUsedSpace();
-    const total = this._estimateTotalSpace();
-    this._capacityCache = { used: used, total: total, percentage: (used / total) * 100 };
-    this._capacityCacheTime = now;
-    return this._capacityCache;
-},
-
-invalidateCache() {
-    this._capacityCache = null;
-    this._capacityCacheTime = 0;
-},
-
-_estimateTotalSpace() {
-    const testKey = '__storage_test_' + Date.now();
-    const testValue = 'x';
-    try {
-        let low = this.DEFAULT_LIMIT;
-        let high = this.MAX_LIMIT;
-        let mid;
-        while (low < high - 1024) {
-            mid = Math.floor((low + high) / 2);
-            try {
-                localStorage.setItem(testKey, testValue.repeat(mid / 2));
-                localStorage.removeItem(testKey);
-                low = mid;
-            } catch(e) {
-            high = mid;
-        }
-}
-return low;
-} catch(e) {
-return this.DEFAULT_LIMIT;
-} finally {
-try { localStorage.removeItem(testKey); } catch(e) {}
-}
-}
 };
+
+// ========================================
+// 【P1-3】数据压缩工具 - 使用浏览器原生 CompressionStream API
+// gzip 压缩，可将 JSON 数据压缩 60-80%
+// 兼容性：Chrome 80+, Firefox 113+, Safari 16.4+
+// ========================================
+async function compressData(data) {
+    try {
+        var json = JSON.stringify(data);
+        // 小于 1KB 的数据不压缩（压缩开销大于收益）
+        if (json.length < 1024) return data;
+        if (typeof CompressionStream === 'undefined') return data;
+        var stream = new Blob([json]).stream().pipeThrough(new CompressionStream('gzip'));
+        var compressed = await new Response(stream).arrayBuffer();
+        // 返回带标记的压缩对象，IndexedDB 可直接存储 ArrayBuffer
+        return { __compressed: true, __format: 'gzip', data: compressed };
+    } catch(e) {
+        // 压缩失败返回原始数据
+        return data;
+    }
+}
+
+async function decompressData(stored) {
+    if (!stored || typeof stored !== 'object') return stored;
+    if (!stored.__compressed) return stored;
+    try {
+        if (typeof DecompressionStream === 'undefined') return null;
+        var stream = new Blob([stored.data]).stream().pipeThrough(new DecompressionStream(stored.__format || 'gzip'));
+        var decompressed = await new Response(stream).text();
+        return JSON.parse(decompressed);
+    } catch(e) {
+        console.warn('[decompressData] 解压失败:', e);
+        return null;
+    }
+}
 
 
 // init.js:13-30 已有功能更完整的版本（含 IMG/LINK/SCRIPT 资源错误过滤 + UI.toast + capture 阶段），

@@ -118,6 +118,21 @@ var WorldInfo = {
             console.error('[WorldInfoManager] 读取worldInfo失败:', e);
             data = {};
             }
+        // 先用 localStorage 数据同步加载（保证即时可用）
+        this._applyLoadedData(data);
+        // 【P0-5】异步从 IndexedDB 加载更新版本（如果有）
+        if (typeof SaveDB !== 'undefined' && SaveDB.kvGet) {
+            var self = this;
+            SaveDB.kvGet(Storage.KEYS.WORLD_INFO).then(function(idbData) {
+                if (idbData && idbData.books) {
+                    self._applyLoadedData(idbData);
+                }
+            }).catch(function(){});
+        }
+    },
+
+    // 【P0-5】数据加载内部方法（供 load 和 IndexedDB 异步加载共用）
+    _applyLoadedData: function(data) {
         try {
             if (data.books && Array.isArray(data.books)) {
                 // 新格式
@@ -168,10 +183,15 @@ var WorldInfo = {
 
     // 保存到localStorage
     save: function() {
-        Storage.setJSON(Storage.KEYS.WORLD_INFO, {
+        var saveData = {
             books: this.books,
             settings: this.settings
-        });
+        };
+        // 【P0-5】优先写入 IndexedDB，同时写 localStorage 作为快速缓存
+        if (typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
+            SaveDB.kvSet(Storage.KEYS.WORLD_INFO, saveData).catch(function(){});
+        }
+        Storage.setJSON(Storage.KEYS.WORLD_INFO, saveData);
 
         // 导致缓存可能命中过期数据（game.js 的缓存逻辑会检查 _wiCachedTurn === currentTurn）
         if (typeof gameState !== 'undefined' && gameState) {

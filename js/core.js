@@ -1789,8 +1789,9 @@ var LocalGameAPI = {
 // ========================================
 var SaveDB = {
     DB_NAME: 'BunnyGameDB',
-    DB_VERSION: 2,
+    DB_VERSION: 3,
     STORE_NAME: 'saves',
+    KV_STORE_NAME: 'kv',
     _db: null,
     _ready: false,
     _useFallback: false,
@@ -1807,8 +1808,14 @@ var SaveDB = {
                 }, 3000);
                 req.onupgradeneeded = function(e) {
                     var db = e.target.result;
+                    // 存档 store
                     if (!db.objectStoreNames.contains('saves')) {
                         db.createObjectStore('saves');
+                    }
+                    // 【P0-2】通用 KV store：用于存储 GameMemory、预设、世界书等大块数据
+                    // 替代 localStorage，突破 5MB 限制
+                    if (!db.objectStoreNames.contains('kv')) {
+                        db.createObjectStore('kv');
                     }
                 };
                 req.onsuccess = function(e) {
@@ -1821,7 +1828,7 @@ var SaveDB = {
                 };
             });
             this._ready = true;
-            console.log('✅ IndexedDB 就绪');
+            console.log('✅ IndexedDB 就绪 (v' + this.DB_VERSION + ', saves+kv)');
         } catch (e) {
             console.warn('⚠️ IndexedDB 不可用，回退 localStorage:', e);
             this._useFallback = true;
@@ -2096,6 +2103,23 @@ var SaveDB = {
             console.warn('[SaveDB.migrate] localStorage→IndexedDB 迁移失败，已跳过', migrated, '个存档:', e.message);
         }
         Storage.set(Storage.KEYS.IDB_MIGRATED, '1');
+        // 【P0-5】迁移大块数据从 localStorage 到 IndexedDB KV store
+        // 这些数据之前占用大量 localStorage 空间，是"存储空间不足"的主要原因
+        var kvKeys = [
+            Storage.KEYS.MEMORY,
+            Storage.KEYS.API_PRESETS,
+            Storage.KEYS.WORLD_INFO,
+            Storage.KEYS.GLOBAL_VARS
+        ];
+        for (var i = 0; i < kvKeys.length; i++) {
+            try {
+                await this.kvMigrateFromLocalStorage(kvKeys[i]);
+            } catch(e) {
+                console.warn('[SaveDB.migrate] KV 迁移失败:', kvKeys[i], e);
+            }
+        }
+        // 【P1-2】清理旧的 _perfLog localStorage 数据
+        try { localStorage.removeItem('_perfLog'); } catch(e) {}
     },
     // ── 备份与校验工具 ──
     // [优化#7] 保留旧方法兼容外部调用，实际备份已改为多版本
@@ -2204,6 +2228,130 @@ var SaveDB = {
                 }
             }
         }
+    },
+    // ========================================
+    // 【P0-2】通用 KV 存储接口
+    // 用于替代 localStorage 存储大块数据（GameMemory、预设、世界书等）
+    // 突破 localStorage 5MB 限制，利用 IndexedDB 数百MB-GB级容量
+    // ========================================
+    async kvGet(key) {
+        await this.init();
+        if (this._useFallback) {
+            // fallback：从 localStorage 读取
+            try {
+                var raw = localStorage.getItem(key);
+                return raw ? JSON.parse(raw) : null;
+            } catch(e) { return null; }
+        }
+        try {
+            var result = await new Promise(function(resolve, reject) {
+                var tx = SaveDB._db.transaction('kv', 'readonly');
+                var req = tx.objectStore('kv').get(key);
+                req.onsuccess = function() { resolve(req.result || null); };
+                req.onerror = function() { reject(req.error || new Error('KV get error')); };
+                tx.onerror = function() { reject(tx.error || new Error('KV get tx error')); };
+                tx.onabort = function() { reject(new Error('KV get tx aborted')); };
+            });
+            // 【P1-3】自动解压压缩数据
+            if (result && typeof decompressData === 'function') {
+                return await decompressData(result);
+            }
+            return result;
+        } catch(e) {
+            console.warn('[SaveDB.kvGet] 读取失败，尝试 localStorage fallback:', key, e);
+            try {
+                var raw2 = localStorage.getItem(key);
+                return raw2 ? JSON.parse(raw2) : null;
+            } catch(e2) { return null; }
+        }
+    },
+    async kvSet(key, value) {
+        await this.init();
+        // 【P1-3】写入前压缩大块数据（保存原始值用于 localStorage fallback）
+        var originalValue = value;
+        if (value !== null && value !== undefined && typeof compressData === 'function') {
+            try {
+                value = await compressData(value);
+            } catch(e) { /* 压缩失败用原始数据 */ }
+        }
+        if (this._useFallback) {
+            // fallback：写入 localStorage（用原始未压缩数据）
+            try {
+                localStorage.setItem(key, JSON.stringify(originalValue));
+                return true;
+            } catch(e) {
+                console.warn('[SaveDB.kvSet] localStorage fallback 写入失败:', key, e);
+                return false;
+            }
+        }
+        try {
+            await new Promise(function(resolve, reject) {
+                var tx = SaveDB._db.transaction('kv', 'readwrite');
+                var store = tx.objectStore('kv');
+                if (value === null || value === undefined) store.delete(key);
+                else store.put(value, key);
+                tx.oncomplete = function() { resolve(); };
+                tx.onerror = function() {
+                    var err = tx.error;
+                    if (!(err instanceof Error)) err = new Error('KV set error (key=' + key + ')');
+                    reject(err);
+                };
+                tx.onabort = function() {
+                    var err = tx.error;
+                    if (!(err instanceof Error)) err = new Error('KV set aborted (key=' + key + ')');
+                    reject(err);
+                };
+            });
+            return true;
+        } catch(e) {
+            console.warn('[SaveDB.kvSet] IndexedDB 写入失败，尝试 localStorage fallback:', key, e);
+            try {
+                localStorage.setItem(key, JSON.stringify(originalValue));
+                return true;
+            } catch(e2) {
+                console.error('[SaveDB.kvSet] localStorage fallback 也失败:', key, e2);
+                return false;
+            }
+        }
+    },
+    async kvRemove(key) {
+        await this.init();
+        if (this._useFallback) {
+            try { localStorage.removeItem(key); } catch(e) {}
+            return;
+        }
+        try {
+            await new Promise(function(resolve, reject) {
+                var tx = SaveDB._db.transaction('kv', 'readwrite');
+                tx.objectStore('kv').delete(key);
+                tx.oncomplete = function() { resolve(); };
+                tx.onerror = function() { reject(tx.error || new Error('KV remove error')); };
+                tx.onabort = function() { reject(new Error('KV remove aborted')); };
+            });
+        } catch(e) {
+            try { localStorage.removeItem(key); } catch(e2) {}
+        }
+    },
+    // 从 localStorage 迁移数据到 IndexedDB KV store
+    // 启动时自动调用，迁移成功后清除 localStorage 中的数据
+    async kvMigrateFromLocalStorage(key) {
+        if (this._useFallback) return false;
+        try {
+            var raw = localStorage.getItem(key);
+            if (raw === null) return false;
+            var data = JSON.parse(raw);
+            // 写入 IndexedDB
+            var ok = await this.kvSet(key, data);
+            if (ok) {
+                // 迁移成功，清除 localStorage 中的大块数据
+                localStorage.removeItem(key);
+                console.log('[SaveDB] KV 迁移成功:', key, '(' + (raw.length * 2 / 1024).toFixed(1) + 'KB)');
+                return true;
+            }
+        } catch(e) {
+            console.warn('[SaveDB] KV 迁移失败:', key, e);
+        }
+        return false;
     }
 };
 // ========================================
@@ -3122,14 +3270,10 @@ window._logPerf = function(op, ms, extra) {
     window._perfLog.push(entry);
     // 只保留最近 100 条
     if (window._perfLog.length > 100) window._perfLog.shift();
-    // 慢操作（>100ms）立即写入 localStorage
+    // 【P1-2】移除 localStorage 写入：性能日志不应占用 localStorage 空间
+    // 慢操作仅记录在内存缓冲区中，可通过 console 查看
     if (ms > 100) {
-        try {
-            var existing = JSON.parse(localStorage.getItem('_perfLog') || '[]');
-            existing.push(entry);
-            if (existing.length > 50) existing = existing.slice(-50);
-            localStorage.setItem('_perfLog', JSON.stringify(existing));
-        } catch(e) {}
+        console.warn('[perf] 慢操作:', op, ms + 'ms', extra || '');
     }
 };
 
@@ -5190,7 +5334,20 @@ function sanitizeHtml(html) {
 GlobalCleanup.registerListener(window, 'beforeunload', function() {
     try {
         var data = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('') : null;
-        Storage.setJSON(Storage.KEYS.AUTO_SAVE_BACKUP, data);
+        // 【P0-4】优先写入 IndexedDB（突破 5MB 限制），beforeunload 中 fire-and-forget
+        // 现代浏览器通常允许 IDB 写入在页面卸载期间完成
+        if (data && typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
+            SaveDB.kvSet(Storage.KEYS.AUTO_SAVE_BACKUP, data).catch(function(){});
+        }
+        // 同时写入 localStorage 作为双保险（仅在数据不太大时）
+        if (data) {
+            try {
+                var dataStr = JSON.stringify(data);
+                if (dataStr.length < 2 * 1024 * 1024) { // < 2MB 才写 localStorage
+                    Storage.setJSON(Storage.KEYS.AUTO_SAVE_BACKUP, data);
+                }
+            } catch(lsErr) { /* localStorage 写入失败忽略，IDB 已有数据 */ }
+        }
     } catch(e) { console.warn('beforeunload save failed:', e); }
 try {
     if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.saveToStorage) {
