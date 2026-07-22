@@ -5612,6 +5612,10 @@ function bindEvents() {
     GlobalCleanup.registerListener(document, 'click', function(e) {
         var target = e.target.closest('[data-close]');
         if (target) {
+            // 【修复】关闭设置弹窗前自动保存，确保所有修改持久化
+            if (target.dataset.close === 'settingsModal' && typeof saveGameSettings === 'function') {
+                saveGameSettings();
+            }
             UI.hideModal(target.dataset.close);
         }
     });
@@ -5909,16 +5913,30 @@ function bindEvents() {
         if (d) {
             d.style.display = this.value === 'custom' ? 'block' : 'none';
         }
+        // 【修复】长度预设改变后自动保存
+        saveGameSettings();
     });
+
+    // 【修复】字数控制所有下拉框/复选框改变后自动保存
+    ['wcEnabled', 'wcParagraphStyle', 'wcPerspective', 'wcUserPronoun',
+     'wcTakeover', 'wcNarrate', 'wcPacing', 'wcMin', 'wcMax',
+     'wcParaMin', 'wcParaMax'].forEach(function(id) {
+        bindEvent(id, 'change', function() { saveGameSettings(); });
+    });
+
+    // 【修复】剧情长度改变后自动保存
+    bindEvent('settingStoryLength', 'change', function() { saveGameSettings(); });
 
     // 文风选择
     bindEvent('settingWritingStyle', 'change', function() {
         StateManager.set('settings.writingStyle', this.value, { silent: true });
+        saveGameSettings();
     });
 
     // 思维链模式
     bindEvent('settingCotMode', 'change', function() {
         StateManager.set('settings.cotMode', this.value, { silent: true });
+        saveGameSettings();
     });
 
     // 思维链自动展开
@@ -5928,11 +5946,21 @@ function bindEvents() {
         if (typeof gameState !== 'undefined' && gameState) {
             gameState.cotAutoExpand = (this.value === 'true');
         }
+        saveGameSettings();
     });
 
     // 写作节奏
     bindEvent('settingChapterMode', 'change', function() {
         StateManager.set('settings.chapterMode', this.value, { silent: true });
+        saveGameSettings();
+    });
+
+    // 【修复】摘要阈值改变后自动保存
+    bindEvent('summaryThreshold', 'change', function() { saveGameSettings(); });
+
+    // 【新增】恢复默认设置按钮
+    bindEvent('btnResetSettings', 'click', function() {
+        if (typeof resetGameSettings === 'function') resetGameSettings();
     });
 }
 function startNewGame(forgeResult) {
@@ -7685,6 +7713,82 @@ function saveGameSettings() {
     }
     // 保存成功提示
     if (typeof UI !== 'undefined' && UI.toast) UI.toast('设置已保存');
+}
+
+// 【新增】恢复默认设置
+function resetGameSettings() {
+    if (typeof UI !== 'undefined' && UI.confirm) {
+        // 异步 confirm
+        UI.confirm('恢复默认设置', '确定要将所有设置恢复为默认值吗？').then(function(ok) {
+            if (!ok) return;
+            _doResetSettings();
+        });
+    } else {
+        if (!confirm('确定要将所有设置恢复为默认值吗？')) return;
+        _doResetSettings();
+    }
+}
+function _doResetSettings() {
+    // 清除已保存的设置
+    try { Storage.remove(Storage.KEYS.SETTINGS); } catch(e) {}
+    // 重置 StateManager 中的设置项
+    var _defaultWc = {
+        enabled: true, min: 1500, max: 3000,
+        paragraphMin: 15, paragraphMax: 17,
+        paragraphStyle: 'medium',
+        perspective: 'third_person_limited',
+        userPronoun: 'second_person',
+        takeover: 'closed', narrate: 'closed', pacing: 'steady'
+    };
+    if (typeof StateManager !== 'undefined' && StateManager.set) {
+        StateManager.set('settings.wordCountConfig', _defaultWc, { silent: true });
+        StateManager.set('settings.fontSize', 16, { silent: true });
+        StateManager.set('settings.autoCompress', true, { silent: true });
+        StateManager.set('settings.summaryThreshold', 6, { silent: true });
+        StateManager.set('settings.maxTokens', 0, { silent: true });
+        StateManager.set('settings.writingStyle', '', { silent: true });
+        StateManager.set('settings.cotMode', '', { silent: true });
+        StateManager.set('settings.cotAutoExpand', false, { silent: true });
+        StateManager.set('settings.chapterMode', '', { silent: true });
+    }
+    // 重置 gameState
+    if (typeof gameState !== 'undefined') {
+        gameState.wordCountConfig = Object.assign({}, _defaultWc);
+        gameState.autoCompress = true;
+        gameState.summaryThreshold = 6;
+        gameState.writingStyle = '';
+        gameState.cotMode = '';
+        gameState.cotAutoExpand = false;
+        gameState.chapterMode = '';
+    }
+    // 重置压缩阈值
+    if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) {
+        EnhancedMemory.compressionConfig.triggerThreshold = 0.92;
+    }
+    // 同步到 UI
+    _syncWordCountConfigToUI(_defaultWc);
+    _syncSettingsToUI({
+        writingStyle: '', cotMode: '', cotAutoExpand: false,
+        chapterMode: '', autoCompress: true, summaryThreshold: 6,
+        compressThreshold: 0.92, narrativeEyes: 'first',
+        presetArchetype: 'standard'
+    });
+    // 重置字体大小按钮
+    document.querySelectorAll('[data-fontsize]').forEach(function(b) { b.classList.remove('active'); });
+    var _medBtn = document.querySelector('[data-fontsize="medium"]');
+    if (_medBtn) _medBtn.classList.add('active');
+    // 重置剧情长度
+    var _lenEl = document.getElementById('settingStoryLength');
+    if (_lenEl) _lenEl.value = 4096;
+    // 重置压缩阈值下拉框
+    var _ctEl = document.getElementById('compressThreshold');
+    if (_ctEl) _ctEl.value = '0.92';
+    var _stEl = document.getElementById('summaryThreshold');
+    if (_stEl) _stEl.value = '6';
+    // 保存默认值
+    saveGameSettings();
+    applyFontSize();
+    if (typeof UI !== 'undefined' && UI.toast) UI.toast('已恢复默认设置');
 }
 (function() {
     if (!document.getElementById('importFileInput')) {
