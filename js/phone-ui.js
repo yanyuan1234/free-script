@@ -5786,10 +5786,25 @@ function bindEvents() {
             target.classList.toggle('collapsed');
             return;
         }
-        // .setting-header 设置面板折叠
-        if (target.matches('.setting-header')) {
-            var section = target.closest('.setting-section');
-            if (section) section.classList.toggle('collapsed');
+        // .setting-header 设置面板折叠/展开
+        // 【修复】用 closest 替代 matches，确保点击标题文字/箭头图标也能触发
+        // 【修复】选择器从 .setting-section 改为 .setting-group（与 HTML 实际类名一致）
+        // 【修复】直接切换 .setting-body 的 display 样式，而非依赖 CSS class（因内联 style 优先级最高）
+        var settingHeader = target.closest('.setting-header');
+        if (settingHeader) {
+            var group = settingHeader.closest('.setting-group');
+            if (group) {
+                var body = group.querySelector('.setting-body');
+                if (body) {
+                    var isHidden = body.style.display === 'none' || !body.style.display;
+                    body.style.display = isHidden ? '' : 'none';
+                    // 旋转箭头图标
+                    var icon = settingHeader.querySelector('.toggle-icon');
+                    if (icon) {
+                        icon.style.transform = isHidden ? 'rotate(180deg)' : '';
+                    }
+                }
+            }
             return;
         }
         // .memory-tab 记忆面板标签切换
