@@ -5849,8 +5849,11 @@ function bindEvents() {
         // .archetype-card 原型卡片选择
         if (target.matches('.archetype-card') || target.closest('.archetype-card')) {
             var card = target.matches('.archetype-card') ? target : target.closest('.archetype-card');
-            if (typeof MemoryManagerUI !== 'undefined') {
-                MemoryManagerUI.selectArchetype(card.dataset.archetype);
+            // 【修复】MemoryManagerUI 没有 selectArchetype 方法，应调用 applyArchetype
+            if (typeof applyArchetype === 'function') {
+                applyArchetype(card.dataset.archetype);
+            } else if (typeof _applyUnifiedPreset === 'function') {
+                _applyUnifiedPreset(card.dataset.archetype, { setArchetype: true });
             }
             return;
         }
@@ -7717,14 +7720,16 @@ function saveGameSettings() {
 
     // _syncLegacyMirror 维护 gameState 旧字段镜像，但权威源是 StateManager
     var _sm = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get.bind(StateManager) : function() { return null; };
+    // 【修复】优先从 gameState（顶层）读取运行时可能被修改的字段，避免 StateManager settings 路径的过期值
+    var _gs = (typeof gameState !== 'undefined' && gameState) ? gameState : {};
     var _saveResult = Storage.setJSON(Storage.KEYS.SETTINGS, {
-        useStream: _sm('settings.useStream') !== null ? _sm('settings.useStream') : true,
+        useStream: _gs.useStream !== undefined ? _gs.useStream : (_sm('settings.useStream') !== null ? _sm('settings.useStream') : true),
         fontSize: _sm('settings.fontSize') !== null ? _sm('settings.fontSize') : 16,
         wordCountConfig: _sm('settings.wordCountConfig') || {},
         autoCompress: _sm('settings.autoCompress') !== null ? _sm('settings.autoCompress') : true,
         summaryThreshold: _sm('settings.summaryThreshold') !== null ? _sm('settings.summaryThreshold') : 6,
         generateChoices: _sm('settings.generateChoices') !== null ? _sm('settings.generateChoices') : true,
-        maxTokens: _sm('settings.maxTokens') || 0,
+        maxTokens: _gs.maxTokens || _sm('settings.maxTokens') || 0,
 
         compressThreshold: (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.compressionConfig) ? EnhancedMemory.compressionConfig.triggerThreshold : 0.92,
         defaultParams: defaultParams,
@@ -7733,10 +7738,9 @@ function saveGameSettings() {
         cotMode: _sm('settings.cotMode') || '',
         cotAutoExpand: _sm('settings.cotAutoExpand') === true,
         // === 酒馆预设融合 v2 ===
-        chapterMode: _sm('settings.chapterMode') || '',
-        narrativeEyes: _sm('settings.narrativeEyes') || 'first',
+        narrativeEyes: _gs.narrativeEyes || _sm('settings.narrativeEyes') || 'first',
 
-        presetArchetype: _sm('settings.presetArchetype') || 'standard'
+        presetArchetype: _gs.presetArchetype || _sm('settings.presetArchetype') || 'standard'
     });
     applyFontSize();
 

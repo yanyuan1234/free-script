@@ -4740,7 +4740,7 @@ function _syncPresetWordCountToUI(config) {
     if (!config) return;
     // 确保 gameState.wordCountConfig 已初始化
     if (!gameState.wordCountConfig) {
-        gameState.wordCountConfig = { enabled: true, min: 1500, max: 3000, paragraphMin: 15, paragraphMax: 17, paragraphStyle: 'medium', lengthPreset: 'medium' };
+        gameState.wordCountConfig = { enabled: true, min: 1500, max: 3000, paragraphMin: 15, paragraphMax: 17, paragraphStyle: 'medium', lengthPreset: 'medium', perspective: 'third_person_limited', userPronoun: 'third_person' };
     }
     // 更新 gameState：按判断条件分组循环（保持与原逻辑完全等价）
     // 用 != null 判断的字段（null/undefined 都跳过）
@@ -5952,11 +5952,15 @@ function buildAIRequestBody(messages, options, config) {
     }
 
     // 基础参数（兼容模式只发这些）
+    // 【修复】max_tokens 优先使用 getEffectiveMaxTokens() 的自动计算值（基于 wcMax），
+    // 仅当自动计算值无效时才回退到预设值
+    var _effectiveMaxTokens = (typeof getEffectiveMaxTokens === 'function') ? getEffectiveMaxTokens() : 0;
+    var _apiMaxTokens = _effectiveMaxTokens > 0 ? _effectiveMaxTokens : (presetParams.max_tokens || 4096);
     var params = {
         model: config.model || '',
         messages: messages,
         temperature: presetParams.temperature,
-        max_tokens: presetParams.max_tokens,
+        max_tokens: _apiMaxTokens,
         top_p: presetParams.top_p
     };
 
@@ -7542,9 +7546,14 @@ async function initializeGame() {
         if (!_smPlayerName && _mcName) _smPlayerName = _mcName;
         if (!_smPlayer.name && _smPlayerName) _smPlayer.name = _smPlayerName;
         // 从主角设定中补全身份等信息
+        // 【修复】补全 personality/gender/appearance/ability 字段，之前遗漏导致个人页基本信息为空
         if (gameState.protagonistSetup) {
             if (!_smPlayer.identity && gameState.protagonistSetup.mcIdentity) _smPlayer.identity = gameState.protagonistSetup.mcIdentity;
             if (!_smPlayer.age && gameState.protagonistSetup.mcAge) _smPlayer.age = gameState.protagonistSetup.mcAge;
+            if (!_smPlayer.personality && gameState.protagonistSetup.mcPersonality) _smPlayer.personality = gameState.protagonistSetup.mcPersonality;
+            if (!_smPlayer.gender && gameState.protagonistSetup.mcGender) _smPlayer.gender = gameState.protagonistSetup.mcGender;
+            if (!_smPlayer.appearance && gameState.protagonistSetup.mcAppearance) _smPlayer.appearance = gameState.protagonistSetup.mcAppearance;
+            if (!_smPlayer.ability && gameState.protagonistSetup.mcAbility) _smPlayer.ability = gameState.protagonistSetup.mcAbility;
         }
         if (typeof StateManager !== 'undefined' && StateManager.set) {
             // 【ISSUE-009 修复】world.* 域强制只读，需显式 allowReadOnly 才能写入

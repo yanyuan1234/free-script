@@ -162,7 +162,7 @@ function _flushFinalChunk(requestId, ctx) {
         ctx.lastDelta = '';
         ctx.lastReasoningDelta = '';
     }
-    _pendingChunkMsg = null;
+    // 【已移除】_pendingChunkMsg = null; — 该变量在 BUG-006 重构后已不存在
 }
 
 // 执行流式请求（Worker 内的主循环）

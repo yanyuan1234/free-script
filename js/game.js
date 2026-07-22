@@ -785,7 +785,7 @@ function _buildFormatRules(gs, _t, turn) {
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
         + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请写入 thinking 字段（如果 API 支持 reasoning_content 则写入 reasoning_content，否则写入 JSON 的 thinking 字段），不要写入 story。**\n'
         + '\n**thinking 字段规则：在 story 之前先输出 thinking 字段，写明你本回合的思考过程——分析用户选择、规划剧情走向、决定NPC反应、考虑关系变化等。thinking 字段内容不会显示给玩家看（以折叠卡片形式展示），只用于思维链面板。**\n'
-        + '\n**story 长度强制要求：每回合剧情正文至少 800 中文字符，推荐 1000-1500 中文字符。场景铺垫、NPC反应、环境细节、心理描写都要充分展开，避免几句话草草带过。优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
+        + '\n**story 长度要求：根据用户设置的字数范围生成，优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
@@ -821,7 +821,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '【memoryUpdates 三层记忆规则】memoryUpdates 为必填数组，每回合必须根据剧情变化输出记忆更新，每项 {op, category, layer, importance, content, keywords, reason}。\n'
         + '  - layer 仅允许：shortTerm（短期记忆，每轮一条 20 字以内核心事实）/ longTerm（长期归档，写入永久事实区）/ milestone（关键里程碑，importance≥7 的重大事件）。\n'
         + '  - op 仅允许 add/replace/delete；category 仅允许 pcIdentity/settings/worldRules/npcProfiles/promises/worldPlaces。\n'
-        + '  - 示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"主角答应帮林晚寻找失踪的妹妹"}；{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与主角正式确立合作关系"}。\n'
+        + '  - 示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"' + (gameState.playerName || '主角') + '答应帮林晚寻找失踪的妹妹"}；{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与' + (gameState.playerName || '主角') + '正式确立合作关系"}。\n'
         + '  - 即使剧情没有重大变化，也必须输出至少 1 条 shortTerm 记忆；无长期/里程碑变更则对应层返回空数组或省略。\n'
         + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
         + '约' + _maxTokens + 'tokens输出空间'
@@ -868,7 +868,7 @@ function buildRecentChatContext() {
             var hasContent = tail.some(function(m) { return m && m.text && m.text.trim(); });
             if (!hasContent) continue;
             var lines = tail.map(function(m) {
-                var who = (m.from === 'player' || m.from === 'me' || m.from === 'playerName') ? '主角' : npcName;
+                var who = (m.from === 'player' || m.from === 'me' || m.from === 'playerName') ? (gameState.playerName || '主角') : npcName;
                 return '  ' + who + '：' + (m.text || '');
             });
             blocks.push('【与 ' + npcName + ' 的最近私聊】\n' + lines.join('\n'));
@@ -3872,6 +3872,10 @@ function _resetStreamExtractor() {
     _streamStoryArrLen = 0;
     _streamLastPushedLen = 0;
     _streamPlaintextMode = false;
+    // 【修复】重置惰性初始化的全局变量，避免上一轮请求残留状态污染当前请求
+    _streamIsLikelyJSON = undefined;
+    _streamJsonScanPos = 0;
+    _streamThinkScanPos = 0;
 }
 
 // 【NEW-007 修复】增量提取 story 字段值（O(delta) per chunk）

@@ -164,7 +164,7 @@ const PromptBuilder = {
                 // [优化#9] "直接输出JSON"由 formatAnchor/format 负责，这里只写工作方式
                 parts.push('story放第一个字段，用\\n换行，对话用「」。你大约有 ' + maxTokens + ' tokens输出空间。');
                 parts.push('- story=叙事正文，choices=决策点；严禁回到故事开头或重复初始场景。');
-                parts.push('- 叙事要充分展开：场景描写、人物动作、环境氛围、NPC反应、主角心理都要具体呈现，避免几句话草草带过。每回合剧情正文不少于 800 中文字符。');
+                parts.push('- 叙事要充分展开：场景描写、人物动作、环境氛围、NPC反应、主角心理都要具体呈现，避免几句话草草带过。');
             }
             parts.push('');
             parts.push('【信息优先级】始终生效>本轮变化>旧记录>旧指令');
@@ -219,9 +219,9 @@ const PromptBuilder = {
             if (pureText) return '';
             return '【记忆维护契约·memoryUpdates（Mufy 三层记忆）】\n'
                 + '每回合必须在 JSON 中输出 memoryUpdates 数组，按 layer 分为三层，避免 AI 失忆。\n'
-                + '  1) shortTerm（短期记忆）：每回合至少 1 条，记录本轮最核心的事实，20 字以内。示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"主角答应帮林晚寻找失踪的妹妹"}\n'
+                + '  1) shortTerm（短期记忆）：每回合至少 1 条，记录本轮最核心的事实，20 字以内。示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"' + ((ctx.protagonistSetup && ctx.protagonistSetup.mcName) || '主角') + '答应帮林晚寻找失踪的妹妹"}\n'
                 + '  2) longTerm（长期归档）：跨回合长期生效的事实。系统会在短期记忆满 10 条时自动汇总为长期记忆。示例：{"op":"add","category":"npcProfiles","layer":"longTerm","importance":6,"content":"林晚：清冷孤傲的刑警，内心极度渴望被需要"}\n'
-                + '  3) milestone（关键里程碑）：importance≥7 的重大事件，如关系确立、击败 Boss、获得核心道具、地图转换。示例：{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与主角正式确立合作关系"}\n'
+                + '  3) milestone（关键里程碑）：importance≥7 的重大事件，如关系确立、击败 Boss、获得核心道具、地图转换。示例：{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与' + ((ctx.protagonistSetup && ctx.protagonistSetup.mcName) || '主角') + '正式确立合作关系"}\n'
                 + '通用字段：\n'
                 + '  - op：add（新增/合并累积）| replace（替换覆盖，仅用于 pcIdentity 等单值）| delete（按名字或内容删除已过时事实）\n'
                 + '  - category：pcIdentity（主角身份）| settings（世界设定）| worldRules（世界规则/铁律）| npcProfiles（关键角色档案）| promises（玩家承诺）| worldPlaces（关键地点）\n'
