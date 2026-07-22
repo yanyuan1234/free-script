@@ -11,7 +11,7 @@
 
 // 【修复】缓存名包含时间戳，每次部署新代码时自动失效旧缓存
 // 手动更新：修改此时间戳 → activate 时清理旧缓存 → 用户拿到新代码
-var CACHE_NAME = 'free-script-v2-2026-07-21-fix1';
+var CACHE_NAME = 'free-script-v2-2026-07-22-promptfix';
 var CORE_ASSETS = [
     './',
     './index.html',
