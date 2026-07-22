@@ -781,24 +781,7 @@
                                     </svg></div>
                                 <div class="preset-name">日程表</div>
                             </div>
-                            <div class="preset-item" data-log="author_note" id="logFeat-author_note" role="button" tabindex="0">
-                                <div class="preset-icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                        stroke="currentColor" stroke-width="1.5">
-                                        <path d="M12 20h9" />
-                                        <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
-                                    </svg></div>
-                                <div class="preset-name">作话</div>
-                            </div>
-                            <!-- [Mufy 三层记忆] 记忆档案入口 -->
-                            <div class="preset-item" data-log="memory" id="logFeat-memory" role="button" tabindex="0">
-                                <div class="preset-icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
-                                        stroke="currentColor" stroke-width="1.5">
-                                        <path d="M12 2a10 10 0 1 0 10 10H12V2z" />
-                                        <path d="M12 2a10 10 0 0 1 10 10" />
-                                        <path d="M12 12l7-7" />
-                                    </svg></div>
-                                <div class="preset-name">记忆</div>
-                            </div>
+                            <!-- 【修复】用户要求移除日志中的"作话"和"记忆"卡片 -->
                         </div>
                         <!-- 预设动态app网格 - AI生成的装饰组件会显示在这里 -->
                         <div id="presetAppGrid"
@@ -2337,32 +2320,6 @@
                                     <button class="tag-btn" data-fontsize="large">大</button>
                                 </div>
                             </div>
-                            <!-- 参数设置卡片（可折叠）- 含快捷预设 -->
-                            <div class="setting-group">
-                                <div class="setting-header">
-                                    <h3 class="setting-title">参数设置</h3>
-                                    <span class="toggle-icon">▼</span>
-                                </div>
-                                <div class="setting-body" style="display:none;">
-                                    <!-- 【修复P1-1】移除设置页的重复参数预设按钮组——与预设管理器重复，保留预设管理器的 -->
-                                    <!-- 快捷参数预设入口：直接跳转到预设管理器 -->
-                                    <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;display:flex;justify-content:space-between;align-items:center;">
-                                        <span>一键切换参数组合（短篇/中篇/长篇/默认）</span>
-                                        <button id="btnGoPreset1" class="tag-btn" style="flex-shrink:0;">去切换</button>
-                                    </div>
-                                    <!-- 常用运行时参数 -->
-                                    <div class="setting-row">
-                                        <label class="field-label">剧情长度（max_tokens）</label>
-                                        <input type="number" class="input-field" id="settingStoryLength" min="100" max="32000"
-                                            value="2048" placeholder="AI每轮最大生成字数" style="max-width:120px;">
-                                    </div>
-                                    <!-- 精细调参入口 -->
-                                    <div style="background:var(--bg-secondary);border-radius:8px;padding:10px;margin-top:8px;font-size:11px;color:var(--text-secondary);line-height:1.5;display:flex;justify-content:space-between;align-items:center;">
-                                        <span>Temperature/TopP/TopK/惩罚等参数</span>
-                                        <button id="btnGoPreset2" class="tag-btn" style="flex-shrink:0;">去预设管理调参</button>
-                                    </div>
-                                </div>
-                            </div>
                             <!-- 字数控制卡片（可折叠） -->
                             <div class="setting-group">
                                 <div class="setting-header">
@@ -2410,50 +2367,6 @@
                                             <option value="free">自由段落 (20-400字/段)</option>
                                         </select>
                                     </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">叙述视角</label>
-                                        <select id="wcPerspective" class="select-field">
-                                            <option value="third_person_limited" selected>第三人称有限</option>
-                                            <option value="third_person_omniscient">第三人称全知</option>
-                                            <option value="first_person_limited">第一人称有限</option>
-                                        </select>
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">user代词</label>
-                                        <select id="wcUserPronoun" class="select-field">
-                                            <option value="second_person" selected>第二人称（你）</option>
-                                            <option value="third_person">第三人称（他/她）</option>
-                                            <option value="first_person">第一人称（我）</option>
-                                        </select>
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">演绎授权</label>
-                                        <select id="wcTakeover" class="select-field">
-                                            <option value="closed" selected>不演绎user言行</option>
-                                            <option value="assist">辅助user行动</option>
-                                            <option value="half_open">演绎user行动</option>
-                                            <option value="open">演绎user言行</option>
-                                        </select>
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">转述授权</label>
-                                        <select id="wcNarrate" class="select-field">
-                                            <option value="closed" selected>禁止转述user</option>
-                                            <option value="light">轻度转述user</option>
-                                            <option value="balanced">平衡转述user</option>
-                                            <option value="open">开放转述user</option>
-                                        </select>
-                                    </div>
-                                    <div class="setting-row">
-                                        <label class="field-label">推进节奏</label>
-                                        <select id="wcPacing" class="select-field">
-                                            <option value="slow">慢火浸润（极度细腻）</option>
-                                            <option value="steady" selected>稳态推进（均衡推荐）</option>
-                                            <option value="balanced">均衡脉冲（中等节奏）</option>
-                                            <option value="fast">高压疾行（快速推进）</option>
-                                            <option value="free">自由变奏（自动调节）</option>
-                                        </select>
-                                    </div>
                                 </div>
                             </div>
                             <!-- 叙事增强卡片（可折叠）- 融合酒馆预设的优秀特性 -->
@@ -2466,6 +2379,47 @@
                                     <div style="background:var(--accent-soft);border-radius:8px;padding:10px;margin-bottom:10px;font-size:11px;color:var(--text-secondary);line-height:1.5;">
                                         已自动启用：抗OOC/抗全知/抗刻板规则、多角色叙事指导、10 项叙事基调、10 项干练文风、NPC 好看原则、空变量清理、system 消息合并、智能摘要、模型上下文保护<br>
                                         <span style="color:var(--text-tertiary);">以下只显示你需要经常调整的项，其它智能能力在后台默默工作</span>
+                                    </div>
+                                    <!-- 叙述人称（合并原 wcPerspective 与 wcUserPronoun） -->
+                                    <div class="setting-row">
+                                        <label class="field-label">叙述人称</label>
+                                        <select id="wcPerspective" class="select-field">
+                                            <option value="third_person_limited" selected>第三人称（他/她）</option>
+                                            <option value="third_person_omniscient">第三人称全知</option>
+                                            <option value="second_person">第二人称（你）</option>
+                                            <option value="first_person_limited">第一人称（我）</option>
+                                        </select>
+                                    </div>
+                                    <!-- 演绎授权 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">演绎授权</label>
+                                        <select id="wcTakeover" class="select-field">
+                                            <option value="closed" selected>不演绎user言行</option>
+                                            <option value="assist">辅助user行动</option>
+                                            <option value="half_open">演绎user行动</option>
+                                            <option value="open">演绎user言行</option>
+                                        </select>
+                                    </div>
+                                    <!-- 转述授权 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">转述授权</label>
+                                        <select id="wcNarrate" class="select-field">
+                                            <option value="closed" selected>禁止转述user</option>
+                                            <option value="light">轻度转述user</option>
+                                            <option value="balanced">平衡转述user</option>
+                                            <option value="open">开放转述user</option>
+                                        </select>
+                                    </div>
+                                    <!-- 推进节奏 -->
+                                    <div class="setting-row">
+                                        <label class="field-label">推进节奏</label>
+                                        <select id="wcPacing" class="select-field">
+                                            <option value="slow">慢火浸润（极度细腻）</option>
+                                            <option value="steady" selected>稳态推进（均衡推荐）</option>
+                                            <option value="balanced">均衡脉冲（中等节奏）</option>
+                                            <option value="fast">高压疾行（快速推进）</option>
+                                            <option value="free">自由变奏（自动调节）</option>
+                                        </select>
                                     </div>
                                     <!-- 文风选择 -->
                                     <div class="setting-row">
@@ -2494,15 +2448,7 @@
                                             <option value="true">开启（思考完成后自动展开）</option>
                                         </select>
                                     </div>
-                                    <!-- 写作节奏（决定每段/每章的篇幅） -->
-                                    <div class="setting-row">
-                                        <label class="field-label">写作节奏</label>
-                                        <select id="settingChapterMode" class="select-field">
-                                            <option value="off" selected>自由模式（无固定节奏）</option>
-                                            <option value="chapter">章节模式（每轮=一章）</option>
-                                            <option value="longform">长篇模式（每段 250-600 字）</option>
-                                        </select>
-                                    </div>
+                                    <!-- 【优化】删除写作节奏（settingChapterMode）控件——与"字数控制"中的段落风格（wcParagraphStyle）功能重复 -->
                                     <!-- 【优化·narrativeEyes 可调开关】10 项叙事基调，默认全开，用户可关闭不想要的 -->
                                     <div class="setting-row" style="flex-direction:column;align-items:flex-start;">
                                         <label class="field-label" style="margin-bottom:6px;">叙事基调（可关闭不想要的，最多保留 5 项）</label>

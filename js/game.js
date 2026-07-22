@@ -233,15 +233,8 @@ function buildNarrativeEnhancement() {
     }
 
     // === 1. 写作节奏（章节模式） ===
+    // 【已移除】chapterMode 提示词构建——settingChapterMode 控件已删除（与字数控制中的段落风格 wcParagraphStyle 功能重复）
 
-
-    if (gs.chapterMode && gs.chapterMode !== 'off') {
-        if (gs.chapterMode === 'chapter') {
-            blocks.push('【章节模式·开启】\n本回合 = 一个章节。\n- 引入 → 发展 → （高潮）→ 收尾\n- 章末留未竟：情绪/未竟动作/未答疑问\n- 一章聚焦一个场景/情况');
-        } else if (gs.chapterMode === 'longform') {
-            blocks.push('【长篇模式·开启】\n- 把对话、动作、环境、心理整合为高密度完整段，拒绝碎片化换行');
-        }
-    }
 
     // === 2. 叙事基调（来自数据字段的通俗名） ===
     if (gs.narrativeEyes) {
@@ -543,18 +536,24 @@ function _slimAssistantMessage(content) {
 // 根因：提示词里的"输出空间"用 gameState.maxTokens（默认 8192），
 // 但 API 实际下发的 max_tokens 来自预设 presetParams.max_tokens（内置预设 4096）。
 // AI 按提示词写 8192 token 长文本，到 4096 被 API 截断 → JSON 不完整。
-// 修复：提示词告知 AI 的空间必须取"实际能下发的值"，即两者较小值，避免 AI 写超预算。
+// 【重构】max_tokens 不再由用户手动设置，改为从字数控制的 wcMax 自动计算：
+//   中文字符约需要 2 个 token，加 20% 余量 → wcMax * 2.4
 function getEffectiveMaxTokens() {
-    var gsMax = (gameState && gameState.maxTokens) || DEFAULT_MAX_TOKENS;
-    var presetMax = 0;
-    if (typeof PresetManager !== 'undefined' && PresetManager.getParams) {
+    var gs = gameState || {};
+    // 从字数控制配置自动计算 max_tokens
+    var wcConfig = gs.wordCountConfig || {};
+    var wcMax = (wcConfig.max || 3000);
+    // 中文字符约需要2个token，加20%余量
+    var autoMaxTokens = Math.ceil(wcMax * 2.4);
+    // 确保最小2048
+    var effective = Math.max(autoMaxTokens, 2048);
+    // 也考虑预设的max_tokens（如果存在且更大）
+    try {
         var pp = PresetManager.getParams();
-        presetMax = (pp && pp.max_tokens) || 0;
-    }
-    // 预设值有效时取较小值；预设值无效（0/缺失）时用 gameState 值
-    var effective = (presetMax > 0) ? Math.min(gsMax, presetMax) : gsMax;
-    // 下限保护：JSON 模式至少需要 2048 才能容纳 story+choices+player 等结构
-    return Math.max(effective, 2048);
+        var presetMax = (pp && pp.max_tokens) || 0;
+        if (presetMax > 0) effective = Math.max(effective, Math.min(presetMax, 32000));
+    } catch (e) {}
+    return Math.min(effective, 32000);
 }
 
 // [日志功能开关] 全局读取玩家在剧情页设置的日志功能启停状态
@@ -801,7 +800,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '**player.stats 更新规则：每回合根据剧情事件更新属性值。修炼/锻炼/学习提升属性、购买/消耗降低金币、受伤降低体质等变化必须反映在 stats 中。禁止每回合返回相同的 stats 值（除非本回合确实无属性变化）。**\n'
         + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
         + 'quests 任务规则：type三类(主线/支线/隐藏),status三类(进行中/已完成/失败),progress用"当前/总数";同时存在不超过5个;**每回合至少返回1个进行中任务**;第一回合至少1个主线;完成/失败保留1-2回合后移除。**若任务已完成,status填"已完成"、progress填"1/1";若仍在进行,progress必须推进,禁止始终为0/1。**\n'
-        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角用"主角"二字。**有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。**\n'
+        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角使用真实姓名"' + (gameState.playerName || '主角') + '"而非代称。**有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。**\n'
         + 'npcMessages NPC主动消息：用 [{"from":"NPC名字","text":"消息内容"}] 格式。粘人/关心型NPC每回合可能发1-2条，冷漠型可0条；消息内容必须与本回合剧情相关，from须是已出场角色。**无消息时返回空数组 []，禁止省略该字段。**\n'
         + 'keyEvents 规则：**有重要事件发生时必须返回 1-3 条，仅无任何重要事件的纯过场回合才输出空数组 []。**重要事件指：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露。每条简短一句含人物名。日常对话/普通移动不写入。\n'
         + 'favorability 分级（整数）：80-100极度亲密,60-79非常亲近,40-59有好感,15-39关系融洽,-14~14中立(0=中立非敌意),-39~-15略有隔阂,-100~-40负面。范围 -100 到 100。relation用符合世界观的词,不要套固定模板,不要省略数值。\n'
@@ -964,6 +963,7 @@ async function injectPresetGlobalVars() {
         var perspectiveMap = {
             'third_person_omniscient': '叙述视角：第三人称全知',
             'third_person_limited': '叙述视角：第三人称有限',
+            'second_person': '叙述视角：第二人称',
             'first_person_limited': '叙述视角：第一人称有限'
         };
         MacroEngine.setGlobalVar('叙述视角', perspectiveMap[perspective] || '');
@@ -971,6 +971,7 @@ async function injectPresetGlobalVars() {
         var charPronouns = {
             'third_person_omniscient': '他/她/char_name',
             'third_person_limited': '他/她/char_name',
+            'second_person': '你',
             'first_person_limited': '我'
         };
         MacroEngine.setGlobalVar('char代词', charPronouns[perspective] || '');
@@ -1882,7 +1883,23 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (_curPlayerName) {
                 _formatReminder += '\n主角姓名固定为「' + _curPlayerName + '」，不得更改。';
             }
-            _formatReminder += '\n始终使用第二人称（"你"）叙事。';
+            // 【修复】根据用户设置动态决定人称，不再硬编码第二人称
+            var _wcConfig = (gameState && gameState.wordCountConfig) || {};
+            var _perspective = _wcConfig.perspective || '';
+            var _userPronoun = _wcConfig.userPronoun || '';
+            var _personRule = '';
+            if (_perspective === 'third_person_limited' || _perspective === 'third_person_omniscient') {
+                _personRule = '始终使用第三人称叙事，用角色名字或"他/她"指代主角。';
+            } else if (_perspective === 'first_person_limited') {
+                _personRule = '始终使用第一人称叙事，用"我"指代主角。';
+            } else if (_userPronoun === 'third_person') {
+                _personRule = '用第三人称（名字或"他/她"）指代主角。';
+            } else if (_userPronoun === 'first_person') {
+                _personRule = '用第一人称"我"指代主角。';
+            } else {
+                _personRule = '始终使用第二人称（"你"）叙事。';
+            }
+            _formatReminder += '\n' + _personRule;
             messages.splice(messages.length - 1, 0, {
                 role: 'system',
                 content: _formatReminder
@@ -2335,11 +2352,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) gameState._lastCotContent = _mergedCot;
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段标签 +', _reasoningFromField ? 1 : 0, '段 reasoning_content');
             // 【酒馆式思维链】渲染到面板
-            // 受设置项 showCotPanel 控制（默认开启，可在设置中关闭）
-            var _showCot = true;
+            // 【修复】统一使用 CotPanelController.showPanel 判断，与设置项一致
+            var _showCot = false;
             try {
-                if (typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === false) {
-                    _showCot = false;
+                if (typeof CotPanelController !== 'undefined' && CotPanelController.showPanel) {
+                    _showCot = true;
                 }
             } catch (e) {}
             if (_showCot && typeof CotPanelController !== 'undefined') {

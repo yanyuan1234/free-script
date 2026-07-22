@@ -1799,11 +1799,8 @@ function renderLogPage() {
     if (logMainContent) logMainContent.style.display = 'block';
     if (logSubContainer) logSubContainer.style.display = 'none';
 
-    // 【BG-008 修复】渲染近期剧情动态：从 conversationHistory 取最近 3 条 assistant 回复
-    // 让日志主页面不再是纯空壳，玩家可直接看到最近发生了什么
-    try {
-        _renderRecentStoryFeed(logMainContent);
-    } catch (e) { console.warn('[renderLogPage] 近期动态渲染失败:', e); }
+    // 【修复】用户要求移除日志中的"近期剧情"动态
+    // _renderRecentStoryFeed(logMainContent);
 
     // 渲染预设动态app入口
     _renderPresetApps();
@@ -4560,7 +4557,12 @@ var CotPanelController = {
     // 修复: 默认 false，仅当 gameState.showCotPanel === true 时显示
     get showPanel() {
         try {
-            return typeof gameState !== 'undefined' && gameState && gameState.showCotPanel === true;
+            // 【修复】同时检查 showCotPanel 和 cotMode，确保任一开启即显示
+            if (typeof gameState !== 'undefined' && gameState) {
+                if (gameState.showCotPanel === true) return true;
+                if (gameState.cotMode === 'enabled') return true;
+            }
+            return false;
         } catch (e) { return false; }
     },
 
@@ -5869,8 +5871,7 @@ function bindEvents() {
         if (modal) modal.style.display = 'none';
         if (typeof PresetManager !== 'undefined') PresetManager.showModal();
     }
-    bindEvent('btnGoPreset1', 'click', _goPresetFromSettings);
-    bindEvent('btnGoPreset2', 'click', _goPresetFromSettings);
+    // 【已移除】btnGoPreset1/btnGoPreset2 绑定——参数设置卡片已删除（参数由预设管理器统一管理）
 
     // 聊天相关
     bindEvent('chatDetailBack', 'click', function() {
@@ -5918,14 +5919,21 @@ function bindEvents() {
     });
 
     // 【修复】字数控制所有下拉框/复选框改变后自动保存
-    ['wcEnabled', 'wcParagraphStyle', 'wcPerspective', 'wcUserPronoun',
+    // 注：wcUserPronoun 已移除，userPronoun 由 wcPerspective 自动推导（见 saveGameSettings）
+    ['wcEnabled', 'wcParagraphStyle',
      'wcTakeover', 'wcNarrate', 'wcPacing', 'wcMin', 'wcMax',
      'wcParaMin', 'wcParaMax'].forEach(function(id) {
         bindEvent(id, 'change', function() { saveGameSettings(); });
     });
 
-    // 【修复】剧情长度改变后自动保存
-    bindEvent('settingStoryLength', 'change', function() { saveGameSettings(); });
+    // 叙述人称改变后自动推导 userPronoun 并保存
+    // userPronoun 不再有独立控件，由 wcPerspective 推导：
+    //   third_person_limited / third_person_omniscient → 'third_person'
+    //   second_person → 'second_person'
+    //   first_person_limited → 'first_person'
+    bindEvent('wcPerspective', 'change', function() { saveGameSettings(); });
+
+    // 【已移除】settingStoryLength 事件绑定——max_tokens 改由字数控制 wcMax 自动计算（见 game.js getEffectiveMaxTokens）
 
     // 文风选择
     bindEvent('settingWritingStyle', 'change', function() {
@@ -5936,6 +5944,11 @@ function bindEvents() {
     // 思维链模式
     bindEvent('settingCotMode', 'change', function() {
         StateManager.set('settings.cotMode', this.value, { silent: true });
+        // 【修复】同步设置 showCotPanel，使思维链面板可见
+        if (typeof gameState !== 'undefined' && gameState) {
+            gameState.showCotPanel = (this.value === 'enabled');
+            gameState.cotMode = this.value;
+        }
         saveGameSettings();
     });
 
@@ -5949,11 +5962,7 @@ function bindEvents() {
         saveGameSettings();
     });
 
-    // 写作节奏
-    bindEvent('settingChapterMode', 'change', function() {
-        StateManager.set('settings.chapterMode', this.value, { silent: true });
-        saveGameSettings();
-    });
+    // 【已移除】settingChapterMode 事件绑定——写作节奏与段落风格功能重复，控件已删除
 
     // 【修复】摘要阈值改变后自动保存
     bindEvent('summaryThreshold', 'change', function() { saveGameSettings(); });
@@ -7611,15 +7620,7 @@ function saveGameSettings() {
     StateManager.set('settings.fontSize', activeFont ? (fontSizeMap[activeFont.dataset.fontsize] || 16) : 16, { silent: true });
 
 
-    var storyLengthEl = document.getElementById('settingStoryLength');
-    if (storyLengthEl) {
-        var len = parseInt(storyLengthEl.value, 10);
-        if (len && len >= 100) {
-            if (typeof _syncMaxTokens === 'function') {
-                _syncMaxTokens(len);
-            }
-        }
-    }
+    // 【已移除】settingStoryLength 读取——max_tokens 改由字数控制 wcMax 自动计算（见 game.js getEffectiveMaxTokens）
     // 保存字数控制配置
 
     var wcMinEl = document.getElementById('wcMin');
@@ -7641,7 +7642,16 @@ function saveGameSettings() {
         paragraphMax: _pcMax,
         paragraphStyle: document.getElementById('wcParagraphStyle') ? document.getElementById('wcParagraphStyle').value : 'medium',
         perspective: document.getElementById('wcPerspective') ? document.getElementById('wcPerspective').value : 'third_person_limited',
-        userPronoun: document.getElementById('wcUserPronoun') ? document.getElementById('wcUserPronoun').value : 'second_person',
+        // userPronoun 已无独立控件，由 wcPerspective 自动推导：
+        //   third_person_limited / third_person_omniscient → 'third_person'
+        //   second_person → 'second_person'
+        //   first_person_limited → 'first_person'
+        userPronoun: (function() {
+            var _p = document.getElementById('wcPerspective') ? document.getElementById('wcPerspective').value : 'third_person_limited';
+            if (_p === 'second_person') return 'second_person';
+            if (_p === 'first_person_limited') return 'first_person';
+            return 'third_person';
+        })(),
         takeover: document.getElementById('wcTakeover') ? document.getElementById('wcTakeover').value : 'closed',
         narrate: document.getElementById('wcNarrate') ? document.getElementById('wcNarrate').value : 'closed',
         pacing: document.getElementById('wcPacing') ? document.getElementById('wcPacing').value : 'steady'
@@ -7673,9 +7683,7 @@ function saveGameSettings() {
 
     // squashSystemMessages 已固定开启，不需要从UI读取
     // === 酒馆预设融合：叙事融合层 v2 ===
-    // 章节模式
-    var chapterModeEl = document.getElementById('settingChapterMode');
-    if (chapterModeEl) StateManager.set('settings.chapterMode', chapterModeEl.value, { silent: true });
+    // 【已移除】settingChapterMode 读取——写作节奏与段落风格功能重复，控件已删除
 
     // NSFW 内容控制应通过自定义风格/设定实现，而非无效的安慰剂开关
     // 摘要阈值从智能压缩区读取（已有summaryThreshold元素）
@@ -7777,9 +7785,7 @@ function _doResetSettings() {
     document.querySelectorAll('[data-fontsize]').forEach(function(b) { b.classList.remove('active'); });
     var _medBtn = document.querySelector('[data-fontsize="medium"]');
     if (_medBtn) _medBtn.classList.add('active');
-    // 重置剧情长度
-    var _lenEl = document.getElementById('settingStoryLength');
-    if (_lenEl) _lenEl.value = 4096;
+    // 【已移除】重置 settingStoryLength——max_tokens 改由字数控制 wcMax 自动计算
     // 重置压缩阈值下拉框
     var _ctEl = document.getElementById('compressThreshold');
     if (_ctEl) _ctEl.value = '0.92';
@@ -7818,9 +7824,7 @@ function _syncMaxTokens(value) {
     if (typeof gameState !== 'undefined' && gameState) {
         gameState.maxTokens = mt;
     }
-    // 3. 同步 settingStoryLength（设置页 UI）
-    var storyLengthEl = document.getElementById('settingStoryLength');
-    if (storyLengthEl) storyLengthEl.value = mt;
+    // 3. 【已移除】同步 settingStoryLength（设置页 UI）——控件已删除，max_tokens 由 wcMax 自动计算
     // 4. 同步 presetMaxTokens（预设管理器 UI）
     var maxTokensEl = document.getElementById('presetMaxTokens');
     if (maxTokensEl) maxTokensEl.value = mt;
@@ -7905,8 +7909,7 @@ function _applyUnifiedPreset(presetKey, opts) {
         if (typeof gameState !== 'undefined' && gameState) {
             gameState.maxTokens = p.max_tokens;
         }
-        var elMaxTokens = document.getElementById('settingStoryLength');
-        if (elMaxTokens) elMaxTokens.value = p.max_tokens;
+        // 【已移除】settingStoryLength UI 同步——控件已删除，max_tokens 由 wcMax 自动计算
     }
     // 可选：更新 presetArchetype（仅 applyArchetype 调用时）
     if (opts && opts.setArchetype && typeof gameState !== 'undefined') {
@@ -8138,7 +8141,7 @@ function _syncWordCountConfigToUI(wc) {
     if (get('wcParaMax')) get('wcParaMax').value = wc.paragraphMax || 17;
     if (get('wcParagraphStyle')) get('wcParagraphStyle').value = wc.paragraphStyle || 'medium';
     if (get('wcPerspective')) get('wcPerspective').value = wc.perspective || 'third_person_limited';
-    if (get('wcUserPronoun')) get('wcUserPronoun').value = wc.userPronoun || 'second_person';
+    // 【已移除】wcUserPronoun 加载——userPronoun 由 wcPerspective 自动推导（见 saveGameSettings）
     if (get('wcTakeover')) get('wcTakeover').value = wc.takeover || 'closed';
     if (get('wcNarrate')) get('wcNarrate').value = wc.narrate || 'closed';
     if (get('wcPacing')) get('wcPacing').value = wc.pacing || 'steady';
@@ -8166,8 +8169,7 @@ function _syncSettingsToUI(d) {
     if (d.writingStyle !== undefined) { var ws = get('settingWritingStyle'); if (ws) ws.value = d.writingStyle || ''; }
     if (d.cotMode !== undefined) { var cm = get('settingCotMode'); if (cm) cm.value = d.cotMode || ''; }
     if (d.cotAutoExpand !== undefined) { var cae = get('settingCotAutoExpand'); if (cae) cae.value = d.cotAutoExpand ? 'true' : ''; }
-    // 章节模式
-    if (d.chapterMode !== undefined) { var chm = get('settingChapterMode'); if (chm) chm.value = d.chapterMode || 'off'; }
+    // 【已移除】settingChapterMode 加载——写作节奏与段落风格功能重复，控件已删除
     // 视角开关（narrativeEyes）
     if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
         document.querySelectorAll('.narrative-eye-toggle').forEach(function(cb) {
@@ -8211,11 +8213,7 @@ function openSettingsModal() {
     // 【P0-3 Context Viewer】更新上下文分解摘要
     _updateContextBreakdownSummary();
 
-    // 更新剧情长度
-    var lengthEl = document.getElementById('settingStoryLength');
-
-    if (lengthEl) lengthEl.value = gameState.maxTokens || 4096;
-
+    // 【已移除】settingStoryLength 加载——max_tokens 改由字数控制 wcMax 自动计算（见 game.js getEffectiveMaxTokens）
 
     // settingFreqPen/settingPresPen/settingRepeatPen 在 HTML 中均不存在（参数由预设管理器控制）
 
@@ -8273,11 +8271,13 @@ function loadGameSettings() {
             // 【酒馆预设融合】恢复叙事增强设置
             if (d.writingStyle !== undefined) gameState.writingStyle = d.writingStyle;
             if (d.cotMode !== undefined) gameState.cotMode = d.cotMode;
+            // 【修复】加载设置时同步 showCotPanel，使思维链面板在刷新后仍然可见
+            gameState.showCotPanel = (d.cotMode === 'enabled');
             if (d.cotAutoExpand !== undefined) gameState.cotAutoExpand = d.cotAutoExpand;
 
             // squashSystemMessages 固定开启，不再从存档恢复（预设可覆盖）
             // === 酒馆预设融合 v2 恢复 ===
-            if (d.chapterMode !== undefined) gameState.chapterMode = d.chapterMode;
+            // 【已移除】chapterMode 加载——写作节奏与段落风格功能重复，控件已删除
 
             if (d.narrativeEyes && typeof d.narrativeEyes === 'object') {
                 gameState.narrativeEyes = d.narrativeEyes;
@@ -8291,7 +8291,6 @@ function loadGameSettings() {
                 writingStyle: gameState.writingStyle,
                 cotMode: gameState.cotMode,
                 cotAutoExpand: gameState.cotAutoExpand,
-                chapterMode: gameState.chapterMode,
                 narrativeEyes: gameState.narrativeEyes,
                 presetArchetype: gameState.presetArchetype,
                 autoCompress: gameState.autoCompress

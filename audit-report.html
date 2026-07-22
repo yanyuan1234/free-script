@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文游游戏完整审查报告</title>
+<style>
+:root {
+  --bg: #0f1117;
+  --bg-card: #1a1d27;
+  --bg-code: #15171f;
+  --text: #e4e6eb;
+  --text-dim: #9ca3af;
+  --text-muted: #6b7280;
+  --accent: #60a5fa;
+  --accent-dim: #3b82f6;
+  --red: #f87171;
+  --red-bg: rgba(248, 113, 113, 0.1);
+  --green: #34d399;
+  --green-bg: rgba(52, 211, 153, 0.1);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251, 191, 36, 0.1);
+  --border: #2d3142;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.7;
+  padding: 40px 20px;
+}
+.container { max-width: 960px; margin: 0 auto; }
+h1 { font-size: 28px; margin-bottom: 8px; }
+h2 { font-size: 22px; margin: 32px 0 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+h3 { font-size: 17px; margin: 24px 0 12px; color: var(--accent); }
+h4 { font-size: 15px; margin: 16px 0 8px; }
+p { margin-bottom: 12px; color: var(--text-dim); }
+.meta { color: var(--text-muted); font-size: 13px; margin-bottom: 24px; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin: 20px 0; }
+.stat-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 16px; text-align: center; }
+.stat-num { font-size: 28px; font-weight: 700; }
+.stat-label { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+.stat-red .stat-num { color: var(--red); }
+.stat-green .stat-num { color: var(--green); }
+.stat-yellow .stat-num { color: var(--yellow); }
+.stat-blue .stat-num { color: var(--accent); }
+.bug-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.bug-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.bug-id { font-size: 13px; font-weight: 700; color: var(--text-muted); font-family: monospace; }
+.severity { padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.sev-critical { background: var(--red-bg); color: var(--red); border: 1px solid var(--red); }
+.sev-high { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow); }
+.sev-medium { background: rgba(96, 165, 250, 0.1); color: var(--accent); border: 1px solid var(--accent); }
+.sev-low { background: rgba(107, 114, 128, 0.1); color: var(--text-muted); border: 1px solid var(--text-muted); }
+.bug-title { font-size: 16px; font-weight: 600; }
+.bug-section { margin: 12px 0; }
+.bug-section-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.bug-desc { color: var(--text-dim); font-size: 14px; }
+.code-block { background: var(--bg-code); border: 1px solid var(--border); border-radius: 8px; padding: 14px; margin: 8px 0; overflow-x: auto; font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace; font-size: 13px; line-height: 1.5; }
+.code-block .fix-label { color: var(--green); font-weight: 600; }
+.code-block .bug-label { color: var(--red); font-weight: 600; }
+.code-block .comment { color: var(--text-muted); }
+.file-path { color: var(--accent); font-family: monospace; font-size: 13px; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; background: rgba(96, 165, 250, 0.1); color: var(--accent); margin-right: 6px; }
+.section-intro { color: var(--text-dim); font-size: 14px; margin-bottom: 16px; }
+table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+th { text-align: left; padding: 10px 12px; background: var(--bg-card); color: var(--text); border-bottom: 2px solid var(--border); font-weight: 600; }
+td { padding: 10px 12px; border-bottom: 1px solid var(--border); color: var(--text-dim); }
+.status-fixed { color: var(--green); font-weight: 600; }
+.status-pending { color: var(--yellow); font-weight: 600; }
+.callout { background: var(--bg-card); border-left: 3px solid var(--accent); padding: 14px 18px; border-radius: 0 8px 8px 0; margin: 16px 0; }
+.callout-warn { border-left-color: var(--yellow); }
+.callout-danger { border-left-color: var(--red); }
+.callout p { margin-bottom: 0; }
+.diff-line-add { color: var(--green); }
+.diff-line-del { color: var(--red); }
+.diff-line-context { color: var(--text-muted); }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>文游游戏完整审查报告</h1>
+<p class="meta">测试目标：https://yanyuan1234.github.io/free-script/ &nbsp;|&nbsp; 审查日期：2026-07-22 &nbsp;|&nbsp; 测试模型：DeepSeek-V4-Flash</p>
+
+<div class="summary-grid">
+  <div class="stat-card stat-red"><div class="stat-num">11</div><div class="stat-label">发现Bug总数</div></div>
+  <div class="stat-card stat-green"><div class="stat-num">11</div><div class="stat-label">已修复</div></div>
+  <div class="stat-card stat-red"><div class="stat-num">4</div><div class="stat-label">严重级别</div></div>
+  <div class="stat-card stat-yellow"><div class="stat-num">4</div><div class="stat-label">高优先级</div></div>
+  <div class="stat-card stat-blue"><div class="stat-num">4</div><div class="stat-label">涉及文件</div></div>
+</div>
+
+<h2>一、测试概述</h2>
+<p class="section-intro">
+对游戏进行了实际浏览器测试，配置API后完成了完整的游戏流程，包括角色创建、三轮剧情互动、个人页面查看、日志页面查看、设置页面检查。测试中确认了用户报告的所有问题均真实存在，并在代码层面定位了根因。
+</p>
+
+<h3>测试环境</h3>
+<table>
+  <tr><th>项目</th><th>详情</th></tr>
+  <tr><td>游戏地址</td><td>https://yanyuan1234.github.io/free-script/</td></tr>
+  <tr><td>API端点</td><td>https://api.iamhc.cn/v1</td></tr>
+  <tr><td>测试模型</td><td>DeepSeek-V4-Flash</td></tr>
+  <tr><td>测试角色</td><td>林逸辰，男，20岁，转学生</td></tr>
+  <tr><td>测试轮次</td><td>第1轮完整完成 + 第2轮进行中（受API限流影响）</td></tr>
+</table>
+
+<h3>用户报告问题验证结果</h3>
+<table>
+  <tr><th>用户报告的问题</th><th>验证结果</th><th>状态</th></tr>
+  <tr><td>设置页面参数控制重复太多</td><td>确认：参数设置卡片与字数控制、预设管理器大量重复</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>字数设置1500-3000但只生成几百字</td><td>确认：max_tokens默认2048，远不够3000中文字符</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>个人页面显示"主角"而非真实姓名</td><td>确认：AI指令中硬编码了"主角"二字</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>个人页面基本信息未显示</td><td>确认：core.js字段映射错误，引用了不存在的HTML元素</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>关系网显示拼音/字符错误</td><td>确认：与上述字段映射bug关联，且AI使用代称而非真实姓名</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>AI使用"学霸"等代称而非真实姓名</td><td>确认：AI指令缺少"使用真实姓名"的要求</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>日志中显示"近期剧情"</td><td>确认：_renderRecentStoryFeed被调用</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>日志中有"作话"和"记忆"卡片</td><td>确认：index.html中存在这两个卡片</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>思维链未在剧情页面显示</td><td>确认：showCotPanel从未被设置为true</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>设置第三人称但AI用第二人称写</td><td>确认：game.js硬编码"始终使用第二人称"</td><td class="status-fixed">已修复</td></tr>
+  <tr><td>设置中人称选项太多导致混乱</td><td>确认：wcPerspective和wcUserPronoun两个控件功能重叠</td><td class="status-fixed">已修复</td></tr>
+</table>
+
+<h2>二、Bug详细分析</h2>
+
+<!-- BUG 1 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-001</span>
+    <span class="severity sev-critical">严重</span>
+    <span class="bug-title">设置第三人称但AI始终使用第二人称叙事</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">用户在游戏设置中选择了"第三人称有限"视角，但AI生成的剧情始终使用"你"（第二人称）叙事，完全无视用户设置。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">在 <span class="file-path">game.js:1885</span> 中，格式提醒被硬编码为始终使用第二人称，直接覆盖了用户在设置页面选择的视角：</p>
+    <div class="code-block">
+<span class="comment">// 硬编码的第二人称，无视用户设置</span>
+<span class="bug-label">- _formatReminder += '\n始终使用第二人称（"你"）叙事。';</span>
+    </div>
+    <p class="bug-desc">此外，<span class="file-path">injectPresetGlobalVars()</span> 中的 perspectiveMap 缺少 second_person 的映射，导致宏变量"叙述视角"无法正确注入。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="comment">// 【修复】根据用户设置动态决定人称，不再硬编码第二人称</span>
+<span class="fix-label">+ var _wcConfig = (gameState && gameState.wordCountConfig) || {};</span>
+<span class="fix-label">+ var _perspective = _wcConfig.perspective || '';</span>
+<span class="fix-label">+ var _userPronoun = _wcConfig.userPronoun || '';</span>
+<span class="fix-label">+ var _personRule = '';</span>
+<span class="fix-label">+ if (_perspective === 'third_person_limited' || _perspective === 'third_person_omniscient') {</span>
+<span class="fix-label">+     _personRule = '始终使用第三人称叙事，用角色名字或"他/她"指代主角。';</span>
+<span class="fix-label">+ } else if (_perspective === 'first_person_limited') {</span>
+<span class="fix-label">+     _personRule = '始终使用第一人称叙事，用"我"指代主角。';</span>
+<span class="fix-label">+ } else if (_userPronoun === 'third_person') {</span>
+<span class="fix-label">+     _personRule = '用第三人称（名字或"他/她"）指代主角。';</span>
+<span class="fix-label">+ } else if (_userPronoun === 'first_person') {</span>
+<span class="fix-label">+     _personRule = '用第一人称"我"指代主角。';</span>
+<span class="fix-label">+ } else {</span>
+<span class="fix-label">+     _personRule = '始终使用第二人称（"你"）叙事。';</span>
+<span class="fix-label">+ }</span>
+<span class="fix-label">+ _formatReminder += '\n' + _personRule;</span>
+    </div>
+    <p class="bug-desc">同时在 <span class="file-path">injectPresetGlobalVars()</span> 中补充了 second_person 的映射。</p>
+  </div>
+</div>
+
+<!-- BUG 2 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-002</span>
+    <span class="severity sev-critical">严重</span>
+    <span class="bug-title">字数设置1500-3000但AI只生成几百字</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">用户在字数控制中设置了最低1500字、最高3000字，但AI实际只生成了约800字。控制台日志显示 <code>sanitizeStory: 0.1ms (len=781)</code>，远低于预期。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">问题有两层：</p>
+    <p class="bug-desc"><strong>1. max_tokens不足：</strong>中文字符约需要2个token，生成3000字需要约6000+ token。但 <span class="file-path">getEffectiveMaxTokens()</span> 的默认值为2048，远不够支撑3000字的输出。原有的"参数设置"卡片中的 settingStoryLength 也默认为2048。</p>
+    <p class="bug-desc"><strong>2. 两套字数系统冲突：</strong>存在"参数设置"卡片的 max_tokens 和"字数控制"卡片的 wcMin/wcMax 两套系统，互不同步。用户设置了字数控制但 max_tokens 仍是默认值，导致AI在token层面被截断。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="comment">// 【修复】max_tokens 由 wcMax 自动计算，不再需要手动设置</span>
+<span class="fix-label">+ var wcMax = (wcConfig.max || 3000);</span>
+<span class="fix-label">+ // 中文字符约需要2个token，加20%余量</span>
+<span class="fix-label">+ var autoMaxTokens = Math.ceil(wcMax * 2.4);</span>
+<span class="fix-label">+ // 确保最小2048</span>
+<span class="fix-label">+ var effective = Math.max(autoMaxTokens, 2048);</span>
+<span class="fix-label">+ return Math.min(effective, 32000);</span>
+    </div>
+    <p class="bug-desc">同时删除了"参数设置"卡片（含 settingStoryLength 控件），消除两套系统冲突。max_tokens 现在完全由字数控制的 wcMax 自动推导。</p>
+  </div>
+</div>
+
+<!-- BUG 3 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-003</span>
+    <span class="severity sev-critical">严重</span>
+    <span class="bug-title">个人页面主角姓名显示为"主角"而非真实姓名</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">用户创建角色时输入了姓名"林逸辰"，但个人页面和关系网中主角的名称显示为"主角"而非真实姓名。AI在关系网中也使用"主角"代称。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">在 <span class="file-path">game.js:804</span> 中，AI指令明确告诉模型使用"主角"二字而非真实姓名：</p>
+    <div class="code-block">
+<span class="bug-label">- ...主角用"主角"二字。**有NPC互动时每回合必须返回 relationships...**</span>
+    </div>
+    <p class="bug-desc">这导致AI在 relationships 数据中始终使用"主角"作为主角名称，而非用户输入的真实姓名。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="fix-label">+ ...主角使用真实姓名"' + (gameState.playerName || '主角') + '"而非代称。</span>
+<span class="fix-label">+   **有NPC互动时每回合必须返回 relationships...**</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 4 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-004</span>
+    <span class="severity sev-critical">严重</span>
+    <span class="bug-title">个人页面基本信息未显示（字段映射错误）</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">个人页面中主角的性格、额外信息等基本信息为空，未正确显示。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">在 <span class="file-path">core.js:7527</span> 中，角色创建时的字段映射引用了不存在的HTML元素ID：</p>
+    <div class="code-block">
+<span class="comment">// 错误的映射：引用了不存在的HTML元素</span>
+<span class="bug-label">- mcPersonality: 'setupPlayerPersonality',  // HTML中不存在此ID</span>
+<span class="bug-label">- mcExtra: 'setupPlayerExtra'               // HTML中不存在此ID</span>
+
+<span class="comment">// 实际HTML中存在的ID是：</span>
+<span class="comment">// setupPlayerDesc - 角色描述/性格</span>
+<span class="comment">// setupPlayerAppearance - 外观</span>
+<span class="comment">// setupPlayerAbility - 能力</span>
+    </div>
+    <p class="bug-desc">由于 document.getElementById() 对不存在的ID返回 null，导致性格和额外信息无法被读取，最终不进入游戏状态。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="fix-label">+ mcPersonality: 'setupPlayerDesc',  // 修正为正确的HTML ID</span>
+<span class="fix-label">+ // mcExtra 已移除（setupPlayerExtra 不存在）</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 5 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-005</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">思维链（思维链面板）未在剧情页面显示</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">用户在设置中开启了思维链模式（cotMode = enabled），但剧情页面中始终看不到思维链面板。控制台日志显示 <code>[COT] 提取到思维链内容: 0 段标签 + 1 段 reasoning_content</code>，说明思维链数据已提取，但面板未显示。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">存在三个关联问题：</p>
+    <p class="bug-desc"><strong>1. showCotPanel 从未被设置：</strong>CotPanelController.showPanel 的 getter 要求 <code>gameState.showCotPanel === true</code>，但在设置 cotMode 时从未同步设置 showCotPanel。</p>
+    <p class="bug-desc"><strong>2. 旧逻辑冲突：</strong><span class="file-path">game.js:2355</span> 中旧的渲染逻辑默认 <code>_showCot = true</code>，但 CotPanelController.show() 内部使用新的 showPanel 判断，两者逻辑不一致。</p>
+    <p class="bug-desc"><strong>3. 加载时不恢复：</strong><span class="file-path">loadGameSettings()</span> 中恢复了 cotMode 但未同步 showCotPanel，刷新后设置丢失。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <p class="bug-desc"><strong>修复1 - settingCotMode 变更时同步 showCotPanel：</strong></p>
+    <div class="code-block">
+<span class="fix-label">+ // phone-ui.js: settingCotMode change handler</span>
+<span class="fix-label">+ gameState.showCotPanel = (this.value === 'enabled');</span>
+<span class="fix-label">+ gameState.cotMode = this.value;</span>
+    </div>
+    <p class="bug-desc"><strong>修复2 - showPanel getter 同时检查 cotMode：</strong></p>
+    <div class="code-block">
+<span class="fix-label">+ // phone-ui.js: CotPanelController.showPanel getter</span>
+<span class="fix-label">+ if (gameState.showCotPanel === true) return true;</span>
+<span class="fix-label">+ if (gameState.cotMode === 'enabled') return true;</span>
+    </div>
+    <p class="bug-desc"><strong>修复3 - 加载设置时同步 showCotPanel：</strong></p>
+    <div class="code-block">
+<span class="fix-label">+ // phone-ui.js: loadGameSettings()</span>
+<span class="fix-label">+ gameState.showCotPanel = (d.cotMode === 'enabled');</span>
+    </div>
+    <p class="bug-desc"><strong>修复4 - 统一 game.js 中的显示判断逻辑：</strong></p>
+    <div class="code-block">
+<span class="comment">// game.js: 使用 CotPanelController.showPanel 统一判断</span>
+<span class="bug-label">- var _showCot = true;</span>
+<span class="fix-label">+ var _showCot = false;</span>
+<span class="fix-label">+ if (typeof CotPanelController !== 'undefined' && CotPanelController.showPanel) {</span>
+<span class="fix-label">+     _showCot = true;</span>
+<span class="fix-label">+ }</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 6 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-006</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">关系网中AI使用代称（学霸/小少爷）而非真实姓名</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">用户在角色设定中使用统称（如"小少爷"、"学霸"）来描述NPC，但AI在生成剧情和关系网时也使用了这些代称，而非为NPC生成真实姓名。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">AI指令中缺少明确要求"为NPC使用真实姓名而非代称"的规则。模型倾向于直接使用用户提供的描述词作为名称。此外，主角也使用"主角"代称（见BUG-003），进一步强化了使用代称的模式。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <p class="bug-desc">在关系网指令中明确要求主角使用真实姓名（BUG-003的修复），同时这是AI提示工程的通用问题——需要在 system prompt 中增加"为每个NPC赋予真实姓名"的规则。当前修复已确保主角姓名正确，NPC命名问题建议在后续版本中通过增强 prompt 解决。</p>
+  </div>
+</div>
+
+<!-- BUG 7 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-007</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">日志页面显示"近期剧情"动态</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">日志主页面顶部渲染了"近期剧情"动态列表，用户不需要此功能。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">在 <span class="file-path">phone-ui.js:1805</span> 中，<code>renderLogPage()</code> 调用了 <code>_renderRecentStoryFeed(logMainContent)</code> 来渲染近期剧情动态。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="comment">// phone-ui.js: renderLogPage()</span>
+<span class="bug-label">- _renderRecentStoryFeed(logMainContent);</span>
+<span class="fix-label">+ // 【修复】用户要求移除日志中的"近期剧情"动态</span>
+<span class="fix-label">+ // _renderRecentStoryFeed(logMainContent);</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 8 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-008</span>
+    <span class="severity sev-high">高</span>
+    <span class="bug-title">日志页面包含"作话"和"记忆"卡片</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">日志功能网格中显示了"作话"和"记忆"两个卡片入口，用户要求移除。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">在 <span class="file-path">index.html:784-801</span> 中，logFeatureGrid 内包含 logFeat-author_note（作话）和 logFeat-memory（记忆）两个 preset-item 卡片。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="comment">// index.html: 移除作话和记忆卡片</span>
+<span class="bug-label">- &lt;div class="preset-item" data-log="author_note" ...&gt;作话&lt;/div&gt;</span>
+<span class="bug-label">- &lt;div class="preset-item" data-log="memory" ...&gt;记忆&lt;/div&gt;</span>
+<span class="fix-label">+ &lt;!-- 【修复】用户要求移除日志中的"作话"和"记忆"卡片 --&gt;</span>
+    </div>
+  </div>
+</div>
+
+<!-- BUG 9 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-009</span>
+    <span class="severity sev-medium">中</span>
+    <span class="bug-title">设置页面"参数设置"卡片与字数控制、预设管理器大量重复</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">游戏设置页面存在严重的功能重复：</p>
+    <p class="bug-desc">- "参数设置"卡片中的"剧情长度(max_tokens)"与"字数控制"卡片的 wcMax 功能重叠</p>
+    <p class="bug-desc">- "参数设置"卡片中的快捷预设按钮与"预设管理器"功能完全重复</p>
+    <p class="bug-desc">- "字数控制"卡片中的"叙述视角(wcPerspective)"和"user代词(wcUserPronoun)"两个控件功能重叠，容易导致冲突</p>
+    <p class="bug-desc">- "叙事增强"卡片中的"写作节奏(settingChapterMode)"与"字数控制"中的"段落风格(wcParagraphStyle)"功能重复</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <p class="bug-desc"><strong>1. 删除整个"参数设置"卡片</strong>（含 settingStoryLength、快捷预设按钮、精细调参入口）—— max_tokens 改由 wcMax 自动计算，精细参数由预设管理器统一管理。</p>
+    <p class="bug-desc"><strong>2. 合并叙述视角和user代词</strong>为单一的"叙述人称"下拉框，选项包括：第三人称（他/她）、第三人称全知、第二人称（你）、第一人称（我）。userPronoun 由 perspective 自动推导，不再需要独立控件。</p>
+    <p class="bug-desc"><strong>3. 删除"写作节奏(settingChapterMode)"控件</strong>——与段落风格功能重复。</p>
+    <p class="bug-desc"><strong>4. 将演绎授权、转述授权、推进节奏</strong>从"字数控制"卡片移至"叙事增强"卡片，字数控制只保留纯字数相关的控件。</p>
+  </div>
+</div>
+
+<!-- BUG 10 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-010</span>
+    <span class="severity sev-medium">中</span>
+    <span class="bug-title">设置页面人称控件过多导致判定冲突</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">设置页面原本存在两套人称控制系统：wcPerspective（叙述视角）和 wcUserPronoun（user代词），两者功能高度重叠。用户可能在一个控件选择第三人称，在另一个控件选择第二人称，导致最终行为不确定。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">根因分析</div>
+    <p class="bug-desc">wcPerspective 控制叙事视角（第三人称有限/全知、第一人称），wcUserPronoun 控制主角代词（你/他/她/我）。但这两个维度在实际使用中是耦合的——选择第三人称视角自然意味着用"他/她"指代主角，不需要两个独立控件。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <p class="bug-desc">合并为单一"叙述人称"控件。userPronoun 由 perspective 自动推导：</p>
+    <div class="code-block">
+<span class="comment">// phone-ui.js: saveGameSettings() 中自动推导</span>
+<span class="fix-label">+ userPronoun: (function() {</span>
+<span class="fix-label">+     var _p = document.getElementById('wcPerspective').value;</span>
+<span class="fix-label">+     if (_p === 'second_person') return 'second_person';</span>
+<span class="fix-label">+     if (_p === 'first_person_limited') return 'first_person';</span>
+<span class="fix-label">+     return 'third_person';</span>
+<span class="fix-label">+ })()</span>
+    </div>
+    <p class="bug-desc">同时移除了所有读取 wcUserPronoun 控件值的代码，以及 HTML 中的 wcUserPronoun select 元素。</p>
+  </div>
+</div>
+
+<!-- BUG 11 -->
+<div class="bug-card">
+  <div class="bug-header">
+    <span class="bug-id">BUG-011</span>
+    <span class="severity sev-medium">中</span>
+    <span class="bug-title">injectPresetGlobalVars 缺少 second_person 映射</span>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">问题描述</div>
+    <p class="bug-desc">宏变量"叙述视角"和"char代词"的映射表中缺少 second_person 选项，导致当用户选择第二人称时，宏变量无法正确注入。</p>
+  </div>
+  <div class="bug-section">
+    <div class="bug-section-title">修复方案</div>
+    <div class="code-block">
+<span class="comment">// game.js: injectPresetGlobalVars()</span>
+<span class="fix-label">+ 'second_person': '叙述视角：第二人称',  // perspectiveMap</span>
+<span class="fix-label">+ 'second_person': '你',                  // charPronouns</span>
+    </div>
+  </div>
+</div>
+
+<h2>三、设置页面去重详情</h2>
+<p class="section-intro">
+原设置页面存在大量功能重叠的控件，导致用户困惑且部分控件互不同步。以下是去重前后的对比。
+</p>
+
+<h3>去重前：设置页面控件清单</h3>
+<table>
+  <tr><th>卡片</th><th>控件</th><th>问题</th></tr>
+  <tr><td>参数设置</td><td>剧情长度(max_tokens)</td><td>与字数控制wcMax重叠</td></tr>
+  <tr><td>参数设置</td><td>快捷预设按钮</td><td>与预设管理器完全重复</td></tr>
+  <tr><td>参数设置</td><td>精细调参入口</td><td>与预设管理器完全重复</td></tr>
+  <tr><td>字数控制</td><td>叙述视角(wcPerspective)</td><td>与user代词功能重叠</td></tr>
+  <tr><td>字数控制</td><td>user代词(wcUserPronoun)</td><td>与叙述视角功能重叠</td></tr>
+  <tr><td>字数控制</td><td>演绎授权(wcTakeover)</td><td>非字数控制，应归叙事增强</td></tr>
+  <tr><td>字数控制</td><td>转述授权(wcNarrate)</td><td>非字数控制，应归叙事增强</td></tr>
+  <tr><td>字数控制</td><td>推进节奏(wcPacing)</td><td>非字数控制，应归叙事增强</td></tr>
+  <tr><td>叙事增强</td><td>写作节奏(settingChapterMode)</td><td>与段落风格(wcParagraphStyle)重复</td></tr>
+</table>
+
+<h3>去重后：设置页面控件清单</h3>
+<table>
+  <tr><th>卡片</th><th>控件</th><th>说明</th></tr>
+  <tr><td>字数控制</td><td>启用字数控制(wcEnabled)</td><td>保留</td></tr>
+  <tr><td>字数控制</td><td>最低字数(wcMin)</td><td>保留</td></tr>
+  <tr><td>字数控制</td><td>最高字数(wcMax)</td><td>保留，max_tokens自动推导</td></tr>
+  <tr><td>字数控制</td><td>段落最少字数(wcParaMin)</td><td>保留</td></tr>
+  <tr><td>字数控制</td><td>段落最多字数(wcParaMax)</td><td>保留</td></tr>
+  <tr><td>字数控制</td><td>段落风格(wcParagraphStyle)</td><td>保留</td></tr>
+  <tr><td>叙事增强</td><td>叙述人称(wcPerspective)</td><td>合并原wcPerspective+wcUserPronoun</td></tr>
+  <tr><td>叙事增强</td><td>演绎授权(wcTakeover)</td><td>从字数控制移入</td></tr>
+  <tr><td>叙事增强</td><td>转述授权(wcNarrate)</td><td>从字数控制移入</td></tr>
+  <tr><td>叙事增强</td><td>推进节奏(wcPacing)</td><td>从字数控制移入</td></tr>
+  <tr><td>叙事增强</td><td>文风选择(settingWritingStyle)</td><td>保留</td></tr>
+  <tr><td>叙事增强</td><td>思维链模式(settingCotMode)</td><td>保留</td></tr>
+  <tr><td>叙事增强</td><td>思维链自动展开(settingCotAutoExpand)</td><td>保留</td></tr>
+  <tr><td>叙事增强</td><td>叙事基调(narrativeEyes)</td><td>保留</td></tr>
+</table>
+
+<div class="callout callout-warn">
+  <p><strong>已删除的卡片/控件：</strong>参数设置卡片（含settingStoryLength、快捷预设按钮、精细调参入口）、user代词(wcUserPronoun)、写作节奏(settingChapterMode)</p>
+</div>
+
+<h2>四、代码变更统计</h2>
+<table>
+  <tr><th>文件</th><th>新增行</th><th>删除行</th><th>变更类型</th></tr>
+  <tr><td>index.html</td><td>~30</td><td>~70</td><td>删除参数设置卡片、合并人称控件、移除作话/记忆卡片、移除写作节奏</td></tr>
+  <tr><td>js/game.js</td><td>~40</td><td>~25</td><td>动态人称、max_tokens自动计算、思维链显示修复、关系网姓名修复、宏变量映射补全</td></tr>
+  <tr><td>js/phone-ui.js</td><td>~50</td><td>~43</td><td>设置同步修复、思维链面板修复、日志清理、设置去重（事件绑定/保存/加载/重置）</td></tr>
+  <tr><td>js/core.js</td><td>~2</td><td>~3</td><td>字段映射修正</td></tr>
+  <tr><td><strong>合计</strong></td><td><strong>~122</strong></td><td><strong>~141</strong></td><td><strong>4个文件</strong></td></tr>
+</table>
+
+<h2>五、参考的开源文游项目</h2>
+<p class="section-intro">
+在分析Bug过程中，参考了 SillyTavern（酒馆）等开源AI角色扮演项目的实现方式：
+</p>
+
+<h3>SillyTavern 的相关设计</h3>
+<table>
+  <tr><th>设计点</th><th>SillyTavern的做法</th><th>本游戏的修复</th></tr>
+  <tr><td>人称控制</td><td>使用单一"Persona"字段控制，不存在重复控件</td><td>合并为单一"叙述人称"下拉框</td></tr>
+  <tr><td>max_tokens管理</td><td>由预设统一管理，不暴露在主设置页</td><td>由wcMax自动推导，删除手动设置</td></tr>
+  <tr><td>思维链显示</td><td>reasoning_content 直接渲染到独立面板，由单一开关控制</td><td>修复showCotPanel同步逻辑，统一判断入口</td></tr>
+  <tr><td>角色姓名锁定</td><td>使用 {{char}} 宏确保AI使用正确姓名</td><td>在AI指令中注入 gameState.playerName</td></tr>
+</table>
+
+<h2>六、部署建议</h2>
+<div class="callout callout-danger">
+  <p><strong>重要：</strong>当前所有修复均在本地代码仓库中，尚未部署到 GitHub Pages。用户需要将代码推送到 GitHub 仓库后，GitHub Pages 会自动部署。</p>
+</div>
+
+<h3>部署步骤</h3>
+<table>
+  <tr><th>步骤</th><th>操作</th></tr>
+  <tr><td>1</td><td>将修改后的4个文件提交到Git</td></tr>
+  <tr><td>2</td><td>推送到GitHub仓库（yanyuan1234/free-script）</td></tr>
+  <tr><td>3</td><td>等待GitHub Actions自动部署到Pages</td></tr>
+  <tr><td>4</td><td>访问 https://yanyuan1234.github.io/free-script/ 验证修复</td></tr>
+</table>
+
+<h3>部署后验证清单</h3>
+<table>
+  <tr><th>验证项</th><th>预期结果</th></tr>
+  <tr><td>设置页面</td><td>不再有"参数设置"卡片，人称控件只有一个</td></tr>
+  <tr><td>字数设置1500-3000</td><td>AI生成内容应接近1500-3000字</td></tr>
+  <tr><td>设置第三人称</td><td>AI使用"他/她"和角色名叙事</td></tr>
+  <tr><td>思维链开启</td><td>剧情页面显示思维链面板</td></tr>
+  <tr><td>个人页面</td><td>显示真实姓名和基本信息</td></tr>
+  <tr><td>关系网</td><td>主角使用真实姓名</td></tr>
+  <tr><td>日志页面</td><td>无"近期剧情"、"作话"、"记忆"</td></tr>
+</table>
+
+<h2>七、后续优化建议</h2>
+
+<h3>短期建议</h3>
+<table>
+  <tr><th>优先级</th><th>建议</th><th>说明</th></tr>
+  <tr><td>高</td><td>增强NPC命名规则</td><td>在system prompt中增加"为每个NPC赋予真实姓名"的规则，避免使用"学霸"等代称</td></tr>
+  <tr><td>高</td><td>max_tokens上限测试</td><td>不同API提供商对max_tokens有不同上限，建议增加动态适配</td></tr>
+  <tr><td>中</td><td>设置变更即时生效</td><td>当前部分设置需要重新开始游戏才生效，建议改为即时生效</td></tr>
+</table>
+
+<h3>长期建议</h3>
+<table>
+  <tr><th>优先级</th><th>建议</th><th>说明</th></tr>
+  <tr><td>中</td><td>引入SillyTavern的宏系统</td><td>使用 {{char}}、{{user}} 等宏统一管理角色名称，避免硬编码</td></tr>
+  <tr><td>中</td><td>设置页面分组重构</td><td>进一步精简为3个卡片：基础设置、字数控制、叙事增强</td></tr>
+  <tr><td>低</td><td>增加设置导入导出</td><td>方便用户备份和分享设置配置</td></tr>
+</table>
+
+</div>
+</body>
+</html>

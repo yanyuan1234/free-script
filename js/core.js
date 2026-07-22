@@ -7524,10 +7524,9 @@ async function initializeGame() {
                 mcGender: 'setupPlayerGender',
                 mcAge: 'setupPlayerAge',
                 mcIdentity: 'setupPlayerIdentity',
-                mcPersonality: 'setupPlayerPersonality',
+                mcPersonality: 'setupPlayerDesc',
                 mcAppearance: 'setupPlayerAppearance',
-                mcAbility: 'setupPlayerAbility',
-                mcExtra: 'setupPlayerExtra'
+                mcAbility: 'setupPlayerAbility'
             };
             Object.keys(mcFields).forEach(function(k) {
                 var el = document.getElementById(mcFields[k]);
