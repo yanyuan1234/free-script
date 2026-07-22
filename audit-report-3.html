@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>第4轮测试报告 - 大体量预设兼容性测试</title>
+<style>
+:root {
+  --bg-primary: #0f0f1a;
+  --bg-secondary: #1a1a2e;
+  --bg-card: #16213e;
+  --bg-hover: #1e2a4a;
+  --text-primary: #e0e0e0;
+  --text-secondary: #a0a0b0;
+  --text-muted: #606070;
+  --accent-blue: #4a9eff;
+  --accent-green: #4caf50;
+  --accent-red: #f44336;
+  --accent-yellow: #ffc107;
+  --accent-purple: #9c27b0;
+  --border-color: #2a2a4a;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans CJK SC", sans-serif;
+  line-height: 1.8;
+  padding: 40px 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+h1 { font-size: 2em; margin-bottom: 8px; background: linear-gradient(135deg, #4a9eff, #9c27b0); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+h2 { font-size: 1.5em; margin: 32px 0 16px; color: var(--accent-blue); border-bottom: 2px solid var(--border-color); padding-bottom: 8px; }
+h3 { font-size: 1.2em; margin: 20px 0 12px; color: var(--text-primary); }
+.subtitle { color: var(--text-secondary); margin-bottom: 32px; font-size: 0.95em; }
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 32px; }
+.summary-card { background: var(--bg-card); border-radius: 12px; padding: 20px; border: 1px solid var(--border-color); }
+.summary-card .label { color: var(--text-muted); font-size: 0.85em; margin-bottom: 4px; }
+.summary-card .value { font-size: 1.8em; font-weight: bold; }
+.summary-card .value.green { color: var(--accent-green); }
+.summary-card .value.red { color: var(--accent-red); }
+.summary-card .value.blue { color: var(--accent-blue); }
+.summary-card .value.yellow { color: var(--accent-yellow); }
+.info-box { background: var(--bg-card); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; border: 1px solid var(--border-color); }
+.info-box h3 { margin-top: 0; }
+.bug-item { background: var(--bg-card); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; border-left: 4px solid var(--accent-green); }
+.bug-item.critical { border-left-color: var(--accent-red); }
+.bug-item.warning { border-left-color: var(--accent-yellow); }
+.bug-item.info { border-left-color: var(--accent-blue); }
+.bug-item.resolved { border-left-color: var(--accent-green); }
+.bug-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.bug-id { font-weight: bold; color: var(--accent-blue); font-size: 1.1em; }
+.bug-status { padding: 2px 10px; border-radius: 4px; font-size: 0.85em; font-weight: bold; }
+.bug-status.fixed { background: rgba(76, 175, 80, 0.2); color: var(--accent-green); }
+.bug-status.verified { background: rgba(76, 175, 80, 0.3); color: var(--accent-green); border: 1px solid var(--accent-green); }
+.bug-status.observed { background: rgba(255, 193, 7, 0.2); color: var(--accent-yellow); }
+.bug-status.known { background: rgba(74, 158, 255, 0.2); color: var(--accent-blue); }
+.bug-detail { color: var(--text-secondary); font-size: 0.95em; }
+.bug-detail strong { color: var(--text-primary); }
+.bug-detail p { margin: 8px 0; }
+.test-round { background: var(--bg-card); border-radius: 12px; padding: 20px 24px; margin-bottom: 16px; border: 1px solid var(--border-color); }
+.test-round h3 { color: var(--accent-blue); }
+.test-detail { color: var(--text-secondary); font-size: 0.95em; margin-top: 8px; }
+.test-detail p { margin: 6px 0; }
+.test-detail strong { color: var(--text-primary); }
+.pass { color: var(--accent-green); }
+.fail { color: var(--accent-red); }
+.warn { color: var(--accent-yellow); }
+table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-color); }
+th { color: var(--text-secondary); font-weight: 600; font-size: 0.9em; }
+td { color: var(--text-primary); font-size: 0.95em; }
+.tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin: 0 2px; }
+.tag-pass { background: rgba(76, 175, 80, 0.2); color: var(--accent-green); }
+.tag-fail { background: rgba(244, 67, 54, 0.2); color: var(--accent-red); }
+.tag-warn { background: rgba(255, 193, 7, 0.2); color: var(--accent-yellow); }
+.commit-info { background: var(--bg-secondary); border-radius: 8px; padding: 12px 16px; margin: 12px 0; font-family: monospace; font-size: 0.9em; color: var(--text-secondary); border: 1px solid var(--border-color); }
+.story-quote { background: var(--bg-secondary); border-left: 3px solid var(--accent-purple); padding: 12px 16px; margin: 12px 0; border-radius: 0 8px 8px 0; font-size: 0.9em; color: var(--text-secondary); line-height: 1.6; }
+.footer { margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--border-color); color: var(--text-muted); font-size: 0.85em; text-align: center; }
+</style>
+</head>
+<body>
+
+<h1>第4轮测试报告：大体量预设兼容性测试</h1>
+<p class="subtitle">测试日期：2026-07-22 | 测试版本：bcea3fb0 | 预设规模：3271字符（殷允角色卡）</p>
+
+<div class="summary-grid">
+  <div class="summary-card">
+    <div class="label">测试轮数</div>
+    <div class="value blue">3 轮</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">已修复 BUG</div>
+    <div class="value green">3 个</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">已验证修复</div>
+    <div class="value green">1 个</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">已知问题</div>
+    <div class="value green">0 个</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">浏览器冻结</div>
+    <div class="value green">0 次</div>
+  </div>
+  <div class="summary-card">
+    <div class="label">控制台错误</div>
+    <div class="value green">0 条</div>
+  </div>
+</div>
+
+<h2>测试环境</h2>
+<div class="info-box">
+  <table>
+    <tr><th>项目</th><th>配置</th></tr>
+    <tr><td>游戏版本</td><td>bcea3fb0-2026-07-22_13:16_UTC</td></tr>
+    <tr><td>API 地址</td><td>https://api.iamhc.cn/v1</td></tr>
+    <tr><td>AI 模型</td><td>DeepSeek-V4-Flash</td></tr>
+    <tr><td>流式模式</td><td>开启（useStream: true）</td></tr>
+    <tr><td>叙述人称</td><td>第三人称（third_person）</td></tr>
+    <tr><td>字数配置</td><td>1500-3000 字</td></tr>
+    <tr><td>上下文窗口</td><td>64000 tokens</td></tr>
+    <tr><td>预设规模</td><td>3271 字符（殷允详细角色设定）</td></tr>
+    <tr><td>主角设定</td><td>沈星河，22岁，男，殷家旗下科技公司程序员</td></tr>
+  </table>
+</div>
+
+<h2>BUG-028 修复详情（本轮核心修复）</h2>
+<div class="bug-item resolved">
+  <div class="bug-header">
+    <span class="bug-id">BUG-028</span>
+    <span class="bug-status verified">已验证修复</span>
+  </div>
+  <div class="bug-detail">
+    <p><strong>问题描述：</strong>流式生成2-3分钟后，浏览器主线程完全冻结7分钟以上。之前在第2轮测试中，流式生成到达约2分钟时浏览器完全无响应。</p>
+    <p><strong>根因分析：</strong>流式生成期间，当打字机追上流式输出速度（queue 耗尽 → pause() → isTyping=false），如果此时有新段落完成，TypewriterBuffer.render() 会走非打字路径，调用 formatStory(fullText) + innerHTML 全量替换。formatStory 的非打字路径包含 PresetAppManager.parseFromText + stripDecorTags + _cleanUnrecognizedTags + sanitizeHtml(DOMParser) + 完整 innerHTML DOM 重建，每次都是 O(n) 操作。长时间流式（2-3分钟）中此路径被触发数十次，每次处理逐步增长的文本，累积导致主线程冻结。</p>
+    <p><strong>修复方案：</strong>在 TypewriterBuffer 中新增 _streamingMode 标志位。流式开始时设为 true，render() 在此标志为 true 时始终使用 O(1) 增量 appendChild 路径，不调用 formatStory 全量格式化。流式结束（_doFinalRender）时设为 false，让最终渲染走 formatStory 全量路径。</p>
+    <p><strong>修改文件：</strong></p>
+    <p>• <code>js/core.js</code> - TypewriterBuffer 新增 _streamingMode 字段，render() 条件判断修改，stop() 重置标志</p>
+    <p>• <code>js/game.js</code> - sendAIRequest 中设 _streamingMode = true，_doFinalRender 中设 _streamingMode = false</p>
+    <div class="commit-info">commit cea3fb0 | 修改文件：core.js, game.js | 部署版本：bcea3fb0</div>
+  </div>
+</div>
+
+<h2>三轮测试详情</h2>
+
+<div class="test-round">
+  <h3>第1轮：设定解析 + 首回合生成</h3>
+  <div class="test-detail">
+    <p><strong>阶段1 - 设定解析：</strong><span class="pass">✓ 通过</span></p>
+    <p>• 3271字符预设成功提交，AI 正确解析设定</p>
+    <p>• 解析耗时约 4 分钟（含 AI 思考时间）</p>
+    <p>• 殷允角色设定、沈星河主角信息、殷家背景均被正确提取</p>
+    
+    <p><strong>阶段2 - 首回合生成：</strong><span class="pass">✓ 通过</span></p>
+    <p>• 章节标题："不速之客"</p>
+    <p>• 故事长度：约 1265 字符</p>
+    <p>• 角色名字正确：殷允、沈星河</p>
+    <p>• 第三人称叙述：正确</p>
+    <p>• 殷允性格特征体现：直白、小狗式、"第三好看"论（自己第一、姐姐第二）</p>
+    <p>• &lt;giggle&gt;内心独白标签正常渲染</p>
+    <p>• 3个选项正常生成</p>
+    <p>• 流式生成无冻结</p>
+  </div>
+</div>
+
+<div class="test-round">
+  <h3>第2轮：关键测试 - 流式生成不冻结验证</h3>
+  <div class="test-detail">
+    <p><strong>用户行动：</strong>反问他到底想干什么，语气带着防备</p>
+    <p><strong>章节标题：</strong>"直球攻击"</p>
+    <p><strong>故事长度：</strong>约 1055 字符</p>
+    
+    <p><strong>核心验证 - 浏览器响应性：</strong><span class="pass">✓ 通过（关键修复验证成功）</span></p>
+    <p>• 流式生成持续 2+ 分钟，浏览器全程保持响应</p>
+    <p>• _streamingMode 在流式期间为 true，生成完成后正确重置为 false</p>
+    <p>• JavaScript evaluate 在流式期间正常返回（之前会超时）</p>
+    <p>• 无主线程冻结、无页面卡死</p>
+    
+    <p><strong>内容质量：</strong><span class="pass">✓ 通过</span></p>
+    <p>• 殷允拖椅子坐到沈星河旁边，双手托腮盯着他看 —— 完美体现小狗式行为</p>
+    <p>• "我保证加了之后就不打扰你工作" —— 体现纯情和真诚</p>
+    <p>• 小李的内心吐槽正常显示</p>
+    <p>• 3个选项正常生成</p>
+    
+    <div class="story-quote">
+      "他说着，真的拖了把椅子过来，在沈星河工位旁边坐下，双手托腮，眼巴巴地看着沈星河。整个办公区的空气仿佛都凝固了。"
+    </div>
+  </div>
+</div>
+
+<div class="test-round">
+  <h3>第3轮：持续流式测试</h3>
+  <div class="test-detail">
+    <p><strong>用户行动：</strong>无奈地叹口气，戴上耳机继续写代码不理他</p>
+    <p><strong>故事长度：</strong>约 942 字符</p>
+    
+    <p><strong>流式生成：</strong><span class="pass">✓ 通过</span></p>
+    <p>• 流式生成正常完成，无冻结</p>
+    <p>• _streamingMode 正确工作</p>
+    <p>• 最终渲染文本无重复、无乱码</p>
+    
+    <p><strong>内容质量：</strong><span class="pass">✓ 通过</span></p>
+    <p>• "像一只蹲在主人脚边等待投喂的金毛犬" —— 直接呼应预设中的小狗设定</p>
+    <p>• 殷允的小虎牙、酒窝、黑眼睛 —— 外貌描写与预设一致</p>
+    <p>• "你生气的样子也好好看" —— 体现颜控特质</p>
+    <p>• "海蓝宝"比喻蓝色眼睛 —— 体现直白说话风格</p>
+    <p>• 要微信的场景 —— 体现"绝对主攻"和"直球"特质</p>
+    <p>• 3个选项正常生成</p>
+    
+    <div class="story-quote">
+      "殷允眨了眨那双黑曜石般的眼睛，愣了两秒，然后——他笑了。不是那种被冒犯的冷笑，而是真心实意觉得有趣的笑，嘴角的小虎牙露出来，酒窝若隐若现。"
+    </div>
+  </div>
+</div>
+
+<h2>已修复问题（本轮）</h2>
+
+<div class="bug-item resolved">
+  <div class="bug-header">
+    <span class="bug-id">BUG-029</span>
+    <span class="bug-status fixed">已修复</span>
+  </div>
+  <div class="bug-detail">
+    <p><strong>问题描述：</strong>流式生成期间，文本渲染会出现短暂的字符重复现象（如"的的"、"透透"、"窗窗"），以及段落级别的文本重复。最终渲染完成后文本正常。</p>
+    <p><strong>影响程度：</strong>低 —— 不影响最终显示结果，仅流式过程中可见</p>
+    <p><strong>原因分析：</strong>BUG-028 修复后，流式期间使用增量 appendChild 路径渲染。当段落从"当前打字中"变为"已完成"时，旧的 <code>&lt;p class="story-typing-para"&gt;</code> 元素未被移除，与新追加的 <code>&lt;p class="story-completed-para"&gt;</code> 形成文本重复。</p>
+    <p><strong>修复方案：</strong>在 <code>core.js</code> 的 <code>render()</code> 增量路径中，追加新完成段落前，先检查并移除旧的 <code>_currentParaEl</code> 元素。</p>
+  </div>
+</div>
+
+<div class="bug-item resolved">
+  <div class="bug-header">
+    <span class="bug-id">BUG-030</span>
+    <span class="bug-status fixed">已修复</span>
+  </div>
+  <div class="bug-detail">
+    <p><strong>问题描述：</strong>showCotPanel（思维链显示）设置在游戏启动后丢失。通过 JavaScript 设置 <code>gameState.showCotPanel = true</code> 后开始游戏，游戏状态重置时该值变回 undefined。</p>
+    <p><strong>影响程度：</strong>中 —— 思维链面板不会自动显示</p>
+    <p><strong>原因分析：</strong><code>startNewGame()</code> 调用 <code>resetRuntimeState('full')</code> 时，<code>createDefaultGameState()</code> 替换了整个 <code>gameState</code> 对象，而新对象中不包含 <code>showCotPanel</code> 字段。之后未调用 <code>loadGameSettings()</code> 恢复用户保存的设置。</p>
+    <p><strong>修复方案：</strong>1. <code>createDefaultGameState()</code> 中新增 <code>showCotPanel: false</code> 默认值；2. <code>startNewGame()</code> 在 <code>resetRuntimeState('full')</code> 之后调用 <code>loadGameSettings()</code> 恢复所有已保存设置。</p>
+  </div>
+</div>
+
+<h2>测试总结</h2>
+
+<div class="info-box">
+  <h3>核心结论</h3>
+  <p><strong>BUG-028 修复验证成功</strong> —— 之前导致浏览器冻结7分钟以上的严重问题已完全修复。三轮测试中，第二轮流式生成持续2分钟以上，浏览器全程保持响应，JavaScript 交互正常。_streamingMode 标志正确地在流式开始时设为 true、结束时设为 false。</p>
+</div>
+
+<div class="info-box">
+  <h3>大体量预设兼容性</h3>
+  <p><strong>3271字符预设完全兼容</strong> —— 殷允角色卡的详细设定（15条特质补充、家族背景、性格描述）被 AI 正确理解和运用。生成内容中殷允的小狗式行为、颜控特质、直白说话风格、纯情反差等核心设定都被准确体现。设定解析耗时约4分钟（正常范围），后续每轮生成约1-2分钟。</p>
+</div>
+
+<div class="info-box">
+  <h3>性能表现</h3>
+  <table>
+    <tr><th>指标</th><th>第1轮</th><th>第2轮</th><th>第3轮</th></tr>
+    <tr><td>生成耗时</td><td>~3分钟</td><td>~2分钟</td><td>~2分钟</td></tr>
+    <tr><td>故事字数</td><td>~1265字</td><td>~1055字</td><td>~942字</td></tr>
+    <tr><td>Token 用量</td><td>-</td><td>4.4k/20.4k</td><td>3.3k/22.5k</td></tr>
+    <tr><td>浏览器冻结</td><td><span class="pass">无</span></td><td><span class="pass">无</span></td><td><span class="pass">无</span></td></tr>
+    <tr><td>控制台错误</td><td><span class="pass">0</span></td><td><span class="pass">0</span></td><td><span class="pass">0</span></td></tr>
+    <tr><td>选项生成</td><td><span class="pass">3个</span></td><td><span class="pass">3个</span></td><td><span class="pass">3个</span></td></tr>
+    <tr><td>角色名正确</td><td><span class="pass">是</span></td><td><span class="pass">是</span></td><td><span class="pass">是</span></td></tr>
+    <tr><td>第三人称</td><td><span class="pass">是</span></td><td><span class="pass">是</span></td><td><span class="pass">是</span></td></tr>
+    <tr><td>设定还原度</td><td><span class="pass">高</span></td><td><span class="pass">高</span></td><td><span class="pass">高</span></td></tr>
+  </table>
+</div>
+
+<h2>提交记录</h2>
+<div class="commit-info">
+  cea3fb0 | BUG-028: 流式生成时浏览器冻结修复<br>
+  └─ core.js: TypewriterBuffer 新增 _streamingMode 标志<br>
+  └─ game.js: sendAIRequest 设 true, _doFinalRender 设 false<br>
+  └─ 部署: GitHub Pages (bcea3fb0-2026-07-22_13:16_UTC)
+</div>
+<div class="commit-info">
+  (本轮) | BUG-029 + BUG-030 修复<br>
+  └─ core.js: render() 增量路径移除旧 story-typing-para 元素 (BUG-029)<br>
+  └─ core.js: createDefaultGameState() 新增 showCotPanel 默认值 (BUG-030)<br>
+  └─ phone-ui.js: startNewGame() 调用 loadGameSettings() 恢复设置 (BUG-030)<br>
+  └─ audit-report-3.html: 更新报告状态为已修复
+</div>
+
+<div class="footer">
+  <p>第4轮测试报告 | 生成时间：2026-07-22 | 测试版本：bcea3fb0</p>
+  <p>BUG-025 ~ BUG-030 累计修复6个问题 | 总计修复 BUG: 030个</p>
+</div>
+
+</body>
+</html>

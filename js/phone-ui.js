@@ -6013,6 +6013,13 @@ function startNewGame(forgeResult) {
     // 此前 startNewGame/loadFromSlot/handleImportFile 三处各自重置不同字段子集，极易字段遗漏
     resetRuntimeState('full');
 
+    // 【BUG-030 修复】resetRuntimeState('full') 用 createDefaultGameState() 替换了整个 gameState，
+    // 导致用户在设置中保存的 useStream / wordCountConfig / cotMode / showCotPanel 等全部丢失。
+    // 必须在此处重新加载已保存的设置，恢复用户偏好。
+    if (typeof loadGameSettings === 'function') {
+        loadGameSettings();
+    }
+
     // ======== 开始新游戏 ========
     gameState.userPrompt = prompt;
 

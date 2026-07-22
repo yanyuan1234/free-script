@@ -2621,6 +2621,7 @@ _diary: [],
 // 【酒馆预设融合】新增叙事增强字段
 writingStyle: '',            // 文风选择：baimiao/liudong/lengjun/nongmo（来自果实预设）
 cotMode: '',                 // 思维链模式（来自蛾摩拉预设）
+showCotPanel: false,          // 【BUG-030 修复】思维链面板可见性（由 cotMode === 'enabled' 推导）
 cotAutoExpand: false,        // 思维链完成后自动展开
 summaryThreshold: 6,         // 摘要阈值（来自月读预设）
 _squashSystemMessages: true, // 合并system消息（来自果实预设，默认开启）
@@ -3140,6 +3141,12 @@ var TypewriterBuffer = {
                 if (this._cachedParaCount === 0) {
                     // 首次渲染：清空容器
                     storyEl.innerHTML = '';
+                }
+                // 【BUG-029 修复】段落从"当前打字中"变为"已完成"时，
+                // 旧的 story-typing-para 元素仍残留在 DOM 中，与新增的
+                // story-completed-para 形成文本重复。此处移除旧元素。
+                if (this._currentParaEl && this._currentParaEl.parentNode === storyEl) {
+                    this._currentParaEl.remove();
                 }
                 for (var _ni = 0; _ni < _newCount; _ni++) {
                     var _paraIdx = this._cachedParaCount + _ni;
