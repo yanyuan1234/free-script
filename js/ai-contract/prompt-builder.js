@@ -118,8 +118,8 @@ const PromptBuilder = {
             });
             if (!hasAny) return '';
             return '【玩家偏好】\n' +
-                '这些是玩家的期望，你理解它们是参考而非枷锁——当偏好与故事质量冲突时，故事质量优先：\n' +
-                '- 字数：{{getglobalvar::字数总要求}}\n' +
+                '以下是玩家的核心创作要求，请务必遵循。其中字数和段落数是硬性指标——充分展开场景描写、人物对话和心理活动，确保实际输出达到指定范围，不要草草收尾：\n' +
+                '- 字数：{{getglobalvar::字数总要求}}（重要：请确保达到此字数范围）\n' +
                 '- 段落：{{getglobalvar::单段落字数}}\n' +
                 '- 视角：{{getglobalvar::叙述视角}}\n' +
                 '- 代词：{{getglobalvar::char代词}} / {{getglobalvar::user代词}}\n' +
