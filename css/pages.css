@@ -2059,14 +2059,14 @@
    MEMORY PANEL — Mufy 三层记忆（纯文字）
 ================================================================ */
 .memory-panel {
-    padding: 16px;
+    padding: 12px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 10px;
 }
 
 .memory-panel-title {
-    font-size: 18px;
+    font-size: 16px;
     font-weight: 600;
     color: var(--text);
     margin-bottom: 4px;
@@ -2082,8 +2082,8 @@
 }
 
 .memory-section summary {
-    padding: 12px 14px;
-    font-size: 14px;
+    padding: 10px 12px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--text);
     cursor: pointer;
@@ -2112,16 +2112,16 @@
 
 .memory-section ul {
     margin: 0;
-    padding: 12px 14px 12px 32px;
+    padding: 10px 12px 10px 28px;
     list-style: disc;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .memory-section li {
-    font-size: 13px;
-    line-height: 1.6;
+    font-size: 12px;
+    line-height: 1.5;
     color: var(--text-secondary);
 }
 
@@ -3598,4 +3598,13 @@
         font-size: 15px;
         padding: 10px 0;
     }
+}
+
+/* ========== 大屏适配 (≥768px 平板) — 记忆面板 ========== */
+@media (min-width: 768px) {
+    .memory-panel { padding: 16px; gap: 14px; }
+    .memory-panel-title { font-size: 18px; }
+    .memory-section summary { padding: 12px 14px; font-size: 14px; }
+    .memory-section ul { padding: 12px 14px 12px 32px; gap: 8px; }
+    .memory-section li { font-size: 13px; line-height: 1.6; }
 }
