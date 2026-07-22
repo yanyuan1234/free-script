@@ -251,6 +251,29 @@ const PromptBuilder = {
             }
             return '当前游戏时间：' + (time.date || '') + ' ' + (time.time || '') + ' ' + (time.period || '');
         }, { order: 90 });
+
+        // 【Fix 9】字数锚点：在系统提示词最末尾再次强调字数要求（近因效应）
+        // AI 对提示词末尾的内容关注度最高，将字数要求放在最后可以显著提升遵循率
+        // 使用宏变量，不硬编码任何字数——完全由用户设置决定
+        this.registerSection('wordCountAnchor', function(ctx) {
+            const macroVars = ctx.macroVars || {};
+            var wc = macroVars['字数总要求'];
+            if (!wc || !String(wc).trim()) return '';
+            // 提取数字范围用于更直观的提醒
+            var wcStr = String(wc);
+            var numMatch = wcStr.match(/(\d+)\s*[-~]\s*(\d+)/);
+            var reminder = '';
+            if (numMatch) {
+                var min = parseInt(numMatch[1], 10);
+                var max = parseInt(numMatch[2], 10);
+                var mid = Math.round((min + max) / 2);
+                reminder = '（目标约' + mid + '字，最少' + min + '字）';
+            }
+            return '【字数提醒·最重要】\n' +
+                '本回合字数要求：' + wcStr + reminder + '。\n' +
+                '这是玩家最看重的体验指标。请充分展开叙事——多写场景细节、角色对话、心理描写和环境氛围，' +
+                '让故事沉浸感拉满。你的输出空间充足，不要节约token，写到要求的字数范围再收尾。';
+        }, { order: 95 });
     }
 };
 
