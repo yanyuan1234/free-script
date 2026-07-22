@@ -2087,6 +2087,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _t_streamEnd = performance.now();
         window._perfDebug&&(document.title='PERF:7-streamDone');
         console.log('[perf] 流完成, responseLen=' + (response ? response.length : 0));
+        // 【BUG-002 补充修复】流完成后，后处理（parseAIResponse + renderStory）是重计算操作
+        // 在流完成与后处理之间 yield 一次，让浏览器处理积压的 UI 事件（如 CDP 命令），
+        // 避免后处理的同步计算阻塞导致浏览器冻结
+        await new Promise(function(resolve) { setTimeout(resolve, 0); });
         // 【酒馆式思维链】流式结束，标记思考完成
         // 如果有流式 reasoning（reasoning_content 字段），此时面板已显示实时思考内容
         // 如果没有流式 reasoning（标签式 CoT），后面 parseAIResponse 会提取并通过 show() 显示
@@ -2870,23 +2874,28 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _doFinalRender = function() {
             if (_finalRendered) return;
             _finalRendered = true;
-            window._perfDebug&&(document.title='PERF:10-finalRender');
-            try {
-                var _t4 = performance.now();
-                if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
-                var st = document.getElementById('storyText');
-                if (st) st.innerHTML = formatStory(finalStory);
-                window._perfDebug&&(document.title='PERF:11-done');
-                console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
-                _hideSkipButton();
-            } catch (e) {
-                console.warn('[sendAIRequest] 最终渲染异常:', e && e.message);
-            }
+            // 【BUG-002 补充修复】将 formatStory + innerHTML 延迟到 requestAnimationFrame，
+            // 避免重计算同步阻塞主线程导致浏览器冻结。
+            // _finalRendered 已同步置 true 防重入；后续 turn++/选项/HUD 不依赖 story DOM，可安全延迟。
+            requestAnimationFrame(function() {
+                try {
+                    var _t4 = performance.now();
+                    if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
+                    var st = document.getElementById('storyText');
+                    if (st) st.innerHTML = formatStory(finalStory);
+                    console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
+                    _hideSkipButton();
+                } catch (e) {
+                    console.warn('[sendAIRequest] 最终渲染异常:', e && e.message);
+                }
+            });
         };
         // 先设置 onComplete 回调（在 push 之前，防止时序竞争）
         TypewriterBuffer.onComplete = function() {
             _doFinalRender();
         };
+        // 【BUG-002 补充修复】push 前让出主线程，确保浏览器有机会处理积压的 UI 事件
+        await new Promise(function(r) { setTimeout(r, 0); });
         // 流式模式下 onStreamChunk 已经在逐步推送了，
         // 这里只需要确保最终完整文本被推送（处理流式解析可能遗漏的尾部内容）。
         // 如果打字机已经在打字且 displayed 已包含 finalStory 的内容，则跳过重复推送。
