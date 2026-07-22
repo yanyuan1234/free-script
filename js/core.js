@@ -2823,6 +2823,13 @@ var TypewriterBuffer = {
     // P1 修复 R5：baseSpeed 改回 25（原版值），新版误改为 50 导致打字速度减半
     baseSpeed: 25,
     onComplete: null,
+    // 【BUG-028 修复】流式模式标志：为 true 时 render() 始终用增量 appendChild 路径，
+    // 不调用 formatStory 全量格式化（parseFromText + stripDecorTags + sanitizeHtml）。
+    // 根因：流式生成时打字机频繁 catch up（queue 耗尽 → pause → isTyping=false），
+    // 若此时恰好有新段落完成，render() 会走非打字路径调用 formatStory(fullText) + innerHTML 全量替换。
+    // 长时间流式（2-3分钟）中此路径被触发数十次，每次 O(n) 格式化 + DOMParser + innerHTML 重建，
+    // 累积导致主线程冻结。修复后流式期间始终用 O(1) appendChild，formatStory 仅在最终渲染时调用一次。
+    _streamingMode: false,
     _visibilityHandler: null,
     _completedParagraphs: [],
     _currentParaChars: '',
@@ -3054,6 +3061,8 @@ var TypewriterBuffer = {
         this._currentParaTextEl = null;
         this._cursorEl = null;
         this._lastCurrentPara = '';
+        // 【BUG-028 修复】stop 时关闭流式模式，确保后续非流式渲染（如加载存档）走 formatStory 全量路径
+        this._streamingMode = false;
 
         // stop() 会在 catch 块、renderStory 等多处被调用，统一在此清理覆盖所有路径
         try { this.cleanCursor(); } catch (e) { /* ignore */ }
@@ -3123,8 +3132,11 @@ var TypewriterBuffer = {
         }
         if (_completedCount > this._cachedParaCount) {
             var _newCount = _completedCount - this._cachedParaCount;
-            if (this.isTyping) {
-                // 打字流程中：增量追加新段落
+            // 【BUG-028 修复】流式模式（_streamingMode）下始终用增量 appendChild 路径，
+            // 即使打字机 catch up（isTyping=false）也不调用 formatStory 全量格式化。
+            // 仅在非流式场景（加载存档、直接渲染）才走 formatStory + innerHTML 全量路径。
+            if (this.isTyping || this._streamingMode) {
+                // 打字流程中 / 流式模式：增量追加新段落
                 if (this._cachedParaCount === 0) {
                     // 首次渲染：清空容器
                     storyEl.innerHTML = '';

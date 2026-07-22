@@ -1266,6 +1266,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     RuntimeState.streamModeLocked = false;
     RuntimeState.streamMode = null;
     TypewriterBuffer.stop();
+    // 【BUG-028 修复】开启流式模式：render() 始终用增量 appendChild，不调用 formatStory 全量格式化
+    TypewriterBuffer._streamingMode = true;
     // 【酒馆式思维链】新一轮请求开始，重置面板进入"等待思考"状态
     if (typeof CotPanelController !== 'undefined') {
         CotPanelController.startThinking();
@@ -2914,6 +2916,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _doFinalRender = function() {
             if (_finalRendered) return;
             _finalRendered = true;
+            // 【BUG-028 修复】关闭流式模式，让最终渲染走 formatStory 全量格式化路径
+            TypewriterBuffer._streamingMode = false;
             // 【BUG-002 补充修复】将 formatStory + innerHTML 延迟到 requestAnimationFrame，
             // 避免重计算同步阻塞主线程导致浏览器冻结。
             // _finalRendered 已同步置 true 防重入；后续 turn++/选项/HUD 不依赖 story DOM，可安全延迟。
