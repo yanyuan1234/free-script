@@ -26,7 +26,7 @@
 
 var ModelRegistry = {
     // 注册表版本号（每次更新递增）
-    version: '2026-07-23.6',
+    version: '2026-07-23.7',
 
     // 模型条目列表（按优先级排列，越具体越靠前）
     _entries: [
@@ -98,6 +98,8 @@ var ModelRegistry = {
         { pattern: 'k-opus-4-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
         // Claude Mythos 5（最强 Mythos 级）：1M 上下文，128K 最大输出
         { pattern: 'claude-mythos-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Mythos Preview（Project Glasswing 邀请制预览，2026-04-07）：1M 上下文，128K 最大输出
+        { pattern: 'claude-mythos-preview', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Fable 5（Mythos 级公开发布版）：1M 上下文，128K 最大输出
         { pattern: 'claude-fable-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Sonnet 5：1M 上下文，128K 最大输出，adaptive thinking 默认开启
@@ -140,6 +142,7 @@ var ModelRegistry = {
         { pattern: 'claude-3-haiku', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
         // 中转站简写别名（不带 claude- 前缀）
         { pattern: 'mythos-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'mythos-preview', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'fable-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'sonnet-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'haiku-4-5', context_length: 200000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
@@ -287,6 +290,10 @@ var ModelRegistry = {
         { pattern: 'qwen', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba', is_fallback: true },
 
         // ===== Meta Llama 系 =====
+        // Llama 4.5 Scout（2026 迭代版，10M 超长上下文，需排在 llama-4 之前避免误匹配）
+        { pattern: 'llama-4.5-scout', context_length: 10000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta' },
+        { pattern: 'llama-4.5-maverick', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta' },
+        { pattern: 'llama-4.5', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta', is_fallback: true },
         // Llama 4 系列
         { pattern: 'llama-4-scout', context_length: 10000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta' },
         { pattern: 'llama-4-maverick', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta' },
@@ -308,6 +315,75 @@ var ModelRegistry = {
 
         // ===== Yandex YandexGPT 系 =====
         { pattern: 'yandexgpt', context_length: 8192, max_completion_tokens: 2048, is_reasoning: false, provider: 'yandex' },
+
+        // ===== MiniMax 系 =====
+        // MiniMax M3（2026-06-01 发布，开源旗舰，MSA 架构）：1M 上下文，131K 最大输出（上限 512K）
+        { pattern: 'minimax-m3', context_length: 1048576, max_completion_tokens: 131072, is_reasoning: true, provider: 'minimax' },
+        // MiniMax-01（456B MoE，lightning attention）：4M 上下文，64K 最大输出
+        { pattern: 'minimax-01', context_length: 4000000, max_completion_tokens: 65536, is_reasoning: false, provider: 'minimax' },
+        // MiniMax M1（456B MoE 推理模型）：1M 上下文，64K 最大输出
+        { pattern: 'minimax-m1', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'minimax' },
+        // MiniMax M2.7 / M2.5 / M2.1 / M2（10B 激活，coding/agent 优化）：128K 上下文
+        { pattern: 'minimax-m2', context_length: 131072, max_completion_tokens: 65536, is_reasoning: false, provider: 'minimax' },
+        // MiniMax M2-her（角色扮演对话模型）：128K 上下文
+        { pattern: 'minimax-m2-her', context_length: 131072, max_completion_tokens: 65536, is_reasoning: false, provider: 'minimax' },
+        // 兜底
+        { pattern: 'minimax', context_length: 131072, max_completion_tokens: 65536, is_reasoning: false, provider: 'minimax', is_fallback: true },
+        // abab 旧命名系列（MiniMax 早期）
+        { pattern: 'abab', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'minimax', is_fallback: true },
+
+        // ===== 腾讯混元 Hunyuan 系 =====
+        // 混元 Hy3（2026-07-06 发布，MoE 295B/21B 激活）：256K 上下文
+        { pattern: 'hunyuan-hy3', context_length: 262144, max_completion_tokens: 8192, is_reasoning: false, provider: 'tencent' },
+        // 混元 Turbo / Pro / TurboS：128K 上下文
+        { pattern: 'hunyuan-turbo', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'tencent' },
+        { pattern: 'hunyuan-pro', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'tencent' },
+        { pattern: 'hunyuan-standard', context_length: 32768, max_completion_tokens: 4096, is_reasoning: false, provider: 'tencent' },
+        // 兜底
+        { pattern: 'hunyuan', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'tencent', is_fallback: true },
+
+        // ===== 字节豆包 Doubao 系 =====
+        // 豆包 2.0（2026 发布）：256K 上下文
+        { pattern: 'doubao-2', context_length: 262144, max_completion_tokens: 8192, is_reasoning: false, provider: 'bytedance' },
+        // 豆包 1.5 / 1.8：256K 上下文
+        { pattern: 'doubao-1', context_length: 262144, max_completion_tokens: 8192, is_reasoning: false, provider: 'bytedance' },
+        // 兜底
+        { pattern: 'doubao', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'bytedance', is_fallback: true },
+
+        // ===== 百度文心 ERNIE 系 =====
+        // ERNIE 4.5（2025-03 发布）：128K 上下文
+        { pattern: 'ernie-4.5', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'baidu' },
+        { pattern: 'ernie-4', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'baidu' },
+        // 兜底
+        { pattern: 'ernie', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'baidu', is_fallback: true },
+        // 文心一言旧命名
+        { pattern: 'wenxin', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'baidu', is_fallback: true },
+
+        // ===== 阶跃星辰 Step 系 =====
+        // Step-3 / Step-2：128K 上下文
+        { pattern: 'step-3', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'stepfun' },
+        { pattern: 'step-2', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'stepfun' },
+        { pattern: 'step', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'stepfun', is_fallback: true },
+
+        // ===== 零一万物 Yi 系 =====
+        // Yi-Lightning / Yi-Large：128K 上下文
+        { pattern: 'yi-lightning', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: '01ai' },
+        { pattern: 'yi-large', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: '01ai' },
+        { pattern: 'yi-34b', context_length: 32768, max_completion_tokens: 4096, is_reasoning: false, provider: '01ai' },
+        { pattern: 'yi', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: '01ai', is_fallback: true },
+
+        // ===== 百川 Baichuan 系 =====
+        // Baichuan 4 / 3：128K 上下文
+        { pattern: 'baichuan-4', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'baichuan' },
+        { pattern: 'baichuan-3', context_length: 32768, max_completion_tokens: 4096, is_reasoning: false, provider: 'baichuan' },
+        { pattern: 'baichuan', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'baichuan', is_fallback: true },
+
+        // ===== 讯飞星火 Spark 系 =====
+        // Spark 4.0 Ultra：128K 上下文
+        { pattern: 'spark-4', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'iflytek' },
+        { pattern: 'spark', context_length: 32768, max_completion_tokens: 4096, is_reasoning: false, provider: 'iflytek', is_fallback: true },
+        // generalv 命名（讯飞旧 API 格式 spark generalv3.5）
+        { pattern: 'generalv', context_length: 32768, max_completion_tokens: 4096, is_reasoning: false, provider: 'iflytek', is_fallback: true },
 
         // ===== 通用 auto 路由 =====
         { pattern: 'auto', context_length: 128000, max_completion_tokens: 16384, is_reasoning: false, provider: 'auto' }

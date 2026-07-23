@@ -7099,9 +7099,17 @@ var _KNOWN_MODEL_CONTEXT = {
     'k-opus-4-6': 1000000,
     'k-opus-4-5': 200000,
     'claude-mythos-5': 1000000,
+    'claude-mythos-preview': 1000000,
     'claude-fable-5': 1000000,
     'claude-sonnet-5': 1000000,
     'claude-haiku-4-5': 200000,
+    // 点号命名法（中转站常用）
+    'claude-opus-4.8': 1000000,
+    'claude-opus-4.7': 1000000,
+    'claude-opus-4.6': 1000000,
+    'claude-opus-4.5': 200000,
+    'claude-sonnet-4.6': 1000000,
+    'claude-sonnet-4.5': 200000,
     'claude-opus-4-8': 1000000,
     'claude-opus-4-7': 1000000,
     'claude-opus-4-6': 1000000,
@@ -7116,6 +7124,7 @@ var _KNOWN_MODEL_CONTEXT = {
     'claude-3-sonnet': 200000,
     'claude-3-haiku': 200000,
     'mythos-5': 1000000,
+    'mythos-preview': 1000000,
     'fable-5': 1000000,
     'sonnet-5': 1000000,
     'haiku-4-5': 200000,
@@ -7195,6 +7204,9 @@ var _KNOWN_MODEL_CONTEXT = {
     'qwen-turbo': 131072,
     'qwen': 131072,
     // Meta Llama 系
+    'llama-4.5-scout': 10000000,
+    'llama-4.5-maverick': 1000000,
+    'llama-4.5': 1000000,
     'llama-4-scout': 10000000,
     'llama-4-maverick': 1000000,
     'llama-4': 1000000,
@@ -7208,6 +7220,42 @@ var _KNOWN_MODEL_CONTEXT = {
     'mistral-small': 32768,
     'mixtral': 32768,
     'mistral': 32768,
+    // MiniMax 系
+    'minimax-m3': 1048576,
+    'minimax-01': 4000000,
+    'minimax-m1': 1048576,
+    'minimax-m2': 131072,
+    'minimax': 131072,
+    'abab': 131072,
+    // 腾讯混元 Hunyuan 系
+    'hunyuan-hy3': 262144,
+    'hunyuan-turbo': 131072,
+    'hunyuan-pro': 131072,
+    'hunyuan': 131072,
+    // 字节豆包 Doubao 系
+    'doubao-2': 262144,
+    'doubao-1': 262144,
+    'doubao': 131072,
+    // 百度文心 ERNIE 系
+    'ernie-4.5': 131072,
+    'ernie-4': 131072,
+    'ernie': 131072,
+    'wenxin': 131072,
+    // 阶跃星辰 Step 系
+    'step-3': 131072,
+    'step-2': 131072,
+    'step': 131072,
+    // 零一万物 Yi 系
+    'yi-lightning': 131072,
+    'yi-large': 131072,
+    'yi': 131072,
+    // 百川 Baichuan 系
+    'baichuan-4': 131072,
+    'baichuan': 131072,
+    // 讯飞星火 Spark 系
+    'spark-4': 131072,
+    'spark': 32768,
+    'generalv': 32768,
     // 通用 "auto" 推理模型
     'auto': 128000
 };
