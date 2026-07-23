@@ -26,7 +26,7 @@
 
 var ModelRegistry = {
     // 注册表版本号（每次更新递增）
-    version: '2026-07-23.4',
+    version: '2026-07-23.5',
 
     // 模型条目列表（按优先级排列，越具体越靠前）
     _entries: [
@@ -152,6 +152,10 @@ var ModelRegistry = {
         { pattern: 'gemini-3.5', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google', is_fallback: true },
         // Gemini 3.1 Pro / Pro Preview：2M 上下文，65K 最大输出
         { pattern: 'gemini-3.1-pro', context_length: 2000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        // Gemini 3.1 Flash Lite（2026-05-07 GA，替代 Gemini 3 Flash）：1M 上下文，65K 最大输出
+        { pattern: 'gemini-3.1-flash-lite', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        // Gemini 3.1 Flash（含 Image 变体，文本规格相同）：1M 上下文，65K 最大输出
+        { pattern: 'gemini-3.1-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         // Gemini 3 Flash Preview：1M 上下文，65K 最大输出
         { pattern: 'gemini-3-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         // Gemini 3 Pro：1M 上下文，65K 最大输出
@@ -205,8 +209,8 @@ var ModelRegistry = {
         { pattern: 'grok-4.4', context_length: 256000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4.3：2M 上下文，131K 最大输出
         { pattern: 'grok-4.3', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
-        // Grok 4.2（2026-02 候选发布，并行推理架构）：256K 上下文，131K 最大输出
-        { pattern: 'grok-4.2', context_length: 256000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 4.2 / 4.20（2026-02 发布，并行推理架构）：1M 上下文，131K 最大输出
+        { pattern: 'grok-4.2', context_length: 1000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4.1 Fast：2M 上下文，131K 最大输出
         { pattern: 'grok-4.1', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4 Fast：2M 上下文，131K 最大输出
@@ -299,16 +303,24 @@ var ModelRegistry = {
 
     // 中转站模型名标准化：去除前缀，提取纯模型名
     // 处理格式：
-    //   [按量-max]claude-opus-4-8  → claude-opus-4-8
-    //   [Agy]gemini-3.6-flash-tiered → gemini-3.6-flash-tiered
-    //   [按量-kiro]claude-opus-4-8  → claude-opus-4-8
-    //   openai/gpt-5.6-terra        → gpt-5.6-terra
-    //   anthropic/claude-sonnet-5   → claude-sonnet-5
+    //   [按量-max]claude-opus-4-8     → claude-opus-4-8
+    //   逆[kiro3-次-0.05￥]claude-opus-4-8 → claude-opus-4-8
+    //   正[vertex1-量-2.4x]gemini-3.1-pro  → gemini-3.1-pro
+    //   [Agy]gemini-3.6-flash-tiered  → gemini-3.6-flash-tiered
+    //   openai/gpt-5.6-terra          → gpt-5.6-terra
+    //   anthropic/claude-sonnet-5     → claude-sonnet-5
+    //
+    // 策略：如果模型名包含 ]，取最后一个 ] 之后的内容（最鲁棒的方式）
+    // 这样可以处理任意前缀组合（逆/正 + [xxx] 或多层嵌套）
     normalizeModelName: function(modelName) {
         if (!modelName) return '';
         var name = modelName.toLowerCase().trim();
-        // 去除中转站前缀：[xxx] 或 [xxx-yyy] 格式
-        name = name.replace(/^\[.*?\]\s*/, '');
+        // 去除中转站前缀：取最后一个 ] 之后的内容
+        // 处理 逆[xxx]、正[xxx]、[xxx] 等所有前缀格式
+        var bracketEnd = name.lastIndexOf(']');
+        if (bracketEnd !== -1 && bracketEnd < name.length - 1) {
+            name = name.substring(bracketEnd + 1).trim();
+        }
         // 去除 provider 前缀：xxx/ 格式（如 openai/、anthropic/、google/）
         name = name.replace(/^[a-z0-9_-]+\//, '');
         return name;

@@ -7057,7 +7057,7 @@ async function callAI(messages, options = {}) {
 // ========================================
 
 // 【静态 fallback 表】此表为 detectContextSize 的最后兜底（在注册表、正则匹配、AI 自报之后才使用）
-// 数据同步自 model-registry.js v2026-07-23.4
+// 数据同步自 model-registry.js v2026-07-23.5
 // 注意：此表仅存储 context_length，不含 max_completion_tokens 和 is_reasoning
 var _KNOWN_MODEL_CONTEXT = {
     // DeepSeek 系
@@ -7132,6 +7132,8 @@ var _KNOWN_MODEL_CONTEXT = {
     'gemini-3.5-flash': 1048576,
     'gemini-3.5': 1048576,
     'gemini-3.1-pro': 2000000,
+    'gemini-3.1-flash-lite': 1048576,
+    'gemini-3.1-flash': 1048576,
     'gemini-3-flash': 1048576,
     'gemini-3-pro': 1048576,
     'gemini-3': 1048576,
@@ -7158,7 +7160,7 @@ var _KNOWN_MODEL_CONTEXT = {
     'grok-4.5': 500000,
     'grok-4.4': 256000,
     'grok-4.3': 2000000,
-    'grok-4.2': 256000,
+    'grok-4.2': 1000000,
     'grok-4.1': 2000000,
     'grok-4-fast': 2000000,
     'grok-4': 256000,
