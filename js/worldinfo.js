@@ -1722,12 +1722,18 @@ var WorldInfo = {
     // 按order排序
     activated.sort(function(a, b) { return (a.order || 100) - (b.order || 100); });
 
-    // Token预算控制（传入实际上下文长度）
-
+    // Token预算控制（传入实际上下文长度 + 系统开销估算）
+    // 【P1 修复 2026-07-23】传入系统开销估算，让世界书预算基于扣除固定开销后的可用上下文计算
     // maxTokens 通常只有 4096，而 contextSize 可达 128000，用错会导致世界书预算被严重低估
-
     var contextLen = getContextSizeSafe();
-    activated = this.applyBudget(activated, contextLen);
+    // 估算系统固定开销：输出预留 + 系统提示词 + 角色设定 + 记忆注入
+    var _estOverhead = 0;
+    if (typeof getEffectiveMaxTokens === 'function') {
+        try { _estOverhead += Math.ceil(getEffectiveMaxTokens() * 1.3); } catch(e) {}
+    }
+    // 系统提示词 + 角色设定 + 记忆等固定文本约 3000-5000 tokens
+    _estOverhead += 5000;
+    activated = this.applyBudget(activated, contextLen, _estOverhead);
 
     return activated;
     },
@@ -2076,14 +2082,20 @@ var WorldInfo = {
     // 1. tokenBudget 现在是百分比（默认25%），需要根据上下文长度计算实际token数
     // 2. 支持 tokenBudgetCap 硬上限
     // 3. 支持 priority 字段，低优先级的条目在预算耗尽时先被丢弃
-    applyBudget: function(activated, contextLength) {
+    // 【P1 修复 2026-07-23】新增 systemOverhead 参数，从总上下文中扣除系统提示词、
+    // 输出预留等固定开销后再计算世界书预算，避免预算分配失真。
+    applyBudget: function(activated, contextLength, systemOverhead) {
         // 计算实际token预算
         var budgetPercent = this.settings.tokenBudget != null ? this.settings.tokenBudget : 25;
         var budgetCap = this.settings.tokenBudgetCap || 0;
         // 估算总上下文token数（如果没有提供，默认8000）
         var estimatedContextTokens = contextLength || DEFAULT_CONTEXT_SIZE;
-        // 计算实际预算token数
-        var budget = Math.floor(estimatedContextTokens * (budgetPercent / 100));
+        // 扣除系统固定开销（系统提示词 + 输出预留 + 记忆注入等）
+        // 如果未提供 systemOverhead，按上下文的 20% 估算（系统提示词~15% + 安全余量）
+        var overhead = systemOverhead || Math.floor(estimatedContextTokens * 0.20);
+        var availableContext = Math.max(estimatedContextTokens - overhead, 1000);
+        // 计算实际预算token数（基于扣除开销后的可用上下文）
+        var budget = Math.floor(availableContext * (budgetPercent / 100));
         // 如果有硬上限且大于0，应用硬上限
         if (budgetCap > 0 && budget > budgetCap) {
             budget = budgetCap;

@@ -13,82 +13,198 @@
 // - 按顺序遍历，第一个匹配的 pattern 生效
 // - pattern 使用 includes 匹配（大小写不敏感）
 // - 支持精确匹配（exact: true）和模糊匹配（默认）
+// - 重要：更具体的 pattern 必须排在更宽泛的 pattern 前面
+//   例如 'gpt-5.6' 必须在 'gpt-5' 之前，'grok-4.3' 必须在 'grok-4' 之前
+//
+// 数据更新日期：2026-07-23
+// 数据来源：各厂商官方文档 / API specs
 // ========================================
 
 var ModelRegistry = {
     // 注册表版本号（每次更新递增）
-    version: '2026-07-23.1',
+    version: '2026-07-23.2',
 
     // 模型条目列表（按优先级排列，越具体越靠前）
     _entries: [
         // ===== DeepSeek 系 =====
-        { pattern: 'deepseek-v4-flash', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-v4', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-r1', context_length: 64000, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-reasoner', context_length: 64000, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-chat', context_length: 64000, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
-        { pattern: 'deepseek', context_length: 64000, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // V4 系列：1M 上下文，384K 最大输出（推理模型）
+        { pattern: 'deepseek-v4-flash', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-v4-pro', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-v4', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        // V3.1：128K 上下文，8K 最大输出
+        { pattern: 'deepseek-v3.1', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        { pattern: 'deepseek-v3', context_length: 65536, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // R1 推理模型：64K 上下文，32K 最大输出
+        { pattern: 'deepseek-r1', context_length: 65536, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-reasoner', context_length: 65536, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
+        // deepseek-chat (V3 API 名称)：64K 上下文，8K 最大输出
+        { pattern: 'deepseek-chat', context_length: 65536, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // 兜底
+        { pattern: 'deepseek', context_length: 65536, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek', is_fallback: true },
 
         // ===== OpenAI GPT 系 =====
+        // GPT-5.6（2026 最新）：1.05M 上下文，128K 最大输出
+        { pattern: 'gpt-5.6', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-5.5：1.05M 上下文，128K 最大输出
+        { pattern: 'gpt-5.5', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-5.4：1.05M 上下文，128K 最大输出
+        { pattern: 'gpt-5.4-mini', context_length: 272000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        { pattern: 'gpt-5.4', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-5.2：400K 上下文，128K 最大输出
+        { pattern: 'gpt-5.2', context_length: 400000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-5.1：400K 上下文，128K 最大输出
+        { pattern: 'gpt-5.1', context_length: 400000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-5 系列：400K 上下文，128K 最大输出
+        { pattern: 'gpt-5-mini', context_length: 400000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        { pattern: 'gpt-5-nano', context_length: 400000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        { pattern: 'gpt-5', context_length: 400000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-4o 系列：128K 上下文，16K 最大输出
         { pattern: 'gpt-4o-mini', context_length: 128000, max_completion_tokens: 16384, is_reasoning: false, provider: 'openai' },
         { pattern: 'gpt-4o', context_length: 128000, max_completion_tokens: 16384, is_reasoning: false, provider: 'openai' },
-        { pattern: 'gpt-4-turbo', context_length: 128000, max_completion_tokens: 4096, is_reasoning: false, provider: 'openai' },
+        // GPT-4.1：1M 上下文，32K 最大输出
         { pattern: 'gpt-4.1', context_length: 1047576, max_completion_tokens: 32768, is_reasoning: false, provider: 'openai' },
+        // GPT-4 系列
+        { pattern: 'gpt-4-turbo', context_length: 128000, max_completion_tokens: 4096, is_reasoning: false, provider: 'openai' },
         { pattern: 'gpt-4', context_length: 8192, max_completion_tokens: 4096, is_reasoning: false, provider: 'openai' },
+        // o 系列推理模型
         { pattern: 'o3-mini', context_length: 200000, max_completion_tokens: 100000, is_reasoning: true, provider: 'openai' },
         { pattern: 'o3', context_length: 200000, max_completion_tokens: 100000, is_reasoning: true, provider: 'openai' },
         { pattern: 'o1-mini', context_length: 128000, max_completion_tokens: 65536, is_reasoning: true, provider: 'openai' },
         { pattern: 'o1', context_length: 200000, max_completion_tokens: 100000, is_reasoning: true, provider: 'openai' },
+        // 旧模型
         { pattern: 'gpt-3.5-turbo', context_length: 16384, max_completion_tokens: 4096, is_reasoning: false, provider: 'openai' },
 
         // ===== Anthropic Claude 系 =====
+        // Claude Opus 4.7（2026 最新）：1M 上下文，128K 最大输出
+        { pattern: 'claude-opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.6：1M 上下文，128K 最大输出
+        { pattern: 'claude-opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Sonnet 4.6：1M 上下文，64K 最大输出
+        { pattern: 'claude-sonnet-4-6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Sonnet 4.5 / 4：200K 上下文（1M beta），16K 最大输出
+        { pattern: 'claude-sonnet-4-5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
+        { pattern: 'claude-sonnet-4', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
+        // Claude 3.5 系列：200K 上下文，8K 最大输出
         { pattern: 'claude-3-5-sonnet', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-3.5-sonnet', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-3-5-haiku', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        { pattern: 'claude-3.5-haiku', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        // Claude 3 系列：200K 上下文
         { pattern: 'claude-3-opus', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-3-sonnet', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-3-haiku', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
-        { pattern: 'claude', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        // 兜底
+        { pattern: 'claude', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic', is_fallback: true },
 
         // ===== Google Gemini 系 =====
+        // Gemini 3.1 Pro：2M 上下文，65K 最大输出
+        { pattern: 'gemini-3.1-pro', context_length: 2000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        // Gemini 3 Pro：1M 上下文，65K 最大输出
+        { pattern: 'gemini-3-pro', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: 'gemini-3', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google', is_fallback: true },
+        // Gemini 2.5 Pro / Flash：1M 上下文，65K 最大输出（推理模型）
+        { pattern: 'gemini-2.5-pro', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: 'gemini-2.5-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        // Gemini 2.0 Flash：1M 上下文，8K 最大输出
         { pattern: 'gemini-2.0-flash', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
-        { pattern: 'gemini-1.5-pro', context_length: 2000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
-        { pattern: 'gemini-1.5-flash', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
-        { pattern: 'gemini', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
-
-        // ===== Qwen 通义千问 系 =====
-        { pattern: 'qwen2.5-72b', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
-        { pattern: 'qwen2.5', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
-        { pattern: 'qwen-max', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
-        { pattern: 'qwen-plus', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
-        { pattern: 'qwen-turbo', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
-        { pattern: 'qwen', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        // Gemini 1.5 系列
+        { pattern: 'gemini-1.5-pro', context_length: 2097152, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
+        { pattern: 'gemini-1.5-flash', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
+        // 兜底
+        { pattern: 'gemini', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'google', is_fallback: true },
 
         // ===== GLM 智谱 系 =====
+        // GLM-4.7：200K 上下文，128K 最大输出（支持思维链推理）
+        { pattern: 'glm-4.7', context_length: 200000, max_completion_tokens: 128000, is_reasoning: true, provider: 'zhipu' },
+        // GLM-4.6：200K 上下文，128K 最大输出（支持思维链推理）
+        { pattern: 'glm-4.6', context_length: 200000, max_completion_tokens: 128000, is_reasoning: true, provider: 'zhipu' },
+        // GLM-4.5：128K 上下文
+        { pattern: 'glm-4.5', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'zhipu' },
+        // GLM-4 系列：128K 上下文
         { pattern: 'glm-4-plus', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'zhipu' },
         { pattern: 'glm-4-flash', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'zhipu' },
         { pattern: 'glm-4-air', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'zhipu' },
         { pattern: 'glm-4', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'zhipu' },
+        // 兜底
+        { pattern: 'glm', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'zhipu', is_fallback: true },
+
+        // ===== xAI Grok 系 =====
+        // Grok 4.3：2M 上下文，131K 最大输出
+        { pattern: 'grok-4.3', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 4.1 Fast：2M 上下文，131K 最大输出
+        { pattern: 'grok-4.1', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 4 Fast：2M 上下文，131K 最大输出
+        { pattern: 'grok-4-fast', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 4：256K 上下文，131K 最大输出
+        { pattern: 'grok-4', context_length: 256000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 3：131K 上下文，8K 最大输出
+        { pattern: 'grok-3-mini', context_length: 131072, max_completion_tokens: 8192, is_reasoning: true, provider: 'xai' },
+        { pattern: 'grok-3', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'xai' },
+        // Grok 2：131K 上下文
+        { pattern: 'grok-2', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'xai' },
+        // 兜底
+        { pattern: 'grok', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'xai', is_fallback: true },
 
         // ===== Moonshot/Kimi 系 =====
+        // Kimi K3（2026 最新）：1M 上下文（推理模型）
+        { pattern: 'kimi-k3', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'moonshot' },
+        // Kimi K2.7 Code：256K 上下文（推理模型）
+        { pattern: 'kimi-k2.7', context_length: 262144, max_completion_tokens: 16384, is_reasoning: true, provider: 'moonshot' },
+        // Kimi K2.6：256K 上下文
+        { pattern: 'kimi-k2.6', context_length: 262144, max_completion_tokens: 16384, is_reasoning: false, provider: 'moonshot' },
+        // Kimi K2.5：256K 上下文，16K 最大输出
+        { pattern: 'kimi-k2.5', context_length: 262144, max_completion_tokens: 16384, is_reasoning: false, provider: 'moonshot' },
+        // Kimi K2：128K 上下文，25K 最大输出
+        { pattern: 'kimi-k2', context_length: 131072, max_completion_tokens: 25000, is_reasoning: false, provider: 'moonshot' },
+        // Kimi 兜底
+        { pattern: 'kimi', context_length: 131072, max_completion_tokens: 16384, is_reasoning: false, provider: 'moonshot', is_fallback: true },
+        // Moonshot v1 系列（旧 API 名称）
         { pattern: 'moonshot-v1-128k', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'moonshot' },
         { pattern: 'moonshot-v1-32k', context_length: 32768, max_completion_tokens: 8192, is_reasoning: false, provider: 'moonshot' },
         { pattern: 'moonshot-v1-8k', context_length: 8192, max_completion_tokens: 4096, is_reasoning: false, provider: 'moonshot' },
-        { pattern: 'kimi', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'moonshot' },
+        { pattern: 'moonshot', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'moonshot', is_fallback: true },
+
+        // ===== Qwen 通义千问 系 =====
+        // Qwen3.7 Max / Plus：1M 上下文，65K 最大输出
+        { pattern: 'qwen3.7-max', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'alibaba' },
+        { pattern: 'qwen3.7-plus', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'alibaba' },
+        { pattern: 'qwen3.7', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'alibaba', is_fallback: true },
+        // Qwen3.6 Flash：256K 上下文
+        { pattern: 'qwen3.6-flash', context_length: 262144, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        { pattern: 'qwen3.6', context_length: 262144, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba', is_fallback: true },
+        // Qwen3 系列
+        { pattern: 'qwen3-max', context_length: 262144, max_completion_tokens: 32768, is_reasoning: true, provider: 'alibaba' },
+        { pattern: 'qwen3-plus', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        { pattern: 'qwen3-turbo', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        { pattern: 'qwen3', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba', is_fallback: true },
+        // Qwen2.5 系列
+        { pattern: 'qwen2.5', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        // 旧 Qwen 系列
+        { pattern: 'qwen-max', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        { pattern: 'qwen-plus', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        { pattern: 'qwen-turbo', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba' },
+        // 兜底
+        { pattern: 'qwen', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'alibaba', is_fallback: true },
 
         // ===== Meta Llama 系 =====
-        { pattern: 'llama-3.3-70b', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
-        { pattern: 'llama-3.1-405b', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
-        { pattern: 'llama-3.1-70b', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
-        { pattern: 'llama-3.1-8b', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
+        // Llama 4 系列
+        { pattern: 'llama-4-scout', context_length: 10000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta' },
+        { pattern: 'llama-4-maverick', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta' },
+        { pattern: 'llama-4', context_length: 1000000, max_completion_tokens: 8192, is_reasoning: false, provider: 'meta', is_fallback: true },
+        // Llama 3.3 / 3.1：128K 上下文
+        { pattern: 'llama-3.3', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
+        { pattern: 'llama-3.1', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
+        // Llama 3：8K 上下文
         { pattern: 'llama-3', context_length: 8192, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta' },
+        // 兜底
+        { pattern: 'llama', context_length: 8192, max_completion_tokens: 4096, is_reasoning: false, provider: 'meta', is_fallback: true },
 
         // ===== Mistral 系 =====
         { pattern: 'mistral-large', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'mistral' },
         { pattern: 'mistral-medium', context_length: 32768, max_completion_tokens: 8192, is_reasoning: false, provider: 'mistral' },
         { pattern: 'mistral-small', context_length: 32768, max_completion_tokens: 8192, is_reasoning: false, provider: 'mistral' },
         { pattern: 'mixtral', context_length: 32768, max_completion_tokens: 8192, is_reasoning: false, provider: 'mistral' },
-        { pattern: 'mistral', context_length: 32768, max_completion_tokens: 8192, is_reasoning: false, provider: 'mistral' },
+        { pattern: 'mistral', context_length: 32768, max_completion_tokens: 8192, is_reasoning: false, provider: 'mistral', is_fallback: true },
 
         // ===== Yandex YandexGPT 系 =====
         { pattern: 'yandexgpt', context_length: 8192, max_completion_tokens: 2048, is_reasoning: false, provider: 'yandex' },
@@ -179,7 +295,7 @@ var ModelRegistry = {
 
     // 在注册表中查找模型信息
     // modelName: 模型名（原始大小写）
-    // 返回 { context_length, max_completion_tokens, is_reasoning, provider } 或 null
+    // 返回 { context_length, max_completion_tokens, is_reasoning, provider, is_fallback } 或 null
     findInRegistry: function(modelName) {
         if (!modelName) return null;
         var modelLower = modelName.toLowerCase();
@@ -191,16 +307,19 @@ var ModelRegistry = {
                     context_length: entry.context_length,
                     max_completion_tokens: entry.max_completion_tokens,
                     is_reasoning: !!entry.is_reasoning,
-                    provider: entry.provider || 'unknown'
+                    provider: entry.provider || 'unknown',
+                    is_fallback: !!entry.is_fallback
                 };
             }
         }
         return null;
     },
 
-    // 综合查找：优先 API 缓存 → 注册表 → null
+    // 综合查找：优先手动覆盖 → API 缓存 → 注册表
     // modelName: 模型名
-    // 返回 { context_length, max_completion_tokens, is_reasoning, source }
+    // 返回 { context_length, max_completion_tokens, is_reasoning, source } 或 null
+    // 这是 detectContextSize() 的主入口，处理 ModelRegistry 内部的三种数据源
+    // 不处理预设 max_context、模型名正则、AI 自报等外部逻辑（由 detectContextSize 编排）
     lookup: function(modelName) {
         var result = null;
         var source = 'none';
@@ -237,7 +356,8 @@ var ModelRegistry = {
                 context_length: regResult.context_length,
                 max_completion_tokens: regResult.max_completion_tokens,
                 is_reasoning: regResult.is_reasoning,
-                source: 'registry'
+                source: 'registry',
+                is_fallback: regResult.is_fallback
             };
             return result;
         }

@@ -7056,32 +7056,43 @@ async function callAI(messages, options = {}) {
 // Context Size 自动检测（动态，不硬编码模型列表）
 // ========================================
 
-// 【动态化修复】此表已降级为最后兜底（在 AI 自报、正则匹配之后才使用）
-// 原设计将 DeepSeek V4 设为 64000（实际支持 1M），导致上下文预算被严重压缩
-// 现更新为各模型的实际官方上下文窗口大小，作为静态 fallback
-// 注意：detectContextSize 的优先级已调整，AI 自报优先于此表
+// 【静态 fallback 表】此表为 detectContextSize 的最后兜底（在注册表、正则匹配、AI 自报之后才使用）
+// 数据同步自 model-registry.js v2026-07-23.2
+// 注意：此表仅存储 context_length，不含 max_completion_tokens 和 is_reasoning
 var _KNOWN_MODEL_CONTEXT = {
-    // DeepSeek 系（V4 官方支持 1M 上下文，V3 64K）
+    // DeepSeek 系
     'deepseek-v4-flash': 1000000,
+    'deepseek-v4-pro': 1000000,
     'deepseek-v4': 1000000,
-    'deepseek-chat': 64000,
-    'deepseek-r1': 64000,
-    'deepseek-reasoner': 64000,
-    'deepseek': 64000,
-    // 通用 "auto" 推理模型（多数推理模型 128K，按 128K 取）
-    'auto': 128000,
+    'deepseek-v3.1': 131072,
+    'deepseek-v3': 65536,
+    'deepseek-r1': 65536,
+    'deepseek-reasoner': 65536,
+    'deepseek-chat': 65536,
+    'deepseek': 65536,
     // OpenAI GPT 系
+    'gpt-5.6': 1050000,
+    'gpt-5.5': 1050000,
+    'gpt-5.4': 1050000,
+    'gpt-5.2': 400000,
+    'gpt-5.1': 400000,
+    'gpt-5': 400000,
     'gpt-4o-mini': 128000,
     'gpt-4o': 128000,
-    'gpt-4-turbo': 128000,
     'gpt-4.1': 1047576,
+    'gpt-4-turbo': 128000,
     'gpt-4': 8192,
     'o3-mini': 200000,
     'o3': 200000,
     'o1-mini': 128000,
     'o1': 200000,
     'gpt-3.5-turbo': 16384,
-    // Claude 系（200K）
+    // Anthropic Claude 系
+    'claude-opus-4-7': 1000000,
+    'claude-opus-4-6': 1000000,
+    'claude-sonnet-4-6': 1000000,
+    'claude-sonnet-4-5': 200000,
+    'claude-sonnet-4': 200000,
     'claude-3-5-sonnet': 200000,
     'claude-3.5-sonnet': 200000,
     'claude-3-5-haiku': 200000,
@@ -7089,39 +7100,76 @@ var _KNOWN_MODEL_CONTEXT = {
     'claude-3-sonnet': 200000,
     'claude-3-haiku': 200000,
     'claude': 200000,
-    // Gemini 系（1M-2M 官方支持）
+    // Google Gemini 系
+    'gemini-3.1-pro': 2000000,
+    'gemini-3-pro': 1048576,
+    'gemini-3': 1048576,
+    'gemini-2.5-pro': 1048576,
+    'gemini-2.5-flash': 1048576,
     'gemini-2.0-flash': 1048576,
-    'gemini-1.5-pro': 2000000,
-    'gemini-1.5-flash': 1000000,
-    'gemini': 1000000,
-    // Qwen 通义千问系（128K）
+    'gemini-1.5-pro': 2097152,
+    'gemini-1.5-flash': 1048576,
+    'gemini': 1048576,
+    // GLM 智谱系
+    'glm-4.7': 200000,
+    'glm-4.6': 200000,
+    'glm-4.5': 131072,
+    'glm-4-plus': 131072,
+    'glm-4-flash': 131072,
+    'glm-4-air': 131072,
+    'glm-4': 131072,
+    'glm': 131072,
+    // xAI Grok 系
+    'grok-4.3': 2000000,
+    'grok-4.1': 2000000,
+    'grok-4-fast': 2000000,
+    'grok-4': 256000,
+    'grok-3-mini': 131072,
+    'grok-3': 131072,
+    'grok-2': 131072,
+    'grok': 131072,
+    // Moonshot/Kimi 系
+    'kimi-k3': 1048576,
+    'kimi-k2.7': 262144,
+    'kimi-k2.6': 262144,
+    'kimi-k2.5': 262144,
+    'kimi-k2': 131072,
+    'kimi': 131072,
+    'moonshot-v1-128k': 131072,
+    'moonshot-v1-32k': 32768,
+    'moonshot-v1-8k': 8192,
+    'moonshot': 131072,
+    // Qwen 通义千问系
+    'qwen3.7-max': 1000000,
+    'qwen3.7-plus': 1000000,
+    'qwen3.7': 1000000,
+    'qwen3.6-flash': 262144,
+    'qwen3.6': 262144,
+    'qwen3-max': 262144,
+    'qwen3-plus': 131072,
+    'qwen3-turbo': 1048576,
+    'qwen3': 131072,
     'qwen2.5': 131072,
     'qwen-max': 131072,
     'qwen-plus': 131072,
     'qwen-turbo': 131072,
     'qwen': 131072,
-    // GLM 智谱系（128K）
-    'glm-4-plus': 131072,
-    'glm-4-flash': 131072,
-    'glm-4-air': 131072,
-    'glm-4': 131072,
-    // Kimi/Moonshot（128K）
-    'moonshot-v1-128k': 131072,
-    'moonshot-v1-32k': 32768,
-    'moonshot-v1-8k': 8192,
-    'kimi': 131072,
-    // Meta Llama 系（128K）
-    'llama-3.3-70b': 131072,
-    'llama-3.1-405b': 131072,
-    'llama-3.1-70b': 131072,
-    'llama-3.1-8b': 131072,
+    // Meta Llama 系
+    'llama-4-scout': 10000000,
+    'llama-4-maverick': 1000000,
+    'llama-4': 1000000,
+    'llama-3.3': 131072,
+    'llama-3.1': 131072,
     'llama-3': 8192,
+    'llama': 8192,
     // Mistral 系
     'mistral-large': 131072,
     'mistral-medium': 32768,
     'mistral-small': 32768,
     'mixtral': 32768,
-    'mistral': 32768
+    'mistral': 32768,
+    // 通用 "auto" 推理模型
+    'auto': 128000
 };
 
 
@@ -7253,13 +7301,66 @@ async function detectContextSize() {
         }
     }
 
-    // 优先级3：动态探测 + 静态 fallback
-    // 【动态化修复】调整优先级顺序：AI 自报 > 正则匹配 > 硬编码表
-    // 原设计硬编码表（3a）优先于 AI 自报（3d），导致 DeepSeek V4 被错误匹配为 64000
-    // 现在 AI 自报优先，让模型自己报告上下文窗口，完全避免硬编码限制
+    // 优先级3：静态注册表 → 模型名正则 → 内联表 → AI 自报（最后手段）
+    // 【P1 修复 2026-07-23】原顺序 AI自报 > 正则 > 注册表，但 AI 自报不可靠（模型经常幻觉），
+    // 且浪费一次 API 往返增加启动延迟。注册表数据已更新为最新（2026-07-23），应优先使用。
+    // 新顺序：注册表 > 正则 > 内联表 > AI 自报（仅当所有静态方式均失败时才调用）
     var ctxSize = 0;
 
-    // 3a. 动态询问AI自身的context size（最可靠，完全无硬编码，带 1 次重试）
+    // 3a. 模型注册表查找（首选静态方式，数据已更新至 2026-07-23）
+    //     ModelRegistry 覆盖 80+ 模型，支持 context_length + max_completion_tokens + is_reasoning
+    //     降级：ModelRegistry 不可用时回退到 _KNOWN_MODEL_CONTEXT 内联表
+    if (ctxSize === 0) {
+        if (typeof ModelRegistry !== 'undefined') {
+            var regResult = ModelRegistry.findInRegistry(model);
+            if (regResult && regResult.context_length > 0) {
+                ctxSize = regResult.context_length;
+                // 同时缓存 max_completion_tokens 和 is_reasoning
+                if (regResult.max_completion_tokens > 0) {
+                    gameState._registryMaxCompletionTokens = regResult.max_completion_tokens;
+                }
+                if (regResult.is_reasoning) {
+                    gameState._isReasoningModel = true;
+                }
+                console.log('[Context检测] 来自 ModelRegistry (' + regResult.provider + (regResult.is_fallback ? '/fallback' : '') + '): ' + ctxSize +
+                    (regResult.is_reasoning ? ' [reasoning]' : ''));
+            }
+        }
+    }
+
+    // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
+    if (ctxSize === 0) {
+        var kMatch = model.match(/(\d+)k/);
+        if (kMatch) ctxSize = parseInt(kMatch[1], 10) * 1024;
+    }
+
+    // 3c. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
+    if (ctxSize === 0) {
+        var numMatch = model.match(/[-_](\d{4,})/);
+        if (numMatch) {
+            var num = parseInt(numMatch[1], 10);
+            if (num >= 2048) ctxSize = num;
+        }
+    }
+
+    // 3d. 内联硬编码表（ModelRegistry 未加载或未匹配时的兜底）
+    if (ctxSize === 0) {
+        var _matchedKey = null;
+        for (var _k in _KNOWN_MODEL_CONTEXT) {
+            if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
+                _matchedKey = _k;
+                break;
+            }
+        }
+        if (_matchedKey) {
+            ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
+            console.log('[Context检测] 来自内联硬编码表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
+        }
+    }
+
+    // 3e. AI 自报上下文（最后手段，仅在所有静态方式均失败时使用）
+    //     【降级原因】模型经常幻觉（如 DeepSeek 可能回答 64000 或 128000），且浪费一次 API 往返
+    //     保留作为最后兜底，避免完全未知模型时只能使用默认值
     if (ctxSize === 0 && baseUrl && apiKey) {
         try {
             var probeMessages = [
@@ -7289,59 +7390,12 @@ async function detectContextSize() {
                     var probeCtx = parseInt(numOnly, 10);
                     if (probeCtx >= 2048 && probeCtx <= 10000000) {
                         ctxSize = probeCtx;
-                        console.log('[Context检测] AI自报context: ' + ctxSize);
+                        console.log('[Context检测] AI自报context（最后手段）: ' + ctxSize + '（注意：此值可能不准确）');
                     }
                 }
             }
         } catch (e) {
-            console.log('[Context检测] AI自报context失败（已重试），尝试其他方式');
-        }
-    }
-
-    // 3b. 模型名中直接标注的 context size（如 "xxx-32k", "xxx-128k"）
-    if (ctxSize === 0) {
-        var kMatch = model.match(/(\d+)k/);
-        if (kMatch) ctxSize = parseInt(kMatch[1], 10) * 1024;
-    }
-
-    // 3c. 模型名中标注的数字（如 "xxx-8192", "xxx-128000"）
-    if (ctxSize === 0) {
-        var numMatch = model.match(/[-_](\d{4,})/);
-        if (numMatch) {
-            var num = parseInt(numMatch[1], 10);
-            if (num >= 2048) ctxSize = num;
-        }
-    }
-
-    // 3d. 模型注册表查找（最后兜底，在 AI 自报和正则都失败时使用）
-    //     【增强】使用独立的 ModelRegistry 模块替代内联硬编码表
-    //     ModelRegistry 覆盖 50+ 模型，支持 context_length + max_completion_tokens + is_reasoning
-    //     降级：ModelRegistry 不可用时回退到 _KNOWN_MODEL_CONTEXT 内联表
-    if (ctxSize === 0) {
-        if (typeof ModelRegistry !== 'undefined') {
-            var regResult = ModelRegistry.findInRegistry(model);
-            if (regResult && regResult.context_length > 0) {
-                ctxSize = regResult.context_length;
-                // 同时缓存 max_completion_tokens
-                if (regResult.max_completion_tokens > 0) {
-                    gameState._registryMaxCompletionTokens = regResult.max_completion_tokens;
-                }
-                console.log('[Context检测] 来自 ModelRegistry (' + regResult.provider + '/' + regResult.pattern + '): ' + ctxSize);
-            }
-        }
-        // 降级：内联硬编码表（ModelRegistry 未加载时的兜底）
-        if (ctxSize === 0) {
-            var _matchedKey = null;
-            for (var _k in _KNOWN_MODEL_CONTEXT) {
-                if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
-                    _matchedKey = _k;
-                    break;
-                }
-            }
-            if (_matchedKey) {
-                ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
-                console.log('[Context检测] 来自内联硬编码表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
-            }
+            console.log('[Context检测] AI自报context失败（已重试），使用兜底默认值');
         }
     }
 

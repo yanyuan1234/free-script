@@ -1985,9 +1985,15 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【关键】AI的JSON回复需要3500-4000 tokens空间（story+choices+player+characters+bag+quests+world+gameTime等）
         // 预留不足会导致AI输出到一半被截断，JSON解析失败，残余`\n\n`被当纯文本渲染
         // 策略：宁可输入端紧凑一点，也要保证AI能输出完整JSON
-        // 【ISSUE-B1 修复】输出预留上限由 maxTokens 改为 contextSize * 0.45，
-        // 避免 maxTokens 远大于 contextSize 时预留过多导致输入预算不足
-        var reservedForOutput = Math.min(Math.max(3000, Math.floor(contextSize * 0.45)), Math.floor(contextSize * 0.6));
+        //
+        // 【P0 修复 2026-07-23】原公式固定预留 contextSize * 45%，对大上下文模型（128K/1M）
+        // 浪费大量输入空间（128K 模型预留 57,600，实际只需 ~8,000）。
+        // 新公式：基于 getEffectiveMaxTokens() 动态计算实际输出需求，
+        // 加推理模型 1.5x 头尾空间 + 15% 安全余量，上下限分别为 3000 和 contextSize * 50%。
+        var _effMaxTokens = (typeof getEffectiveMaxTokens === 'function') ? getEffectiveMaxTokens() : (maxTokens || 8192);
+        var _isReasoning = (gameState && gameState._isReasoningModel) ? 1.5 : 1.0;
+        var reservedForOutput = Math.ceil(_effMaxTokens * _isReasoning * 1.15);
+        reservedForOutput = Math.min(Math.max(3000, reservedForOutput), Math.floor(contextSize * 0.5));
         var maxInputTokens = contextSize - reservedForOutput;
         var currentTokens = estimateTokensForMessagesUtil(messages);
         if (currentTokens > maxInputTokens) {
