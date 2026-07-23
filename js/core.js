@@ -7057,20 +7057,23 @@ async function callAI(messages, options = {}) {
 // ========================================
 
 // 【静态 fallback 表】此表为 detectContextSize 的最后兜底（在注册表、正则匹配、AI 自报之后才使用）
-// 数据同步自 model-registry.js v2026-07-23.2
+// 数据同步自 model-registry.js v2026-07-23.3
 // 注意：此表仅存储 context_length，不含 max_completion_tokens 和 is_reasoning
 var _KNOWN_MODEL_CONTEXT = {
     // DeepSeek 系
     'deepseek-v4-flash': 1000000,
     'deepseek-v4-pro': 1000000,
     'deepseek-v4': 1000000,
-    'deepseek-v3.1': 131072,
+    'deepseek-v3.1': 1048576,
     'deepseek-v3': 65536,
     'deepseek-r1': 65536,
     'deepseek-reasoner': 65536,
-    'deepseek-chat': 65536,
-    'deepseek': 65536,
+    'deepseek-chat': 1048576,
+    'deepseek': 1048576,
     // OpenAI GPT 系
+    'gpt-5.6-sol': 1050000,
+    'gpt-5.6-terra': 1050000,
+    'gpt-5.6-luna': 1050000,
     'gpt-5.6': 1050000,
     'gpt-5.5': 1050000,
     'gpt-5.4': 1050000,
@@ -7088,6 +7091,10 @@ var _KNOWN_MODEL_CONTEXT = {
     'o1': 200000,
     'gpt-3.5-turbo': 16384,
     // Anthropic Claude 系
+    'claude-mythos-5': 1000000,
+    'claude-fable-5': 1000000,
+    'claude-sonnet-5': 1000000,
+    'claude-opus-4-8': 1000000,
     'claude-opus-4-7': 1000000,
     'claude-opus-4-6': 1000000,
     'claude-sonnet-4-6': 1000000,
@@ -7101,6 +7108,10 @@ var _KNOWN_MODEL_CONTEXT = {
     'claude-3-haiku': 200000,
     'claude': 200000,
     // Google Gemini 系
+    'gemini-3.6-flash': 1048576,
+    'gemini-3.6': 1048576,
+    'gemini-3.5-flash': 1048576,
+    'gemini-3.5': 1048576,
     'gemini-3.1-pro': 2000000,
     'gemini-3-pro': 1048576,
     'gemini-3': 1048576,
@@ -7111,6 +7122,9 @@ var _KNOWN_MODEL_CONTEXT = {
     'gemini-1.5-flash': 1048576,
     'gemini': 1048576,
     // GLM 智谱系
+    'glm-5.2': 1048576,
+    'glm-5.1': 200000,
+    'glm-5': 200000,
     'glm-4.7': 200000,
     'glm-4.6': 200000,
     'glm-4.5': 131072,
@@ -7120,6 +7134,7 @@ var _KNOWN_MODEL_CONTEXT = {
     'glm-4': 131072,
     'glm': 131072,
     // xAI Grok 系
+    'grok-5': 1048576,
     'grok-4.3': 2000000,
     'grok-4.1': 2000000,
     'grok-4-fast': 2000000,

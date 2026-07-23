@@ -12,42 +12,52 @@
 // 匹配规则：
 // - 按顺序遍历，第一个匹配的 pattern 生效
 // - pattern 使用 includes 匹配（大小写不敏感）
-// - 支持精确匹配（exact: true）和模糊匹配（默认）
 // - 重要：更具体的 pattern 必须排在更宽泛的 pattern 前面
-//   例如 'gpt-5.6' 必须在 'gpt-5' 之前，'grok-4.3' 必须在 'grok-4' 之前
+//   例如 'gpt-5.6-terra' 必须在 'gpt-5.6' 之前，'claude-opus-4-8' 必须在 'claude' 之前
+//
+// 中转站支持：
+// - 自动去除中转站前缀，如 [按量-max]、[Agy]、[按量-kiro] 等
+// - 自动去除 provider 前缀，如 openai/、anthropic/、google/ 等
+// - 包含已发布 + 未正式发布但中转站已上线的模型（标注 is_prerelease）
 //
 // 数据更新日期：2026-07-23
-// 数据来源：各厂商官方文档 / API specs
+// 数据来源：各厂商官方文档 / API specs / 中转站实际可用模型
 // ========================================
 
 var ModelRegistry = {
     // 注册表版本号（每次更新递增）
-    version: '2026-07-23.2',
+    version: '2026-07-23.3',
 
     // 模型条目列表（按优先级排列，越具体越靠前）
     _entries: [
         // ===== DeepSeek 系 =====
-        // V4 系列：1M 上下文，384K 最大输出（推理模型）
-        { pattern: 'deepseek-v4-flash', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-v4-pro', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-v4', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
-        // V3.1：128K 上下文，8K 最大输出
-        { pattern: 'deepseek-v3.1', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // V4 系列：1M 上下文，64K 最大输出（推理模型）
+        // 注：384K 是 Think Max 模式推荐的最小上下文窗口，不是最大输出
+        { pattern: 'deepseek-v4-flash', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-v4-pro', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-v4', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
+        // V3.1：2026年2月更新至 1M 上下文，8K 最大输出
+        { pattern: 'deepseek-v3.1', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // V3 原始版本：64K 上下文
         { pattern: 'deepseek-v3', context_length: 65536, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
         // R1 推理模型：64K 上下文，32K 最大输出
         { pattern: 'deepseek-r1', context_length: 65536, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
         { pattern: 'deepseek-reasoner', context_length: 65536, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
-        // deepseek-chat (V3 API 名称)：64K 上下文，8K 最大输出
-        { pattern: 'deepseek-chat', context_length: 65536, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // deepseek-chat (API 名称，指向最新非推理模型 V3.1)：1M 上下文
+        { pattern: 'deepseek-chat', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
         // 兜底
-        { pattern: 'deepseek', context_length: 65536, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek', is_fallback: true },
+        { pattern: 'deepseek', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek', is_fallback: true },
 
         // ===== OpenAI GPT 系 =====
-        // GPT-5.6（2026 最新）：1.05M 上下文，128K 最大输出
+        // GPT-5.6 三档：Sol(旗舰) / Terra(均衡) / Luna(快速)，共享 1.05M 上下文，128K 最大输出
+        { pattern: 'gpt-5.6-sol', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        { pattern: 'gpt-5.6-terra', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        { pattern: 'gpt-5.6-luna', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
+        // GPT-5.6 通用（匹配其他 5.6 变体）
         { pattern: 'gpt-5.6', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
         // GPT-5.5：1.05M 上下文，128K 最大输出
         { pattern: 'gpt-5.5', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
-        // GPT-5.4：1.05M 上下文，128K 最大输出
+        // GPT-5.4：1.05M 上下文（mini 版 272K），128K 最大输出
         { pattern: 'gpt-5.4-mini', context_length: 272000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
         { pattern: 'gpt-5.4', context_length: 1050000, max_completion_tokens: 128000, is_reasoning: true, provider: 'openai' },
         // GPT-5.2：400K 上下文，128K 最大输出
@@ -75,13 +85,21 @@ var ModelRegistry = {
         { pattern: 'gpt-3.5-turbo', context_length: 16384, max_completion_tokens: 4096, is_reasoning: false, provider: 'openai' },
 
         // ===== Anthropic Claude 系 =====
-        // Claude Opus 4.7（2026 最新）：1M 上下文，128K 最大输出
+        // Claude Mythos 5（最强 Mythos 级）：1M 上下文，128K 最大输出
+        { pattern: 'claude-mythos-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Fable 5（Mythos 级公开发布版）：1M 上下文，128K 最大输出
+        { pattern: 'claude-fable-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Sonnet 5：1M 上下文，128K 最大输出，adaptive thinking 默认开启
+        { pattern: 'claude-sonnet-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.8：1M 上下文，128K 最大输出
+        { pattern: 'claude-opus-4-8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.7：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Opus 4.6：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Sonnet 4.6：1M 上下文，64K 最大输出
         { pattern: 'claude-sonnet-4-6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
-        // Claude Sonnet 4.5 / 4：200K 上下文（1M beta），16K 最大输出
+        // Claude Sonnet 4.5 / 4：200K 上下文，16K 最大输出
         { pattern: 'claude-sonnet-4-5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-sonnet-4', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         // Claude 3.5 系列：200K 上下文，8K 最大输出
@@ -97,6 +115,15 @@ var ModelRegistry = {
         { pattern: 'claude', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic', is_fallback: true },
 
         // ===== Google Gemini 系 =====
+        // Gemini 3.6 Flash（2026-07-21 GA）：1M 上下文，64K 最大输出
+        // 匹配 gemini-3.6-flash、gemini-3.6-flash-tiered 等中转站变体
+        { pattern: 'gemini-3.6-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        // Gemini 3.6 通用（匹配 3.6 Pro 等未单独列出的变体）
+        { pattern: 'gemini-3.6', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google', is_fallback: true },
+        // Gemini 3.5 Flash / Lite（3.6 的前代）
+        { pattern: 'gemini-3.5-flash-lite', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: 'gemini-3.5-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: 'gemini-3.5', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google', is_fallback: true },
         // Gemini 3.1 Pro：2M 上下文，65K 最大输出
         { pattern: 'gemini-3.1-pro', context_length: 2000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         // Gemini 3 Pro：1M 上下文，65K 最大输出
@@ -114,6 +141,12 @@ var ModelRegistry = {
         { pattern: 'gemini', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'google', is_fallback: true },
 
         // ===== GLM 智谱 系 =====
+        // GLM-5.2（2026-06-13 发布）：1M 上下文，128K 最大输出，754B 参数（A40B 激活）
+        { pattern: 'glm-5.2', context_length: 1048576, max_completion_tokens: 128000, is_reasoning: true, provider: 'zhipu' },
+        // GLM-5.1：200K 上下文
+        { pattern: 'glm-5.1', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'zhipu' },
+        // GLM-5（2026-02 发布）：200K 上下文
+        { pattern: 'glm-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'zhipu' },
         // GLM-4.7：200K 上下文，128K 最大输出（支持思维链推理）
         { pattern: 'glm-4.7', context_length: 200000, max_completion_tokens: 128000, is_reasoning: true, provider: 'zhipu' },
         // GLM-4.6：200K 上下文，128K 最大输出（支持思维链推理）
@@ -129,6 +162,8 @@ var ModelRegistry = {
         { pattern: 'glm', context_length: 131072, max_completion_tokens: 4096, is_reasoning: false, provider: 'zhipu', is_fallback: true },
 
         // ===== xAI Grok 系 =====
+        // Grok 5（未正式发布，中转站可能已上线）：预估 1M+ 上下文，131K 最大输出
+        { pattern: 'grok-5', context_length: 1048576, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai', is_prerelease: true },
         // Grok 4.3：2M 上下文，131K 最大输出
         { pattern: 'grok-4.3', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4.1 Fast：2M 上下文，131K 最大输出
@@ -146,7 +181,7 @@ var ModelRegistry = {
         { pattern: 'grok', context_length: 131072, max_completion_tokens: 8192, is_reasoning: false, provider: 'xai', is_fallback: true },
 
         // ===== Moonshot/Kimi 系 =====
-        // Kimi K3（2026 最新）：1M 上下文（推理模型）
+        // Kimi K3（2026-07-16 发布）：1M 上下文，2.8T 参数 MoE，64K 最大输出
         { pattern: 'kimi-k3', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'moonshot' },
         // Kimi K2.7 Code：256K 上下文（推理模型）
         { pattern: 'kimi-k2.7', context_length: 262144, max_completion_tokens: 16384, is_reasoning: true, provider: 'moonshot' },
@@ -221,6 +256,23 @@ var ModelRegistry = {
     // 缓存的用户手动覆盖值
     _manualOverride: null,
 
+    // 中转站模型名标准化：去除前缀，提取纯模型名
+    // 处理格式：
+    //   [按量-max]claude-opus-4-8  → claude-opus-4-8
+    //   [Agy]gemini-3.6-flash-tiered → gemini-3.6-flash-tiered
+    //   [按量-kiro]claude-opus-4-8  → claude-opus-4-8
+    //   openai/gpt-5.6-terra        → gpt-5.6-terra
+    //   anthropic/claude-sonnet-5   → claude-sonnet-5
+    normalizeModelName: function(modelName) {
+        if (!modelName) return '';
+        var name = modelName.toLowerCase().trim();
+        // 去除中转站前缀：[xxx] 或 [xxx-yyy] 格式
+        name = name.replace(/^\[.*?\]\s*/, '');
+        // 去除 provider 前缀：xxx/ 格式（如 openai/、anthropic/、google/）
+        name = name.replace(/^[a-z0-9_-]+\//, '');
+        return name;
+    },
+
     // 从 /models API 响应中提取模型信息
     // 支持多种格式：OpenAI、OpenRouter、LiteLLM、Gemini
     parseApiModelEntry: function(modelEntry) {
@@ -232,10 +284,6 @@ var ModelRegistry = {
         };
 
         // 上下文窗口：尝试所有已知字段名
-        // OpenRouter: context_length
-        // LiteLLM: max_input_tokens
-        // Gemini: inputTokenLimit (非标准格式，需在调用方转换)
-        // KoboldCpp: max_context_length
         result.context_length =
             modelEntry.context_length ||
             modelEntry.max_context_length ||
@@ -245,10 +293,6 @@ var ModelRegistry = {
             0;
 
         // 最大输出 tokens：尝试所有已知字段名
-        // OpenRouter: max_completion_tokens
-        // LiteLLM: max_output_tokens
-        // OpenAI: max_tokens (旧格式)
-        // Gemini: outputTokenLimit
         result.max_completion_tokens =
             modelEntry.max_completion_tokens ||
             modelEntry.max_output_tokens ||
@@ -261,30 +305,30 @@ var ModelRegistry = {
 
     // 从 API /models 响应中查找指定模型的信息
     // apiModels: /models 返回的 data 数组
-    // modelName: 要查找的模型名（小写）
+    // modelName: 要查找的模型名（可能带中转站前缀）
     findInApiModels: function(apiModels, modelName) {
         if (!apiModels || !Array.isArray(apiModels) || !modelName) return null;
-        var modelLower = modelName.toLowerCase();
+        var modelLower = this.normalizeModelName(modelName);
 
         for (var i = 0; i < apiModels.length; i++) {
             var m = apiModels[i];
-            var id = (m.id || m.name || '').toLowerCase();
+            var id = this.normalizeModelName((m.id || m.name || ''));
             if (!id) continue;
 
             // 匹配策略：精确 > 后缀 > includes
             if (id === modelLower ||
                 id.endsWith('/' + modelLower) ||
                 id.endsWith(':' + modelLower) ||
-                id === modelLower.replace(/^[^/]+\//, '') ||  // 去掉 provider 前缀
-                modelLower === id.replace(/^[^/]+\//, '')) {
+                modelLower === id.replace(/^[^/]+\//, '') ||
+                id === modelLower.replace(/^[^/]+\//, '')) {
                 return this.parseApiModelEntry(m);
             }
         }
 
-        // 模糊匹配：模型名包含在 id 中
+        // 模糊匹配：模型名包含在 id 中（或反过来）
         for (var j = 0; j < apiModels.length; j++) {
             var m2 = apiModels[j];
-            var id2 = (m2.id || m2.name || '').toLowerCase();
+            var id2 = this.normalizeModelName((m2.id || m2.name || ''));
             if (id2 && (id2.indexOf(modelLower) !== -1 || modelLower.indexOf(id2) !== -1)) {
                 return this.parseApiModelEntry(m2);
             }
@@ -294,11 +338,11 @@ var ModelRegistry = {
     },
 
     // 在注册表中查找模型信息
-    // modelName: 模型名（原始大小写）
-    // 返回 { context_length, max_completion_tokens, is_reasoning, provider, is_fallback } 或 null
+    // modelName: 模型名（可能带中转站前缀，如 [按量-max]claude-opus-4-8）
+    // 返回 { context_length, max_completion_tokens, is_reasoning, provider, is_fallback, is_prerelease } 或 null
     findInRegistry: function(modelName) {
         if (!modelName) return null;
-        var modelLower = modelName.toLowerCase();
+        var modelLower = this.normalizeModelName(modelName);
 
         for (var i = 0; i < this._entries.length; i++) {
             var entry = this._entries[i];
@@ -308,7 +352,8 @@ var ModelRegistry = {
                     max_completion_tokens: entry.max_completion_tokens,
                     is_reasoning: !!entry.is_reasoning,
                     provider: entry.provider || 'unknown',
-                    is_fallback: !!entry.is_fallback
+                    is_fallback: !!entry.is_fallback,
+                    is_prerelease: !!entry.is_prerelease
                 };
             }
         }
@@ -318,11 +363,8 @@ var ModelRegistry = {
     // 综合查找：优先手动覆盖 → API 缓存 → 注册表
     // modelName: 模型名
     // 返回 { context_length, max_completion_tokens, is_reasoning, source } 或 null
-    // 这是 detectContextSize() 的主入口，处理 ModelRegistry 内部的三种数据源
-    // 不处理预设 max_context、模型名正则、AI 自报等外部逻辑（由 detectContextSize 编排）
     lookup: function(modelName) {
         var result = null;
-        var source = 'none';
 
         // 1. 用户手动覆盖（最高优先级）
         if (this._manualOverride && this._manualOverride.context_length > 0) {
@@ -337,7 +379,7 @@ var ModelRegistry = {
 
         // 2. API 缓存
         if (this._apiCache && (Date.now() - this._apiCacheTime < this._API_CACHE_TTL)) {
-            var apiResult = this.findInApiModels(this._apiCache, modelName.toLowerCase());
+            var apiResult = this.findInApiModels(this._apiCache, modelName);
             if (apiResult && apiResult.context_length > 0) {
                 result = {
                     context_length: apiResult.context_length,
@@ -357,7 +399,8 @@ var ModelRegistry = {
                 max_completion_tokens: regResult.max_completion_tokens,
                 is_reasoning: regResult.is_reasoning,
                 source: 'registry',
-                is_fallback: regResult.is_fallback
+                is_fallback: regResult.is_fallback,
+                is_prerelease: regResult.is_prerelease
             };
             return result;
         }
@@ -381,14 +424,12 @@ var ModelRegistry = {
                 max_completion_tokens: maxCompletionTokens || 0,
                 is_reasoning: !!isReasoning
             };
-            // 持久化到 localStorage
             try {
                 if (typeof Storage !== 'undefined') {
                     Storage.setJSON('freeScript_modelOverride', this._manualOverride);
                 }
             } catch (e) {}
         } else {
-            // contextLength = 0 表示清除覆盖，使用自动检测
             this._manualOverride = null;
             try {
                 if (typeof Storage !== 'undefined') {
