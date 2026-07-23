@@ -26,16 +26,21 @@
 
 var ModelRegistry = {
     // 注册表版本号（每次更新递增）
-    version: '2026-07-23.3',
+    version: '2026-07-23.4',
 
     // 模型条目列表（按优先级排列，越具体越靠前）
     _entries: [
         // ===== DeepSeek 系 =====
-        // V4 系列：1M 上下文，64K 最大输出（推理模型）
-        // 注：384K 是 Think Max 模式推荐的最小上下文窗口，不是最大输出
-        { pattern: 'deepseek-v4-flash', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-v4-pro', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
-        { pattern: 'deepseek-v4', context_length: 1000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'deepseek' },
+        // V4 系列：1M 上下文，384K 最大输出（推理模型）
+        // 官方确认：V4-Flash 和 V4-Pro 均支持 1M 输入 + 384K 输出
+        // deepseek-chat / deepseek-reasoner 将于 2026/07/24 弃用，分别对应 V4-Flash 的非思考/思考模式
+        { pattern: 'deepseek-v4-flash', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-v4-pro', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'deepseek-v4', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        // ds-4-pro / ds-4-flash：中转站简写别名
+        { pattern: 'ds-4-pro', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'ds-4-flash', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
+        { pattern: 'ds-4', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: true, provider: 'deepseek' },
         // V3.1：2026年2月更新至 1M 上下文，8K 最大输出
         { pattern: 'deepseek-v3.1', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
         // V3 原始版本：64K 上下文
@@ -43,10 +48,10 @@ var ModelRegistry = {
         // R1 推理模型：64K 上下文，32K 最大输出
         { pattern: 'deepseek-r1', context_length: 65536, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
         { pattern: 'deepseek-reasoner', context_length: 65536, max_completion_tokens: 32768, is_reasoning: true, provider: 'deepseek' },
-        // deepseek-chat (API 名称，指向最新非推理模型 V3.1)：1M 上下文
-        { pattern: 'deepseek-chat', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek' },
+        // deepseek-chat (即将弃用，现在对应 V4-Flash 非思考模式)：1M 上下文，384K 输出
+        { pattern: 'deepseek-chat', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: false, provider: 'deepseek' },
         // 兜底
-        { pattern: 'deepseek', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'deepseek', is_fallback: true },
+        { pattern: 'deepseek', context_length: 1000000, max_completion_tokens: 384000, is_reasoning: false, provider: 'deepseek', is_fallback: true },
 
         // ===== OpenAI GPT 系 =====
         // GPT-5.6 三档：Sol(旗舰) / Terra(均衡) / Luna(快速)，共享 1.05M 上下文，128K 最大输出
@@ -85,18 +90,28 @@ var ModelRegistry = {
         { pattern: 'gpt-3.5-turbo', context_length: 16384, max_completion_tokens: 4096, is_reasoning: false, provider: 'openai' },
 
         // ===== Anthropic Claude 系 =====
+        // Kiro 版 Claude Opus（通过 Kiro 平台访问的 Claude，规格相同）
+        // k-opus-4-5 ~ k-opus-4-8 对应 Claude Opus 4.5 ~ 4.8
+        { pattern: 'k-opus-4-8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'k-opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'k-opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'k-opus-4-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
         // Claude Mythos 5（最强 Mythos 级）：1M 上下文，128K 最大输出
         { pattern: 'claude-mythos-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Fable 5（Mythos 级公开发布版）：1M 上下文，128K 最大输出
         { pattern: 'claude-fable-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Sonnet 5：1M 上下文，128K 最大输出，adaptive thinking 默认开启
         { pattern: 'claude-sonnet-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Haiku 4.5：200K 上下文，64K 最大输出
+        { pattern: 'claude-haiku-4-5', context_length: 200000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
         // Claude Opus 4.8：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Opus 4.7：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Opus 4.6：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.5：200K 上下文，8K 最大输出
+        { pattern: 'claude-opus-4-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
         // Claude Sonnet 4.6：1M 上下文，64K 最大输出
         { pattern: 'claude-sonnet-4-6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
         // Claude Sonnet 4.5 / 4：200K 上下文，16K 最大输出
@@ -111,6 +126,17 @@ var ModelRegistry = {
         { pattern: 'claude-3-opus', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-3-sonnet', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-3-haiku', context_length: 200000, max_completion_tokens: 4096, is_reasoning: false, provider: 'anthropic' },
+        // 中转站简写别名（不带 claude- 前缀）
+        { pattern: 'mythos-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'fable-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'sonnet-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'haiku-4-5', context_length: 200000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4-8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        { pattern: 'sonnet-4-6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'sonnet-4-5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         // 兜底
         { pattern: 'claude', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic', is_fallback: true },
 
@@ -124,8 +150,10 @@ var ModelRegistry = {
         { pattern: 'gemini-3.5-flash-lite', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         { pattern: 'gemini-3.5-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         { pattern: 'gemini-3.5', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google', is_fallback: true },
-        // Gemini 3.1 Pro：2M 上下文，65K 最大输出
+        // Gemini 3.1 Pro / Pro Preview：2M 上下文，65K 最大输出
         { pattern: 'gemini-3.1-pro', context_length: 2000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        // Gemini 3 Flash Preview：1M 上下文，65K 最大输出
+        { pattern: 'gemini-3-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         // Gemini 3 Pro：1M 上下文，65K 最大输出
         { pattern: 'gemini-3-pro', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
         { pattern: 'gemini-3', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google', is_fallback: true },
@@ -139,6 +167,13 @@ var ModelRegistry = {
         { pattern: 'gemini-1.5-flash', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'google' },
         // 兜底
         { pattern: 'gemini', context_length: 1048576, max_completion_tokens: 8192, is_reasoning: false, provider: 'google', is_fallback: true },
+        // 中转站简写别名（不带 gemini- 前缀，按监控表格式）
+        { pattern: '3.6-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: '3.5-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: '3.1-pro', context_length: 2000000, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: '3-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: '2.5-pro', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
+        { pattern: '2.5-flash', context_length: 1048576, max_completion_tokens: 65536, is_reasoning: true, provider: 'google' },
 
         // ===== GLM 智谱 系 =====
         // GLM-5.2（2026-06-13 发布）：1M 上下文，128K 最大输出，754B 参数（A40B 激活）
@@ -164,8 +199,14 @@ var ModelRegistry = {
         // ===== xAI Grok 系 =====
         // Grok 5（未正式发布，中转站可能已上线）：预估 1M+ 上下文，131K 最大输出
         { pattern: 'grok-5', context_length: 1048576, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai', is_prerelease: true },
+        // Grok 4.5（2026-07-08 发布，1.5T 参数）：500K 上下文，131K 最大输出
+        { pattern: 'grok-4.5', context_length: 500000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 4.4（2026-05 发布，1T 参数）：256K 上下文，131K 最大输出
+        { pattern: 'grok-4.4', context_length: 256000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4.3：2M 上下文，131K 最大输出
         { pattern: 'grok-4.3', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
+        // Grok 4.2（2026-02 候选发布，并行推理架构）：256K 上下文，131K 最大输出
+        { pattern: 'grok-4.2', context_length: 256000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4.1 Fast：2M 上下文，131K 最大输出
         { pattern: 'grok-4.1', context_length: 2000000, max_completion_tokens: 131072, is_reasoning: true, provider: 'xai' },
         // Grok 4 Fast：2M 上下文，131K 最大输出

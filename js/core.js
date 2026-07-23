@@ -7057,19 +7057,22 @@ async function callAI(messages, options = {}) {
 // ========================================
 
 // 【静态 fallback 表】此表为 detectContextSize 的最后兜底（在注册表、正则匹配、AI 自报之后才使用）
-// 数据同步自 model-registry.js v2026-07-23.3
+// 数据同步自 model-registry.js v2026-07-23.4
 // 注意：此表仅存储 context_length，不含 max_completion_tokens 和 is_reasoning
 var _KNOWN_MODEL_CONTEXT = {
     // DeepSeek 系
     'deepseek-v4-flash': 1000000,
     'deepseek-v4-pro': 1000000,
     'deepseek-v4': 1000000,
+    'ds-4-pro': 1000000,
+    'ds-4-flash': 1000000,
+    'ds-4': 1000000,
     'deepseek-v3.1': 1048576,
     'deepseek-v3': 65536,
     'deepseek-r1': 65536,
     'deepseek-reasoner': 65536,
-    'deepseek-chat': 1048576,
-    'deepseek': 1048576,
+    'deepseek-chat': 1000000,
+    'deepseek': 1000000,
     // OpenAI GPT 系
     'gpt-5.6-sol': 1050000,
     'gpt-5.6-terra': 1050000,
@@ -7090,13 +7093,19 @@ var _KNOWN_MODEL_CONTEXT = {
     'o1-mini': 128000,
     'o1': 200000,
     'gpt-3.5-turbo': 16384,
-    // Anthropic Claude 系
+    // Anthropic Claude 系（含 Kiro 版 + 简写别名）
+    'k-opus-4-8': 1000000,
+    'k-opus-4-7': 1000000,
+    'k-opus-4-6': 1000000,
+    'k-opus-4-5': 200000,
     'claude-mythos-5': 1000000,
     'claude-fable-5': 1000000,
     'claude-sonnet-5': 1000000,
+    'claude-haiku-4-5': 200000,
     'claude-opus-4-8': 1000000,
     'claude-opus-4-7': 1000000,
     'claude-opus-4-6': 1000000,
+    'claude-opus-4-5': 200000,
     'claude-sonnet-4-6': 1000000,
     'claude-sonnet-4-5': 200000,
     'claude-sonnet-4': 200000,
@@ -7106,6 +7115,16 @@ var _KNOWN_MODEL_CONTEXT = {
     'claude-3-opus': 200000,
     'claude-3-sonnet': 200000,
     'claude-3-haiku': 200000,
+    'mythos-5': 1000000,
+    'fable-5': 1000000,
+    'sonnet-5': 1000000,
+    'haiku-4-5': 200000,
+    'opus-4-8': 1000000,
+    'opus-4-7': 1000000,
+    'opus-4-6': 1000000,
+    'opus-4-5': 200000,
+    'sonnet-4-6': 1000000,
+    'sonnet-4-5': 200000,
     'claude': 200000,
     // Google Gemini 系
     'gemini-3.6-flash': 1048576,
@@ -7113,6 +7132,7 @@ var _KNOWN_MODEL_CONTEXT = {
     'gemini-3.5-flash': 1048576,
     'gemini-3.5': 1048576,
     'gemini-3.1-pro': 2000000,
+    'gemini-3-flash': 1048576,
     'gemini-3-pro': 1048576,
     'gemini-3': 1048576,
     'gemini-2.5-pro': 1048576,
@@ -7135,7 +7155,10 @@ var _KNOWN_MODEL_CONTEXT = {
     'glm': 131072,
     // xAI Grok 系
     'grok-5': 1048576,
+    'grok-4.5': 500000,
+    'grok-4.4': 256000,
     'grok-4.3': 2000000,
+    'grok-4.2': 256000,
     'grok-4.1': 2000000,
     'grok-4-fast': 2000000,
     'grok-4': 256000,
