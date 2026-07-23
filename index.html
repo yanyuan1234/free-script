@@ -1342,12 +1342,12 @@
                                     <!-- 上下文长度 + 最大回复长度 -->
                                     <div class="wi-field-row wi-field">
                                         <div>
-                                            <label class="wi-field-label">上下文长度</label>
-                                            <input type="number" id="presetContextLength" class="wi-field-input" value="8192" min="256" max="128000" step="256">
+                                            <label class="wi-field-label">上下文长度 <span style="font-size:10px;color:var(--text-tertiary)">(0=自动检测)</span></label>
+                                            <input type="number" id="presetContextLength" class="wi-field-input" value="0" min="0" max="2000000" step="256">
                                         </div>
                                         <div>
-                                            <label class="wi-field-label">最大回复长度</label>
-                                            <input type="number" id="presetMaxTokens" class="wi-field-input" value="4096" min="100" max="8192" step="100">
+                                            <label class="wi-field-label">最大回复长度 <span style="font-size:10px;color:var(--text-tertiary)">(0=自动计算)</span></label>
+                                            <input type="number" id="presetMaxTokens" class="wi-field-input" value="0" min="0" max="100000" step="100">
                                         </div>
                                     </div>
                                     <!-- 流式传输 -->
@@ -2891,6 +2891,8 @@
     <script src="js/vector-retriever.js" defer></script>
     <script src="js/worldinfo.js" defer></script>
     <script src="js/modules/smart-config-engine.js" defer></script>
+    <!-- 模型注册表（必须在 core.js 之前加载，供 detectContextSize 使用） -->
+    <script src="js/modules/model-registry.js" defer></script>
     <!-- 内置预设注册表（必须在 preset-manager 之前加载） -->
     <script src="js/modules/built-in-presets.js" defer></script>
     <script src="js/modules/preset-manager.js" defer></script>

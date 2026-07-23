@@ -11,7 +11,7 @@
 
 // 【修复】缓存名包含时间戳，每次部署新代码时自动失效旧缓存
 // 手动更新：修改此时间戳 → activate 时清理旧缓存 → 用户拿到新代码
-var CACHE_NAME = 'free-script-v2-2026-07-22-anchorfix';
+var CACHE_NAME = 'free-script-v2-2026-07-23-registry';
 var CORE_ASSETS = [
     './',
     './index.html',
@@ -47,6 +47,7 @@ var CORE_ASSETS = [
     './js/vector-retriever.js',
     './js/worldinfo.js',
     './js/modules/smart-config-engine.js',
+    './js/modules/model-registry.js',
     './js/modules/built-in-presets.js',
     './js/modules/preset-manager.js',
     './js/modules/regex-manager.js',

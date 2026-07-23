@@ -317,7 +317,8 @@ var PresetManager = {
         { param: 'top_p',             elId: 'presetTopP',       valId: 'presetTopPValue',       type: 'float', def: 0.9 },
         { param: 'frequency_penalty', elId: 'presetFreqPen',    valId: 'presetFreqPenValue',    type: 'float', def: 0 },
         { param: 'presence_penalty',  elId: 'presetPresPen',    valId: 'presetPresPenValue',    type: 'float', def: 0 },
-        { param: 'max_tokens',        elId: 'presetMaxTokens',                                  type: 'int',   def: DEFAULT_MAX_TOKENS },
+        { param: 'max_tokens',        elId: 'presetMaxTokens',                                  type: 'int',   def: 0 },
+        { param: 'max_context',       elId: 'presetContextLength',                              type: 'int',   def: 0 },
         { param: 'top_k',             elId: 'presetTopK',                                       type: 'int',   def: 0 },
         { param: 'min_p',             elId: 'presetMinP',       valId: 'presetMinPValue',       type: 'float', def: 0 },
         { param: 'repeat_penalty',    elId: 'presetRepeatPen',  valId: 'presetRepeatPenValue',  type: 'float', def: 1.1 }
@@ -697,7 +698,7 @@ var PresetManager = {
             frequency_penalty: safeNum(data.freq_pen, data.frequency_penalty, 0),
             presence_penalty: safeNum(data.pres_pen, data.presence_pen, data.presence_penalty, 0),
             max_tokens: safeNum(data.openai_max_tokens, data.max_tokens, 4096),
-            max_context: safeNum(data.openai_max_context, data.max_context, DEFAULT_CONTEXT_SIZE),
+            max_context: safeNum(data.openai_max_context, data.max_context, 0),
             min_p: safeNum(data.min_p, null, 0),
             top_a: safeNum(data.top_a, null, 0),
             repetition_penalty: safeNum(data.repetition_penalty, data.rep_pen, 1),
@@ -1167,6 +1168,8 @@ var PresetManager = {
         if (params.presence_penalty != null && params.presence_penalty !== 0) paramParts.push('Pres Pen: ' + params.presence_penalty);
         if (params.max_tokens) paramParts.push('Max Tokens: ' + params.max_tokens);
         if (params.max_context) paramParts.push('Max Context: ' + params.max_context);
+        if (!params.max_context) paramParts.push('Max Context: 自动检测');
+        if (!params.max_tokens) paramParts.push('Max Tokens: 自动计算');
 
         paramsEl.innerHTML = '<div style="font-size:11px;color:var(--text-secondary);line-height:1.6;">' + escapeHtml(paramParts.join(' &nbsp;|&nbsp; ')) + '</div>';
 
@@ -1947,10 +1950,15 @@ var PresetManager = {
         });
 
 
-    // 同步 context length（如果有的话）
+    // 同步 context length（0=自动检测，需要正确显示）
     var ctxLenEl = document.getElementById('presetContextLength');
-    if (ctxLenEl && this.currentParams.max_context) {
-        ctxLenEl.value = this.currentParams.max_context;
+    if (ctxLenEl) {
+        ctxLenEl.value = this.currentParams.max_context || 0;
+    }
+    // 同步 max_tokens（0=自动计算）
+    var maxTokensEl = document.getElementById('presetMaxTokens');
+    if (maxTokensEl) {
+        maxTokensEl.value = this.currentParams.max_tokens || 0;
     }
     }
 

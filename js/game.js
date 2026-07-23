@@ -553,6 +553,31 @@ function getEffectiveMaxTokens() {
         var presetMax = (pp && pp.max_tokens) || 0;
         if (presetMax > 0) effective = Math.max(effective, presetMax);
     } catch (e) {}
+
+    // 【增强】如果 API 或注册表返回了 max_completion_tokens，使用它作为上限参考
+    // 这是从 /models API 或 ModelRegistry 获取的模型官方最大输出限制
+    var apiMaxOutput = 0;
+    if (gs._apiMaxCompletionTokens && gs._apiMaxCompletionTokens > 0) {
+        apiMaxOutput = gs._apiMaxCompletionTokens;
+    } else if (gs._registryMaxCompletionTokens && gs._registryMaxCompletionTokens > 0) {
+        apiMaxOutput = gs._registryMaxCompletionTokens;
+    } else if (typeof ModelRegistry !== 'undefined' && typeof LocalGameAPI !== 'undefined') {
+        // 尝试从注册表查询
+        var cfg = LocalGameAPI.getCurrentConfig ? LocalGameAPI.getCurrentConfig() : null;
+        if (cfg && cfg.model) {
+            var regLookup = ModelRegistry.findInRegistry(cfg.model);
+            if (regLookup && regLookup.max_completion_tokens > 0) {
+                apiMaxOutput = regLookup.max_completion_tokens;
+            }
+        }
+    }
+    // 如果 API 返回了 max_completion_tokens，确保 effective 不超过它
+    // 但也不能低于字数需求的自动计算值（否则故事写不完）
+    if (apiMaxOutput > 0 && apiMaxOutput < effective) {
+        console.log('[MaxTokens] API max_completion_tokens=' + apiMaxOutput + ' 限制输出上限');
+        effective = apiMaxOutput;
+    }
+
     // 【动态化修复】移除 Math.min(effective, 32000) 硬编码上限
     // 改为基于上下文窗口大小动态约束：最多使用上下文窗口的 60% 用于输出
     // 留 40% 给输入（prompt + 历史消息 + 世界信息），实际裁剪在 buildAIRequestBody 中完成
@@ -562,7 +587,8 @@ function getEffectiveMaxTokens() {
         if (ctxSize > 0) {
             var dynamicCap = Math.floor(ctxSize * 0.6);
             effective = Math.min(effective, dynamicCap);
-            console.log('[MaxTokens] 动态上限: ctx=' + ctxSize + ' → cap=' + dynamicCap + ', effective=' + effective);
+            console.log('[MaxTokens] 动态上限: ctx=' + ctxSize + ' → cap=' + dynamicCap + ', effective=' + effective +
+                (apiMaxOutput > 0 ? ' (api_max_output=' + apiMaxOutput + ')' : ''));
         }
     } catch (e) {
         // 如果无法获取上下文大小，使用 DEFAULT_MAX_TOKENS 作为兜底

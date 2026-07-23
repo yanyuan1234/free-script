@@ -6005,14 +6005,20 @@ function buildAIRequestBody(messages, options, config) {
     // 【BUG-026 修正】iamhc.cn 代理的 DeepSeek-V4-Flash 也会返回 reasoning_content，
     // 因此保留对所有 DeepSeek 模型的 max_tokens 预留，避免推理token吃满输出预算
     // 【动态化修复】移除 DEFAULT_MAX_TOKENS 硬编码封顶，改为仅乘 1.5 倍预留 reasoning 空间
+    // 【增强】使用 ModelRegistry 识别所有推理模型，不再仅限 DeepSeek
     // 实际上限由 contextSize - inputTokens 动态约束（buildAIRequestBody 中的裁剪逻辑）
     var _modelLower = (config.model || '').toLowerCase();
-    if (/deepseek/.test(_modelLower) && params.max_tokens > 0) {
+    var _isReasoningModel = /deepseek/.test(_modelLower);
+    // 通过 ModelRegistry 检测更多推理模型（o1, o3, 等）
+    if (!_isReasoningModel && typeof ModelRegistry !== 'undefined') {
+        _isReasoningModel = ModelRegistry.isReasoningModel(config.model || '');
+    }
+    if (_isReasoningModel && params.max_tokens > 0) {
         var _origMax = params.max_tokens;
         // reasoning tokens 通常占 20-40% 预算，这里预留 50% headroom
         // 不再用 DEFAULT_MAX_TOKENS 封顶，让上下文窗口动态决定实际可用空间
         params.max_tokens = Math.floor(_origMax * 1.5);
-        console.log('[API] DeepSeek 推理模型：max_tokens ' + _origMax + ' → ' + params.max_tokens + ' (预留 reasoning 空间)');
+        console.log('[API] 推理模型(' + _modelLower + ')：max_tokens ' + _origMax + ' → ' + params.max_tokens + ' (预留 reasoning 空间)');
     }
 
     if (!isCompatibleMode) {
@@ -7061,34 +7067,61 @@ var _KNOWN_MODEL_CONTEXT = {
     'deepseek-chat': 64000,
     'deepseek-r1': 64000,
     'deepseek-reasoner': 64000,
+    'deepseek': 64000,
     // 通用 "auto" 推理模型（多数推理模型 128K，按 128K 取）
     'auto': 128000,
-    // GLM 系（128K）
-    'glm-4': 128000,
-    'glm-4-plus': 128000,
-    'glm-4-flash': 128000,
-    'glm-4-air': 128000,
+    // OpenAI GPT 系
+    'gpt-4o-mini': 128000,
+    'gpt-4o': 128000,
+    'gpt-4-turbo': 128000,
+    'gpt-4.1': 1047576,
+    'gpt-4': 8192,
+    'o3-mini': 200000,
+    'o3': 200000,
+    'o1-mini': 128000,
+    'o1': 200000,
+    'gpt-3.5-turbo': 16384,
     // Claude 系（200K）
     'claude-3-5-sonnet': 200000,
+    'claude-3.5-sonnet': 200000,
+    'claude-3-5-haiku': 200000,
     'claude-3-opus': 200000,
     'claude-3-sonnet': 200000,
     'claude-3-haiku': 200000,
-    'claude-3.5-sonnet': 200000,
-    // GPT-4o 系（128K）
-    'gpt-4o': 128000,
-    'gpt-4o-mini': 128000,
-    'gpt-4-turbo': 128000,
-    // Gemini 系（1M 官方支持）
-    'gemini-1.5-pro': 1000000,
+    'claude': 200000,
+    // Gemini 系（1M-2M 官方支持）
+    'gemini-2.0-flash': 1048576,
+    'gemini-1.5-pro': 2000000,
     'gemini-1.5-flash': 1000000,
-    // Qwen 系（128K）
-    'qwen-max': 128000,
-    'qwen-plus': 128000,
-    'qwen-turbo': 128000,
+    'gemini': 1000000,
+    // Qwen 通义千问系（128K）
+    'qwen2.5': 131072,
+    'qwen-max': 131072,
+    'qwen-plus': 131072,
+    'qwen-turbo': 131072,
+    'qwen': 131072,
+    // GLM 智谱系（128K）
+    'glm-4-plus': 131072,
+    'glm-4-flash': 131072,
+    'glm-4-air': 131072,
+    'glm-4': 131072,
     // Kimi/Moonshot（128K）
+    'moonshot-v1-128k': 131072,
+    'moonshot-v1-32k': 32768,
     'moonshot-v1-8k': 8192,
-    'moonshot-v1-32k': 32000,
-    'moonshot-v1-128k': 128000
+    'kimi': 131072,
+    // Meta Llama 系（128K）
+    'llama-3.3-70b': 131072,
+    'llama-3.1-405b': 131072,
+    'llama-3.1-70b': 131072,
+    'llama-3.1-8b': 131072,
+    'llama-3': 8192,
+    // Mistral 系
+    'mistral-large': 131072,
+    'mistral-medium': 32768,
+    'mistral-small': 32768,
+    'mixtral': 32768,
+    'mistral': 32768
 };
 
 
@@ -7127,6 +7160,18 @@ async function _fetchWithContextRetry(url, options, maxRetries) {
 }
 
 async function detectContextSize() {
+    // 优先级0：用户手动覆盖（最高优先级，通过 ModelRegistry 管理）
+    // 用户在设置中手动指定上下文窗口大小，设为 0 表示使用自动检测
+    if (typeof ModelRegistry !== 'undefined' && ModelRegistry._manualOverride && ModelRegistry._manualOverride.context_length > 0) {
+        var manualCtx = ModelRegistry._manualOverride.context_length;
+        gameState.contextSize = manualCtx;
+        if (ModelRegistry._manualOverride.max_completion_tokens > 0) {
+            gameState._apiMaxCompletionTokens = ModelRegistry._manualOverride.max_completion_tokens;
+        }
+        console.log('[Context检测] 来自用户手动覆盖: ' + manualCtx);
+        return manualCtx;
+    }
+
     // 优先级1：预设中的 max_context
     if (typeof PresetManager !== 'undefined' && PresetManager.currentParams && PresetManager.currentParams.max_context) {
         var presetCtx = Number(PresetManager.currentParams.max_context);
@@ -7148,6 +7193,8 @@ async function detectContextSize() {
     }
 
     // 优先级2：调 /models API 动态获取（带 2 次重试，覆盖瞬时 429/网络抖动）
+    // 【增强】支持 OpenRouter / LiteLLM / Gemini 等多种 API 返回格式
+    // 【增强】同时缓存 API 返回数据到 ModelRegistry，供 max_tokens 计算使用
     if (baseUrl && apiKey) {
         try {
             var modelsUrl = LocalGameAPI.normalizeUrl(baseUrl) + '/models';
@@ -7159,20 +7206,45 @@ async function detectContextSize() {
             if (resp.ok) {
                 var data = await resp.json();
                 // OpenAI 格式：{ data: [{ id: "model-name", ... }] }
-                var models = data.data || data;
+                // Gemini 格式：{ models: [{ name: "models/gemini-1.5-pro", inputTokenLimit: ... }] }
+                var models = data.data || data.models || data;
                 if (Array.isArray(models)) {
-                    var target = models.find(function(m) {
-                        var id = (m.id || m.name || '').toLowerCase();
-                        return id === model || id.endsWith('/' + model) || id.endsWith(':' + model);
-                    });
-                    if (target) {
-                        // 部分API返回 context_length / max_context_length
-                        var ctx = target.context_length || target.max_context_length || target.context_window || 0;
-                        if (ctx > 0) {
-                            gameState.contextSize = ctx;
-                            console.log('[Context检测] 来自 /models API: ' + ctx);
-                            return ctx;
+                    // 缓存到 ModelRegistry 供后续 max_tokens 计算使用
+                    if (typeof ModelRegistry !== 'undefined') {
+                        ModelRegistry.setApiCache(models);
+                    }
+
+                    // 使用 ModelRegistry 的统一解析器查找模型信息
+                    var apiModelInfo = null;
+                    if (typeof ModelRegistry !== 'undefined') {
+                        apiModelInfo = ModelRegistry.findInApiModels(models, model);
+                    } else {
+                        // 降级：手动查找
+                        var target = models.find(function(m) {
+                            var id = (m.id || m.name || '').toLowerCase();
+                            return id === model || id.endsWith('/' + model) || id.endsWith(':' + model);
+                        });
+                        if (target) {
+                            apiModelInfo = {
+                                context_length: target.context_length || target.max_context_length ||
+                                    target.max_input_tokens || target.context_window ||
+                                    target.inputTokenLimit || 0,
+                                max_completion_tokens: target.max_completion_tokens ||
+                                    target.max_output_tokens || target.max_tokens ||
+                                    target.outputTokenLimit || 0
+                            };
                         }
+                    }
+
+                    if (apiModelInfo && apiModelInfo.context_length > 0) {
+                        gameState.contextSize = apiModelInfo.context_length;
+                        // 同时缓存 max_completion_tokens 供 getEffectiveMaxTokens 使用
+                        if (apiModelInfo.max_completion_tokens > 0) {
+                            gameState._apiMaxCompletionTokens = apiModelInfo.max_completion_tokens;
+                        }
+                        console.log('[Context检测] 来自 /models API: ctx=' + apiModelInfo.context_length +
+                            (apiModelInfo.max_completion_tokens > 0 ? ', max_output=' + apiModelInfo.max_completion_tokens : ''));
+                        return apiModelInfo.context_length;
                     }
                 }
             }
@@ -7241,20 +7313,35 @@ async function detectContextSize() {
         }
     }
 
-    // 3d. 已知模型硬编码表（最后兜底，在 AI 自报和正则都失败时使用）
-    //     【动态化修复】降级为最后手段，避免硬编码值覆盖模型的实际能力
-    //     改用 includes 匹配，兼容 API 返回带前缀的模型名
+    // 3d. 模型注册表查找（最后兜底，在 AI 自报和正则都失败时使用）
+    //     【增强】使用独立的 ModelRegistry 模块替代内联硬编码表
+    //     ModelRegistry 覆盖 50+ 模型，支持 context_length + max_completion_tokens + is_reasoning
+    //     降级：ModelRegistry 不可用时回退到 _KNOWN_MODEL_CONTEXT 内联表
     if (ctxSize === 0) {
-        var _matchedKey = null;
-        for (var _k in _KNOWN_MODEL_CONTEXT) {
-            if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
-                _matchedKey = _k;
-                break;
+        if (typeof ModelRegistry !== 'undefined') {
+            var regResult = ModelRegistry.findInRegistry(model);
+            if (regResult && regResult.context_length > 0) {
+                ctxSize = regResult.context_length;
+                // 同时缓存 max_completion_tokens
+                if (regResult.max_completion_tokens > 0) {
+                    gameState._registryMaxCompletionTokens = regResult.max_completion_tokens;
+                }
+                console.log('[Context检测] 来自 ModelRegistry (' + regResult.provider + '/' + regResult.pattern + '): ' + ctxSize);
             }
         }
-        if (_matchedKey) {
-            ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
-            console.log('[Context检测] 来自硬编码模型表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
+        // 降级：内联硬编码表（ModelRegistry 未加载时的兜底）
+        if (ctxSize === 0) {
+            var _matchedKey = null;
+            for (var _k in _KNOWN_MODEL_CONTEXT) {
+                if (_KNOWN_MODEL_CONTEXT.hasOwnProperty(_k) && model.indexOf(_k) !== -1) {
+                    _matchedKey = _k;
+                    break;
+                }
+            }
+            if (_matchedKey) {
+                ctxSize = _KNOWN_MODEL_CONTEXT[_matchedKey];
+                console.log('[Context检测] 来自内联硬编码表（includes 匹配 ' + _matchedKey + '）: ' + ctxSize);
+            }
         }
     }
 
