@@ -26,7 +26,7 @@
 
 var ModelRegistry = {
     // 注册表版本号（每次更新递增）
-    version: '2026-07-23.5',
+    version: '2026-07-23.6',
 
     // 模型条目列表（按优先级排列，越具体越靠前）
     _entries: [
@@ -104,17 +104,29 @@ var ModelRegistry = {
         { pattern: 'claude-sonnet-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         // Claude Haiku 4.5：200K 上下文，64K 最大输出
         { pattern: 'claude-haiku-4-5', context_length: 200000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
-        // Claude Opus 4.8：1M 上下文，128K 最大输出
+        // Claude Opus 4.8（点号命名法，中转站常用）：1M 上下文，128K 最大输出
+        { pattern: 'claude-opus-4.8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.8（连字符命名法）：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
-        // Claude Opus 4.7：1M 上下文，128K 最大输出
+        // Claude Opus 4.7（点号命名法）：1M 上下文，128K 最大输出
+        { pattern: 'claude-opus-4.7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.7（连字符命名法）：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
-        // Claude Opus 4.6：1M 上下文，128K 最大输出
+        // Claude Opus 4.6（点号命名法）：1M 上下文，128K 最大输出
+        { pattern: 'claude-opus-4.6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Opus 4.6（连字符命名法）：1M 上下文，128K 最大输出
         { pattern: 'claude-opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
-        // Claude Opus 4.5：200K 上下文，8K 最大输出
+        // Claude Opus 4.5（点号命名法）：200K 上下文，8K 最大输出
+        { pattern: 'claude-opus-4.5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        // Claude Opus 4.5（连字符命名法）：200K 上下文，8K 最大输出
         { pattern: 'claude-opus-4-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
-        // Claude Sonnet 4.6：1M 上下文，64K 最大输出
+        // Claude Sonnet 4.6（点号命名法）：1M 上下文，64K 最大输出
+        { pattern: 'claude-sonnet-4.6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
+        // Claude Sonnet 4.6（连字符命名法）：1M 上下文，64K 最大输出
         { pattern: 'claude-sonnet-4-6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
-        // Claude Sonnet 4.5 / 4：200K 上下文，16K 最大输出
+        // Claude Sonnet 4.5（点号命名法）：200K 上下文，16K 最大输出
+        { pattern: 'claude-sonnet-4.5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
+        // Claude Sonnet 4.5 / 4（连字符命名法）：200K 上下文，16K 最大输出
         { pattern: 'claude-sonnet-4-5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'claude-sonnet-4', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         // Claude 3.5 系列：200K 上下文，8K 最大输出
@@ -131,11 +143,19 @@ var ModelRegistry = {
         { pattern: 'fable-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'sonnet-5', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'haiku-4-5', context_length: 200000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
+        // 简写点号命名法
+        { pattern: 'opus-4.8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4.7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4.6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'opus-4.5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        // 简写连字符命名法
         { pattern: 'opus-4-8', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'opus-4-7', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'opus-4-6', context_length: 1000000, max_completion_tokens: 128000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'opus-4-5', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic' },
+        { pattern: 'sonnet-4.6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
         { pattern: 'sonnet-4-6', context_length: 1000000, max_completion_tokens: 64000, is_reasoning: true, provider: 'anthropic' },
+        { pattern: 'sonnet-4.5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         { pattern: 'sonnet-4-5', context_length: 200000, max_completion_tokens: 16000, is_reasoning: false, provider: 'anthropic' },
         // 兜底
         { pattern: 'claude', context_length: 200000, max_completion_tokens: 8192, is_reasoning: false, provider: 'anthropic', is_fallback: true },
@@ -303,26 +323,32 @@ var ModelRegistry = {
 
     // 中转站模型名标准化：去除前缀，提取纯模型名
     // 处理格式：
-    //   [按量-max]claude-opus-4-8     → claude-opus-4-8
-    //   逆[kiro3-次-0.05￥]claude-opus-4-8 → claude-opus-4-8
-    //   正[vertex1-量-2.4x]gemini-3.1-pro  → gemini-3.1-pro
-    //   [Agy]gemini-3.6-flash-tiered  → gemini-3.6-flash-tiered
-    //   openai/gpt-5.6-terra          → gpt-5.6-terra
-    //   anthropic/claude-sonnet-5     → claude-sonnet-5
+    //   [按量-max]claude-opus-4-8           → claude-opus-4-8
+    //   逆[kiro3-次-0.05￥]claude-opus-4-8   → claude-opus-4-8
+    //   [0.08]k奇/claude-opus-4.6           → claude-opus-4.6
+    //   [0.01]c叶/gemini-3-flash             → gemini-3-flash
+    //   [君离-按量]k/claude-sonnet-4-5        → claude-sonnet-4-5
+    //   [Agy]gemini-3.6-flash-tiered        → gemini-3.6-flash-tiered
+    //   openai/gpt-5.6-terra                → gpt-5.6-terra
+    //   [0.09]喵deepseek-v4-pro             → deepseek-v4-pro
     //
-    // 策略：如果模型名包含 ]，取最后一个 ] 之后的内容（最鲁棒的方式）
-    // 这样可以处理任意前缀组合（逆/正 + [xxx] 或多层嵌套）
+    // 策略：
+    //   1. 取最后一个 ] 之后的内容（处理 逆/正 + [xxx] 等所有前缀格式）
+    //   2. 取最后一个 / 之后的内容（处理 channel/model 格式，含中文频道名）
+    //   3. 这样能处理任意前缀组合，即使频道名包含中文字符
     normalizeModelName: function(modelName) {
         if (!modelName) return '';
         var name = modelName.toLowerCase().trim();
-        // 去除中转站前缀：取最后一个 ] 之后的内容
-        // 处理 逆[xxx]、正[xxx]、[xxx] 等所有前缀格式
+        // 步骤1：取最后一个 ] 之后的内容（处理 逆[xxx]、正[xxx]、[xxx] 等格式）
         var bracketEnd = name.lastIndexOf(']');
         if (bracketEnd !== -1 && bracketEnd < name.length - 1) {
             name = name.substring(bracketEnd + 1).trim();
         }
-        // 去除 provider 前缀：xxx/ 格式（如 openai/、anthropic/、google/）
-        name = name.replace(/^[a-z0-9_-]+\//, '');
+        // 步骤2：取最后一个 / 之后的内容（处理 channel/model 格式，含中文频道名如 k奇/、c叶/）
+        var slashPos = name.lastIndexOf('/');
+        if (slashPos !== -1 && slashPos < name.length - 1) {
+            name = name.substring(slashPos + 1).trim();
+        }
         return name;
     },
 
