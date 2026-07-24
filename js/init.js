@@ -155,12 +155,17 @@ async function initApp() {
                         await loadFromSlot('__autoSaveBackup__');
                     }
                     // 无论是否恢复，都清除备份避免重复提示
+                    // 【关键修复】必须同时清除 localStorage 和 IndexedDB，否则下次加载仍会检测到备份
                     Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP);
+                    if (typeof SaveDB !== 'undefined' && SaveDB.kvRemove) {
+                        SaveDB.kvRemove(Storage.KEYS.AUTO_SAVE_BACKUP).catch(function(){});
+                    }
                 }
             }
         } catch (e) {
             console.warn('[INIT] 崩溃恢复检查失败:', e);
             try { Storage.remove(Storage.KEYS.AUTO_SAVE_BACKUP); } catch(_) {}
+            try { if (typeof SaveDB !== 'undefined' && SaveDB.kvRemove) SaveDB.kvRemove(Storage.KEYS.AUTO_SAVE_BACKUP).catch(function(){}); } catch(_) {}
         }
 
         // 初始化世界创建页面的预设显示
