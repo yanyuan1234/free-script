@@ -3097,7 +3097,7 @@ function renderItemsPage() {
     var itemsHtml = '';
     if (bag.length === 0) {
         itemsHtml =
-            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:#999;padding:60px 0;"><div style="font-size:40px;margin-bottom:12px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p><p style="font-size:12px;margin-top:4px;">探索世界获取物品吧</p></div>';
+            '<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--text-tertiary);padding:60px 0;"><div style="font-size:40px;margin-bottom:12px;"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div><p>背包空空如也</p><p style="font-size:12px;margin-top:4px;">探索世界获取物品吧</p></div>';
     } else {
         itemsHtml = bag.map(function(item, i) {
             var count = item.count || 1;
@@ -3108,7 +3108,7 @@ function renderItemsPage() {
             return '<div class="items-box" style="position:relative;padding:20px 10px;">' +
                 '<div style="position:absolute;top:6px;right:6px;display:flex;gap:4px;">' +
                 '<div role="button" tabindex="0" data-action="editBagItem" data-args=\'' + args + '\' style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--bg-secondary);color:var(--text-secondary);font-size:12px;cursor:pointer;" aria-label="编辑">✎</div>' +
-                '<div role="button" tabindex="0" data-action="deleteBagItem" data-args=\'' + args + '\' style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--bg-secondary);color:#f44;font-size:14px;cursor:pointer;" aria-label="删除">×</div>' +
+                '<div role="button" tabindex="0" data-action="deleteBagItem" data-args=\'' + args + '\' style="width:22px;height:22px;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--bg-secondary);color:var(--danger);font-size:14px;cursor:pointer;" aria-label="删除">×</div>' +
                 '</div>' +
                 '<div class="items-box-name" style="font-size:14px;font-weight:500;margin-bottom:8px;padding-right:48px;">' + (item.name || '未知物品') + equipped + '</div>' +
                 '<div class="items-box-count" style="margin-bottom:4px;">x' + count + '</div>' +
@@ -3464,12 +3464,12 @@ function renderShopPage() {
             }
             var ownedDisplay = ownedCount > 0 ? '<div style="font-size:11px;color:var(--success);margin-top:4px;">已拥有: ×' + ownedCount + '</div>' : '';
             var stockTag = stockCount !== null && !isSoldOut ?
-                '<div style="font-size:11px;color:#999;margin-top:2px;">库存: ' + stockCount + '</div>' : '';
+                '<div style="font-size:11px;color:var(--text-tertiary);margin-top:2px;">库存: ' + stockCount + '</div>' : '';
             var soldOutTag = isSoldOut ?
-                '<div style="font-size:11px;color:#e53935;margin-top:2px;font-weight:500;">已售稀</div>' : '';
+                '<div style="font-size:11px;color:var(--danger);margin-top:2px;font-weight:500;">已售稀</div>' : '';
             var buyAction = isSoldOut ?
-                '<span style="font-size:11px;padding:2px 8px;background:#ccc;color:#fff;border-radius:10px;cursor:not-allowed;white-space:nowrap;">已售稀</span>' :
-                '<span style="font-size:11px;padding:2px 8px;background:var(--accent,#333);color:#fff;border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span>';
+                '<span style="font-size:11px;padding:2px 8px;background:var(--text-tertiary);color:var(--card);border-radius:10px;cursor:not-allowed;white-space:nowrap;">已售稀</span>' :
+                '<span style="font-size:11px;padding:2px 8px;background:var(--accent);color:var(--card);border-radius:10px;cursor:pointer;white-space:nowrap;">购买</span>';
             var itemStyle = isSoldOut ? 'opacity:0.6;cursor:not-allowed;' : 'cursor:pointer;';
             var itemClick = isSoldOut ? '' : ' role="button" tabindex="0" data-action="buyShopItem" data-args=\'[' + gi + ']\'';
             return '<div class="shop-goods-item" style="' + itemStyle + '"' + itemClick + '><div class="shop-goods-icon">' + escapeHtml(icon) +
@@ -3487,7 +3487,7 @@ function renderShopPage() {
 
     var _balance = getPlayerMoney();
     var _cName = getCurrencyName();
-    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;flex-shrink:0;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
+    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:var(--text);color:var(--card);font-weight:600;flex-shrink:0;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:var(--card);font-weight:700;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
     return '<div class="shop-page">' +
         balanceBar +
         '<div class="shop-search-box"><div class="shop-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索商品</div></div>' +
@@ -3561,12 +3561,12 @@ function renderCalendarPage() {
     if (shouldSkipPageRender('renderCalendarPage', _key)) return;
     var container = document.createElement('div');
     container.className = 'calendar-page';
-    container.style.cssText = 'padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;';
+    container.style.cssText = 'padding:20px;background:var(--bg);min-height:100%;';
 
     // 标题
     var title = document.createElement('h2');
     title.textContent = '📅 日程表';
-    title.style.cssText = 'color:#e94560;margin-bottom:20px;text-align:center;';
+    title.style.cssText = 'color:var(--text);margin-bottom:20px;text-align:center;font-size:18px;font-weight:600;';
     container.appendChild(title);
 
     // 获取日程数据
@@ -3576,7 +3576,7 @@ function renderCalendarPage() {
     // 如果没有数据，显示提示
     if (events.length === 0) {
         var emptyTip = document.createElement('div');
-        emptyTip.style.cssText = 'text-align:center;color:#888;padding:40px;';
+        emptyTip.style.cssText = 'text-align:center;color:var(--text-tertiary);padding:40px;';
         emptyTip.innerHTML = '<p>暂无日程安排</p><p style="font-size:12px;margin-top:10px;">小剧场中的日程内容将显示在这里</p>';
         container.appendChild(emptyTip);
         return container;
@@ -3597,31 +3597,31 @@ function renderCalendarPage() {
     // 渲染每一天
     Object.keys(groupedEvents).forEach(function(date) {
         var daySection = document.createElement('div');
-        daySection.style.cssText = 'margin-bottom:20px;background:rgba(255,255,255,0.05);border-radius:12px;padding:15px;';
+        daySection.style.cssText = 'margin-bottom:16px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:15px;box-shadow:var(--shadow);';
 
         var dateLabel = document.createElement('div');
         dateLabel.textContent = date;
-        dateLabel.style.cssText = 'color:#0f3460;font-weight:bold;margin-bottom:10px;font-size:14px;';
+        dateLabel.style.cssText = 'color:var(--text);font-weight:bold;margin-bottom:10px;font-size:14px;';
         daySection.appendChild(dateLabel);
 
         groupedEvents[date].forEach(function(evt) {
             var eventCard = document.createElement('div');
-            eventCard.style.cssText = 'background:rgba(233,69,96,0.1);border-left:3px solid #e94560;padding:10px;margin-bottom:8px;border-radius:4px;';
+            eventCard.style.cssText = 'background:var(--accent-soft);border-left:3px solid var(--accent);padding:10px;margin-bottom:8px;border-radius:var(--radius-sm);';
 
             var eventTitle = document.createElement('div');
             eventTitle.textContent = evt.title || '无标题';
-            eventTitle.style.cssText = 'color:#fff;font-weight:bold;margin-bottom:4px;';
+            eventTitle.style.cssText = 'color:var(--text);font-weight:bold;margin-bottom:4px;';
             eventCard.appendChild(eventTitle);
 
             if (evt.description) {
                 var eventDesc = document.createElement('div');
                 eventDesc.textContent = evt.description;
-                eventDesc.style.cssText = 'color:#aaa;font-size:12px;margin-bottom:4px;';
+                eventDesc.style.cssText = 'color:var(--text-secondary);font-size:12px;margin-bottom:4px;';
                 eventCard.appendChild(eventDesc);
             }
 
             var eventMeta = document.createElement('div');
-            eventMeta.style.cssText = 'color:#666;font-size:11px;';
+            eventMeta.style.cssText = 'color:var(--text-tertiary);font-size:11px;';
             var metaText = [];
             if (evt.time && evt.time.includes(' ')) metaText.push(evt.time.split(' ')[1]);
             if (evt.location) metaText.push('◎ ' + evt.location);
@@ -3652,12 +3652,12 @@ function renderAuthorNotePage() {
     if (shouldSkipPageRender('renderAuthorNotePage', _key)) return;
     var container = document.createElement('div');
     container.className = 'author-note-page';
-    container.style.cssText = 'padding:20px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 100%);min-height:100%;';
+    container.style.cssText = 'padding:20px;background:var(--bg);min-height:100%;';
 
     // 标题
     var title = document.createElement('h2');
     title.textContent = '作者有话说';
-    title.style.cssText = 'color:#e94560;margin-bottom:20px;text-align:center;';
+    title.style.cssText = 'color:var(--text);margin-bottom:20px;text-align:center;font-size:18px;font-weight:600;';
     container.appendChild(title);
 
     // 获取作话数据
@@ -3682,7 +3682,7 @@ function renderAuthorNotePage() {
     // 如果没有数据，显示提示
     if (notes.length === 0) {
         var emptyTip = document.createElement('div');
-        emptyTip.style.cssText = 'text-align:center;color:#888;padding:40px;';
+        emptyTip.style.cssText = 'text-align:center;color:var(--text-tertiary);padding:40px;';
         emptyTip.innerHTML = '<p>暂无作者留言</p><p style="font-size:12px;margin-top:10px;">小剧场中的"作者有话说"将显示在这里</p>';
         container.appendChild(emptyTip);
         return container;
@@ -3691,25 +3691,25 @@ function renderAuthorNotePage() {
     // 渲染每条作话
     notes.forEach(function(note) {
         var noteCard = document.createElement('div');
-        noteCard.style.cssText = 'background:rgba(255,255,255,0.05);border-radius:12px;padding:20px;margin-bottom:15px;';
+        noteCard.style.cssText = 'background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);padding:20px;margin-bottom:15px;box-shadow:var(--shadow);';
 
         var noteHeader = document.createElement('div');
         noteHeader.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;';
 
         var noteSource = document.createElement('span');
         noteSource.textContent = note.source || '作者';
-        noteSource.style.cssText = 'color:#e94560;font-weight:bold;';
+        noteSource.style.cssText = 'color:var(--accent);font-weight:bold;';
         noteHeader.appendChild(noteSource);
 
         var noteTime = document.createElement('span');
         noteTime.textContent = note.time;
-        noteTime.style.cssText = 'color:#666;font-size:11px;';
+        noteTime.style.cssText = 'color:var(--text-tertiary);font-size:11px;';
         noteHeader.appendChild(noteTime);
 
         noteCard.appendChild(noteHeader);
 
         var noteContent = document.createElement('div');
-        noteContent.style.cssText = 'color:#ddd;line-height:1.6;white-space:pre-wrap;';
+        noteContent.style.cssText = 'color:var(--text);line-height:1.6;white-space:pre-wrap;';
         noteContent.textContent = note.content || note.html || '';
         noteCard.appendChild(noteContent);
 
@@ -9630,17 +9630,17 @@ function _showContextViewerModal() {
     modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:10000;display:flex;align-items:center;justify-content:center;padding:20px;';
 
     var card = document.createElement('div');
-    card.style.cssText = 'background:var(--bg-card,#1a1a2e);border-radius:12px;padding:24px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;color:var(--text-primary,#eee);';
+    card.style.cssText = 'background:var(--card);border-radius:12px;padding:24px;max-width:500px;width:100%;max-height:80vh;overflow-y:auto;color:var(--text);';
 
-    var html = '<h3 style="margin:0 0 16px;color:#fff;font-size:1.1em;">📊 上下文 Token 分解</h3>';
+    var html = '<h3 style="margin:0 0 16px;color:var(--text);font-size:1.1em;">📊 上下文 Token 分解</h3>';
 
     if (!breakdown || !breakdown.sections || breakdown.sections.length === 0) {
-        html += '<p style="color:#888;text-align:center;padding:20px 0;">暂无数据（发送一条消息后可查看）</p>';
+        html += '<p style="color:var(--text-secondary);text-align:center;padding:20px 0;">暂无数据（发送一条消息后可查看）</p>';
     } else {
-        html += '<div style="margin-bottom:16px;font-size:0.85em;color:#888;">';
+        html += '<div style="margin-bottom:16px;font-size:0.85em;color:var(--text-secondary);">';
         html += '总消息: ' + breakdown.totalMessages + ' 条 · 估算Token: ' + breakdown.totalTokens + ' / ' + breakdown.maxTokens;
         var usage = (breakdown.totalTokens / breakdown.maxTokens * 100).toFixed(1);
-        var usageColor = usage > 80 ? '#f85149' : (usage > 60 ? '#d29922' : '#3fb950');
+        var usageColor = usage > 80 ? 'var(--danger)' : (usage > 60 ? 'var(--warning)' : 'var(--success)');
         html += ' <span style="color:' + usageColor + ';font-weight:600;">(' + usage + '%)</span>';
         html += '</div>';
 
@@ -9651,10 +9651,10 @@ function _showContextViewerModal() {
             var barColor = ['#58a6ff', '#3fb950', '#bc8cff', '#d29922', '#f85149', '#ff7b72', '#79c0ff', '#7ee787'][i % 8];
             html += '<div style="margin-bottom:10px;">';
             html += '<div style="display:flex;justify-content:space-between;font-size:0.85em;margin-bottom:4px;">';
-            html += '<span>' + s.label + ' <span style="color:#666;">(' + s.count + '条)</span></span>';
-            html += '<span style="color:#aaa;">' + s.tokens + ' tok · ' + s.percentage + '%</span>';
+            html += '<span>' + s.label + ' <span style="color:var(--text-tertiary);">(' + s.count + '条)</span></span>';
+            html += '<span style="color:var(--text-tertiary);">' + s.tokens + ' tok · ' + s.percentage + '%</span>';
             html += '</div>';
-            html += '<div style="background:rgba(255,255,255,0.05);border-radius:4px;height:8px;overflow:hidden;">';
+            html += '<div style="background:var(--bg-secondary);border-radius:4px;height:8px;overflow:hidden;">';
             html += '<div style="background:' + barColor + ';height:100%;width:' + barWidth + '%;border-radius:4px;transition:width 0.3s;"></div>';
             html += '</div>';
             html += '</div>';
@@ -9662,7 +9662,7 @@ function _showContextViewerModal() {
         html += '</div>';
     }
 
-    html += '<button id="contextViewerClose" style="margin-top:20px;width:100%;padding:10px;background:var(--accent,#58a6ff);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:0.9em;">关闭</button>';
+    html += '<button id="contextViewerClose" style="margin-top:20px;width:100%;padding:10px;background:var(--accent);color:var(--card);border:none;border-radius:8px;cursor:pointer;font-size:0.9em;">关闭</button>';
 
     card.innerHTML = html;
     modal.appendChild(card);
