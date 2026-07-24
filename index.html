@@ -614,9 +614,6 @@
 
             <!-- ==================== 日志页面（手机桌面风格） ==================== -->
             <div class="page" id="logPage">
-                <button class="circle-btn floating-action-btn" data-action="openLogFeaturesModal" aria-label="日志功能设置" style="position:absolute;top:14px;right:16px;z-index:10;width:38px;height:38px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,0.12);"><svg class="icon">
-                            <use href="#icon-settings" />
-                        </svg></button>
                 <div class="page-body overflow-y-auto pt-12">
                     <div class="menu-top-card w-full mb-20">
                         <div class="menu-top-inner">
@@ -758,6 +755,15 @@
                                 <div class="preset-name">日程表</div>
                             </div>
                             <!-- 【修复】用户要求移除日志中的"作话"和"记忆"卡片 -->
+                            <!-- 日志功能设置入口（从顶部浮动按钮移到网格中） -->
+                            <div class="preset-item" data-action="openLogFeaturesModal" role="button" tabindex="0">
+                                <div class="preset-icon-box"><svg width="24" height="24" viewBox="0 0 24 24" fill="none"
+                                        stroke="currentColor" stroke-width="1.5">
+                                        <circle cx="12" cy="12" r="3" />
+                                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                                    </svg></div>
+                                <div class="preset-name">设置</div>
+                            </div>
                         </div>
                         <!-- 预设动态app网格 - AI生成的装饰组件会显示在这里 -->
                         <div id="presetAppGrid"

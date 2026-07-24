@@ -1553,8 +1553,7 @@
 
 /* 浮动操作按钮页面：顶部留出空间避免遮挡内容 */
 #npcPage .page-body,
-#recapPage .page-body,
-#logPage .page-body {
+#recapPage .page-body {
     padding-top: 52px;
 }
 /* 无顶部导航栏页面：增加上内边距避免内容贴顶 */
