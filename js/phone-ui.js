@@ -2166,7 +2166,9 @@ function openLogSubPage(type) {
 
     // 必须移除 class 才能让 inline style 生效。
     subContainer.classList.remove('hidden');
-    subContainer.style.display = 'block';
+    // 【修复】必须用 flex 而非 block，否则 #logSubContent 的 flex:1 失效，
+    // 导致子页面导航栏无法置顶、内容无法填满底部
+    subContainer.style.display = 'flex';
     subContainer.style.animation = 'slideInRight .3s ease';
     var logMainContent = document.getElementById('logMainContent');
     if (logMainContent) logMainContent.style.display = 'none';
