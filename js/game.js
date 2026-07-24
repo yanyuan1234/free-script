@@ -5551,6 +5551,20 @@ async function loadFromSlot(slot) {
                     console.warn('[loadFromSlot] 回退自动存档也失败:', e);
                 }
             }
+            // 【关键修复】slot 0 IndexedDB 为空时，回退到 localStorage 备份。
+            // beforeunload 中 IndexedDB 写入是异步的（fire-and-forget），可能来不及完成。
+            // 但 localStorage 写入是同步的，一定能在页面卸载前完成。
+            if (!data && slot === 0) {
+                try {
+                    var _lsBackup = Storage.getJSON(Storage.KEYS.AUTO_SAVE_BACKUP);
+                    if (_lsBackup && _lsBackup.state) {
+                        console.log('[loadFromSlot] IndexedDB slot 0 为空，使用 localStorage 备份恢复');
+                        data = _lsBackup;
+                    }
+                } catch (lsErr) {
+                    console.warn('[loadFromSlot] localStorage 备份读取失败:', lsErr);
+                }
+            }
             if (!data) {
                 UI.toast('该存档位为空');
                 return;

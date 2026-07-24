@@ -5349,8 +5349,10 @@ function sanitizeHtml(html) {
     return doc.body.innerHTML;
 }
 // 页面关闭前保存
-// 【统一管理】走 GlobalCleanup，页面卸载时统一移除
-GlobalCleanup.registerListener(window, 'beforeunload', function() {
+// 【关键修复】不能用 GlobalCleanup.registerListener 注册，因为 GlobalCleanup.cleanup()
+// 在 beforeunload 中先执行，会 removeEventListener 移除本处理器，导致保存逻辑永远不执行。
+// 直接用 addEventListener 注册，不被 cleanup 管理，确保退出时一定执行保存。
+window.addEventListener('beforeunload', function() {
     try {
         var data = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('') : null;
         // 【P0-4】优先写入 IndexedDB（突破 5MB 限制），beforeunload 中 fire-and-forget
@@ -5385,6 +5387,31 @@ try {
         VariableStore.flushPersist();
     }
 } catch(varE) {}
+});
+
+// 【额外保障】页面可见性变化时也保存。
+// visibilitychange 在用户切标签/最小化时触发，此时页面仍在运行，localStorage 写入一定成功。
+// beforeunload 在关闭/导航时触发，但 IndexedDB 异步写入可能来不及完成。
+// 两者结合：visibilitychange → localStorage 同步写入（保证有数据）；beforeunload → IDB + localStorage 双写
+document.addEventListener('visibilitychange', function() {
+    if (document.visibilityState === 'hidden') {
+        try {
+            var data = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('') : null;
+            if (data) {
+                // 同步写入 localStorage（visibilitychange 中可以安全使用同步 API）
+                try {
+                    var dataStr = JSON.stringify(data);
+                    if (dataStr.length < 2 * 1024 * 1024) {
+                        Storage.setJSON(Storage.KEYS.AUTO_SAVE_BACKUP, data);
+                    }
+                } catch(lsErr) {}
+                // 也尝试写入 IndexedDB（可能来不及完成，但有总比没有好）
+                if (typeof SaveDB !== 'undefined' && SaveDB.set) {
+                    SaveDB.set(0, data).catch(function(){});
+                }
+            }
+        } catch(e) { console.warn('visibilitychange save failed:', e); }
+    }
 });
 function parseMarkdown(text) {
     if (!text) return '';
