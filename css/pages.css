@@ -593,6 +593,10 @@
 }
 .cot-panel.cot-expanded .cot-content {
     flex: 1;
+    /* 【BUG修复】flex 子项默认 min-height:auto 会撑满内容高度导致不收缩，
+       overflow-y:auto 永不触发、超长思维链被父级 overflow:hidden 裁掉无法滚动。
+       min-height:0 让其收缩到父级剩余空间，滚动条正常生效。 */
+    min-height: 0;
     max-height: none;
     padding: 16px 20px;
     font-size: 14px;

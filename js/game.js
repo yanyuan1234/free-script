@@ -839,11 +839,12 @@ function _buildFormatRules(gs, _t, turn) {
         + '"gameTime": {"date":"日期","time":"时间","period":"时段","weather":"晴/阴/雨/雪","era":"时代/年号"} }\n'
         + '必填/常用字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
         + '**player=主角（玩家唯一操控角色），characters=NPC列表。绝对禁止把主角放进 characters！剧情提到任何角色名都必须放入 characters；已知角色即使本回合未出场也要保留；每回合检查不遗漏；同一角色只用一个固定名字不加括号备注。**\n'
+        + '**NPC命名规则：若玩家用统称/身份词（如"学霸""小少爷""店小二""那名女子""校草"）指代某角色，你必须在该角色首次出场时立即为它取一个符合世界观的正式姓名（2-4字，如"学霸"可取名"陆知行"），填入 characters[].name，并在后续所有剧情、relationships 的 from/to、npcMessages 的 from 中全程统一使用该正式姓名。name 字段严禁填写"暂无名""可自定义""（待定）""（未命名）"等任何占位提示，也禁止加括号备注；统称只能出现在 desc/title 中。一旦为某角色取名，后续回合必须沿用同一姓名，不得改名。**\n'
         + '**player.name 必须严格等于主角姓名，违反会导致游戏崩溃。原始JSON不用```json包裹。**\n'
         + '**player.stats 更新规则：每回合根据剧情事件更新属性值。修炼/锻炼/学习提升属性、购买/消耗降低金币、受伤降低体质等变化必须反映在 stats 中。禁止每回合返回相同的 stats 值（除非本回合确实无属性变化）。**\n'
         + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
         + 'quests 任务规则：type三类(主线/支线/隐藏),status三类(进行中/已完成/失败),progress用"当前/总数";同时存在不超过5个;**每回合至少返回1个进行中任务**;第一回合至少1个主线;完成/失败保留1-2回合后移除。**若任务已完成,status填"已完成"、progress填"1/1";若仍在进行,progress必须推进,禁止始终为0/1。**\n'
-        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角使用真实姓名"' + (gameState.playerName || '主角') + '"而非代称。**有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。**\n'
+        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角使用真实姓名"' + (gameState.playerName || '主角') + '"而非代称。**from 和 to 必须使用与 characters[].name 完全一致的中文角色姓名，禁止使用拼音、英文、缩写或标识符（如 yin_yun、xue_ba）；NPC 也必须用正式中文名而非代称。**有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。\n'
         + 'npcMessages NPC主动消息：用 [{"from":"NPC名字","text":"消息内容"}] 格式。粘人/关心型NPC每回合可能发1-2条，冷漠型可0条；消息内容必须与本回合剧情相关，from须是已出场角色。**无消息时返回空数组 []，禁止省略该字段。**\n'
         + 'keyEvents 规则：**有重要事件发生时必须返回 1-3 条，仅无任何重要事件的纯过场回合才输出空数组 []。**重要事件指：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露。每条简短一句含人物名。日常对话/普通移动不写入。\n'
         + 'favorability 分级（整数）：80-100极度亲密,60-79非常亲近,40-59有好感,15-39关系融洽,-14~14中立(0=中立非敌意),-39~-15略有隔阂,-100~-40负面。范围 -100 到 100。relation用符合世界观的词,不要套固定模板,不要省略数值。\n'
@@ -2205,6 +2206,12 @@ async function sendAIRequest(userMessage, isInit = false) {
             console.warn('[storyMismatch] storyText前100字符:', storyText.substring(0, 100));
             console.warn('[storyMismatch] streamStory前100字符:', _streamStoryForFallback.substring(0, 100));
             console.warn('[storyMismatch] response前200字符:', (response||'').substring(0, 200));
+            // 【P0 修复】实施真正的回退：最终解析的 storyText 明显过短（疑似 JSON 截断/思维链误删），
+            // 用流式提取的完整版本替换，避免 _doFinalRender 用短/空文本覆盖打字机已显示的长剧情，
+            // 导致"剧情生成完后突然消失只剩选项"。
+            // onStreamChunk 已跳过思维链内的 story 匹配，故流式版本不会再混入思维链脏数据。
+            storyText = _streamStoryForFallback;
+            console.warn('[storyMismatch] 已回退到流式提取版本（' + storyText.length + '字符）');
         }
 
         // 【P0-1 前端重复检测兜底】当 API 端 DRY 采样器不可用时（如 OpenAI 兼容中转站），
@@ -2974,8 +2981,19 @@ async function sendAIRequest(userMessage, isInit = false) {
                     var _t4 = performance.now();
                     if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
                     var st = document.getElementById('storyText');
-                    if (st) st.innerHTML = formatStory(finalStory);
-                    console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
+                    if (st) {
+                        // 【P0 兜底修复】finalStory 为空或明显短于打字机已显示内容时，
+                        // 跳过 innerHTML 重置，保留打字机已渲染的剧情，
+                        // 避免解析失配导致"剧情生成完后突然消失只剩选项"。
+                        var _curLen = (st.textContent || '').length;
+                        if (!finalStory || String(finalStory).trim() === '' ||
+                            (finalStory.length < _curLen / 3 && _curLen > 200)) {
+                            console.warn('[storyProtect] 保留打字机已显示内容，跳过空/短 finalStory 覆盖 (final=' + finalStory.length + ', cur=' + _curLen + ')');
+                        } else {
+                            st.innerHTML = formatStory(finalStory);
+                            console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
+                        }
+                    }
                     _hideSkipButton();
                 } catch (e) {
                     console.warn('[sendAIRequest] 最终渲染异常:', e && e.message);

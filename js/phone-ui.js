@@ -189,7 +189,35 @@ function getPlayerMoney() {
 // 如未来出现性能问题，可在此函数内加缓存 + 在 CharacterMutator 写入时失效。
 function getAllCharactersArray() {
     if (typeof gameState === 'undefined' || !gameState || !gameState.allCharacters) return [];
-    return Object.values(gameState.allCharacters);
+    var arr = Object.values(gameState.allCharacters);
+    // 【BUG修复】按清理后的名字去重：避免"学霸"与"学霸（暂无名，可自定义）"重复显示。
+    // 根因是 gm.tables.characters 用原始 name 作 key 不去重，且 _ensureDataLinkage
+    // 让 UI 读的是 gm 旧表；此处做 UI 层兜底，同时兼容旧存档脏数据。
+    var seen = {};
+    var result = [];
+    for (var i = 0; i < arr.length; i++) {
+        var c = arr[i];
+        if (!c || !c.name) continue;
+        var cleanName = String(c.name).replace(/[（(].*?[）)]/g, '').trim() || String(c.name).trim();
+        if (!cleanName) continue;
+        if (seen[cleanName]) {
+            // 同名角色合并：保留好感度更高的，字段互补
+            var prev = result[seen[cleanName] - 1];
+            var prevFav = parseInt(prev.favorability !== undefined ? prev.favorability : (prev.favor || 0), 10) || 0;
+            var curFav = parseInt(c.favorability !== undefined ? c.favorability : (c.favor || 0), 10) || 0;
+            if (curFav > prevFav) {
+                var merged = Object.assign({}, prev, c);
+                merged.name = cleanName;
+                result[seen[cleanName] - 1] = merged;
+            }
+            continue;
+        }
+        // 去掉占位括号备注，显示干净名（如"学霸（暂无名，可自定义）"→"学霸"）
+        if (c.name !== cleanName) c = Object.assign({}, c, { name: cleanName });
+        seen[cleanName] = result.length + 1;
+        result.push(c);
+    }
+    return result;
 }
 function getCurrencyName() {
     return CurrencyMutator.getName();

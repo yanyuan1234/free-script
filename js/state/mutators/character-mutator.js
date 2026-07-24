@@ -191,7 +191,12 @@ const CharacterMutator = {
     //   accessCount/lastChangedTurn/locked），避免 mutator 回写时丢失这些累积状态
     normalizeCharacter(raw) {
         if (!raw) return null;
-        const name = String(raw.name || raw.title || raw.character || '').trim();
+        let name = String(raw.name || raw.title || raw.character || '').trim();
+        if (!name) return null;
+        // 【BUG-006 修复】剥离角色名中的占位括号备注（如"学霸（暂无名，可自定义）"→"学霸"），
+        // 避免 AI 偶发违规时占位文案污染人际页/关系网；同时让 mergeCharacters 精确匹配
+        // 能把"学霸"与"学霸（暂无名，可自定义）"识别为同一角色并合并。根因靠 prompt 命名规则解决。
+        name = name.replace(/[（(]\s*(暂无名|可自定义|待定|未命名|无名)[^）)]*[）)]/g, '').trim() || name;
         if (!name) return null;
         // 【字段名修复】AI prompt 与 phone-ui.js 全部使用 favorability/title/relation，
         // 但旧代码 normalize 成 favor/identity，导致 UI 读不到好感度/身份/关系。
