@@ -542,6 +542,26 @@
     background: var(--bg-secondary);
 }
 
+/* 【修复】论坛子视图需为 flex 容器，使导航栏固定在顶部、内容区可滚动
+   原来 JS 用 display:block 切换，导致 flex:1 / margin-top:auto 失效 */
+#forumHotView,
+#forumTopicView,
+#forumMineView {
+    flex: 1;
+    flex-direction: column;
+    overflow: hidden;
+    min-height: 0;
+}
+/* #forumHotView 默认可见，需 display:flex 使 flex 布局生效 */
+#forumHotView {
+    display: flex;
+}
+.forum-mine-body {
+    flex: 1;
+    overflow-y: auto;
+    background: var(--bg);
+}
+
 .forum-view {
     animation: fadeIn .25s ease
 }
@@ -767,6 +787,9 @@
 }
 
 /* 帖子详情 */
+.forum-post-detail {
+    overflow: hidden;
+}
 .forum-post-scroll {
     flex: 1;
     overflow-y: auto;
@@ -1504,10 +1527,27 @@
 /* ================================================================
    9. 商店（仿商城APP）
 ================================================================ */
+/* 【修复】商店页面容器：flex 布局，导航/搜索栏固定，内容区可滚动 */
+.shop-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    background: #f5f5f5;
+}
+
+/* 商店内容滚动区 */
+.shop-scroll-body {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
 /* 搜索 */
 .shop-search-box {
     padding: 8px 12px;
     background: var(--card);
+    flex-shrink: 0;
 }
 
 .shop-search-input {

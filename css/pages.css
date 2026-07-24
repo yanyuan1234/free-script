@@ -1551,6 +1551,50 @@
     position: relative;
 }
 
+/* 【修复】日志子页面容器：需延伸到屏幕边缘，抵消父级 page-body 的 padding
+   原来使用固定 -20px 偏移，但 page-body padding 随断点变化，导致：
+   - 小屏(<375px) 偏移过大，内容超出屏幕
+   - 大屏(≥414px) 偏移不足，两侧留白不一致
+   现按断点精确匹配 */
+#logSubContainer {
+    left: -20px;
+    right: -20px;
+    top: -4px;
+    bottom: -20px;
+}
+@media (max-width: 374px) {
+    #logSubContainer {
+        left: -16px;
+        right: -16px;
+        top: 0;
+        bottom: -16px;
+    }
+}
+@media (min-width: 414px) {
+    #logSubContainer {
+        left: -22px;
+        right: -22px;
+        top: 0;
+        bottom: -22px;
+    }
+}
+@media (min-width: 480px) {
+    #logSubContainer {
+        left: -26px;
+        right: -26px;
+        top: 0;
+        bottom: -26px;
+    }
+}
+@media (min-width: 768px) {
+    #logSubContainer {
+        left: -30px;
+        right: -30px;
+        top: 0;
+        bottom: -30px;
+    }
+}
+
 /* 浮动操作按钮页面：顶部留出空间避免遮挡内容 */
 #npcPage .page-body,
 #recapPage .page-body {
@@ -1561,8 +1605,9 @@
     padding-top: 16px;
 }
 
-/* 【修复】日志子页面内容区为 flex column，空状态需 flex:1 撑满并垂直居中，
-   否则内容少时只占内容高度，看起来"截取一半"不触底 */
+/* 【修复】日志子页面内容区为 flex column，子页面需 flex:1 撑满高度
+   - overflow 改为 hidden，每个子页面自行管理内部滚动
+   - 移除原有 padding，子页面自行管理边距 */
 #logSubContent > .empty-state,
 #logSubContent > .chat-list-page,
 #logSubContent > .diary-page,
@@ -1571,7 +1616,8 @@
 #logSubContent > .items-page,
 #logSubContent > .moments-page,
 #logSubContent > .quest-page,
-#logSubContent > .achieve-page {
+#logSubContent > .achieve-page,
+#logSubContent > .shop-page {
     flex: 1;
     min-height: 0;
 }

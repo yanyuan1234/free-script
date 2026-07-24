@@ -457,13 +457,13 @@ function _switchForumView(showHot) {
             hideEl.style.display = 'none';
             hideEl.classList.remove('slide-out');
             if (showEl) {
-                showEl.style.display = 'block';
+                showEl.style.display = 'flex';
                 showEl.classList.add('slide-in');
                 TimerManager.setTimeout('forumSlideIn', function() { showEl.classList.remove('slide-in'); }, 250);
             }
         }, 200);
     } else {
-        if (showEl) showEl.style.display = 'block';
+        if (showEl) showEl.style.display = 'flex';
     }
     _hideAllForumPostDetails();
     if (tabBar) tabBar.style.display = 'flex';
@@ -478,7 +478,7 @@ function showForumMine() {
     var tabBar = document.getElementById('forumTabBar');
     if (hotView) hotView.style.display = 'none';
     if (topicView) topicView.style.display = 'none';
-    if (mineView) mineView.style.display = 'block';
+    if (mineView) mineView.style.display = 'flex';
     if (tabBar) tabBar.style.display = 'flex';
     _setForumTabActive(2);
     _hideAllForumPostDetails();
@@ -3465,14 +3465,16 @@ function renderShopPage() {
 
     var _balance = getPlayerMoney();
     var _cName = getCurrencyName();
-    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
-    return '<div style="display:flex;flex-direction:column;flex:1;background:#f5f5f5;overflow:hidden;">' +
+    var balanceBar = '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:linear-gradient(135deg,#ffd54f 0%,#ffb300 100%);color:#5d4037;font-weight:600;flex-shrink:0;"><span style="display:flex;align-items:center;gap:6px;">💰 <span>当前' + _cName + '：<span id="shopBalanceDisplay" style="color:#d84315;">' + _balance + '</span></span></span><span style="font-size:12px;opacity:0.7;">点击商品购买</span></div>';
+    return '<div class="shop-page">' +
         balanceBar +
         '<div class="shop-search-box"><div class="shop-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索商品</div></div>' +
+        '<div class="shop-scroll-body">' +
         '<div class="shop-banner"><div class="shop-banner-text">限时特惠<br>新品上架</div><div class="shop-banner-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg></div></div>' +
         catSectionHtml +
         '<div class="shop-section-title">新品推荐</div>' +
         '<div class="shop-goods-list">' + goodsHtml + '</div>' +
+        '</div>' +
         '</div>';
 }
 // 商城购买函数
