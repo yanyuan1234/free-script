@@ -1339,21 +1339,131 @@ var GameMemory = {
     _generateFallbackOpeningScene: function(blob, protagonist) {
         if (!blob) return '';
         var _pName = '';
-        if (protagonist && protagonist.name && protagonist.name !== '主角') {
+        if (protagonist && protagonist.name && protagonist.name !== '主角' && protagonist.name !== '未命名') {
             _pName = protagonist.name;
         } else {
             _pName = this._extractProtagonistName(blob) || '';
         }
-        // 截取blob的前300字作为世界设定摘要，但明确标注这不是最终开场
-        var _excerpt = blob.substring(0, 300);
-        if (blob.length > 300) _excerpt += '...';
-        var _scene = '';
+
+        // 提取关键设定信息用于构建开场
+        var _identity = (protagonist && protagonist.identity) ? protagonist.identity : '';
+        var _abilities = (protagonist && Array.isArray(protagonist.abilities) && protagonist.abilities.length > 0)
+            ? protagonist.abilities.join('、') : '';
+        var _personality = (protagonist && protagonist.personality) ? protagonist.personality : '';
+
+        // 从原文提取第一个场景线索（查找地点/动作相关的关键词）
+        var _sceneHint = '';
+        var _locationMatch = blob.match(/(?:在|来到|身处|位于|站在|坐在|躺在|走进|跑进|望向)([\u4e00-\u9fa5a-zA-Z0-9]{2,8}(?:的|里|中|上|前|后|边|旁)?(?:房间|大厅|街道|花园|别墅|庄园|城堡|宫殿|学校|公司|大楼|咖啡|酒吧|餐厅|商场|公园|森林|海边|山顶|城市|小镇|医院|机场|车站|码头|豪宅|卧室|客厅|书房|阳台|天台|地下室|车库|泳池))/);
+        if (_locationMatch) _sceneHint = _locationMatch[0];
+
+        // 构建叙事性开场（不是原文复制）
+        var _parts = [];
         if (_pName) {
-            _scene = _pName + '的故事即将开始。\n\n' + _excerpt;
+            _parts.push(_pName + (_identity ? '，' + _identity : '') + '。');
+            if (_personality) {
+                _parts.push(_personality.substring(0, 50) + '。');
+            }
+            if (_abilities) {
+                _parts.push('拥有' + _abilities + '。');
+            }
+            if (_sceneHint) {
+                _parts.push('此刻，' + _pName + _sceneHint + '。');
+            } else {
+                _parts.push(_pName + '的故事，即将展开。');
+            }
         } else {
-            _scene = '故事即将开始。\n\n' + _excerpt;
+            _parts.push('故事即将开始。');
+            if (_sceneHint) {
+                _parts.push(_sceneHint + '。');
+            }
         }
-        return _scene;
+
+        return _parts.join('\n\n');
+    },
+
+    // 【关键修复】专用 forge JSON 解析器 - 不经过 AIOutputSchema.normalize()
+    // 原因：ResponseParser.parse() 内部调用 AIOutputSchema.normalize()，该函数只保留
+    // 标准游戏输出字段（story, characters, memoryUpdates 等），会剥离所有 forge 特有字段
+    // （protagonist, openingScene, worldSetting, themes, styleNotes, setupKeywords 等）
+    // 导致 AI 实际返回的主角和开局场景数据被丢弃
+    _parseForgeJSON: function(raw) {
+        var result = { success: false, data: null, warnings: [] };
+        if (!raw || typeof raw !== 'string') {
+            result.warnings.push('empty reply');
+            return result;
+        }
+
+        // Step 1: 剥离推理模型的思考块（<think>...</think> 等）
+        var effectiveReply = raw;
+        if (typeof ResponseParser !== 'undefined' && ResponseParser._stripThinkingTokens) {
+            var stripped = ResponseParser._stripThinkingTokens(raw);
+            if (stripped !== raw) {
+                effectiveReply = stripped;
+                result.warnings.push('thinking tokens stripped');
+            }
+        }
+
+        // Step 2: 尝试多种 JSON 提取方式（复用 ResponseParser 的工具方法，但跳过 normalize）
+        var data = null;
+
+        // 2a: <json></json> 标签
+        if (!data && typeof findFirstPairedTag === 'function') {
+            var _jsonTagHit = findFirstPairedTag(effectiveReply, ['json']);
+            if (_jsonTagHit && _jsonTagHit.content) {
+                data = ResponseParser._tryDirectJSON(_jsonTagHit.content);
+                if (data) result.warnings.push('parsed from <json> tag');
+            }
+        }
+
+        // 2b: 直接 JSON
+        if (!data) {
+            data = ResponseParser._tryDirectJSON(effectiveReply);
+            if (data) result.warnings.push('parsed as direct JSON');
+        }
+
+        // 2c: 代码块 JSON (```json ... ```)
+        if (!data) {
+            data = ResponseParser._tryCodeBlockJSON(effectiveReply);
+            if (data) result.warnings.push('parsed from code block');
+        }
+
+        // 2d: 清理后重试
+        if (!data) {
+            var sanitized = (typeof OutputSanitizer !== 'undefined' && OutputSanitizer)
+                ? OutputSanitizer.sanitizeJSON(effectiveReply) : effectiveReply;
+            data = ResponseParser._tryDirectJSON(sanitized);
+            if (!data && typeof ResponseParser._tryRobustJSON === 'function') {
+                data = ResponseParser._tryRobustJSON(sanitized);
+            }
+            if (data) result.warnings.push('parsed via robust JSON extraction');
+        }
+
+        if (data && typeof data === 'object') {
+            result.success = true;
+            result.data = data;
+
+            // 调试日志：记录关键字段是否存在（帮助排查 AI 输出问题）
+            var _fieldStatus = [];
+            var _checkFields = ['worldSetting', 'worldSettingCompressed', 'protagonist', 'characters',
+                'openingScene', 'themes', 'styleNotes', 'memoryUpdates', 'setupKeywords'];
+            for (var _fi = 0; _fi < _checkFields.length; _fi++) {
+                var _fn = _checkFields[_fi];
+                var _val = data[_fn];
+                if (_val == null || _val === '' || (Array.isArray(_val) && _val.length === 0)) {
+                    _fieldStatus.push(_fn + ': MISSING');
+                } else if (typeof _val === 'object') {
+                    _fieldStatus.push(_fn + ': ' + (Array.isArray(_val) ? 'array[' + _val.length + ']' : 'object{' + Object.keys(_val).length + '}'));
+                } else {
+                    _fieldStatus.push(_fn + ': ' + String(_val).substring(0, 30));
+                }
+            }
+            console.log('[SetupForge] JSON 解析成功 [' + result.warnings.join(', ') + '] 字段状态: ' + _fieldStatus.join(' | '));
+        } else {
+            // 所有提取方式都失败，记录原始响应前500字用于调试
+            console.warn('[SetupForge] JSON 解析失败，原始响应前500字:', effectiveReply.substring(0, 500));
+        }
+
+        return result;
     },
 
     forgeSetup: function(blob, options) {
@@ -1439,7 +1549,7 @@ var GameMemory = {
                         }
                         return setTimeout(runPass, 0);
                     }
-                    var parsed = ResponseParser.parse(raw);
+                    var parsed = self._parseForgeJSON(raw);
                     if (!parsed.success || !parsed.data) {
                         console.warn('[SetupForge] 第' + state.currentPass + '轮解析失败');
                         if (state.currentPass === 1) {
