@@ -223,21 +223,28 @@ const GameMemoryAdapter = {
     // 通用 MERGE：把 StateManager 数组按 name 索引到 GameMemory.tables[tableName]
     // - 已存在条目：按 fieldMap 更新实体字段，跳过 undefined 字段，保留运行时字段
     // - 新条目：调用 factory(name, src) 创建，包含运行时字段默认值
-    _mergeTable(tableName, arr, fieldMap, factory) {
+    // - keyFn：可选，自定义去重 key（默认去括号后的名字，使"学霸"与"学霸（备注）"合并为同一条目）
+    // - 合并后自动删除 table 中不在当前数组里的 stale 条目，防止同一角色残留多条
+    _mergeTable(tableName, arr, fieldMap, factory, keyFn) {
         if (!GameMemory.tables) return;
         if (!GameMemory.tables[tableName]) GameMemory.tables[tableName] = {};
         const table = GameMemory.tables[tableName];
         const turn = StateManager.get('progress.turn') || 0;
         if (!Array.isArray(arr)) return;
+        const getKey = typeof keyFn === 'function' ? keyFn : function(src) {
+            return String(src.name || '').replace(/[（(].*?[）)]/g, '').trim() || String(src.name || '').trim();
+        };
+        var currentKeys = {};
         for (let i = 0; i < arr.length; i++) {
             const src = arr[i];
             if (!src || !src.name) continue;
-            const name = String(src.name);
-            let entry = table[name];
+            const key = getKey(src);
+            if (key) currentKeys[key] = true;
+            let entry = table[key];
             if (!entry) {
-                entry = factory(name, src);
+                entry = factory(String(src.name), src);
                 if (!entry) continue;
-                table[name] = entry;
+                table[key] = entry;
                 continue;
             }
             // 已存在：仅更新实体字段（跳过 undefined，保留运行时字段如 history/dormantSince）
@@ -252,6 +259,15 @@ const GameMemoryAdapter = {
                 if (val !== undefined) entry[field] = val;
             });
             entry.lastChangedTurn = turn;
+        }
+        // 【通用去重】删除 table 中不在当前数组里的 stale 条目
+        // 根因：旧 key 用原始 name（"学霸" vs "学霸（暂无名）"是不同 key），改名后旧条目残留。
+        // 用 cleaned name 作 key 后，旧脏条目自动被识别为 stale 并清除。
+        // arr 为空时不删除（保守处理，避免空数据误清角色表）
+        if (arr.length > 0) {
+            Object.keys(table).forEach(function(k) {
+                if (!currentKeys[k]) delete table[k];
+            });
         }
     }
 };

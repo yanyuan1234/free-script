@@ -190,9 +190,8 @@ function getPlayerMoney() {
 function getAllCharactersArray() {
     if (typeof gameState === 'undefined' || !gameState || !gameState.allCharacters) return [];
     var arr = Object.values(gameState.allCharacters);
-    // 【BUG修复】按清理后的名字去重：避免"学霸"与"学霸（暂无名，可自定义）"重复显示。
-    // 根因是 gm.tables.characters 用原始 name 作 key 不去重，且 _ensureDataLinkage
-    // 让 UI 读的是 gm 旧表；此处做 UI 层兜底，同时兼容旧存档脏数据。
+    // 【通用去重】按去括号后的名字做 key 去重，避免同一角色因名字写法不同（带/不带括号备注）
+    // 而重复显示。合并时优先保留较短的名字（不含括号备注的更简洁）。不依赖任何关键词硬编码。
     var seen = {};
     var result = [];
     for (var i = 0; i < arr.length; i++) {
@@ -201,19 +200,21 @@ function getAllCharactersArray() {
         var cleanName = String(c.name).replace(/[（(].*?[）)]/g, '').trim() || String(c.name).trim();
         if (!cleanName) continue;
         if (seen[cleanName]) {
-            // 同名角色合并：保留好感度更高的，字段互补
+            // 同名角色合并：字段互补，好感度取高，名字取较短
             var prev = result[seen[cleanName] - 1];
             var prevFav = parseInt(prev.favorability !== undefined ? prev.favorability : (prev.favor || 0), 10) || 0;
             var curFav = parseInt(c.favorability !== undefined ? c.favorability : (c.favor || 0), 10) || 0;
-            if (curFav > prevFav) {
-                var merged = Object.assign({}, prev, c);
-                merged.name = cleanName;
-                result[seen[cleanName] - 1] = merged;
+            var merged = Object.assign({}, prev, c);
+            if (String(prev.name || '').length < String(c.name || '').length) {
+                merged.name = prev.name;
             }
+            if (curFav > prevFav) {
+                merged.favorability = curFav;
+                merged.favor = curFav;
+            }
+            result[seen[cleanName] - 1] = merged;
             continue;
         }
-        // 去掉占位括号备注，显示干净名（如"学霸（暂无名，可自定义）"→"学霸"）
-        if (c.name !== cleanName) c = Object.assign({}, c, { name: cleanName });
         seen[cleanName] = result.length + 1;
         result.push(c);
     }

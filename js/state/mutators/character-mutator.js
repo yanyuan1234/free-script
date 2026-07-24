@@ -56,6 +56,13 @@ const CharacterMutator = {
                 // 原版行为：AI 是权威，直接覆盖好感度（允许降低）
                 // 新版 Math.max 拒绝降好感度，导致剧情冲突时（如玩家激怒NPC）好感度不降
                 var merged = Object.assign({}, list[idx], normalized);
+                // 【通用去重】合并同名角色时，优先保留较短的名字（不含括号备注的更简洁，
+                // 如"学霸"优于"学霸（暂无名，可自定义）"）。不依赖任何关键词硬编码。
+                var _prevN = String(list[idx].name || '');
+                var _newN = String(normalized.name || '');
+                if (_prevN && _newN && _prevN.length < _newN.length) {
+                    merged.name = _prevN;
+                }
                 if (typeof normalized.favorability === 'number') {
                     merged.favorability = normalized.favorability;
                     merged.favor = normalized.favorability;
@@ -68,6 +75,12 @@ const CharacterMutator = {
             if (fuzzyIdx >= 0) {
                 console.log('[CharacterMutator] 模糊匹配命中："' + list[fuzzyIdx].name + '" → "' + normalized.name + '"，合并为同一角色');
                 const merged = Object.assign({}, list[fuzzyIdx], normalized);
+                // 【通用去重】合并时优先保留较短的名字
+                var _prevN2 = String(list[fuzzyIdx].name || '');
+                var _newN2 = String(normalized.name || '');
+                if (_prevN2 && _newN2 && _prevN2.length < _newN2.length) {
+                    merged.name = _prevN2;
+                }
                 // 原版行为：好感度直接覆盖，允许降低
                 if (typeof normalized.favorability === 'number') {
                     merged.favorability = normalized.favorability;
@@ -192,11 +205,6 @@ const CharacterMutator = {
     normalizeCharacter(raw) {
         if (!raw) return null;
         let name = String(raw.name || raw.title || raw.character || '').trim();
-        if (!name) return null;
-        // 【BUG-006 修复】剥离角色名中的占位括号备注（如"学霸（暂无名，可自定义）"→"学霸"），
-        // 避免 AI 偶发违规时占位文案污染人际页/关系网；同时让 mergeCharacters 精确匹配
-        // 能把"学霸"与"学霸（暂无名，可自定义）"识别为同一角色并合并。根因靠 prompt 命名规则解决。
-        name = name.replace(/[（(]\s*(暂无名|可自定义|待定|未命名|无名)[^）)]*[）)]/g, '').trim() || name;
         if (!name) return null;
         // 【字段名修复】AI prompt 与 phone-ui.js 全部使用 favorability/title/relation，
         // 但旧代码 normalize 成 favor/identity，导致 UI 读不到好感度/身份/关系。
