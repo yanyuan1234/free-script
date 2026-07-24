@@ -756,7 +756,8 @@ function spawnForumPostAboutPlayer(srcPostIdx, playerComment, playerName) {
                 // 刷新论坛页面
                 var forumContainer = document.getElementById('logSubContent');
                 if (forumContainer) {
-                    forumContainer.innerHTML = renderForumPage();
+                    forumContainer.innerHTML = forceRender(renderForumPage, 'renderForumPage') || '';
+                    _stretchFirstChild(forumContainer);
                 }
             }
         } catch (e) {
@@ -1273,7 +1274,8 @@ function renderWorldModules(modules) {
         if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
         return;
     }
-    subContentEl.innerHTML = renderWorldPage();
+    subContentEl.innerHTML = forceRender(renderWorldPage, 'renderWorldPage') || '';
+    _stretchFirstChild(subContentEl);
     if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
 }
 
@@ -2140,10 +2142,48 @@ function closeLogSubPage() {
         subContainer.style.animation = 'slideInRight .3s ease';
         var logMainContent = document.getElementById('logMainContent');
         if (logMainContent) logMainContent.style.display = 'block';
-        // 【修复】关闭时清除子页面内容，防止下次打开时旧内容闪现
         var content = document.getElementById('logSubContent');
         if (content) content.innerHTML = '';
     }, 200);
+}
+
+// 【根本修复】渲染器缓存键映射表
+// shouldSkipPageRender 用 pageName 作缓存键，这里映射 type → pageName
+var _RENDER_CACHE_KEY_MAP = {
+    chat: 'renderChatPage',
+    forum: 'renderForumPage',
+    rank: 'renderRankPage',
+    items: 'renderItemsPage',
+    shop: 'renderShopPage',
+    moments: 'renderMomentsPage',
+    diary: 'renderDiaryPage',
+    mail: 'renderMailPage',
+    world: 'renderWorldPage',
+    calendar: 'renderCalendarPage',
+    author_note: 'renderAuthorNotePage'
+};
+
+/**
+ * 强制渲染：清除指定缓存键后调用渲染器，确保渲染器不会因缓存命中而跳过渲染。
+ *
+ * 根因：shouldSkipPageRender 假设"数据未变化 → DOM 仍保留上次渲染结果 → 可跳过渲染"。
+ * 但 openLogSubPage 和各处刷新逻辑会先清空 content.innerHTML，使该假设失效——
+ * DOM 已被清空，但缓存仍认为"无需渲染"，导致渲染器返回 undefined，
+ * 最终页面显示空白或上一次的内容（由 _applyLogPageStyle 的空值兜底逻辑决定）。
+ *
+ * @param {Function} rendererFn 渲染器函数
+ * @param {string} [cacheKey] 对应的 RenderCache 键名，传入则提前清除该键
+ * @returns {string|HTMLElement} 渲染结果（HTML 字符串或 DOM 元素），永不为 undefined
+ */
+function forceRender(rendererFn, cacheKey) {
+    if (typeof RenderCache !== 'undefined' && RenderCache._keys && cacheKey) {
+        delete RenderCache._keys[cacheKey];
+    }
+    var html = rendererFn();
+    if (html === undefined || html === null) {
+        html = '';
+    }
+    return html;
 }
 
 function openLogSubPage(type) {
@@ -2167,10 +2207,15 @@ function openLogSubPage(type) {
     var subContainer = document.getElementById('logSubContainer');
     if (!subContainer) return;
 
-    // 必须移除 class 才能让 inline style 生效。
+    // 【竞态修复】取消可能正在进行的 closeLogSubPage 延迟回调。
+    // 场景：用户点击返回 → closeLogSubPage 设置 200ms 定时器 → 用户在定时器
+    // 触发前点击另一个子功能 → openLogSubPage 渲染新页面 → 200ms 后旧定时器
+    // 触发，把新渲染的页面清空并隐藏容器，导致页面闪烁或内容丢失。
+    if (typeof TimerManager !== 'undefined') {
+        TimerManager.clearTimeout('logSubBack');
+    }
+
     subContainer.classList.remove('hidden');
-    // 【修复】必须用 flex 而非 block，否则 #logSubContent 的 flex:1 失效，
-    // 导致子页面导航栏无法置顶、内容无法填满底部
     subContainer.style.display = 'flex';
     subContainer.style.animation = 'slideInRight .3s ease';
     var logMainContent = document.getElementById('logMainContent');
@@ -2179,36 +2224,25 @@ function openLogSubPage(type) {
     var content = document.getElementById('logSubContent');
     if (!content) return;
 
-    // 【修复】切换子页面前先清除旧内容，防止渲染器返回 undefined 时旧内容滞留
+    // 切换子页面前先清除旧内容
     content.innerHTML = '';
 
-    var html = '';
     var renderer = getLogPageRenderers()[type];
+    var html = '';
 
     if (renderer) {
-        html = renderer();
+        // 【根本修复】提前清除该页面的渲染缓存，使渲染器不会因 shouldSkipPageRender
+        // 返回 true 而跳过渲染（DOM 已被清空，缓存中的"数据未变化"判断已失效）
+        html = forceRender(renderer, _RENDER_CACHE_KEY_MAP[type]);
     } else {
         html = renderDefaultPage(type);
     }
 
-    // 【修复】渲染器可能因 shouldSkipPageRender 返回 undefined（数据未变化），
-    // 此时旧内容已被清除，需强制重新渲染
-    if (html === undefined || html === null) {
-        if (typeof RenderCache !== 'undefined' && RenderCache._keys) {
-            var cacheKeys = Object.keys(RenderCache._keys);
-            // 清除所有渲染缓存，强制下次渲染
-            cacheKeys.forEach(function(k) { delete RenderCache._keys[k]; });
-        }
-        if (renderer) {
-            html = renderer();
-        }
-        // 如果仍然 undefined，用默认占位
-        if (html === undefined || html === null) {
-            html = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">加载中...</div>';
-        }
+    // 兜底：如果渲染器返回空值，显示占位内容
+    if (!html) {
+        html = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">加载中...</div>';
     }
 
-    // 应用页面样式
     _applyLogPageStyle(content, type, html);
 }
 // 应用日志页面样式
@@ -2227,22 +2261,21 @@ function _applyLogPageStyle(content, type, html) {
     }
 
 
-    if (html !== null && html !== undefined) {
-        if (html instanceof HTMLElement) {
-            content.innerHTML = '';
-            content.appendChild(html);
-        } else {
-            content.innerHTML = html;
-        }
+    // 有实际 HTML 内容时写入 DOM
+    // 空字符串 '' 表示渲染器已直接操作 DOM（如 quests/achieve/memory），不可覆盖
+    if (html && typeof html === 'string') {
+        content.innerHTML = html;
+    } else if (html instanceof HTMLElement) {
+        content.innerHTML = '';
+        content.appendChild(html);
     } else if (type === 'quests') {
+        // quests 渲染器可能未注册时的兜底
         if (typeof QuestSystem !== 'undefined' && QuestSystem.renderQuestPage) {
-            // 确保 #questModule 存在（renderQuestPage 内部会查该 ID）
             if (!content.querySelector('#questModule')) {
                 var qm = document.createElement('div');
                 qm.id = 'questModule';
                 content.appendChild(qm);
             }
-            // 【冗余审计 P0-2】原调用 QuestSystem.renderQuests（不存在），改为 renderQuestPage
             QuestSystem.renderQuestPage(content);
         }
     }
@@ -2785,7 +2818,7 @@ function toggleMomentLike(idx) {
     autoSave();
     // 刷新朋友圈页面
     var content = document.getElementById('logSubContent');
-    if (content) { content.innerHTML = renderMomentsPage(); _stretchFirstChild(content); }
+    if (content) { content.innerHTML = forceRender(renderMomentsPage, 'renderMomentsPage') || ''; _stretchFirstChild(content); }
 }
 function showMomentCommentInput(idx, el) {
     var box = document.getElementById('momentCommentBox_' + idx);
@@ -2805,7 +2838,7 @@ function sendMomentComment(idx) {
     UI.toast('评论成功');
     // 刷新朋友圈页面
     var content = document.getElementById('logSubContent');
-    if (content) { content.innerHTML = renderMomentsPage(); _stretchFirstChild(content); }
+    if (content) { content.innerHTML = forceRender(renderMomentsPage, 'renderMomentsPage') || ''; _stretchFirstChild(content); }
 }
 
 function renderForumPage() {
@@ -3547,7 +3580,7 @@ function buyShopItem(index) {
     autoSave();
     var newCurrency = getPlayerMoney();
     var content = document.getElementById('logSubContent');
-    if (content) { content.innerHTML = renderShopPage(); _stretchFirstChild(content); }
+    if (content) { content.innerHTML = forceRender(renderShopPage, 'renderShopPage') || ''; _stretchFirstChild(content); }
     var shopBal = document.getElementById('shopBalanceDisplay');
     if (shopBal) shopBal.textContent = newCurrency;
     var balanceAmount = document.querySelector('.items-balance-amount');
