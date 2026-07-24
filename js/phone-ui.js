@@ -6247,6 +6247,19 @@ function restoreGame() {
 function _restoreGameRender() {
     try {
         // 恢复最后一条AI回复的剧情和选项
+        // 【修复】优先用已持久化的快照(_lastAIReply/_lastChoices/_lastCotContent)恢复，
+        // 而非重新解析 conversationHistory(脆弱、易失败、且受 autoSave 防抖时序影响)。
+        // 这样"退出时什么样，加载就是什么样"。
+
+        // --- 1. 恢复剧情文本 ---
+        var _storyRestored = false;
+        var _savedStory = '';
+        try {
+            _savedStory = (typeof StateManager !== 'undefined' && StateManager.get)
+                ? (StateManager.get('ui.lastAIReply') || '')
+                : '';
+        } catch(e) {}
+        if (!_savedStory && gameState) _savedStory = gameState._lastAIReply || '';
 
         var lastAI = null;
         var _hist = _getConversationHistory();
@@ -6256,83 +6269,141 @@ function _restoreGameRender() {
                 break;
             }
         }
-        if (lastAI) {
+
+        // 优先用持久化快照恢复剧情（退出时的精确状态）
+        if (_savedStory && _savedStory.trim()) {
+            renderStory(_savedStory);
+            _storyRestored = true;
+        }
+
+        // 快照没有时，才 fallback 到重新解析 conversationHistory
+        var _parsedData = null;
+        if (!_storyRestored && lastAI) {
             try {
                 var result = parseAIResponse(lastAI.content);
-                var data = result.data;
-                var storyText = result.storyText;
-                if (storyText) renderStory(storyText);
-                if (data) {
-                    if (data.hud) renderHUD(data.hud);
-                    if (data.title || data.scene) updateSceneTitle(data.title || data.scene);
-                    if (data.choices) renderChoices(data.choices);
-                    if (data.player) {
-                        // 写入 gameState.playerData，确保 renderPlayerStats(null) 能读到
-                        renderPlayerStats(data.player);
-                        if (typeof StateManager !== 'undefined' && StateManager.set) {
-                            StateManager.set('entities.player', data.player, { silent: true });
-                        }
-                        gameState.playerData = Object.assign({}, gameState.playerData || {}, data.player);
-                    }
-                    if (data.characters) mergeCharacters(data.characters);
-                    if (data.world) {
-                        renderWorldModules(data.world);
-                        // 写入数据源，切换页面后不会丢失
-                        if (typeof StateManager !== 'undefined' && StateManager.set) {
-                            StateManager.set('ui.worldSnapshot', data.world, { silent: true });
-                        }
-                    }
-                    if (data.world && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0) {
-                        _autoExtractWorldNotes(data.world);
-                    }
-                    // [Mufy 三层记忆] 每回合刷新记忆面板
-                    renderMemoryPanel();
-                    if (data.bag) renderBag(data.bag);
-                    if (data.quests) {
-                        mergeQuests(data.quests);
-                        renderQuests();
-                    }
-                    if (data.relationships) {
-                        // 写入数据源，切换页面后不会丢失
-                        if (typeof mergeRelationships === 'function') {
-                            mergeRelationships(data.relationships);
-                        }
-                        renderRelationships();
-                    }
-
-                    if (data.title || data.scene) {
-
-                        if (typeof StateManager !== 'undefined' && StateManager.set) {
-                            StateManager.set('progress.sceneTitle', data.title || data.scene, { silent: true });
-                        }
-                    }
-                    if (data.hud && typeof StateManager !== 'undefined' && StateManager.set) {
-                        StateManager.set('ui.lastHUD', data.hud, { silent: true });
-                    }
-                    if (data.gameTime) {
-
-                        // gameState.gameTime 绕过状态层；读档切换到不同时间线是合理场景，
-                        // 通过 skipMonotonicCheck 跳过单调性校验，避免读档后时间被错误拦截
-                        if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
-                            var _gtMerged = Object.assign({}, gameState.gameTime || {}, data.gameTime);
-                            TimeMutator.setTime(_gtMerged, { silent: true, skipMonotonicCheck: true });
-                        } else if (!gameState.gameTime) {
-                            gameState.gameTime = {};
-                            Object.assign(gameState.gameTime, data.gameTime);
-                        }
-                    }
-                }
-                if (!data || !data.choices) {
-                    _renderDefaultChoices('noChoices');
+                _parsedData = result.data;
+                if (result.storyText) {
+                    renderStory(result.storyText);
+                    _storyRestored = true;
                 }
             } catch (parseErr) {
                 console.warn('解析最后回复失败:', parseErr);
-                document.getElementById('storyText').innerHTML = '<p>存档已恢复，点击「继续」推进剧情。</p>';
-                _renderDefaultChoices('noChoices');
             }
-        } else {
-            document.getElementById('storyText').innerHTML = '<p>存档已恢复。点击选项或输入文字继续游戏。</p>';
-            _renderDefaultChoices('noLastAI');
+        }
+
+        // --- 2. 恢复选项 ---
+        var _choicesRendered = false;
+        // 优先用持久化的选项快照
+        var _savedChoices = null;
+        try {
+            _savedChoices = (typeof StateManager !== 'undefined' && StateManager.get)
+                ? StateManager.get('ui.lastChoices')
+                : null;
+        } catch(e) {}
+        if (!_savedChoices && gameState) _savedChoices = gameState._lastChoices;
+
+        if (_savedChoices && _savedChoices.length > 0) {
+            // _lastChoices 可能是字符串数组(旧格式)或对象数组(新格式)，统一包装
+            var _choicesToRender = _savedChoices.map(function(c, idx) {
+                if (typeof c === 'string') return { id: String.fromCharCode(65 + idx), text: c };
+                return { id: (c && c.id) || String.fromCharCode(65 + idx), text: (c && c.text) || '' };
+            }).filter(function(c) { return c.text; });
+            if (_choicesToRender.length > 0) {
+                renderChoices(_choicesToRender);
+                _choicesRendered = true;
+            }
+        }
+        // fallback: 从重新解析的数据里取 choices
+        if (!_choicesRendered && _parsedData && _parsedData.choices && _parsedData.choices.length > 0) {
+            renderChoices(_parsedData.choices);
+            _choicesRendered = true;
+        }
+        // 仍然没有选项 → 默认选项
+        if (!_choicesRendered) {
+            _renderDefaultChoices(lastAI ? 'noChoices' : 'noLastAI');
+        }
+
+        // --- 3. 恢复 HUD / 场景标题 / 其他结构化数据 ---
+        if (_parsedData) {
+            if (_parsedData.hud) renderHUD(_parsedData.hud);
+            if (_parsedData.title || _parsedData.scene) updateSceneTitle(_parsedData.title || _parsedData.scene);
+            if (_parsedData.player) {
+                renderPlayerStats(_parsedData.player);
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('entities.player', _parsedData.player, { silent: true });
+                }
+                gameState.playerData = Object.assign({}, gameState.playerData || {}, _parsedData.player);
+            }
+            if (_parsedData.characters) mergeCharacters(_parsedData.characters);
+            if (_parsedData.world) {
+                renderWorldModules(_parsedData.world);
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('ui.worldSnapshot', _parsedData.world, { silent: true });
+                }
+            }
+            if (_parsedData.world && typeof EnhancedMemory !== 'undefined' && EnhancedMemory.longTermMemory.worldNotes.length === 0) {
+                _autoExtractWorldNotes(_parsedData.world);
+            }
+            if (_parsedData.bag) renderBag(_parsedData.bag);
+            if (_parsedData.quests) {
+                mergeQuests(_parsedData.quests);
+                renderQuests();
+            }
+            if (_parsedData.relationships) {
+                if (typeof mergeRelationships === 'function') {
+                    mergeRelationships(_parsedData.relationships);
+                }
+                renderRelationships();
+            }
+            if (_parsedData.title || _parsedData.scene) {
+                if (typeof StateManager !== 'undefined' && StateManager.set) {
+                    StateManager.set('progress.sceneTitle', _parsedData.title || _parsedData.scene, { silent: true });
+                }
+            }
+            if (_parsedData.hud && typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('ui.lastHUD', _parsedData.hud, { silent: true });
+            }
+            if (_parsedData.gameTime) {
+                if (typeof TimeMutator !== 'undefined' && TimeMutator.setTime) {
+                    var _gtMerged = Object.assign({}, gameState.gameTime || {}, _parsedData.gameTime);
+                    TimeMutator.setTime(_gtMerged, { silent: true, skipMonotonicCheck: true });
+                } else if (!gameState.gameTime) {
+                    gameState.gameTime = {};
+                    Object.assign(gameState.gameTime, _parsedData.gameTime);
+                }
+            }
+        }
+
+        // 剧情都没恢复到时的占位兜底
+        if (!_storyRestored) {
+            var _stEl = document.getElementById('storyText');
+            if (_stEl) _stEl.innerHTML = lastAI
+                ? '<p>存档已恢复，点击「继续」推进剧情。</p>'
+                : '<p>存档已恢复。点击选项或输入文字继续游戏。</p>';
+        }
+
+        // --- 4. 恢复思维链面板 ---
+        try {
+            var _cotContent = '';
+            try {
+                _cotContent = (typeof StateManager !== 'undefined' && StateManager.get)
+                    ? (StateManager.get('ui.lastCotContent') || '')
+                    : '';
+            } catch(e) {}
+            if (!_cotContent && gameState) _cotContent = gameState._lastCotContent || '';
+            if (_cotContent && _cotContent.trim()) {
+                if (typeof CotPanelController !== 'undefined') {
+                    CotPanelController.currentText = _cotContent;
+                    CotPanelController.state = 'done';
+                    CotPanelController._isExpanded = false;
+                    CotPanelController._viewingHistoryIdx = -1;
+                    CotPanelController._render();
+                } else if (typeof renderCotPanel === 'function') {
+                    renderCotPanel(_cotContent);
+                }
+            }
+        } catch(cotErr) {
+            console.warn('[restoreGame] 思维链恢复失败:', cotErr);
         }
 
         // 从gameState固定数据渲染

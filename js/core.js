@@ -5358,6 +5358,11 @@ GlobalCleanup.registerListener(window, 'beforeunload', function() {
         if (data && typeof SaveDB !== 'undefined' && SaveDB.kvSet) {
             SaveDB.kvSet(Storage.KEYS.AUTO_SAVE_BACKUP, data).catch(function(){});
         }
+        // 【修复】退出时同时写入 slot 0，避免 autoSave 2 秒防抖导致加载到旧回合。
+        // 用户在 AI 回复后 2 秒内退出时，slot 0 仍是上一回合，点"加载存档"会丢失当前回合。
+        if (data && typeof SaveDB !== 'undefined' && SaveDB.set) {
+            SaveDB.set(0, data).catch(function(){});
+        }
         // 同时写入 localStorage 作为双保险（仅在数据不太大时）
         if (data) {
             try {

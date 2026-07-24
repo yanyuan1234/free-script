@@ -2724,9 +2724,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 紧接的记忆提取（虽已延迟）+ 货币系统 + keyEvents + snapshot 也会堆积。
         // 让步一次让选项 UI 先绘制。
         await new Promise(function(r) { setTimeout(r, 0); });
+            // 【修复】存为对象数组保留 id，加载时可直接用，无需再从字符串包装
             gameState._lastChoices = data.choices.map(function(c) {
-                return typeof c === 'string' ? c : (c && c.text) || '';
-            });
+                if (typeof c === 'string') return { id: '', text: c };
+                return { id: (c && c.id) || '', text: (c && c.text) || '' };
+            }).filter(function(c) { return c.text; });
         }
 
         // 处理增强记忆

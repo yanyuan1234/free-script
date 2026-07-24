@@ -70,6 +70,7 @@ const StateSchema = {
             ui: {
                 currentPage: 'menu',
                 lastChoices: [],
+                lastAIReply: '',
                 logSubPage: '',
                 lastHUD: null,
 
@@ -179,6 +180,7 @@ const StateSchema = {
         '_lastValidationWarning': 'ui.lastValidationWarning',
         '_lastOriginalContent': 'ui.lastOriginalContent',
         '_lastCotContent': 'ui.lastCotContent',
+        '_lastAIReply': 'ui.lastAIReply',
 
         '_MAX_UNDO_HISTORY': 'ui.maxUndoHistory',
         'worldSnapshot': 'ui.worldSnapshot'
