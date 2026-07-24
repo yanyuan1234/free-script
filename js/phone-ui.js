@@ -1080,8 +1080,8 @@ function deleteMail(index) {
 }
 
 // [日志功能开关] 默认值与标签
-var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
-var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, world: true, calendar: true, author_note: true, memory: true };
+var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', calendar: '日程表' };
+var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, calendar: true };
 function getLogFeatureSettings() {
     var stored = (StateManager ? StateManager.get('settings.logFeatures') : null) || {};
     var settings = {};
@@ -1111,7 +1111,6 @@ function updateLogFeatureVisibility() {
         if (el) el.style.display = visible ? '' : 'none';
     }
     setVisible('logFeat-calendar', settings.calendar);
-    setVisible('logFeat-author_note', settings.author_note);
     setVisible('logFeat-chat', settings.chat);
     setVisible('logFeat-forum', settings.forum);
     setVisible('logFeat-rank', settings.rank);
@@ -1122,8 +1121,6 @@ function updateLogFeatureVisibility() {
     setVisible('logFeat-achieve', settings.achieve);
     setVisible('logFeat-quests', settings.quests);
     setVisible('logFeat-items', settings.items);
-    setVisible('logFeat-world', settings.world);
-    setVisible('logFeat-memory', settings.memory);
 }
 
 // 日志功能开关弹窗
@@ -1255,27 +1252,7 @@ function renderWorldModules(modules) {
         _autoExtractWorldNotes(modules);
     }
 
-    // 不存在独立的 logWorldContent 容器。检测用户是否正停留在世界子页面，
-    // 如果是则用最新数据重新渲染；否则只更新 gameState，下次进入世界页时自动反映。
-    var subContainer = document.getElementById('logSubContainer');
-    var subTitleEl = document.getElementById('logSubTitle');
-    var subContentEl = document.getElementById('logSubContent');
-    var isWorldPageActive = subContainer && subContainer.style.display !== 'none'
-        && subContentEl && subTitleEl && subTitleEl.textContent === '世界信息';
-    if (!isWorldPageActive) {
-        if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
-        return;
-    }
-    if (gameState._worldModules.length === 0) {
-        subContentEl.innerHTML = renderSvgEmptyState(
-            '<svg role="img" aria-label="暂无世界信息" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>',
-            '暂无世界信息'
-        );
-        if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
-        return;
-    }
-    subContentEl.innerHTML = forceRender(renderWorldPage, 'renderWorldPage') || '';
-    _stretchFirstChild(subContentEl);
+    // 【已移除】世界信息子页面已从日志中删除，不再需要检测和刷新
     if (typeof updateLogFeatureVisibility === 'function') updateLogFeatureVisibility();
 }
 
@@ -1950,7 +1927,6 @@ function getLogPageRenderers() {
             }
             return '';
         },
-        world: renderWorldPage,
         moments: renderMomentsPage,
         forum: renderForumPage,
         rank: renderRankPage,
@@ -1959,17 +1935,7 @@ function getLogPageRenderers() {
         mail: renderMailPage,
         shop: renderShopPage,
         // 【小剧场融合】新增渲染器
-        calendar: renderCalendarPage,
-        author_note: renderAuthorNotePage,
-        // [Mufy 三层记忆] 记忆档案渲染器
-        memory: function() {
-            var c = document.getElementById('logSubContent');
-            if (!c) return '';
-            // 在子页面中预留容器，renderMemoryPanel 会填充内容
-            c.innerHTML = '<div id="memoryPanelContainer"></div>';
-            renderMemoryPanel();
-            return '';
-        }
+        calendar: renderCalendarPage
     };
     return _logPageRenderers;
 }
@@ -2158,9 +2124,7 @@ var _RENDER_CACHE_KEY_MAP = {
     moments: 'renderMomentsPage',
     diary: 'renderDiaryPage',
     mail: 'renderMailPage',
-    world: 'renderWorldPage',
-    calendar: 'renderCalendarPage',
-    author_note: 'renderAuthorNotePage'
+    calendar: 'renderCalendarPage'
 };
 
 /**
@@ -2197,9 +2161,7 @@ function openLogSubPage(type) {
         moments: '朋友圈',
         achieve: '成就',
         diary: '日记',
-        mail: '邮箱',
-        world: '世界信息',
-        memory: '记忆档案'
+        mail: '邮箱'
     };
     var title = titles[type] || type;
     var logSubTitle = document.getElementById('logSubTitle');
@@ -2248,7 +2210,7 @@ function openLogSubPage(type) {
 // 应用日志页面样式
 function _applyLogPageStyle(content, type, html) {
     var isFullScreen = ['chat', 'forum', 'moments', 'rank', 'items', 'diary', 'mail', 'shop', 'quests',
-        'achieve', 'memory'
+        'achieve'
     ].indexOf(type) >= 0;
 
     if (isFullScreen) {
