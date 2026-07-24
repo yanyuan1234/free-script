@@ -1551,48 +1551,15 @@
     position: relative;
 }
 
-/* 【修复】日志子页面容器：需延伸到屏幕边缘，抵消父级 page-body 的 padding
-   原来使用固定 -20px 偏移，但 page-body padding 随断点变化，导致：
-   - 小屏(<375px) 偏移过大，内容超出屏幕
-   - 大屏(≥414px) 偏移不足，两侧留白不一致
-   现按断点精确匹配 */
+/* 【修复】日志子页面容器：使用 inset:0 填满 page-body 的 padding box
+   （即从屏幕顶部到导航栏顶部、左右到屏幕边缘）。
+   原来使用负偏移抵消 page-body padding，但：
+   - left/right 负偏移导致容器超出屏幕边缘，内容被裁切
+   - bottom 负偏移导致容器延伸到导航栏区域
+   - 各断点 padding 不同，需逐一匹配，维护成本高
+   absolute-fill 类已设置 inset:0，无需额外覆盖 */
 #logSubContainer {
-    left: -20px;
-    right: -20px;
-    top: -4px;
-    bottom: -20px;
-}
-@media (max-width: 374px) {
-    #logSubContainer {
-        left: -16px;
-        right: -16px;
-        top: 0;
-        bottom: -16px;
-    }
-}
-@media (min-width: 414px) {
-    #logSubContainer {
-        left: -22px;
-        right: -22px;
-        top: 0;
-        bottom: -22px;
-    }
-}
-@media (min-width: 480px) {
-    #logSubContainer {
-        left: -26px;
-        right: -26px;
-        top: 0;
-        bottom: -26px;
-    }
-}
-@media (min-width: 768px) {
-    #logSubContainer {
-        left: -30px;
-        right: -30px;
-        top: 0;
-        bottom: -30px;
-    }
+    inset: 0;
 }
 
 /* 浮动操作按钮页面：顶部留出空间避免遮挡内容 */
