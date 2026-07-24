@@ -5355,6 +5355,17 @@ function sanitizeHtml(html) {
 window.addEventListener('beforeunload', function() {
     try {
         var data = (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.buildSaveData) ? RuntimeBridge.buildSaveData('') : null;
+        // 【调试日志】打印退出时保存的关键字段，帮助诊断"加载后内容丢失"问题
+        if (data && data.state) {
+            try {
+                var _dbgParsed = JSON.parse(data.state);
+                console.log('[beforeunload] 保存数据: story=' + (_dbgParsed._lastAIReply ? String(_dbgParsed._lastAIReply).substring(0,30)+'...' : '空') +
+                    ', choices=' + (_dbgParsed._lastChoices ? _dbgParsed._lastChoices.length + '项' : '空') +
+                    ', cot=' + (_dbgParsed._lastCotContent ? String(_dbgParsed._lastCotContent).substring(0,30)+'...' : '空') +
+                    ', ui.lastAIReply=' + (_dbgParsed.ui && _dbgParsed.ui.lastAIReply ? '有值' : '空') +
+                    ', timestamp=' + (data.timestamp || '无'));
+            } catch(_) {}
+        }
         // 【P0-4】优先写入 IndexedDB（突破 5MB 限制），beforeunload 中 fire-and-forget
         // 现代浏览器通常允许 IDB 写入在页面卸载期间完成
         if (data && typeof SaveDB !== 'undefined' && SaveDB.kvSet) {

@@ -137,9 +137,18 @@ async function initApp() {
             if (_backupData) {
                 // 读取自动存档（slot 0）的时间戳做比较
                 var _autoSlot = await SaveDB.get(0);
-                var _autoTime = (_autoSlot && _autoSlot.time) ? _autoSlot.time : 0;
-                var _backupTime = _backupData.time || 0;
-                if (_backupTime > _autoTime && _backupData.state) {
+                // 【关键修复】优先用数字 timestamp 比较（可靠），回退到 time 字符串比较（旧存档兼容）
+                var _autoTs = (_autoSlot && _autoSlot.timestamp) ? _autoSlot.timestamp : 0;
+                var _backupTs = _backupData.timestamp || 0;
+                var _autoTime = (_autoSlot && _autoSlot.time) ? _autoSlot.time : '';
+                var _backupTime = _backupData.time || '';
+                var _isNewer = false;
+                if (_autoTs > 0 && _backupTs > 0) {
+                    _isNewer = _backupTs > _autoTs;
+                } else {
+                    _isNewer = _backupTime > _autoTime;
+                }
+                if (_isNewer && _backupData.state) {
                     // 备份比自动存档新，说明崩溃发生在最后一次自动存档之后
                     var _ok = await UI.confirm('检测到未保存的进度', '上次退出时游戏可能未正常关闭，检测到比自动存档更新的进度。是否恢复？');
                     if (_ok) {

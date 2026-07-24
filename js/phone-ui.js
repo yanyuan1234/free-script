@@ -6251,6 +6251,18 @@ function _restoreGameRender() {
         // 而非重新解析 conversationHistory(脆弱、易失败、且受 autoSave 防抖时序影响)。
         // 这样"退出时什么样，加载就是什么样"。
 
+        // 【调试日志】打印关键恢复字段的状态，帮助诊断"加载后内容丢失"问题
+        var _dbgSM = (typeof StateManager !== 'undefined' && StateManager.get);
+        var _dbgSM_story = _dbgSM ? (StateManager.get('ui.lastAIReply') || '') : '(SM N/A)';
+        var _dbgSM_choices = _dbgSM ? (StateManager.get('ui.lastChoices') || []) : '(SM N/A)';
+        var _dbgSM_cot = _dbgSM ? (StateManager.get('ui.lastCotContent') || '') : '(SM N/A)';
+        var _dbgGS_story = (typeof gameState !== 'undefined' && gameState) ? (gameState._lastAIReply || '(null)') : '(gs N/A)';
+        var _dbgGS_choices = (typeof gameState !== 'undefined' && gameState) ? (gameState._lastChoices || '(null)') : '(gs N/A)';
+        var _dbgGS_cot = (typeof gameState !== 'undefined' && gameState) ? (gameState._lastCotContent || '(null)') : '(gs N/A)';
+        console.log('[restoreGame] 恢复前状态: story(SM=' + (_dbgSM_story ? _dbgSM_story.substring(0,30)+'...' : '空') + ', gs=' + (_dbgGS_story ? String(_dbgGS_story).substring(0,30)+'...' : '空') + ')' +
+            ', choices(SM=' + _dbgSM_choices.length + ', gs=' + (Array.isArray(_dbgGS_choices) ? _dbgGS_choices.length : '?') + ')' +
+            ', cot(SM=' + (_dbgSM_cot ? _dbgSM_cot.substring(0,30)+'...' : '空') + ', gs=' + (_dbgGS_cot ? String(_dbgGS_cot).substring(0,30)+'...' : '空') + ')');
+
         // --- 1. 恢复剧情文本 ---
         var _storyRestored = false;
         var _savedStory = '';

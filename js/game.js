@@ -2430,6 +2430,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (_jsonCotText) _allCotParts.push(_jsonCotText);
             var _mergedCot = _allCotParts.join('\n---\n');
             if (gameState) gameState._lastCotContent = _mergedCot;
+            // 【关键修复】同步到 StateManager，确保存档时 ui.lastCotContent 也有值
+            if (typeof StateManager !== 'undefined' && StateManager.set && gameState) {
+                StateManager.set('ui.lastCotContent', _mergedCot, { silent: true });
+            }
             console.log('[COT] 提取到思维链内容:', cotMatches.length, '段标签 +', _reasoningFromField ? 1 : 0, '段 reasoning_content');
             // 【酒馆式思维链】渲染到面板
             // 【修复】统一使用 CotPanelController.showPanel 判断，与设置项一致
@@ -2729,6 +2733,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 if (typeof c === 'string') return { id: '', text: c };
                 return { id: (c && c.id) || '', text: (c && c.text) || '' };
             }).filter(function(c) { return c.text; });
+            // 【关键修复】同步到 StateManager，确保存档时 ui.lastChoices 也有值
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('ui.lastChoices', gameState._lastChoices, { silent: true });
+            }
         }
 
         // 处理增强记忆
@@ -2965,6 +2973,12 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 原实现仅声明 _lastAIReply: null 但从未写入，导致字段恒为 null
         if (gameState) {
             gameState._lastAIReply = finalStory;
+            // 【关键修复】同步到 StateManager，确保存档时 ui.lastAIReply 也有值
+            // 之前只设置了 legacy 字段 _lastAIReply，但 StateManager._state.ui.lastAIReply 始终为空
+            // 导致存档中 ui.lastAIReply='' ，加载后 _restoreGameRender 先读 ui.lastAIReply 得到空串
+            if (typeof StateManager !== 'undefined' && StateManager.set) {
+                StateManager.set('ui.lastAIReply', finalStory, { silent: true });
+            }
         }
         // 【BUG-006 修复】onComplete 与下方 isFinished() 分支会双重调用 formatStory
         // 长文本路径（>4000字）push 内部直接触发 onComplete，然后 isFinished() 再次调用 formatStory
@@ -5215,6 +5229,7 @@ function buildSaveData(customName, useCache) {
         name: customName || ((gameState && gameState.userPrompt) || '').substring(0, 20) || '未命名存档',
         prompt: (gameState && gameState.userPrompt) || '',
         time: new Date().toLocaleString(), // 原版用可读的本地化时间
+        timestamp: Date.now(), // 【关键修复】数字时间戳，用于可靠的新旧比较（toLocaleString 字符串比较不可靠）
         version: GAME_VERSION,
         state: gameState ? JSON.stringify(gameState) : '{}',
         memoryData: memoryData ? JSON.stringify(memoryData) : null
@@ -5536,6 +5551,25 @@ async function loadFromSlot(slot) {
             } catch (e) {
                 console.warn('IndexedDB读取失败，尝试localStorage:', e);
             }
+            // 【关键修复】slot 0 时，始终检查 localStorage 备份是否比 IDB 更新
+            // beforeunload 中 IDB 写入是异步的（fire-and-forget），可能来不及完成
+            // 但 localStorage 写入是同步的，一定能在页面卸载前完成
+            // 如果 localStorage 备份比 IDB 更新，说明用户退出时 IDB 写入未完成，应用 localStorage 版本
+            if (slot === 0) {
+                try {
+                    var _lsBackup = Storage.getJSON(Storage.KEYS.AUTO_SAVE_BACKUP);
+                    if (_lsBackup && _lsBackup.state) {
+                        var _lsTs = _lsBackup.timestamp || 0;
+                        var _idbTs = (data && data.timestamp) ? data.timestamp : 0;
+                        if (_lsTs > _idbTs) {
+                            console.log('[loadFromSlot] localStorage 备份(timestamp=' + _lsTs + ')比 IDB(timestamp=' + _idbTs + ')更新，使用备份');
+                            data = _lsBackup;
+                        }
+                    }
+                } catch (lsErr) {
+                    console.warn('[loadFromSlot] localStorage 备份比较失败:', lsErr);
+                }
+            }
         }
         if (!data) {
             // 【P3-3】非自动存档加载失败时，尝试回退到自动存档（slot 0）
@@ -5617,6 +5651,25 @@ async function loadFromSlot(slot) {
         if (!gameState) { gameState = {}; }
         Object.keys(parsed).forEach(function(k) { gameState[k] = parsed[k]; });
 
+        // 【关键修复】合并后同步 legacy 字段到 StateManager 的新 schema 路径
+        // 存档中 _lastAIReply/_lastChoices/_lastCotContent 是 legacy 字段（游戏代码直接写）
+        // 但 StateManager._state.ui.lastAIReply 等是 schema 路径（_restoreGameRender 优先读）
+        // 如果存档是在修复前创建的，ui.lastAIReply 为空但 _lastAIReply 有值
+        // 这里同步确保两条路径都有值，无论存档新旧都能正确恢复
+        if (typeof StateManager !== 'undefined' && StateManager.set) {
+            if (gameState._lastAIReply) {
+                StateManager.set('ui.lastAIReply', gameState._lastAIReply, { silent: true });
+            }
+            if (gameState._lastChoices && gameState._lastChoices.length > 0) {
+                StateManager.set('ui.lastChoices', gameState._lastChoices, { silent: true });
+            }
+            if (gameState._lastCotContent) {
+                StateManager.set('ui.lastCotContent', gameState._lastCotContent, { silent: true });
+            }
+            if (gameState._lastHUD) {
+                StateManager.set('ui.lastHUD', gameState._lastHUD, { silent: true });
+            }
+        }
 
         // 此前 loadFromSlot 用 70+ 行 if(!gameState.xxx) 逐字段补全，与 createDefaultGameState 高度重复
         // 现在统一调用 ensureGameStateFields，遍历 createDefaultGameState 的 key 补全缺失字段
