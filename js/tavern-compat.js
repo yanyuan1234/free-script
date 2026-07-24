@@ -5759,10 +5759,10 @@ var MemoryManagerUI = {
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + stats.totalEvents + '</div><div class="memory-stat-label">重要事件</div></div>'
             + '<div class="memory-stat-item"><div class="memory-stat-value">' + (stats.memorySize / 1024).toFixed(1) + 'KB</div><div class="memory-stat-label">数据大小</div></div>'
             + '</div></div>'
-            + '<div class="memory-card"><div class="memory-card-title">系统状态</div><div style="display:flex;gap:16px;">'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">游戏时间</div><div style="font-size:20px;font-weight:600;">' + escapeHtml(gm.getGameTimeStr()) + '</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">永久事实</div><div style="font-size:20px;font-weight:600;">' + totalAnchors + ' 条</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">当前回合</div><div style="font-size:20px;font-weight:600;">' + (function() {
+            + '<div class="memory-card"><div class="memory-card-title">系统状态</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">游戏时间</div><div style="font-size:14px;font-weight:600;margin-top:2px;">' + escapeHtml(gm.getGameTimeStr()) + '</div></div>'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">永久事实</div><div style="font-size:14px;font-weight:600;margin-top:2px;">' + totalAnchors + ' 条</div></div>'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">当前回合</div><div style="font-size:14px;font-weight:600;margin-top:2px;">' + (function() {
                 // 【P3-3 修复】统一从 StateManager.progress.turn 读取回合数，与顶部场景标签一致
                 // 原实现用 gm.currentTurn，与 progress.turn 是两套独立计数器：
                 //   - gm.currentTurn 在 processMessage 内 ++（tavern-compat.js:1568）
@@ -5776,11 +5776,11 @@ var MemoryManagerUI = {
                 return gm.currentTurn;
             })() + '</div></div>'
             + '</div></div>'
-            + '<div class="memory-card"><div class="memory-card-title">新功能状态</div><div style="display:flex;gap:16px;flex-wrap:wrap;">'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:14px;font-weight:600;">near ' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / mid ' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / far ' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">场景状态</div><div style="font-size:14px;font-weight:600;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点有场景锁定</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:14px;font-weight:600;">上次跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个无变化模块</div></div>'
-            + '<div style="flex:1;padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:12px;color:var(--text-tertiary);">设定分层</div><div style="font-size:14px;font-weight:600;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? (gm._setupLayers.compressed ? '精简版（规则在永久事实）' : '完整注入（每轮）') : '未初始化') + '</div></div>'
+            + '<div class="memory-card"><div class="memory-card-title">新功能状态</div><div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;">'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">逐层摘要</div><div style="font-size:12px;font-weight:600;margin-top:2px;line-height:1.4;">近' + ((gm._summaryLayers && gm._summaryLayers.near) ? gm._summaryLayers.near.length : 0) + ' / 中' + ((gm._summaryLayers && gm._summaryLayers.mid) ? gm._summaryLayers.mid.length : 0) + ' / 远' + ((gm._summaryLayers && gm._summaryLayers.far) ? gm._summaryLayers.far.length : 0) + ' 条</div></div>'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">场景状态</div><div style="font-size:12px;font-weight:600;margin-top:2px;line-height:1.4;">' + Object.values(gm.tables.locations).filter(function(l) { return !!l.sceneState; }).length + ' 个地点锁定</div></div>'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">变化驱动</div><div style="font-size:12px;font-weight:600;margin-top:2px;line-height:1.4;">跳过 ' + (gm._lastInjectionStats && gm._lastInjectionStats.skippedModules ? gm._lastInjectionStats.skippedModules.length : 0) + ' 个模块</div></div>'
+            + '<div style="padding:8px 6px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-tertiary);">设定分层</div><div style="font-size:12px;font-weight:600;margin-top:2px;line-height:1.4;">' + (gm._setupLayers && gm._setupLayers.fullSetup ? (gm._setupLayers.compressed ? '精简版' : '完整注入') : '未初始化') + '</div></div>'
             + '</div></div>'
             + '<div class="memory-card"><div class="memory-card-title" style="justify-content:space-between;"><span>🧠 注入预览</span>' + this._btn('detail', 'switchTab', 'injection') + '</div>'
             + '<div style="padding:12px;background:var(--bg);border-radius:8px;"><div style="font-size:11px;color:var(--text-secondary);line-height:1.5;">'

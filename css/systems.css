@@ -855,29 +855,32 @@
         }
         .memory-stat-grid {
             display:grid;
-            grid-template-columns:repeat(3, 1fr);
-            gap:12px;
+            /* 【手机端优化】4个统计框同一行，缩小尺寸 */
+            grid-template-columns:repeat(4, 1fr);
+            gap:8px;
         }
         @media (min-width: 768px) {
             .memory-stat-grid {
-                grid-template-columns:repeat(6, 1fr);
+                grid-template-columns:repeat(4, 1fr);
+                gap:12px;
             }
         }
         .memory-stat-item {
             background:var(--bg);
-            padding:18px 12px;
+            padding:10px 6px;
             border-radius:10px;
             text-align:center;
         }
         .memory-stat-value {
-            font-size:28px;
+            font-size:18px;
             font-weight:700;
             color:var(--accent);
+            line-height:1.2;
         }
         .memory-stat-label {
-            font-size:12px;
+            font-size:11px;
             color:var(--text-tertiary);
-            margin-top:4px;
+            margin-top:2px;
         }
         .memory-timeline-item {
             display:flex;
