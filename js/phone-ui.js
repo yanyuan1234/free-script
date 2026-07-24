@@ -2140,6 +2140,9 @@ function closeLogSubPage() {
         subContainer.style.animation = 'slideInRight .3s ease';
         var logMainContent = document.getElementById('logMainContent');
         if (logMainContent) logMainContent.style.display = 'block';
+        // 【修复】关闭时清除子页面内容，防止下次打开时旧内容闪现
+        var content = document.getElementById('logSubContent');
+        if (content) content.innerHTML = '';
     }, 200);
 }
 
@@ -2176,6 +2179,9 @@ function openLogSubPage(type) {
     var content = document.getElementById('logSubContent');
     if (!content) return;
 
+    // 【修复】切换子页面前先清除旧内容，防止渲染器返回 undefined 时旧内容滞留
+    content.innerHTML = '';
+
     var html = '';
     var renderer = getLogPageRenderers()[type];
 
@@ -2183,6 +2189,23 @@ function openLogSubPage(type) {
         html = renderer();
     } else {
         html = renderDefaultPage(type);
+    }
+
+    // 【修复】渲染器可能因 shouldSkipPageRender 返回 undefined（数据未变化），
+    // 此时旧内容已被清除，需强制重新渲染
+    if (html === undefined || html === null) {
+        if (typeof RenderCache !== 'undefined' && RenderCache._keys) {
+            var cacheKeys = Object.keys(RenderCache._keys);
+            // 清除所有渲染缓存，强制下次渲染
+            cacheKeys.forEach(function(k) { delete RenderCache._keys[k]; });
+        }
+        if (renderer) {
+            html = renderer();
+        }
+        // 如果仍然 undefined，用默认占位
+        if (html === undefined || html === null) {
+            html = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">加载中...</div>';
+        }
     }
 
     // 应用页面样式
