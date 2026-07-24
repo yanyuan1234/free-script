@@ -5533,29 +5533,12 @@ function bindEvents() {
         document.getElementById('btnEditLastMsg').title = '取消编辑';
     });
 
-    // 玩家页面返回
-    bindEvent('playerBackBtn', 'click', function() {
-        UI.goHome();
-    });
-
-    // NPC页面返回
-    bindEvent('npcBackBtn', 'click', function() {
-        UI.goHome();
-    });
-
-    // 回顾页面返回
-    bindEvent('recapBackBtn', 'click', function() {
-        UI.goHome();
-    });
+    // 玩家页面、NPC页面、回顾页面、日志页面的返回按钮已移除（底部导航栏已提供导航）
+    // 仅保留功能按钮绑定
 
     // 回顾导出
     bindEvent('recapExportBtn', 'click', function() {
         exportStoryText();
-    });
-
-    // 日志页面返回
-    bindEvent('logBackBtn', 'click', function() {
-        UI.goHome();
     });
 
     // 日志子页面返回按钮（已在 renderLogPage 中绑定，此处不再重复）

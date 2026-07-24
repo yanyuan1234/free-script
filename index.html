@@ -559,12 +559,6 @@
 
             <!-- ==================== 玩家状态页面 ==================== -->
             <div class="page" id="playerPage">
-                <div class="page-header">
-                    <button class="circle-btn" id="playerBackBtn"><svg class="icon">
-                            <use href="#icon-back" />
-                        </svg></button>
-                    <h2 class="page-title">个人</h2>
-                </div>
                 <div class="page-body" id="playerPageBody">
                     <div class="player-hero">
                         <!-- 【P2清理】删除未使用 id=playerPageAvatar（js 引用的是 playerPageAvatarFallback） -->
@@ -597,13 +591,7 @@
 
             <!-- ==================== NPC图鉴页面 ==================== -->
             <div class="page" id="npcPage">
-                <div class="page-header">
-                    <button class="circle-btn" id="npcBackBtn"><svg class="icon">
-                            <use href="#icon-back" />
-                        </svg></button>
-                    <h2 class="page-title">人际</h2>
-                    <button class="circle-btn" data-action="openAddNpcModal" aria-label="添加角色" style="margin-left:auto;"><span style="font-size:22px;font-weight:500;line-height:1;">+</span></button>
-                </div>
+                <button class="circle-btn floating-action-btn" data-action="openAddNpcModal" aria-label="添加角色" style="position:absolute;top:14px;right:16px;z-index:10;width:38px;height:38px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,0.12);"><span style="font-size:22px;font-weight:500;line-height:1;">+</span></button>
                 <div class="page-body">
                     <div class="character-list" id="characterList"></div>
                 </div>
@@ -612,15 +600,9 @@
 
             <!-- ==================== 剧情回顾页面 ==================== -->
             <div class="page" id="recapPage">
-                <div class="page-header">
-                    <button class="circle-btn" id="recapBackBtn"><svg class="icon">
-                            <use href="#icon-back" />
-                        </svg></button>
-                    <h2 class="page-title">剧情回顾</h2>
-                    <button class="circle-btn" id="recapExportBtn" title="导出TXT"><svg class="icon icon-sm">
-                            <use href="#icon-download" />
-                        </svg></button>
-                </div>
+                <button class="circle-btn floating-action-btn" id="recapExportBtn" title="导出TXT" aria-label="导出" style="position:absolute;top:14px;right:16px;z-index:10;width:38px;height:38px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,0.12);"><svg class="icon icon-sm">
+                        <use href="#icon-download" />
+                    </svg></button>
                 <div class="page-body">
                     <div class="recap-list" id="recapList">
                         <div class="empty-state">暂无剧情记录</div>
@@ -632,15 +614,9 @@
 
             <!-- ==================== 日志页面（手机桌面风格） ==================== -->
             <div class="page" id="logPage">
-                <div class="page-header">
-                    <button class="circle-btn" id="logBackBtn"><svg class="icon">
-                            <use href="#icon-back" />
-                        </svg></button>
-                    <h2 class="page-title">日志</h2>
-                    <button class="circle-btn" data-action="openLogFeaturesModal" aria-label="日志功能设置" style="margin-left:auto;"><svg class="icon">
+                <button class="circle-btn floating-action-btn" data-action="openLogFeaturesModal" aria-label="日志功能设置" style="position:absolute;top:14px;right:16px;z-index:10;width:38px;height:38px;background:var(--card);box-shadow:0 2px 8px rgba(0,0,0,0.12);"><svg class="icon">
                             <use href="#icon-settings" />
                         </svg></button>
-                </div>
                 <div class="page-body overflow-y-auto pt-12">
                     <div class="menu-top-card w-full mb-20">
                         <div class="menu-top-inner">
@@ -1710,14 +1686,6 @@
 
             <!-- ==================== 记忆管理页面（方案C全屏版） ==================== -->
             <div class="page" id="memoryPage">
-                <div class="page-header" style="border-bottom:1px solid var(--border);">
-                    <button class="circle-btn" id="memoryBackBtn">
-                        <svg class="icon"><use href="#icon-back" /></svg>
-                    </button>
-                    <h2 class="page-title">记忆管理中心</h2>
-                    <div style="width:40px;"></div>
-                </div>
-                
                 <!-- 方案C记忆管理UI - 全屏嵌入 -->
                 <div id="memoryManagerContainer" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
                     <!-- 标签页 -->

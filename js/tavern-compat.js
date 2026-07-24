@@ -5861,8 +5861,7 @@ var MemoryManagerUI = {
 
     initNavigation: function() {
         var self = this;
-        var backBtn = document.getElementById('memoryBackBtn');
-        if (backBtn) backBtn.addEventListener('click', function() { UI.goHome(); });
+        // 记忆页面返回按钮已移除（底部导航栏已提供导航）
         var saveBtn = document.getElementById('btnMemorySave');
         if (saveBtn) saveBtn.addEventListener('click', function() { self.saveMemoryEdits(); });
         var summaryEdit = document.getElementById('memorySummaryEdit');

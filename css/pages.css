@@ -1551,6 +1551,17 @@
     position: relative;
 }
 
+/* 浮动操作按钮页面：顶部留出空间避免遮挡内容 */
+#npcPage .page-body,
+#recapPage .page-body,
+#logPage .page-body {
+    padding-top: 52px;
+}
+/* 无顶部导航栏页面：增加上内边距避免内容贴顶 */
+#playerPage .page-body {
+    padding-top: 16px;
+}
+
 /* 【修复】日志子页面内容区为 flex column，空状态需 flex:1 撑满并垂直居中，
    否则内容少时只占内容高度，看起来"截取一半"不触底 */
 #logSubContent > .empty-state,
