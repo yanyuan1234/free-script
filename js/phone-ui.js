@@ -5192,8 +5192,28 @@ function bindEvents() {
         var parts = [];
         if (p.name) parts.push('名字：' + p.name);
         if (p.identity) parts.push('身份：' + p.identity);
-        if (p.appearance) parts.push('外貌：' + p.appearance);
+        if (p.gender) parts.push('性别：' + p.gender);
+        if (p.age) parts.push('年龄：' + p.age);
+        // 支持结构化 appearance 对象或字符串
+        if (p.appearance) {
+            if (typeof p.appearance === 'object') {
+                var appParts = [];
+                if (p.appearance.height) appParts.push('身高: ' + p.appearance.height);
+                if (p.appearance.hair) appParts.push('发色: ' + p.appearance.hair);
+                if (p.appearance.eyes) appParts.push('瞳色: ' + p.appearance.eyes);
+                if (p.appearance.figure) appParts.push('体型: ' + p.appearance.figure);
+                if (p.appearance.features) appParts.push('特征: ' + p.appearance.features);
+                if (p.appearance.clothing) appParts.push('穿着: ' + p.appearance.clothing);
+                if (appParts.length > 0) parts.push('外貌：' + appParts.join(' / '));
+            } else {
+                parts.push('外貌：' + p.appearance);
+            }
+        }
         if (p.personality) parts.push('性格：' + p.personality);
+        if (p.background) parts.push('背景：' + p.background);
+        if (p.abilities && Array.isArray(p.abilities) && p.abilities.length > 0) {
+            parts.push('能力：' + p.abilities.join(' / '));
+        }
         return parts.join('\n') || '未提取';
     }
 

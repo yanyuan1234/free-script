@@ -1236,11 +1236,14 @@ var GameMemory = {
             worldSetting: '完整世界观，保留原文所有关键设定（500-2000字）',
             worldSettingCompressed: '300-500字注入用世界观，不丢失核心信息',
             protagonist: {
-                name: '主角名字',
-                identity: '身份',
-                appearance: '外貌',
-                personality: '性格',
-                background: '背景',
+                name: '主角名字（必须从原文中识别出真实姓名，禁止留空或写"主角"）',
+                identity: '身份/职业',
+                gender: '性别',
+                age: '年龄（原文未提及则留空）',
+                appearance: { height: '身高', hair: '发色', eyes: '瞳色', figure: '体型/身材', features: '面部特征（如虎牙、酒窝、疤痕等）', clothing: '日常穿着风格' },
+                personality: '性格特征（详细描述，不要只写标签）',
+                background: '背景故事',
+                abilities: ['能力/技能列表'],
                 stats: [{ label: '属性名', value: 50 }]
             },
             characters: [{
@@ -1255,7 +1258,7 @@ var GameMemory = {
                 emotionalTriggers: [{ topic: '触发点', reaction: '反应' }],
                 favorability: 50
             }],
-            openingScene: '开局场景，300-800字',
+            openingScene: '开局叙事场景，300-800字。注意：这不是设定描述的复制粘贴，而是基于提取的设定，创作一段第三人称或第二人称的开场叙事，让玩家能够代入场景中。如果原文是角色设定而非故事场景，请基于设定创作一个有画面感的开场（如主角正在做什么、在哪里、发生了什么）。禁止直接复制原文作为openingScene。',
             themes: ['题材标签'],
             styleNotes: '文风、节奏、禁忌等可执行指令',
             memoryUpdates: [{ op: 'add', category: 'worldRules|npcProfiles|pcIdentity|promises|worldPlaces|settings', content: '事实内容', keywords: [] }],
@@ -1275,17 +1278,19 @@ var GameMemory = {
             systemPrompt = '你是一名专业的互动叙事设定解析器。用户会输入一段很长的开局设定（可能包含世界观、角色、主角、开局场景、文风等，混合在一起，长度不限）。\n\n' +
                 '你的任务：阅读全文，提取并整理成以下 JSON 结构。如果某字段信息原文确实没写，请根据上下文合理推断补充；如果信息矛盾，以文中明确写出的为准。\n\n' +
                 '输出格式（必须是合法 JSON，不要任何解释）：\n```json\n' + schema + '\n```\n\n' +
-                '规则：\n' +
+                '关键规则：\n' +
                 '1. 不要截断、不要遗漏原文关键设定。\n' +
-                '2. 角色信息要详细：外貌、音色、穿衣、对主角态度、人生阶段都要尽量补全。\n' +
-                '3. memoryUpdates 只放跨回合需要长期记住的事实。\n' +
-                '4. 文风要提取成可执行的指令。\n' +
-                '5. 当前模式：' + fidelity + '（strict=只提取，尽量不补充；balanced=合理补充缺口；creative=主动丰富细节）';
+                '2. 【主角识别】protagonist.name 必须是原文中反复出现的角色真名（如"殷允"），绝对不能留空、写"主角"、"未命名"等占位符。如果原文有多个角色，主角通常是出现频率最高、描述最详细的那个人。同时必须提取主角的 identity（身份）、gender（性别）、appearance（身高/发色/瞳色/体型/面部特征/穿着，原文提到的每一项都要填）、personality（详细性格描述）、background（背景）、abilities（所有提到的能力技能）。\n' +
+                '3. 【开局场景】openingScene 不是原文的复制粘贴。如果原文是角色设定/人物介绍，你必须基于设定创作一段300-800字的开场叙事：描述主角此刻在哪里、正在做什么、周围环境怎样、发生了什么事件，让玩家能代入场景。禁止把原文设定直接作为 openingScene 返回。\n' +
+                '4. 角色信息要详细：外貌、音色、穿衣、对主角态度、人生阶段都要尽量补全。\n' +
+                '5. memoryUpdates 只放跨回合需要长期记住的事实。\n' +
+                '6. 文风要提取成可执行的指令。\n' +
+                '7. 当前模式：' + fidelity + '（strict=只提取，尽量不补充；balanced=合理补充缺口；creative=主动丰富细节）';
         } else if (pass === 2) {
             systemPrompt = '你是一名资深编辑。用户输入了一段开局设定原文，以及第一轮提取的结构化结果。\n\n' +
                 '请对比原文和第一轮结果，输出以下 JSON 审查意见：\n' +
-                '{\n  "strengths": ["优秀设定1", "优秀设定2"],\n  "contradictions": ["矛盾点1"],\n  "missedFromSource": ["原文提到但被漏掉的信息"],\n  "gapsToFill": ["需要补充的缺口"],\n  "compressionCandidates": ["可压缩但不删除的冗余信息"]\n}\n\n' +
-                '规则：不要编造原文没有的信息，只指出问题和改进方向。';
+                '{\n  "strengths": ["优秀设定1", "优秀设定2"],\n  "contradictions": ["矛盾点1"],\n  "missedFromSource": ["原文提到但被漏掉的信息"],\n  "gapsToFill": ["需要补充的缺口"],\n  "compressionCandidates": ["可压缩但不删除的冗余信息"],\n  "protagonistIssues": ["主角字段问题：检查name是否为真实姓名而非主角、appearance各字段是否完整、abilities是否遗漏、personality是否足够详细"],\n  "openingSceneIssues": ["开局场景问题：检查是否为原文复制粘贴、是否有叙事性、是否有画面感和代入感、字数是否在300-800字范围"]\n}\n\n' +
+                '规则：不要编造原文没有的信息，只指出问题和改进方向。特别关注：protagonist 的每个字段是否都已提取，openingScene 是否为叙事场景而非设定复制。';
         } else {
             systemPrompt = '你是一名创作者。基于用户开局原文、第一轮提取结果和第二轮审查意见，产出最终版结构化设定。\n\n' +
                 '输出格式（必须是合法 JSON，不要任何解释）：\n```json\n' + schema + '\n```\n\n' +
@@ -1294,7 +1299,9 @@ var GameMemory = {
                 '2. 补充必要缺口，让开局可以运行。\n' +
                 '3. 对冗余部分做语义压缩（换更精炼表达），不能硬截断。\n' +
                 '4. 如果原文某部分已经很完整，不要画蛇添足。\n' +
-                '5. 当前模式：' + fidelity;
+                '5. 【主角完整性】protagonist 必须包含完整的 name（真名，不是"主角"）、identity、gender、appearance（所有子字段）、personality、background、abilities。如果第一轮遗漏了，必须从原文补全。\n' +
+                '6. 【开局场景重写】openingScene 必须是一段叙事性的开场（300-800字），不是设定罗列或原文复制。如果第一轮的 openingScene 是原文的复制粘贴或纯设定描述，必须基于设定重新创作一个有画面感、有代入感的开场叙事。\n' +
+                '7. 当前模式：' + fidelity;
         }
 
         var userContent = '【开局原文】\n\n' + blob;
@@ -1325,6 +1332,28 @@ var GameMemory = {
             memoryUpdates: [],
             setupKeywords: []
         };
+    },
+
+    // 【优化】当AI未能生成openingScene时，从blob生成一个最小化的开场叙事
+    // 不再直接复制原文，而是提取关键信息生成简短开场
+    _generateFallbackOpeningScene: function(blob, protagonist) {
+        if (!blob) return '';
+        var _pName = '';
+        if (protagonist && protagonist.name && protagonist.name !== '主角') {
+            _pName = protagonist.name;
+        } else {
+            _pName = this._extractProtagonistName(blob) || '';
+        }
+        // 截取blob的前300字作为世界设定摘要，但明确标注这不是最终开场
+        var _excerpt = blob.substring(0, 300);
+        if (blob.length > 300) _excerpt += '...';
+        var _scene = '';
+        if (_pName) {
+            _scene = _pName + '的故事即将开始。\n\n' + _excerpt;
+        } else {
+            _scene = '故事即将开始。\n\n' + _excerpt;
+        }
+        return _scene;
     },
 
     forgeSetup: function(blob, options) {
@@ -1384,8 +1413,8 @@ var GameMemory = {
                 });
 
                 Promise.race([
-                    // 【用户要求】max_tokens从2048提升到8192，确保设定提取/精炼不被API截断，保留完整剧情设定
-                    callAI(messages, { max_tokens: 8192, temperature: 0.4 }),
+                    // 【优化】max_tokens从8192提升到16384，确保长文本的完整提取不被截断
+                    callAI(messages, { max_tokens: 16384, temperature: 0.4 }),
                     _passTimer
                 ]).then(function(raw) {
                     // 超时兜底：用当前已精炼结果继续，避免卡死
@@ -1399,7 +1428,7 @@ var GameMemory = {
                                 _toResult.worldSetting = state.blob;
                             }
                             if (!_toResult.openingScene && state.blob) {
-                                _toResult.openingScene = state.blob;
+                                _toResult.openingScene = self._generateFallbackOpeningScene(state.blob, _toResult.protagonist);
                             }
                             if (!_toResult.protagonist || Object.keys(_toResult.protagonist).length === 0) {
                                 var _tpName = self._extractProtagonistName(state.blob);
@@ -1441,11 +1470,15 @@ var GameMemory = {
                             if (_pName) parsed.data.protagonist.name = _pName;
                             console.warn('[SetupForge] protagonist 缺失，从 blob 补充: name=' + (_pName || '(未匹配)'));
                         }
-                        // openingScene 补充：检查是否为空字符串
+                        // openingScene 补充：检查是否为空字符串或与原文完全相同（说明AI只是复制了原文）
                         if (!parsed.data.openingScene || !String(parsed.data.openingScene).trim()) {
-                            // 【用户要求】绝对不可截断剧情；使用完整blob作为开场场景，保留全部内容
-                            parsed.data.openingScene = _blob;
-                            console.warn('[SetupForge] openingScene 缺失，从 blob 补充（完整内容，不截断）');
+                            // 【优化】不再直接复制原文，生成最小化开场叙事
+                            parsed.data.openingScene = self._generateFallbackOpeningScene(_blob, parsed.data.protagonist);
+                            console.warn('[SetupForge] openingScene 缺失，生成最小化开场叙事');
+                        } else if (String(parsed.data.openingScene).trim() === _blob.trim()) {
+                            // AI直接复制了原文作为openingScene，标记给Pass2/3审查
+                            console.warn('[SetupForge] openingScene 与原文完全相同（AI复制了原文），将在后续轮次重写');
+                            // 不立即覆盖，留给Pass3重写；但如果这是最终轮，则生成最小化开场
                         }
                         state.extraction = parsed.data;
                         state.refined = parsed.data;
@@ -1482,15 +1515,29 @@ var GameMemory = {
                                 console.warn('[SetupForge] final protagonist 缺失，从 blob 补充: ' + (_pName || '主角'));
                             }
                         }
+                        // 【优化】protagonist.name 仍然为"主角"或空时，尝试从blob提取真名
+                        if (_ref.protagonist && _ref.protagonist.name
+                            && (_ref.protagonist.name === '主角' || _ref.protagonist.name === '未命名' || _ref.protagonist.name === '')
+                            && state.blob) {
+                            var _realName = self._extractProtagonistName(state.blob);
+                            if (_realName) {
+                                _ref.protagonist.name = _realName;
+                                console.warn('[SetupForge] protagonist.name 为占位符，从 blob 提取真名: ' + _realName);
+                            }
+                        }
                         // openingScene 补充
                         if (!_ref.openingScene || !String(_ref.openingScene).trim()) {
                             if (_ext.openingScene) {
                                 _ref.openingScene = _ext.openingScene;
                                 console.warn('[SetupForge] final openingScene 缺失，从 extraction 补充');
                             } else {
-                                _ref.openingScene = state.blob;
-                                console.warn('[SetupForge] final openingScene 缺失，从 blob 补充');
+                                _ref.openingScene = self._generateFallbackOpeningScene(state.blob, _ref.protagonist);
+                                console.warn('[SetupForge] final openingScene 缺失，生成最小化开场叙事');
                             }
+                        } else if (state.blob && String(_ref.openingScene).trim() === state.blob.trim()) {
+                            // 最终轮的openingScene仍然是原文的完整复制，生成最小化开场替代
+                            _ref.openingScene = self._generateFallbackOpeningScene(state.blob, _ref.protagonist);
+                            console.warn('[SetupForge] final openingScene 仍为原文复制，已替换为最小化开场叙事');
                         }
                         // characters 补充
                         if (!_ref.characters || !Array.isArray(_ref.characters) || _ref.characters.length === 0) {
@@ -1572,6 +1619,42 @@ var GameMemory = {
                 if (name.length >= 1 && name.length <= 8) return name;
             }
         }
+
+        // 3. 叙述性文本识别：原文开头就是"XXX是个..."或"XXX是..."的句式
+        //    匹配文本开头 2-4 个汉字姓名 + 是/是个/是一个
+        var _narrativeMatch = blob.match(/^([\u4e00-\u9fa5]{2,4})(?:是个|是一个|是位|是名|是|这)/);
+        if (_narrativeMatch && _narrativeMatch[1]) {
+            var _nName = _narrativeMatch[1].trim();
+            // 验证这个名字在全文中出现了至少3次（排除偶然匹配）
+            var _nameCount = (blob.match(new RegExp(_nName, 'g')) || []).length;
+            if (_nameCount >= 3 && _nName.length >= 2 && _nName.length <= 4) return _nName;
+        }
+
+        // 4. 频率分析兜底：统计全文中出现频率最高的 2-4 字中文人名
+        //    适用于没有任何显式标记的纯叙述文本
+        var _nameFreq = {};
+        var _nameRegex = /([\u4e00-\u9fa5]{2,4})(?:是个|是一个|是位|是名|是|的|这|就|笑|说|看|走|把|被|让|给|对|向|跟|和|与|在|到|从|把|会|能|不|没|已|正|又|也|还|都|只|才|就|已)/g;
+        var _nm;
+        while ((_nm = _nameRegex.exec(blob)) !== null) {
+            var _candidate = _nm[1];
+            if (_candidate.length >= 2 && _candidate.length <= 4) {
+                _nameFreq[_candidate] = (_nameFreq[_candidate] || 0) + 1;
+            }
+        }
+        // 过滤常见非人名词组
+        var _stopWords = ['我们', '你们', '他们', '她们', '这是', '那是', '什么', '怎么', '为什么', '因为他', '因为她', '以为', '觉得', '认为', '以为他', '以为她', '不仅', '不但', '不过', '但是', '然后', '所以', '因此', '由于', '于是', '因为', '如果', '虽然', '尽管', '即使', '除非', '除了', '其中', '其他', '另外', '此外', '同时', '当时', '当然', '果然', '竟然', '居然', '果然', '竟然', '居然', '我们', '你们', '他们', '她们'];
+        var _bestName = '';
+        var _bestCount = 0;
+        for (var _n in _nameFreq) {
+            if (_stopWords.indexOf(_n) >= 0) continue;
+            if (_nameFreq[_n] > _bestCount) {
+                _bestCount = _nameFreq[_n];
+                _bestName = _n;
+            }
+        }
+        // 出现次数 >= 5 才可信
+        if (_bestName && _bestCount >= 5) return _bestName;
+
         return '';
     },
 
