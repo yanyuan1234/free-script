@@ -599,8 +599,8 @@ function getEffectiveMaxTokens() {
 }
 
 // [日志功能开关] 全局读取玩家在剧情页设置的日志功能启停状态
-var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
-var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, world: true, calendar: true, author_note: true, memory: true };
+var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', mail: '邮件', world: '世界信息', calendar: '日程表', author_note: '作者的话', memory: '记忆' };
+var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, mail: true, world: true, calendar: true, author_note: true, memory: true };
 function getLogFeatureFlag(key) {
     var stored = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('settings.logFeatures') : null;
     if (!stored || typeof stored !== 'object') stored = {};
@@ -2156,7 +2156,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 【性能诊断】流完成时间戳
         var _t_streamEnd = performance.now();
-        window._perfDebug&&(document.title='PERF:7-streamDone');
+        document.title = 'PERF:7-streamDone';
         console.log('[perf] 流完成, responseLen=' + (response ? response.length : 0));
         // 【BUG-002 补充修复】流完成后，后处理（parseAIResponse + renderStory）是重计算操作
         // 在流完成与后处理之间 yield 一次，让浏览器处理积压的 UI 事件（如 CDP 命令），
@@ -2170,8 +2170,10 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 流式空回检测
         var _t0 = performance.now();
-        window._perfDebug&&(document.title='PERF:8-parse');
+        document.title = 'PERF:8-parse';
+        console.log('[perf] START parseAIResponse');
         var parseResult = parseAIResponse(response);
+        console.log('[perf] END parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
         window._perfDebug&&(document.title='PERF:9-postParse');
         console.log('[perf] parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
         var data = parseResult.data;
@@ -2938,8 +2940,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (typeof OutputSanitizer !== 'undefined' && OutputSanitizer.sanitizeStory) {
             try {
                 var _t2 = performance.now();
+                console.log('[perf] START sanitizeStory, len=' + finalStory.length);
                 finalStory = OutputSanitizer.sanitizeStory(finalStory);
-                console.log('[perf] sanitizeStory: ' + (performance.now() - _t2).toFixed(1) + 'ms (len=' + finalStory.length + ')');
+                console.log('[perf] END sanitizeStory: ' + (performance.now() - _t2).toFixed(1) + 'ms (len=' + finalStory.length + ')');
             } catch (e) {
                 console.warn('[sendAIRequest] sanitizeStory 异常，使用原文:', e && e.message);
             }
@@ -2961,8 +2964,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (typeof RegexManager !== 'undefined') {
             try {
                 var _t3 = performance.now();
+                console.log('[perf] START RegexManager.apply, len=' + finalStory.length);
                 finalStory = RegexManager.apply(finalStory, 'output');
-                console.log('[perf] RegexManager.apply: ' + (performance.now() - _t3).toFixed(1) + 'ms (len=' + finalStory.length + ')');
+                console.log('[perf] END RegexManager.apply: ' + (performance.now() - _t3).toFixed(1) + 'ms (len=' + finalStory.length + ')');
             } catch (e) {
                 console.warn('[sendAIRequest] RegexManager.apply 异常，跳过:', e && e.message);
             }
@@ -2997,6 +3001,7 @@ async function sendAIRequest(userMessage, isInit = false) {
             requestAnimationFrame(function() {
                 try {
                     var _t4 = performance.now();
+                    console.log('[perf] START formatStory+innerHTML');
                     if (TypewriterBuffer.cleanCursor) TypewriterBuffer.cleanCursor();
                     var st = document.getElementById('storyText');
                     if (st) {
@@ -3232,9 +3237,14 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
 
         // AI 未生成 theater 模块时，从角色/物品/任务/事件/剧情文本生成兜底内容
-
-        // 避免 accumulate 类型首次生成后 !hasType() 永久阻止后续兜底（与BUG-010同根）。
-        try { ensureLogFallbacks(finalStory, data && data.world); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
+        // 【P0冻结修复】ensureLogFallbacks + autoSave 延迟到下一 tick，避免与前面的
+        // sanitizeStory + RegexManager.apply + formatStory 叠加阻塞主线程导致浏览器冻结
+        // ensureLogFallbacks 内部有大量 StateManager.set 调用，每个都触发通知链，同步执行会堆积
+        var _fbStory = finalStory;
+        var _fbWorld = data && data.world;
+        setTimeout(function() {
+            try { ensureLogFallbacks(_fbStory, _fbWorld); } catch(e) { console.warn('[ensureLogFallbacks] 失败:', e); }
+        }, 0);
         // 【BG-006 修复】每次成功生成后，把当前剧情地点/角色同步到「剧情动态」世界书（MERGE）
         // 延迟到下一 tick，避免阻塞主线程；失败不影响主流程
         setTimeout(function() {
@@ -3244,7 +3254,10 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             } catch (e) { console.warn('[BG-006] syncWorldInfoFromStory 失败:', e); }
         }, 0);
-        autoSave();
+        // 【P0冻结修复】autoSave 也延迟，避免与 ensureLogFallbacks 叠加
+        setTimeout(function() {
+            try { autoSave(); } catch(e) { console.warn('[autoSave] 延迟执行失败:', e); }
+        }, 0);
         // 【BUG-001 深度修复】延迟 token 计数到下一 tick。
         // updateTokenCount 内部调用 estimateTokensForMessagesUtil 迭代整个 conversationHistory
         // （最多 200 条消息），是后处理链末尾的重操作。token 计数仅用于 UI 显示，不影响故事渲染，
@@ -6013,16 +6026,47 @@ function _formatCalendarTime(turn) {
 // ========================================
 function ensureLogFallbacks(storyText, aiWorldModules) {
     if (!gameState) return;
+    // 【P0同步修复】优先从 StateManager 读取最新 worldModules（权威源），
+    // 避免 gameState._worldModules 与 StateManager 不同步导致兜底内容被覆盖
+    var _smModules = (typeof StateManager !== 'undefined' && StateManager.get)
+        ? (StateManager.get('ui.worldModules') || []) : null;
+    if (_smModules && _smModules.length >= 0) {
+        gameState._worldModules = _smModules;
+    }
     if (!Array.isArray(gameState._worldModules)) gameState._worldModules = [];
     var modules = gameState._worldModules;
     var hasType = function(t) { return modules.some(function(m) { return m && m.type === t; }); };
     var playerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '主角';
+    // 【P0同步修复】优先从 StateManager 读取角色/背包/任务，确保数据同步
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var _smChars = StateManager.get('entities.characters');
+        if (_smChars && typeof _smChars === 'object') {
+            gameState.allCharacters = _smChars;
+        }
+        var _smBag = StateManager.get('entities.bag');
+        if (_smBag && Array.isArray(_smBag)) {
+            gameState.currentBag = _smBag;
+        }
+        var _smQuests = StateManager.get('entities.quests');
+        if (_smQuests && Array.isArray(_smQuests)) {
+            gameState.currentQuests = _smQuests;
+        }
+        var _smEvents = StateManager.get('entities.keyEvents');
+        if (_smEvents && Array.isArray(_smEvents)) {
+            gameState.keyEvents = _smEvents;
+        }
+    }
     var chars = gameState.allCharacters || {};
     var charList = Object.keys(chars).map(function(k) { return chars[k]; }).filter(Boolean);
     var bag = gameState.currentBag || gameState.bag || [];
     var quests = gameState.currentQuests || [];
     var events = gameState.keyEvents || [];
     var turn = (gameState._stats && gameState._stats.totalTurns) || 0;
+    // 优先从 StateManager 读取最新 turn（_syncLegacyMirror 可能尚未同步）
+    if (typeof StateManager !== 'undefined' && StateManager.get) {
+        var _smTurn = StateManager.get('progress.turn');
+        if (_smTurn && _smTurn > turn) turn = _smTurn;
+    }
 
     // accumulate 类型（moments/diary/forum）首次生成后 hasType() 永远为 true，
     // 但 AI 后续轮次可能不再返回，需按"本轮是否返回"决定是否生成兜底，而非"历史是否曾有"。
@@ -6034,14 +6078,24 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
     var _aiReturned = function(t) { return !!_aiTypesThisTurn[t]; };
 
-    // 排行榜：按好感度排序的角色榜
-    if (getLogFeatureFlag('rank') && !hasType('ranking') && charList.length > 0) {
+    // 排行榜：按好感度排序的角色榜（无角色时生成默认榜）
+    if (getLogFeatureFlag('rank') && !hasType('ranking') && !_aiReturned('ranking')) {
         var ranked = charList.slice().sort(function(a, b) { return (b.favorability || 0) - (a.favorability || 0); }).slice(0, 5);
-        modules.push({
-            type: 'ranking',
-            title: '角色好感度榜',
-            items: ranked.map(function(c) { return { name: c.name || '未知', value: (c.favorability || 0) + ' 好感' }; })
-        });
+        if (ranked.length === 0) {
+            // 无角色时生成默认排行榜，确保页面非空
+            ranked = [
+                { name: '神秘旅者', value: '?? 好感' },
+                { name: '酒馆老板', value: '?? 好感' },
+                { name: '流浪剑客', value: '?? 好感' }
+            ];
+            modules.push({ type: 'ranking', title: '冒险者榜', items: ranked });
+        } else {
+            modules.push({
+                type: 'ranking',
+                title: '角色好感度榜',
+                items: ranked.map(function(c) { return { name: c.name || '未知', value: (c.favorability || 0) + ' 好感' }; })
+            });
+        }
     }
 
     // 商店：从背包物品 + 默认商品生成
@@ -6166,15 +6220,18 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         modules.push({ type: 'diary', title: '冒险日记', items: diaryEntries });
     }
 
-    // 论坛：从事件生成帖子
-
-
+    // 论坛：从事件生成帖子（无事件时从剧情文本生成）
     // 原兜底把多个帖子塞进一个模块的 posts 数组，导致只有一条空帖子。
     // 改为：每个事件展开为独立的 comments 模块。
-
-    if (getLogFeatureFlag('forum') && !_aiReturned('comments') && !_aiReturned('forum') && events.length > 0) {
-        events.slice(0, 2).forEach(function(ev) {
-            var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '发生了什么');
+    if (getLogFeatureFlag('forum') && !_aiReturned('comments') && !_aiReturned('forum')) {
+        var _forumSources = events.slice(0, 2);
+        // 无事件时从剧情文本提取话题
+        if (_forumSources.length === 0 && storyText) {
+            var _storySentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 8; }).slice(0, 2);
+            _forumSources = _storySentences.map(function(s) { return { content: s.trim(), title: s.trim().slice(0, 20) }; });
+        }
+        _forumSources.forEach(function(ev) {
+            var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '冒险者的日常讨论');
             modules.push({
                 type: 'comments',
                 title: content.slice(0, 20),
@@ -6197,7 +6254,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         modules.push({ type: 'achievements', title: '成就', items: defaultAchievements });
     }
 
-    // 日程表：从任务/事件生成兜底日程
+    // 日程表：从任务/事件生成兜底日程（无数据时从剧情生成默认日程）
     if (getLogFeatureFlag('calendar') && !_aiReturned('calendar') && !hasType('calendar')) {
         var calEvents = [];
         // 从任务生成日程
@@ -6229,6 +6286,27 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
                 }
             });
         }
+        // 无任务/事件时从剧情文本生成默认日程
+        if (calEvents.length === 0 && storyText) {
+            var _calStorySnippet = storyText.slice(0, 30);
+            calEvents.push({
+                title: '第' + (turn || 1) + '轮冒险',
+                description: _calStorySnippet,
+                time: _formatCalendarTime(turn),
+                location: '',
+                type: '冒险'
+            });
+        }
+        // 彻底无数据时生成一个占位日程
+        if (calEvents.length === 0) {
+            calEvents.push({
+                title: '旅程起点',
+                description: '冒险即将开始...',
+                time: _formatCalendarTime(turn),
+                location: '',
+                type: '冒险'
+            });
+        }
         if (calEvents.length > 0) {
             modules.push({ type: 'calendar', title: '日程表', events: calEvents, items: calEvents });
         }
@@ -6240,6 +6318,23 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 聊天列表永远只有1条消息。增加每轮兜底：从剧情/事件中提取话题，让1-2个NPC主动发消息。
     if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
     if (!gameState._chatLogs) gameState._chatLogs = {};
+
+    // 无角色时生成默认NPC，确保聊天页非空
+    if (charList.length === 0) {
+        var _defaultNpcName = '神秘旅者';
+        gameState._chattedNpcs[_defaultNpcName] = true;
+        if (!gameState._chatLogs[_defaultNpcName]) gameState._chatLogs[_defaultNpcName] = [];
+        if (gameState._chatLogs[_defaultNpcName].length === 0) {
+            var _defaultGreet = storyText ? ('冒险者，' + storyText.slice(0, 30) + '...') : '你好，旅者。前方路途遥远，结伴同行如何？';
+            gameState._chatLogs[_defaultNpcName].push({
+                role: 'npc',
+                from: _defaultNpcName,
+                text: _defaultGreet.slice(0, 60),
+                time: Date.now()
+            });
+        }
+    }
+
     charList.forEach(function(c) {
         var name = c.name;
         if (!name) return;
@@ -6301,6 +6396,40 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
 
+    }
+
+    // 物品/背包兜底：无物品时注入起始装备，确保物品页非空
+    if (getLogFeatureFlag('items')) {
+        var _bagArr = (StateManager && StateManager.get) ? (StateManager.get('entities.bag') || []) : (gameState.currentBag || gameState.bag || []);
+        if (!_bagArr || _bagArr.length === 0) {
+            var _defaultItems = [
+                { name: '旧木杖', qty: 1, unit: '把', rarity: '普通', desc: '一根磨损的木杖，勉强还能用。' },
+                { name: '干粮', qty: 3, unit: '份', rarity: '普通', desc: '能填饱肚子的干粮。' },
+                { name: '铜币', qty: 10, unit: '枚', rarity: '普通', desc: '常见的铜制货币。' }
+            ];
+            if (StateManager && StateManager.set) {
+                StateManager.set('entities.bag', _defaultItems, { silent: true });
+            }
+            gameState.currentBag = _defaultItems;
+        }
+    }
+
+    // 任务兜底：无任务时注入起始任务，确保任务页非空
+    if (getLogFeatureFlag('quests')) {
+        var _questArr = (StateManager && StateManager.get) ? (StateManager.get('entities.quests') || []) : (gameState.currentQuests || []);
+        if (!_questArr || _questArr.length === 0) {
+            var _defaultQuest = {
+                title: '探索未知的世界',
+                desc: '你刚刚踏上冒险之旅，前方充满了未知与机遇。去探索这个世界吧！',
+                status: 'active',
+                type: 'main',
+                hint: '继续推进剧情即可完成此任务'
+            };
+            if (StateManager && StateManager.set) {
+                StateManager.set('entities.quests', [_defaultQuest], { silent: true });
+            }
+            gameState.currentQuests = [_defaultQuest];
+        }
     }
 
     // AI 连续多轮不返回 world 模块时会导致 accumulate 类型无限增长。

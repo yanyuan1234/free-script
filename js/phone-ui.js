@@ -1080,8 +1080,8 @@ function deleteMail(index) {
 }
 
 // [日志功能开关] 默认值与标签
-var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', calendar: '日程表' };
-var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, calendar: true };
+var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', mail: '邮件', calendar: '日程表' };
+var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, mail: true, calendar: true };
 function getLogFeatureSettings() {
     var stored = (StateManager ? StateManager.get('settings.logFeatures') : null) || {};
     var settings = {};
