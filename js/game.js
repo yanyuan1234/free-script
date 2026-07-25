@@ -814,6 +814,7 @@ function _buildFormatRules(gs, _t, turn) {
     if (_getLogFeatureFlag('mail')) _enabledWorldTypes.push('mail');
     if (_getLogFeatureFlag('shop')) _enabledWorldTypes.push('shop');
     if (_getLogFeatureFlag('diary')) _enabledWorldTypes.push('diary');
+    if (_getLogFeatureFlag('calendar')) _enabledWorldTypes.push('calendar');
     var _disabledFeatures = [];
     for (var _lfKey in _logFeatureLabels) {
         if (!_getLogFeatureFlag(_lfKey)) _disabledFeatures.push(_logFeatureLabels[_lfKey]);
@@ -859,6 +860,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '  - diary: items[{npc:"角色名",date:"日期",content:"正文",mood:"心情",memos:["备忘"]}] - 角色日记\n'
         + '  - moments: items[{author:"角色名",content:"动态内容",time:"08:30",likes:5,comments:[{author,content}]}] - 朋友圈,每回合0-2条,author须已出场\n'
         + '  - ranking: items[{rank:1,name:"角色名",score:100,desc:"说明"}] - 排行榜\n'
+        + '  - calendar: items[{title:"事件标题",description:"描述",time:"YYYY-MM-DD HH:mm",location:"地点",type:"事件类型"}] - 日程表,根据剧情中的重要约会/截止日期/事件生成,每回合1-3条\n'
         + '  - cards: items[{icon:"单字图标",title:"标题",content:"内容"}] - 卡片\n'
         + '  - comments: {main:"主帖",comments:[{name:"评论者",text:"评论"}]} - 评论模块(无items数组,直接main+comments)\n'
         + '【memoryUpdates 三层记忆规则】memoryUpdates 为必填数组，每回合必须根据剧情变化输出记忆更新，每项 {op, category, layer, importance, content, keywords, reason}。\n'
@@ -5997,6 +5999,13 @@ async function requestNpcReply(playerText) {
     }
 }
 
+// 日程表时间格式化辅助：基于游戏回合生成合理的日期时间
+function _formatCalendarTime(turn) {
+    var gt = gameState.gameTime || {};
+    var date = gt.date || ('第' + (turn + 1) + '日');
+    var time = gt.time || '10:00';
+    return date + ' ' + time;
+}
 
 // ========================================
 // 日志子系统兜底生成器
@@ -6186,6 +6195,43 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
             { id: 'ach_explore', name: '初探世界', desc: '推进 5 轮剧情', category: 'EXPLORE', rarity: 'rare', condition: 'storyCount >= 5', icon: '🗺️' }
         ];
         modules.push({ type: 'achievements', title: '成就', items: defaultAchievements });
+    }
+
+    // 日程表：从任务/事件生成兜底日程
+    if (getLogFeatureFlag('calendar') && !_aiReturned('calendar') && !hasType('calendar')) {
+        var calEvents = [];
+        // 从任务生成日程
+        if (quests.length > 0) {
+            quests.slice(0, 2).forEach(function(q) {
+                if (q && q.title) {
+                    calEvents.push({
+                        title: q.title,
+                        description: q.desc || q.hint || '推进任务进展',
+                        time: _formatCalendarTime(turn),
+                        location: '',
+                        type: '任务'
+                    });
+                }
+            });
+        }
+        // 从关键事件生成日程
+        if (events.length > 0) {
+            events.slice(0, 2).forEach(function(ev) {
+                var evText = typeof ev === 'string' ? ev : (ev.content || ev.title || '');
+                if (evText) {
+                    calEvents.push({
+                        title: evText.slice(0, 20),
+                        description: evText,
+                        time: _formatCalendarTime(turn),
+                        location: '',
+                        type: '事件'
+                    });
+                }
+            });
+        }
+        if (calEvents.length > 0) {
+            modules.push({ type: 'calendar', title: '日程表', events: calEvents, items: calEvents });
+        }
     }
 
     // 聊天：为所有角色自动生成初始聊天消息（AI 未主动发消息时兜底）

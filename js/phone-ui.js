@@ -2124,7 +2124,9 @@ var _RENDER_CACHE_KEY_MAP = {
     moments: 'renderMomentsPage',
     diary: 'renderDiaryPage',
     mail: 'renderMailPage',
-    calendar: 'renderCalendarPage'
+    calendar: 'renderCalendarPage',
+    quests: 'renderQuestPage',
+    achieve: 'renderAchievePage'
 };
 
 /**
@@ -2200,8 +2202,9 @@ function openLogSubPage(type) {
         html = renderDefaultPage(type);
     }
 
-    // 兜底：如果渲染器返回空值，显示占位内容
-    if (!html) {
+    // 渲染器返回 '' 表示已直接操作 DOM（如 quests/achieve），不应覆盖
+    // 只有 renderer 不存在或返回 undefined/null 时才显示占位
+    if (!html && html !== '') {
         html = '<div style="flex:1;display:flex;align-items:center;justify-content:center;color:var(--text-tertiary);">加载中...</div>';
     }
 
@@ -3179,21 +3182,31 @@ function renderDiaryPage() {
         '0');
 
     // 【已重构】从 AI 的 world[].type === 'diary' 模块汇总日记数据
+    // 【Bug修复】每次渲染都重新收集会导致数据重复累积，改为先清空再收集
     var diaryModules = getModulesByType('diary');
+    // 清空旧数据，防止重复累积
+    Object.keys(diaries).forEach(function(k) { diaries[k] = { entries: [], memos: [] }; });
+    var _seenDiaryKeys = {}; // 去重：npc + date + content前20字
     var collectDiaryEntry = function(entry) {
         if (!entry || !entry.npc) return;
         var npcName = entry.npc;
         if (!diaries[npcName]) diaries[npcName] = { entries: [], memos: [] };
         if (entry.content) {
-            diaries[npcName].entries.push({
-                date: entry.date || '',
-                content: entry.content,
-                mood: entry.mood || ''
-            });
+            var dedupeKey = npcName + '|' + (entry.date || '') + '|' + String(entry.content).slice(0, 20);
+            if (!_seenDiaryKeys[dedupeKey]) {
+                _seenDiaryKeys[dedupeKey] = true;
+                diaries[npcName].entries.push({
+                    date: entry.date || '',
+                    content: entry.content,
+                    mood: entry.mood || ''
+                });
+            }
         }
         if (Array.isArray(entry.memos)) {
             entry.memos.forEach(function(m) {
-                if (m) diaries[npcName].memos.push(m);
+                if (m && diaries[npcName].memos.indexOf(m) === -1) {
+                    diaries[npcName].memos.push(m);
+                }
             });
         }
     };
@@ -3275,10 +3288,11 @@ function renderDiaryPage() {
         if (targetIdx >= 0 && targetIdx < allEntries.length) {
             entries = [allEntries[targetIdx]];
         }
-    } else if (currentOffset > 0) {
+    } else if (currentOffset > 0 && currentOffset < allEntries.length) {
         entries = allEntries.slice(currentOffset);
-    } else if (allEntries.length > 0) {
-        entries = [allEntries[allEntries.length - 1]];
+    } else {
+        // 【Bug修复】默认显示所有日记条目，而非仅最后一条
+        entries = allEntries;
     }
     if (entries.length > 0) {
         var firstEntry = entries[0];
@@ -3301,12 +3315,12 @@ function renderDiaryPage() {
             }).map(function(p) {
                 return '<p>' + escapeHtml(p) + '</p>';
             }).join('');
-            var moodTag = entry.mood ? '<span style="float:right;font-size:12px;color:#999;">' + escapeHtml(entry.mood) + '</span>' : '';
-            var dateTag = entry.date ? '<div style="font-size:12px;color:#999;margin-bottom:6px;">' + escapeHtml(entry.date) + moodTag + '</div>' : '';
+            var moodTag = entry.mood ? '<span style="float:right;font-size:12px;color:var(--text-tertiary);">' + escapeHtml(entry.mood) + '</span>' : '';
+            var dateTag = entry.date ? '<div style="font-size:12px;color:var(--text-tertiary);margin-bottom:6px;">' + escapeHtml(entry.date) + moodTag + '</div>' : '';
             var _mentionsPlayer = _playerName && entryText.indexOf(_playerName) !== -1;
-            var cardStyle = _mentionsPlayer ? 'background:linear-gradient(180deg,#e8f3ff 0%,#f7fbff 100%);border-left:3px solid #1a73e8;' : '';
+            var cardStyle = _mentionsPlayer ? 'background:var(--accent-soft);border-left:3px solid var(--accent);' : '';
             var mentionBadge = _mentionsPlayer ?
-                '<div style="display:inline-flex;align-items:center;gap:4px;background:#1a73e8;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;margin-bottom:6px;font-weight:500;">@ 提到你</div><br>' : '';
+                '<div style="display:inline-flex;align-items:center;gap:4px;background:var(--accent);color:var(--card);font-size:11px;padding:2px 8px;border-radius:10px;margin-bottom:6px;font-weight:500;">@ 提到你</div><br>' : '';
             return '<div class="diary-card" style="' + cardStyle + '">' + mentionBadge + '<div class="diary-card-header"><div class="diary-card-label">JOURNAL（' +
                 currentDiaryNpc +
                 '）</div><div class="diary-card-lock"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div></div>' +
@@ -3725,7 +3739,7 @@ function renderDefaultPage(type) {
     var typeMap = {
         forum: 'comments',
         shop: 'cards',
-        achieve: 'ranking',
+        achieve: 'achievements',
         diary: 'text',
         mail: 'comments',
         rank: 'ranking'

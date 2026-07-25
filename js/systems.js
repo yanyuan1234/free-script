@@ -521,8 +521,9 @@ var AchievementSystem = {
             }, typeof POPUP_DURATION_MS !== 'undefined' ? POPUP_DURATION_MS : 3000);
     },
     countByRarity(pd, r) {
+        var normalized = _normalizeRarity(r);
         return pd.unlocked.filter(function(u) {
-            return u.rarity === r;
+            return u.rarity === normalized;
             }).length;
     },
     renderAchievePage(container) {

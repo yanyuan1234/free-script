@@ -2489,9 +2489,26 @@ var WorldInfo = {
         var text = rawText.trim();
 
         // 1. 尝试剥离 markdown 代码块 ```json ... ``` 或 ``` ... ```
-        var codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (codeBlockMatch) {
-            text = codeBlockMatch[1].trim();
+        // 【P0修复】用线性 indexOf 替代 /```(?:json)?\s*([\s\S]*?)```/i 正则，
+        // 避免 AI 输出未闭合 ``` 时的灾难性回溯
+        var _fenceStart = text.indexOf('```');
+        if (_fenceStart !== -1) {
+            var _afterFence = _fenceStart + 3;
+            // 跳过可选的语言标识（如 json）
+            if (text.substring(_afterFence, _afterFence + 4).toLowerCase() === 'json') {
+                _afterFence += 4;
+            }
+            // 跳过换行
+            if (text.charAt(_afterFence) === '\n') _afterFence++;
+            else if (text.charAt(_afterFence) === '\r') {
+                _afterFence++;
+                if (text.charAt(_afterFence) === '\n') _afterFence++;
+            }
+            var _fenceEnd = text.indexOf('```', _afterFence);
+            if (_fenceEnd !== -1) {
+                text = text.substring(_afterFence, _fenceEnd).trim();
+            }
+            // 未闭合时不截断，让后续 JSON.parse 处理原始文本
         }
 
         // 2. 尝试直接解析
