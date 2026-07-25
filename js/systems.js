@@ -404,7 +404,8 @@ var AchievementSystem = {
         var stats = {
             storyCount: 0, npcCount: 0, friendlyNpc: 0, romanceNpc: 0, allyNpc: 0,
             combatCount: 0, winStreak: 0, bagItems: 0, rareItems: 0,
-            legendaryItems: 0, locations: 0, hiddenLocations: 0
+            legendaryItems: 0, locations: 0, hiddenLocations: 0,
+            completedQuests: 0  // 【BUG修复】新增已完成任务统计，用于"任务达人"成就判定
         };
         if (!gameState) return stats;
         stats.storyCount = (gameState.conversationHistory || []).filter(function(m) { return m.role === 'assistant'; }).length;
@@ -429,6 +430,15 @@ var AchievementSystem = {
             if (r.type === '盟友') stats.allyNpc++;
         }
     });
+    // 【BUG修复】统计已完成任务数量，用于"任务达人"成就判定
+    var allQuests = (typeof StateManager !== 'undefined' && StateManager.get)
+        ? (StateManager.get('entities.quests') || [])
+        : (gameState.currentQuests || []);
+    if (Array.isArray(allQuests)) {
+        stats.completedQuests = allQuests.filter(function(q) {
+            return q && (q.status === '已完成' || q.status === 'completed' || q.status === QuestSystem.STATUS.COMPLETED);
+        }).length;
+    }
     return stats;
     },
     checkAchievements() {
@@ -441,6 +451,7 @@ var AchievementSystem = {
                 return u.id === ach.id;
                 })) return;
             var np = 0;
+            var _shouldUnlock = false;
             // 动态解析条件表达式，如 "storyCount >= 1"
             var cond = ach.condition || 'true';
             try {
@@ -457,26 +468,32 @@ var AchievementSystem = {
                     var val = parseInt(match[3], 10);
                     var statVal = stats[field] || 0;
                     switch (op) {
-                        case '>=': np = Math.min(val, statVal); break;
-                        case '<=': np = statVal <= val ? 1 : 0; break;
-                        case '>': np = statVal > val ? 1 : 0; break;
-                        case '<': np = statVal < val ? 1 : 0; break;
-                        case '==': np = statVal === val ? 1 : 0; break;
-                        case '!=': np = statVal !== val ? 1 : 0; break;
+                        // 【BUG修复】>= 条件：进度为 min(val, statVal)，但解锁条件必须是 statVal >= val
+                        case '>=': np = Math.min(val, statVal); _shouldUnlock = statVal >= val; break;
+                        case '<=': np = statVal <= val ? 1 : 0; _shouldUnlock = statVal <= val; break;
+                        case '>': np = statVal > val ? 1 : 0; _shouldUnlock = statVal > val; break;
+                        case '<': np = statVal < val ? 1 : 0; _shouldUnlock = statVal < val; break;
+                        case '==': np = statVal === val ? 1 : 0; _shouldUnlock = statVal === val; break;
+                        case '!=': np = statVal !== val ? 1 : 0; _shouldUnlock = statVal !== val; break;
                     }
                 } else if (cond === 'nightOwl') {
                     var h = new Date().getHours();
                     np = (h >= 2 && h < 5) ? 1 : 0;
+                    _shouldUnlock = np >= 1;
                 } else if (cond !== 'true') {
                     // 未知条件格式，尝试作为简单布尔值
                     np = 0;
+                } else {
+                    _shouldUnlock = true;
                 }
             } catch(e) {
                 np = 0;
             }
     pd.progress[ach.id] = np;
-    var mp = ach.maxProgress || 1;
-    if (np >= mp) {
+    // 【BUG修复】使用 _shouldUnlock 判断是否解锁，而非 np >= mp
+    // 旧逻辑：mp = ach.maxProgress || 1，当 maxProgress 未设置时默认为 1，
+    // 导致 >= 条件的成就（如 storyCount >= 5）在 storyCount=3 时因 np=3 >= 1 而错误解锁
+    if (_shouldUnlock) {
         var rar = AchievementSystem.RARITY[_normalizeRarity(ach.rarity)] ||
         AchievementSystem.RARITY.COMMON;
         pd.unlocked.push({

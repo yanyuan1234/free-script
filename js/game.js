@@ -6099,6 +6099,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
     // 商店：从背包物品 + 默认商品生成
+    // 【BUG修复】根据世界主题动态生成商店物品，避免三轮完全不变
     if (getLogFeatureFlag('shop') && !hasType('shop')) {
         var goods = [];
         if (bag.length > 0) {
@@ -6107,11 +6108,51 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
             });
         }
         if (goods.length === 0) {
-            goods = [
-                { name: '面包', price: 2, count: 10 },
-                { name: '药水', price: 5, count: 5 },
-                { name: '地图', price: 3, count: 3 }
-            ];
+            // 【BUG修复】根据世界主题生成不同的默认商品
+            var _theme = _detectWorldTheme();
+            var _themeShops = {
+                xianxia: [
+                    { name: '聚气丹', price: 5, count: 10 },
+                    { name: '低阶灵石', price: 10, count: 5 },
+                    { name: '宗门地图', price: 3, count: 3 }
+                ],
+                cyberpunk: [
+                    { name: '能量饮料', price: 2, count: 10 },
+                    { name: '数据芯片', price: 8, count: 5 },
+                    { name: '电子地图', price: 5, count: 3 }
+                ],
+                space: [
+                    { name: '太空口粮', price: 3, count: 10 },
+                    { name: '氧气罐', price: 5, count: 5 },
+                    { name: '星图', price: 8, count: 3 }
+                ],
+                game: [
+                    { name: '回血药水', price: 2, count: 10 },
+                    { name: '增益符文', price: 5, count: 5 },
+                    { name: '副本地图', price: 3, count: 3 }
+                ],
+                ancient: [
+                    { name: '馒头', price: 2, count: 10 },
+                    { name: '金创药', price: 5, count: 5 },
+                    { name: '江湖地图', price: 3, count: 3 }
+                ],
+                modern: [
+                    { name: '面包', price: 2, count: 10 },
+                    { name: '药水', price: 5, count: 5 },
+                    { name: '地图', price: 3, count: 3 }
+                ]
+            };
+            goods = _themeShops[_theme] || _themeShops.modern;
+            // 【BUG修复】根据剧情进度增加随机商品，使每轮有变化
+            if (turn > 1 && storyText) {
+                var _extraGoods = [
+                    { name: '神秘卷轴', price: 15, count: 1 },
+                    { name: '稀有材料', price: 20, count: 1 },
+                    { name: '冒险者指南', price: 8, count: 2 }
+                ];
+                var _extraIdx = turn % _extraGoods.length;
+                goods = goods.concat([_extraGoods[_extraIdx]]);
+            }
         }
 
         modules.push({ type: 'shop', title: '杂货铺', items: goods });
@@ -6120,8 +6161,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 朋友圈：从最近事件/角色生成
 
     // 改为：主角用剧情摘要、NPC用 desc/最近事件拼接，并准备多套模板按角色名hash分散。
-
-    // 改为按本轮是否返回判断，让朋友圈随轮次持续增长。
+    // 【BUG修复】模板选择加入轮次因子，避免同一NPC每轮内容完全相同
     if (getLogFeatureFlag('moments') && !_aiReturned('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
         var _moodTemplates = [
             '又是充实的一天。',
@@ -6129,7 +6169,11 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
             '最近的江湖，风起云涌啊。',
             '闲下来反而不知道该做什么了。',
             '有些事，想得多了反而头疼。',
-            '听到一些有趣的消息，记上一笔。'
+            '听到一些有趣的消息，记上一笔。',
+            '路过的风景总能让人心情舒畅。',
+            '今天的经历让我感慨良多。',
+            '新的一天，新的冒险在等着。',
+            '疲惫但满足，这就是冒险者的生活吧。'
         ];
         var posts = [];
         if (storyText) {
@@ -6140,16 +6184,24 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         }
         charList.slice(0, 3).forEach(function(c, idx) {
             var cName = c.name || '匿名';
-            // 用角色名 hash 选模板，避免所有人同一句
+            // 【BUG修复】用角色名 hash + 轮次 选模板，避免同一NPC每轮内容相同
             var _seed = 0;
             for (var _i = 0; _i < cName.length; _i++) _seed = ((_seed << 5) - _seed + cName.charCodeAt(_i)) | 0;
-            var _tpl = _moodTemplates[Math.abs(_seed) % _moodTemplates.length];
+            var _tplIdx = Math.abs(_seed + turn * 7) % _moodTemplates.length;
+            var _tpl = _moodTemplates[_tplIdx];
             var _npcText = c.mood || c.desc || _tpl;
             // 若 desc 过长或与模板无关，叠加最近事件让内容更有信息量
             if (events.length > 0 && (idx === 0 || _seed % 2 === 0)) {
                 var _ev = events[idx % events.length];
                 var _evText = typeof _ev === 'string' ? _ev : (_ev.content || _ev.title || '');
                 if (_evText) _npcText = _tpl + ' 听说' + _evText.slice(0, 24);
+            }
+            // 【BUG修复】若NPC无 desc/mood，从剧情文本中提取一句话作为话题
+            if (!c.desc && !c.mood && storyText) {
+                var _npcSentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 5; });
+                if (_npcSentences.length > idx) {
+                    _npcText = _tpl + ' ' + _npcSentences[idx].trim().slice(0, 24);
+                }
             }
             posts.push({ author: cName, text: _npcText.slice(0, 60), time: Date.now() });
         });
@@ -6202,18 +6254,38 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     // 兜底须用 items 而非 entries，否则多条日记会被当成一条空记录丢失。
 
     // 改为按本轮是否返回判断，让日记随轮次持续增长。
+    // 【BUG修复】NPC日记内容加入轮次变化，避免每轮都是"今天遇到了主角"
     if (getLogFeatureFlag('diary') && !_aiReturned('diary') && storyText) {
         var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
         var diaryEntries = [{ npc: playerName, date: Date.now(), content: summary, mood: '平静', memos: [] }];
         // 为每个 NPC 也生成日记条目（用 desc/mood 作为内容）
-        charList.forEach(function(c) {
+        var _diaryMoods = ['平静', '好奇', '期待', '疲惫', '兴奋', '感慨'];
+        var _diaryTemplates = [
+            '今天遇到了{player}，聊了几句。',
+            '又是平常的一天，不过在{player}身上似乎发生了不少事。',
+            '最近周围变得热闹起来了，{player}的行动引起了不少关注。',
+            '{player}看起来又在忙些什么，希望一切顺利。',
+            '今天的见闻值得记一笔，{player}的冒险越来越精彩了。'
+        ];
+        charList.forEach(function(c, idx) {
             if (!c.name) return;
-            var npcContent = c.desc || c.mood || ('今天遇到了' + playerName + '。');
+            var npcContent;
+            if (c.desc) {
+                npcContent = c.desc;
+            } else if (c.mood) {
+                npcContent = c.mood;
+            } else {
+                // 【BUG修复】用轮次+索引选择不同模板，避免每轮内容相同
+                var _dSeed = (turn + idx * 3) % _diaryTemplates.length;
+                var _dTpl = _diaryTemplates[_dSeed];
+                npcContent = _dTpl.replace('{player}', playerName);
+            }
+            var _dMood = _diaryMoods[(turn + idx) % _diaryMoods.length];
             diaryEntries.push({
                 npc: c.name,
                 date: Date.now(),
                 content: npcContent.slice(0, 80),
-                mood: c.mood || '平静',
+                mood: c.mood || _dMood,
                 memos: []
             });
         });
@@ -6221,24 +6293,61 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
     // 论坛：从事件生成帖子（无事件时从剧情文本生成）
-    // 原兜底把多个帖子塞进一个模块的 posts 数组，导致只有一条空帖子。
-    // 改为：每个事件展开为独立的 comments 模块。
+    // 【BUG修复】生成独立讨论帖+评论，而非直接复制剧情文本
     if (getLogFeatureFlag('forum') && !_aiReturned('comments') && !_aiReturned('forum')) {
+        var _forumAuthors = ['老冒险者', '酒馆常客', '情报贩子', '神秘旅人', '吟游诗人', '商会成员'];
+        var _forumCommentAuthors = ['路人甲', '好奇宝宝', '资深冒险者', '路过的剑客', '酒馆老板'];
+        var _forumCommentTemplates = [
+            '同问，最近也想去看看。',
+            '那边还挺安全的，新手可以去。',
+            '我有不同的看法，大家谨慎为上。',
+            '感谢分享，很有用的信息！',
+            '这事我也听说了，确实挺有意思的。',
+            '具体情况具体分析吧，不能一概而论。'
+        ];
         var _forumSources = events.slice(0, 2);
         // 无事件时从剧情文本提取话题
         if (_forumSources.length === 0 && storyText) {
             var _storySentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 8; }).slice(0, 2);
             _forumSources = _storySentences.map(function(s) { return { content: s.trim(), title: s.trim().slice(0, 20) }; });
         }
-        _forumSources.forEach(function(ev) {
+        _forumSources.forEach(function(ev, evIdx) {
             var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '冒险者的日常讨论');
+            // 【BUG修复】将剧情内容改写为论坛讨论帖风格
+            var _forumTitle;
+            var _forumContent;
+            var _snippet = content.slice(0, 20);
+            var _titleTemplates = [
+                '有人知道关于「' + _snippet + '」的事吗？',
+                '讨论一下：' + _snippet + '...',
+                '今天遇到的趣事——' + _snippet,
+                '分享一个发现：' + _snippet + '...',
+                '「' + _snippet + '」大家怎么看？'
+            ];
+            var _contentTemplates = [
+                '如题，最近在冒险中遇到了相关的情况，想问问大家有没有类似的经历？',
+                '刚才路过的时候注意到了这个，感觉挺值得讨论的，大家怎么看？',
+                '听说最近发生了不少事，有没有了解情况的老哥来说说？',
+                '分享一下我的见闻，希望能帮到其他冒险者。'
+            ];
+            _forumTitle = _titleTemplates[(turn + evIdx) % _titleTemplates.length];
+            _forumContent = _contentTemplates[(turn + evIdx) % _contentTemplates.length] + ' （相关：' + content.slice(0, 40) + '）';
+            // 【BUG修复】生成1-2条评论
+            var _comments = [];
+            var _commentCount = 1 + (turn + evIdx) % 2;
+            for (var _ci = 0; _ci < _commentCount; _ci++) {
+                _comments.push({
+                    author: _forumCommentAuthors[(_ci + turn) % _forumCommentAuthors.length],
+                    text: _forumCommentTemplates[(_ci + turn + evIdx) % _forumCommentTemplates.length]
+                });
+            }
             modules.push({
                 type: 'comments',
-                title: content.slice(0, 20),
-                author: '路人',
-                main: content,
-                content: content,
-                comments: []
+                title: _forumTitle,
+                author: _forumAuthors[(turn + evIdx) % _forumAuthors.length],
+                main: _forumContent,
+                content: _forumContent,
+                comments: _comments
             });
         });
     }
@@ -6248,67 +6357,90 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         var defaultAchievements = [
             { id: 'ach_first_step', name: '踏上旅程', desc: '完成第一轮剧情', category: 'STORY', rarity: 'common', condition: 'storyCount >= 1', icon: '👣' },
             { id: 'ach_meet_npc', name: '初次相识', desc: '结识第一位 NPC', category: 'SOCIAL', rarity: 'common', condition: 'npcCount >= 1', icon: '🤝' },
-            { id: 'ach_complete_quest', name: '任务达人', desc: '完成一个任务', category: 'STORY', rarity: 'rare', condition: 'storyCount >= 3', icon: '📜' },
+            { id: 'ach_complete_quest', name: '任务达人', desc: '完成一个任务', category: 'STORY', rarity: 'rare', condition: 'completedQuests >= 1', icon: '📜' },
             { id: 'ach_explore', name: '初探世界', desc: '推进 5 轮剧情', category: 'EXPLORE', rarity: 'rare', condition: 'storyCount >= 5', icon: '🗺️' }
         ];
         modules.push({ type: 'achievements', title: '成就', items: defaultAchievements });
     }
 
     // 日程表：从任务/事件生成兜底日程（无数据时从剧情生成默认日程）
-    if (getLogFeatureFlag('calendar') && !_aiReturned('calendar') && !hasType('calendar')) {
-        var calEvents = [];
-        // 从任务生成日程
-        if (quests.length > 0) {
-            quests.slice(0, 2).forEach(function(q) {
-                if (q && q.title) {
-                    calEvents.push({
-                        title: q.title,
-                        description: q.desc || q.hint || '推进任务进展',
-                        time: _formatCalendarTime(turn),
-                        location: '',
-                        type: '任务'
-                    });
+    // 【BUG修复】改为每轮追加新事件，而非仅首次生成
+    if (getLogFeatureFlag('calendar') && !_aiReturned('calendar') && turn > 0) {
+        // 检查是否已有 calendar 模块
+        var _existingCalMods = modules.filter(function(m) { return m && m.type === 'calendar'; });
+        var _calTurnKey = '第' + turn + '轮冒险';
+        var _alreadyHasTurn = false;
+        if (_existingCalMods.length > 0) {
+            var _allCalEvents = [];
+            _existingCalMods.forEach(function(m) {
+                if (Array.isArray(m.events)) _allCalEvents = _allCalEvents.concat(m.events);
+                if (Array.isArray(m.items)) _allCalEvents = _allCalEvents.concat(m.items);
+            });
+            _alreadyHasTurn = _allCalEvents.some(function(e) { return e && e.title === _calTurnKey; });
+        }
+        if (!_alreadyHasTurn) {
+            var calEvents = [];
+            // 从任务生成日程
+            if (quests.length > 0) {
+                quests.slice(0, 2).forEach(function(q) {
+                    if (q && q.title) {
+                        calEvents.push({
+                            title: q.title,
+                            description: q.desc || q.hint || '推进任务进展',
+                            time: _formatCalendarTime(turn),
+                            location: '',
+                            type: '任务'
+                        });
+                    }
+                });
+            }
+            // 从关键事件生成日程
+            if (events.length > 0) {
+                events.slice(0, 2).forEach(function(ev) {
+                    var evText = typeof ev === 'string' ? ev : (ev.content || ev.title || '');
+                    if (evText) {
+                        calEvents.push({
+                            title: evText.slice(0, 20),
+                            description: evText,
+                            time: _formatCalendarTime(turn),
+                            location: '',
+                            type: '事件'
+                        });
+                    }
+                });
+            }
+            // 无任务/事件时从剧情文本生成默认日程
+            if (calEvents.length === 0 && storyText) {
+                var _calStorySnippet = storyText.slice(0, 30);
+                calEvents.push({
+                    title: _calTurnKey,
+                    description: _calStorySnippet,
+                    time: _formatCalendarTime(turn),
+                    location: '',
+                    type: '冒险'
+                });
+            }
+            // 彻底无数据时生成一个占位日程
+            if (calEvents.length === 0) {
+                calEvents.push({
+                    title: _calTurnKey,
+                    description: '冒险继续进行中...',
+                    time: _formatCalendarTime(turn),
+                    location: '',
+                    type: '冒险'
+                });
+            }
+            // 【BUG修复】追加到已有 calendar 模块，而非新建（避免只有第1轮有记录）
+            if (calEvents.length > 0) {
+                if (_existingCalMods.length > 0) {
+                    if (!_existingCalMods[0].events) _existingCalMods[0].events = [];
+                    if (!_existingCalMods[0].items) _existingCalMods[0].items = [];
+                    _existingCalMods[0].events = _existingCalMods[0].events.concat(calEvents);
+                    _existingCalMods[0].items = _existingCalMods[0].items.concat(calEvents);
+                } else {
+                    modules.push({ type: 'calendar', title: '日程表', events: calEvents, items: calEvents });
                 }
-            });
-        }
-        // 从关键事件生成日程
-        if (events.length > 0) {
-            events.slice(0, 2).forEach(function(ev) {
-                var evText = typeof ev === 'string' ? ev : (ev.content || ev.title || '');
-                if (evText) {
-                    calEvents.push({
-                        title: evText.slice(0, 20),
-                        description: evText,
-                        time: _formatCalendarTime(turn),
-                        location: '',
-                        type: '事件'
-                    });
-                }
-            });
-        }
-        // 无任务/事件时从剧情文本生成默认日程
-        if (calEvents.length === 0 && storyText) {
-            var _calStorySnippet = storyText.slice(0, 30);
-            calEvents.push({
-                title: '第' + (turn || 1) + '轮冒险',
-                description: _calStorySnippet,
-                time: _formatCalendarTime(turn),
-                location: '',
-                type: '冒险'
-            });
-        }
-        // 彻底无数据时生成一个占位日程
-        if (calEvents.length === 0) {
-            calEvents.push({
-                title: '旅程起点',
-                description: '冒险即将开始...',
-                time: _formatCalendarTime(turn),
-                location: '',
-                type: '冒险'
-            });
-        }
-        if (calEvents.length > 0) {
-            modules.push({ type: 'calendar', title: '日程表', events: calEvents, items: calEvents });
+            }
         }
     }
 
@@ -6355,6 +6487,7 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
 
 
     // 使聊天列表随轮次增长。用轮次+NPC名去重，避免同轮重复。
+    // 【BUG修复】兜底聊天生成对话式短句，而非直接截取剧情叙述文本
     if (turn > 1 && storyText && charList.length > 0) {
         // 统计本轮已生成的兜底消息数（通过 _turn 标记）
         var _turnTag = '_fallback_turn_' + turn;
@@ -6369,25 +6502,45 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
             // 选取1-2个NPC发消息（按轮次轮换，避免每次都是同一个）
             var _npcCount = Math.min(2, charList.length);
             var _startIdx = (turn - 1) % charList.length;
+            // 【BUG修复】改为对话式模板，从剧情中提取关键词生成自然对话
             var _chatTopics = [
                 '刚才的事你听说了吗？',
                 '最近的动静可真不小。',
                 '有空聊聊吗？',
                 '我这边有些消息，不知当讲不当讲。',
-                '今天的情况有点复杂。'
+                '今天的情况有点复杂。',
+                '你看起来精神不错啊。',
+                '刚才经过那边，差点被吓到。',
+                '听说前面又出事了，你小心点。'
             ];
             for (var _n = 0; _n < _npcCount; _n++) {
                 var _npc = charList[(_startIdx + _n) % charList.length];
                 if (!_npc || !_npc.name) continue;
                 var _logs = gameState._chatLogs[_npc.name];
                 if (!_logs) { _logs = []; gameState._chatLogs[_npc.name] = _logs; }
-                // 从剧情中提取一句话作为话题
+                // 【BUG修复】从剧情中提取事件关键词，改写为第一人称口语
                 var _storySnip = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 8; });
-                var _topic = _storySnip.length > 0 ? _storySnip[0].trim().slice(0, 30) : _chatTopics[_n % _chatTopics.length];
+                var _topic;
+                if (_storySnip.length > 0) {
+                    // 提取剧情片段，改写为对话式
+                    var _rawSnip = _storySnip[0].trim();
+                    // 尝试从剧情中提取动作或场景关键词
+                    if (_rawSnip.length > 20) {
+                        _rawSnip = _rawSnip.slice(0, 20);
+                    }
+                    var _chatPrefixes = [
+                        '刚才好像', '你听说了吗？', '我注意到', '话说',
+                        '提醒你一句，', '刚路过的时候，'
+                    ];
+                    var _prefixIdx = (turn + _n) % _chatPrefixes.length;
+                    _topic = _chatPrefixes[_prefixIdx] + _rawSnip + '...';
+                } else {
+                    _topic = _chatTopics[(_n + turn) % _chatTopics.length];
+                }
                 _logs.push({
                     role: 'npc',
                     from: _npc.name,
-                    text: _topic,
+                    text: _topic.slice(0, 60),
                     time: Date.now(),
                     _turnTag: _turnTag
                 });
@@ -6402,15 +6555,20 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     if (getLogFeatureFlag('items')) {
         var _bagArr = (StateManager && StateManager.get) ? (StateManager.get('entities.bag') || []) : (gameState.currentBag || gameState.bag || []);
         if (!_bagArr || _bagArr.length === 0) {
+            // 【BUG修复】使用 count 属性（与渲染器 renderItemsPage 一致），而非 qty
             var _defaultItems = [
-                { name: '旧木杖', qty: 1, unit: '把', rarity: '普通', desc: '一根磨损的木杖，勉强还能用。' },
-                { name: '干粮', qty: 3, unit: '份', rarity: '普通', desc: '能填饱肚子的干粮。' },
-                { name: '铜币', qty: 10, unit: '枚', rarity: '普通', desc: '常见的铜制货币。' }
+                { name: '旧木杖', count: 1, unit: '把', rarity: '普通', desc: '一根磨损的木杖，勉强还能用。' },
+                { name: '干粮', count: 3, unit: '份', rarity: '普通', desc: '能填饱肚子的干粮。' },
+                { name: '铜币', count: 10, unit: '枚', rarity: '普通', desc: '常见的铜制货币。' }
             ];
             if (StateManager && StateManager.set) {
                 StateManager.set('entities.bag', _defaultItems, { silent: true });
             }
+            // 【BUG修复】同时写入 entities.bag 和 currentBag，确保所有读取路径都能获取到数据
             gameState.currentBag = _defaultItems;
+            if (gameState.entities) {
+                gameState.entities.bag = _defaultItems;
+            }
         }
     }
 
@@ -6418,17 +6576,25 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     if (getLogFeatureFlag('quests')) {
         var _questArr = (StateManager && StateManager.get) ? (StateManager.get('entities.quests') || []) : (gameState.currentQuests || []);
         if (!_questArr || _questArr.length === 0) {
+            // 【BUG修复】使用与 QuestSystem 一致的状态值和字段名
             var _defaultQuest = {
+                id: 'q_main_start_' + Date.now(),
                 title: '探索未知的世界',
                 desc: '你刚刚踏上冒险之旅，前方充满了未知与机遇。去探索这个世界吧！',
                 status: 'active',
-                type: 'main',
-                hint: '继续推进剧情即可完成此任务'
+                type: '主线',
+                progress: '0/1',
+                hint: '继续推进剧情即可完成此任务',
+                rewards: [{ type: 'exp', name: '经验值', amount: 10 }]
             };
             if (StateManager && StateManager.set) {
                 StateManager.set('entities.quests', [_defaultQuest], { silent: true });
             }
+            // 【BUG修复】同时写入 entities.quests 和 currentQuests
             gameState.currentQuests = [_defaultQuest];
+            if (gameState.entities) {
+                gameState.entities.quests = [_defaultQuest];
+            }
         }
     }
 
