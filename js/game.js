@@ -845,7 +845,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '**player.stats 更新规则：每回合根据剧情事件更新属性值。修炼/锻炼/学习提升属性、购买/消耗降低金币、受伤降低体质等变化必须反映在 stats 中。禁止每回合返回相同的 stats 值（除非本回合确实无属性变化）。**\n'
         + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
         + 'quests 任务规则：type三类(主线/支线/隐藏),status三类(进行中/已完成/失败),progress用"当前/总数";同时存在不超过5个;**每回合至少返回1个进行中任务**;第一回合至少1个主线;完成/失败保留1-2回合后移除。**若任务已完成,status填"已完成"、progress填"1/1";若仍在进行,progress必须推进,禁止始终为0/1。**\n'
-        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角使用真实姓名"' + (gameState.playerName || '主角') + '"而非代称。**from 和 to 必须使用与 characters[].name 完全一致的中文角色姓名，禁止使用拼音、英文、缩写或标识符（如 yin_yun、xue_ba）；NPC 也必须用正式中文名而非代称。**有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。\n'
+        + 'relationships 关系网：type必须是 暧昧/恋人/敌对/仇恨/友好/盟友/师徒/上下级/亲人/家族/对手/中立 之一;上限10条;包括NPC之间的关系;主角使用真实姓名"' + (gameState.playerName || '主角') + '"而非代称。**from 和 to 必须使用与 characters[].name 完全一致的中文角色姓名，禁止使用拼音、英文、缩写或标识符（如 yin_yun、xue_ba）；NPC 也必须用正式中文名而非代称。绝对禁止在 from/to 中使用"主角"、"玩家"、"我"、"你"等代称——必须用主角的真实姓名"' + (gameState.playerName || '主角') + '"。同一对关系只输出一条,不要A→B和B→A同时出现。有NPC互动时每回合必须返回 relationships，空数组仅用于无NPC出场的纯过场。**\n'
         + 'npcMessages NPC主动消息：用 [{"from":"NPC名字","text":"消息内容"}] 格式。粘人/关心型NPC每回合可能发1-2条，冷漠型可0条；消息内容必须与本回合剧情相关，from须是已出场角色。**无消息时返回空数组 []，禁止省略该字段。**\n'
         + 'keyEvents 规则：**有重要事件发生时必须返回 1-3 条，仅无任何重要事件的纯过场回合才输出空数组 []。**重要事件指：关键约定、重大发现、关系转折、获得/失去重要物品、阵营变化、立下誓言、角色死亡、秘密揭露。每条简短一句含人物名。日常对话/普通移动不写入。\n'
         + 'favorability 分级（整数）：80-100极度亲密,60-79非常亲近,40-59有好感,15-39关系融洽,-14~14中立(0=中立非敌意),-39~-15略有隔阂,-100~-40负面。范围 -100 到 100。relation用符合世界观的词,不要套固定模板,不要省略数值。\n'
@@ -853,13 +853,13 @@ function _buildFormatRules(gs, _t, turn) {
         + '世界模块(world)必须和剧情紧密联动，不要生成与剧情无关的静态内容。\n'
         + '【world 模块强制要求】world 数组每回合至少包含 4-6 个模块，必须覆盖以下类型中的至少 4 种（按剧情需要选择）：comments（论坛热帖）、moments（朋友圈动态）、mail（邮件/飞剑传书）、shop（商店商品）、ranking（排行榜）、cards（信息卡片）、key_value（关键数据）、list（列表）。每种模块的 items 内容必须引用本回合剧情中的角色、地点、事件或物品，禁止生成与当前剧情无关的通用填充内容。\n'
         + '【world 模块扩展】各 type 的 items 结构（content 字段为简述，items 数组为详情，按需生成）：\n'
-        + '  - chat: items[{npc:"角色名",content:"消息内容",time:"08:30"}] - NPC主动发来消息,每回合0-2条,npc须已出场\n'
-        + '  - forum: items[{author:"角色名",content:"帖子内容",replies:[{author,content}]}] - 论坛帖子\n'
+        + '  - chat: items[{npc:"角色名",content:"消息内容",time:"08:30"}] - NPC主动发来消息,每回合0-2条,npc须已出场。**消息必须像真人发微信——短句口语化(10-30字一条),带语气词和表情,禁止直接复制剧情原文。例如NPC张伟发消息应写"喂你今天咋没来上课？老师点名了啊[捂脸]"而非"刚路过的时候，下课铃的余音还在走廊里回荡"。**\n'
+        + '  - forum: items[{author:"角色名",content:"帖子内容",replies:[{author,content}]}] - 论坛帖子。**帖子标题必须是吸引点击的社区风格标题(10-25字),如"震惊！图书馆地下室竟然藏着这种东西？""有人在校园里看到过那个灰衣女生吗？",禁止用剧情原文第一句当标题。帖子正文要用网友口吻讨论剧情事件,像真人在发帖,而非叙述故事。每回合至少2个帖子,每个帖子带1-3条评论。**\n'
         + '  - mail: items[{from:"发件人",subject:"主题",body:"正文",preview:"预览",date:"日期",read:false}] - 邮件,每回合0-1封,from须已出场\n'
-        + '  - shop: items[{name:"商品名",price:10,desc:"说明",count:1}] - 商店商品\n'
+        + '  - shop: items[{name:"商品名",price:10,desc:"说明",count:1}] - 商店商品。**每回合至少4-6件商品,涵盖消耗品/装备/材料/特殊物品四类。商品名要符合世界观(现代校园可有人文类书籍/电子配件/零食饮料/生活用品等),desc要有趣味性而非仅功能说明,如"冰可乐——熬夜复习的续命神器,一口下去灵魂归位"而非仅"恢复体力"。**\n'
         + '  - diary: items[{npc:"角色名",date:"日期",content:"正文",mood:"心情",memos:["备忘"]}] - 角色日记\n'
-        + '  - moments: items[{author:"角色名",content:"动态内容",time:"08:30",likes:5,comments:[{author,content}]}] - 朋友圈,每回合0-2条,author须已出场\n'
-        + '  - ranking: items[{rank:1,name:"角色名",score:100,desc:"说明"}] - 排行榜\n'
+        + '  - moments: items[{author:"角色名",content:"动态内容",time:"08:30",likes:5,comments:[{author,content}]}] - 朋友圈,每回合0-2条,author须已出场。**内容必须像真实社交媒体——生活化/情感化/带吐槽,禁止直接复制剧情原文。例如"今天食堂的糖醋排骨居然没排队就打到了！人品爆发[得意]"或"图书馆泡了一天,感觉智商都提升了(并没有)#学习使我快乐",而非"清晨七点四十分，A大校园被晨光浸泡"。likes用5-99的随机数,comments至少1条。**\n'
+        + '  - ranking: items[{rank:1,name:"角色名或事件名",score:100,desc:"说明"}] - 排行榜。**每回合至少5个条目,混合角色榜和话题榜。desc要用八卦/吐槽口吻而非干巴巴的说明,如"流浪猫失踪——持续霸榜,保卫处已介入调查"而非仅"热度98"。可以包含剧情中的热门话题、人物人气、事件关注度等多种维度。**\n'
         + '  - calendar: items[{title:"事件标题",description:"描述",time:"YYYY-MM-DD HH:mm",location:"地点",type:"事件类型"}] - 日程表,根据剧情中的重要约会/截止日期/事件生成,每回合1-3条\n'
         + '  - cards: items[{icon:"单字图标",title:"标题",content:"内容"}] - 卡片\n'
         + '  - comments: {main:"主帖",comments:[{name:"评论者",text:"评论"}]} - 评论模块(无items数组,直接main+comments)\n'
@@ -6078,132 +6078,210 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
     var _aiReturned = function(t) { return !!_aiTypesThisTurn[t]; };
 
-    // 排行榜：按好感度排序的角色榜（无角色时生成默认榜）
+    // 排行榜：按好感度排序的角色榜 + 剧情话题榜（无角色时生成默认榜）
+    // 【优化】增加条目数量到5条以上，描述用八卦口吻
     if (getLogFeatureFlag('rank') && !hasType('ranking') && !_aiReturned('ranking')) {
         var ranked = charList.slice().sort(function(a, b) { return (b.favorability || 0) - (a.favorability || 0); }).slice(0, 5);
-        if (ranked.length === 0) {
-            // 无角色时生成默认排行榜，确保页面非空
-            ranked = [
-                { name: '神秘旅者', value: '?? 好感' },
-                { name: '酒馆老板', value: '?? 好感' },
-                { name: '流浪剑客', value: '?? 好感' }
+        var _rankItems = [];
+        if (ranked.length > 0) {
+            // 【优化】角色好感度榜，描述更有八卦感
+            var _rankDescTemplates = [
+                '好感度飙升中，最近互动频繁',
+                '关系稳步上升，值得深交',
+                '不温不火，还需要多接触',
+                '略有疏远，该找机会聊聊了',
+                '最近没什么交集，快被遗忘了'
             ];
-            modules.push({ type: 'ranking', title: '冒险者榜', items: ranked });
-        } else {
-            modules.push({
-                type: 'ranking',
-                title: '角色好感度榜',
-                items: ranked.map(function(c) { return { name: c.name || '未知', value: (c.favorability || 0) + ' 好感' }; })
+            ranked.forEach(function(c, idx) {
+                _rankItems.push({
+                    rank: idx + 1,
+                    name: c.name || '未知',
+                    score: c.favorability || 0,
+                    desc: _rankDescTemplates[idx % _rankDescTemplates.length] + '（好感' + (c.favorability || 0) + '）'
+                });
             });
         }
+        // 【优化】追加剧情话题榜，让排行榜更丰富
+        if (events.length > 0) {
+            events.slice(0, 3).forEach(function(ev, idx) {
+                var evText = typeof ev === 'string' ? ev : (ev.content || ev.title || '');
+                if (evText) {
+                    _rankItems.push({
+                        rank: _rankItems.length + 1,
+                        name: evText.slice(0, 15),
+                        score: 80 - idx * 15,
+                        desc: '热度' + (80 - idx * 15) + '，' + (idx === 0 ? '持续霸榜，讨论度爆表' : idx === 1 ? '新晋热门，关注度上升中' : '小众话题，但很有料')
+                    });
+                }
+            });
+        }
+        // 无数据时生成默认排行榜
+        if (_rankItems.length === 0) {
+            _rankItems = [
+                { rank: 1, name: '神秘旅者', score: 999, desc: '深不可测，没人知道他的真实实力' },
+                { rank: 2, name: '酒馆老板', score: 500, desc: '消息灵通，什么八卦都逃不过他的耳朵' },
+                { rank: 3, name: '流浪剑客', score: 300, desc: '行踪不定，据说曾在千里之外取人首级' },
+                { rank: 4, name: '商会会长', score: 200, desc: '富甲一方，人脉遍布各地' },
+                { rank: 5, name: '吟游诗人', score: 100, desc: '走到哪唱到哪，故事最多的人' }
+            ];
+        }
+        modules.push({ type: 'ranking', title: '热门榜单', items: _rankItems });
     }
 
     // 商店：从背包物品 + 默认商品生成
-    // 【BUG修复】根据世界主题动态生成商店物品，避免三轮完全不变
+    // 【优化】增加商品种类和数量到6件以上，添加趣味性描述
     if (getLogFeatureFlag('shop') && !hasType('shop')) {
         var goods = [];
         if (bag.length > 0) {
             bag.slice(0, 5).forEach(function(it) {
-                goods.push({ name: it.name || it.title || '物品', price: Math.max(1, Math.round((it.value || it.price || 5) * 0.8)), count: it.count || 1 });
+                goods.push({ name: it.name || it.title || '物品', price: Math.max(1, Math.round((it.value || it.price || 5) * 0.8)), count: it.count || 1, desc: it.desc || it.effect || '一件实用物品' });
             });
         }
         if (goods.length === 0) {
-            // 【BUG修复】根据世界主题生成不同的默认商品
+            // 【优化】根据世界主题生成更丰富的商品列表，每类至少2件
             var _theme = _detectWorldTheme();
             var _themeShops = {
                 xianxia: [
-                    { name: '聚气丹', price: 5, count: 10 },
-                    { name: '低阶灵石', price: 10, count: 5 },
-                    { name: '宗门地图', price: 3, count: 3 }
+                    { name: '聚气丹', price: 5, count: 10, desc: '修炼辅助丹药，微量恢复灵力' },
+                    { name: '低阶灵石', price: 10, count: 5, desc: '蕴含微弱灵气的石头，修士硬通货' },
+                    { name: '宗门地图', price: 3, count: 3, desc: '标注了附近宗门和危险区域的羊皮卷' },
+                    { name: '清心符', price: 8, count: 5, desc: '抵御心魔侵扰的一次性符箓' },
+                    { name: '灵茶一包', price: 2, count: 10, desc: '修士日常饮品，提神醒脑' },
+                    { name: '储物袋(小)', price: 15, count: 1, desc: '可存放少量物品的空间法器' }
                 ],
                 cyberpunk: [
-                    { name: '能量饮料', price: 2, count: 10 },
-                    { name: '数据芯片', price: 8, count: 5 },
-                    { name: '电子地图', price: 5, count: 3 }
+                    { name: '能量饮料', price: 2, count: 10, desc: '打工人续命水， restores 10SP' },
+                    { name: '数据芯片', price: 8, count: 5, desc: '来历不明的数据存储器，可能含黑料' },
+                    { name: '电子地图', price: 5, count: 3, desc: '实时更新的城市导航模块' },
+                    { name: '信号干扰器', price: 12, count: 2, desc: '10米范围内屏蔽通讯，干脏活必备' },
+                    { name: '合成快餐', price: 3, count: 10, desc: '营养均衡但味道存疑的速食品' },
+                    { name: '光学迷彩贴', price: 20, count: 1, desc: '一次性使用，短暂隐身3秒' }
                 ],
                 space: [
-                    { name: '太空口粮', price: 3, count: 10 },
-                    { name: '氧气罐', price: 5, count: 5 },
-                    { name: '星图', price: 8, count: 3 }
+                    { name: '太空口粮', price: 3, count: 10, desc: '真空包装的高热量压缩食品' },
+                    { name: '氧气罐', price: 5, count: 5, desc: '紧急情况下可维持30分钟呼吸' },
+                    { name: '星图', price: 8, count: 3, desc: '标注了附近星系和航线的全息图' },
+                    { name: '维修工具包', price: 10, count: 2, desc: '修复飞船基础故障的万能工具' },
+                    { name: '辐射防护服', price: 15, count: 1, desc: '抵御中等辐射的防护装备' },
+                    { name: '通讯器备件', price: 6, count: 5, desc: '修补损坏通讯器的通用零件' }
                 ],
                 game: [
-                    { name: '回血药水', price: 2, count: 10 },
-                    { name: '增益符文', price: 5, count: 5 },
-                    { name: '副本地图', price: 3, count: 3 }
+                    { name: '回血药水', price: 2, count: 10, desc: '冒险者必备，恢复30%生命值' },
+                    { name: '增益符文', price: 5, count: 5, desc: '临时提升攻击力，持续3场战斗' },
+                    { name: '副本地图', price: 3, count: 3, desc: '揭示隐藏副本入口的古老地图' },
+                    { name: '复活卷轴', price: 15, count: 1, desc: '死亡后原地复活，仅限单人' },
+                    { name: '经验药水', price: 8, count: 3, desc: '获得双倍经验，持续1小时' },
+                    { name: '传送石', price: 10, count: 2, desc: '记录一个坐标，随时传送回去' }
                 ],
                 ancient: [
-                    { name: '馒头', price: 2, count: 10 },
-                    { name: '金创药', price: 5, count: 5 },
-                    { name: '江湖地图', price: 3, count: 3 }
+                    { name: '馒头', price: 2, count: 10, desc: '朴实无华的干粮，管饱' },
+                    { name: '金创药', price: 5, count: 5, desc: '止血疗伤的外敷药粉' },
+                    { name: '江湖地图', price: 3, count: 3, desc: '手绘的江湖门派分布图' },
+                    { name: '解毒丸', price: 8, count: 3, desc: '可解常见毒物，关键时刻保命' },
+                    { name: '上好女儿红', price: 6, count: 3, desc: '十年陈酿，英雄配好酒' },
+                    { name: '暗器囊', price: 12, count: 1, desc: '内含数枚飞镖，防身利器' }
                 ],
                 modern: [
-                    { name: '面包', price: 2, count: 10 },
-                    { name: '药水', price: 5, count: 5 },
-                    { name: '地图', price: 3, count: 3 }
+                    { name: '冰可乐', price: 3, count: 10, desc: '熬夜复习的续命神器，一口灵魂归位' },
+                    { name: '方便面', price: 2, count: 10, desc: '大学生的主食，加点火腿肠更佳' },
+                    { name: '充电宝', price: 8, count: 5, desc: '10000mAh，手机没电时的救星' },
+                    { name: '校园地图', price: 1, count: 3, desc: '标注了所有教室和食堂的最短路线' },
+                    { name: '手电筒', price: 5, count: 3, desc: '强光LED，适合夜间探索黑漆漆的地下室' },
+                    { name: '笔记本', price: 4, count: 5, desc: '横线本，记录线索和上课笔记两不误' },
+                    { name: '雨伞', price: 7, count: 3, desc: '晴雨两用，毕竟天气预报不靠谱' },
+                    { name: '咖啡', price: 5, count: 10, desc: '美式咖啡，苦但提神，论文季必备' }
                 ]
             };
             goods = _themeShops[_theme] || _themeShops.modern;
-            // 【BUG修复】根据剧情进度增加随机商品，使每轮有变化
-            if (turn > 1 && storyText) {
-                var _extraGoods = [
-                    { name: '神秘卷轴', price: 15, count: 1 },
-                    { name: '稀有材料', price: 20, count: 1 },
-                    { name: '冒险者指南', price: 8, count: 2 }
-                ];
-                var _extraIdx = turn % _extraGoods.length;
-                goods = goods.concat([_extraGoods[_extraIdx]]);
-            }
         }
 
         modules.push({ type: 'shop', title: '杂货铺', items: goods });
     }
 
     // 朋友圈：从最近事件/角色生成
-
-    // 改为：主角用剧情摘要、NPC用 desc/最近事件拼接，并准备多套模板按角色名hash分散。
-    // 【BUG修复】模板选择加入轮次因子，避免同一NPC每轮内容完全相同
+    // 【优化】内容更生活化/社交化，像真实的朋友圈而非剧情叙述
     if (getLogFeatureFlag('moments') && !_aiReturned('moments') && (events.length > 0 || charList.length > 0 || storyText)) {
-        var _moodTemplates = [
-            '又是充实的一天。',
-            '今天的天气不错，心情也跟着好起来。',
-            '最近的江湖，风起云涌啊。',
-            '闲下来反而不知道该做什么了。',
-            '有些事，想得多了反而头疼。',
-            '听到一些有趣的消息，记上一笔。',
-            '路过的风景总能让人心情舒畅。',
-            '今天的经历让我感慨良多。',
-            '新的一天，新的冒险在等着。',
-            '疲惫但满足，这就是冒险者的生活吧。'
-        ];
+        // 【优化】更丰富的动态模板，分心情类型
+        var _moodCategories = {
+            happy: [
+                '今天食堂的糖醋排骨居然没排队就打到了！人品爆发[得意]',
+                '终于把那本书看完了，感觉整个人的格局都不一样了[呲牙]',
+                '阳光真好，适合在操场躺一下午什么都不想[太阳]',
+                '论文初稿写完了！我要庆祝一下！今晚加鸡腿！[庆祝]'
+            ],
+            tired: [
+                '又是被DDL追着跑的一天，肝不动了[晕]',
+                '图书馆关门了才想起来今天还没吃午饭...[委屈]',
+                '感觉身体被掏空，但明天还有早八[裂开]',
+                '今天走了两万步，腿已经不是我的了[捂脸]'
+            ],
+            thoughtful: [
+                '有些事情，不经历永远不会懂[叹气]',
+                '最近总觉得有什么不对劲，但又说不上来...[思考]',
+                '人果然还是会被自己看不到的东西吸引[月亮]',
+                '突然想起小时候的事，那时候多简单啊[回忆]'
+            ],
+            social: [
+                '今天和朋友聊了很多，感觉豁然开朗[微笑]',
+                '组队完成任务的感觉真好，有个靠谱的队友太重要了[握手]',
+                '认识了一个有趣的人，世界观都不一样了[惊讶]',
+                '有时候一个陌生人的一句话比一万句安慰都管用[心]'
+            ],
+            random: [
+                '深夜放毒：刚煮的泡面，加了两个蛋[色]',
+                '宿舍楼下那只猫又来了，给它喂了根火腿肠[猫]',
+                '天气预报说晴，结果下了大雨，我的鞋...[哭]',
+                '突然发现期末只剩三周了，我什么都没学[惊恐]'
+            ]
+        };
+        var _moodKeys = Object.keys(_moodCategories);
         var posts = [];
+        // 【优化】主角动态从剧情提取关键词，改写为社交媒体风格
         if (storyText) {
             var sentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 10; }).slice(0, 2);
-            sentences.forEach(function(s) {
-                posts.push({ author: playerName, text: s.trim().slice(0, 60), time: Date.now() });
+            sentences.forEach(function(s, idx) {
+                // 提取关键词作为话题，而非直接复制原文
+                var _keyword = s.trim().slice(0, 12);
+                var _moodIdx = (turn + idx) % _moodKeys.length;
+                var _moodKey = _moodKeys[_moodIdx];
+                var _moodTexts = _moodCategories[_moodKey];
+                var _moodText = _moodTexts[(turn + idx) % _moodTexts.length];
+                posts.push({
+                    author: playerName,
+                    text: _moodText + ' #' + _keyword,
+                    time: Date.now(),
+                    likes: 5 + (turn * 3 + idx * 7) % 50,
+                    comments: [{ author: '匿名好友', content: '加油！' }]
+                });
             });
         }
         charList.slice(0, 3).forEach(function(c, idx) {
             var cName = c.name || '匿名';
-            // 【BUG修复】用角色名 hash + 轮次 选模板，避免同一NPC每轮内容相同
+            // 【优化】NPC动态用角色性格生成更有个性的内容
             var _seed = 0;
             for (var _i = 0; _i < cName.length; _i++) _seed = ((_seed << 5) - _seed + cName.charCodeAt(_i)) | 0;
-            var _tplIdx = Math.abs(_seed + turn * 7) % _moodTemplates.length;
-            var _tpl = _moodTemplates[_tplIdx];
-            var _npcText = c.mood || c.desc || _tpl;
-            // 若 desc 过长或与模板无关，叠加最近事件让内容更有信息量
-            if (events.length > 0 && (idx === 0 || _seed % 2 === 0)) {
-                var _ev = events[idx % events.length];
-                var _evText = typeof _ev === 'string' ? _ev : (_ev.content || _ev.title || '');
-                if (_evText) _npcText = _tpl + ' 听说' + _evText.slice(0, 24);
+            var _moodIdx = Math.abs(_seed + turn * 3) % _moodKeys.length;
+            var _moodKey = _moodKeys[_moodIdx];
+            var _moodTexts = _moodCategories[_moodKey];
+            var _npcText = _moodTexts[Math.abs(_seed) % _moodTexts.length];
+            // 根据角色描述微调内容
+            if (c.desc) {
+                var _descKeyword = c.desc.slice(0, 8);
+                _npcText = _npcText + ' #' + _descKeyword;
             }
-            // 【BUG修复】若NPC无 desc/mood，从剧情文本中提取一句话作为话题
-            if (!c.desc && !c.mood && storyText) {
-                var _npcSentences = storyText.split(/[。！？\n]/).filter(function(s) { return s.trim().length > 5; });
-                if (_npcSentences.length > idx) {
-                    _npcText = _tpl + ' ' + _npcSentences[idx].trim().slice(0, 24);
-                }
-            }
-            posts.push({ author: cName, text: _npcText.slice(0, 60), time: Date.now() });
+            // 【优化】添加评论互动
+            var _commentAuthors = ['路人甲', '好友', '同学', '吃瓜群众'];
+            var _commentTexts = ['哈哈哈太真实了', '我也是！', '加油啊', '前排围观', '羡慕了', '保重身体'];
+            posts.push({
+                author: cName,
+                text: _npcText.slice(0, 60),
+                time: Date.now() - idx * 600000,
+                likes: 3 + (turn * 5 + idx * 11) % 40,
+                comments: [{
+                    author: _commentAuthors[idx % _commentAuthors.length],
+                    content: _commentTexts[idx % _commentTexts.length]
+                }]
+            });
         });
         if (posts.length > 0) {
             modules.push({ type: 'moments', title: '朋友圈', posts: posts });
@@ -6259,13 +6337,16 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         var summary = storyText.slice(0, 80) + (storyText.length > 80 ? '...' : '');
         var diaryEntries = [{ npc: playerName, date: Date.now(), content: summary, mood: '平静', memos: [] }];
         // 为每个 NPC 也生成日记条目（用 desc/mood 作为内容）
-        var _diaryMoods = ['平静', '好奇', '期待', '疲惫', '兴奋', '感慨'];
+        var _diaryMoods = ['平静', '好奇', '期待', '疲惫', '兴奋', '感慨', '担忧', '释然'];
         var _diaryTemplates = [
-            '今天遇到了{player}，聊了几句。',
-            '又是平常的一天，不过在{player}身上似乎发生了不少事。',
-            '最近周围变得热闹起来了，{player}的行动引起了不少关注。',
-            '{player}看起来又在忙些什么，希望一切顺利。',
-            '今天的见闻值得记一笔，{player}的冒险越来越精彩了。'
+            '今天和' + playerName + '聊了几句，感觉这个人挺有意思的，不像是普通的学生。',
+            '又是平常的一天，不过' + playerName + '身上似乎发生了不少事，他/她的眼神变了。',
+            '最近周围变得热闹起来了，' + playerName + '的行动引起了不少关注，我在旁边看着都觉得紧张。',
+            playerName + '看起来又在忙些什么，希望一切顺利吧。有些事我也帮不上忙，只能默默支持。',
+            '今天的见闻值得记一笔。' + playerName + '的冒险越来越精彩了，感觉自己像在看一部小说。',
+            '说起来，' + playerName + '最近总是一副心事重重的样子。是我想多了吗？还是真的有什么我不知道的事？',
+            '今天天气不错，坐在窗边发呆的时候突然想到' + playerName + '说的那番话，好像有点道理。',
+            '又是忙碌的一天，但脑海里总是浮现出' + playerName + '提到的那件事。也许我该主动去问问？'
         ];
         charList.forEach(function(c, idx) {
             if (!c.name) return;
@@ -6293,17 +6374,21 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
     }
 
     // 论坛：从事件生成帖子（无事件时从剧情文本生成）
-    // 【BUG修复】生成独立讨论帖+评论，而非直接复制剧情文本
+    // 【优化】生成更有网感的社区讨论帖，标题吸引点击，内容口语化
     if (getLogFeatureFlag('forum') && !_aiReturned('comments') && !_aiReturned('forum')) {
-        var _forumAuthors = ['老冒险者', '酒馆常客', '情报贩子', '神秘旅人', '吟游诗人', '商会成员'];
-        var _forumCommentAuthors = ['路人甲', '好奇宝宝', '资深冒险者', '路过的剑客', '酒馆老板'];
+        var _forumAuthors = ['老冒险者', '酒馆常客', '情报贩子', '神秘旅人', '吟游诗人', '商会成员', '夜猫子', '吃瓜群众'];
+        var _forumCommentAuthors = ['路人甲', '好奇宝宝', '资深冒险者', '路过的剑客', '酒馆老板', '潜水党', '前排围观'];
         var _forumCommentTemplates = [
-            '同问，最近也想去看看。',
-            '那边还挺安全的，新手可以去。',
-            '我有不同的看法，大家谨慎为上。',
-            '感谢分享，很有用的信息！',
-            '这事我也听说了，确实挺有意思的。',
-            '具体情况具体分析吧，不能一概而论。'
+            '同问，最近也想去看看，有没有老哥带路？',
+            '那边还挺安全的，新手可以去，不过记得带够药水。',
+            '我有不同的看法，大家谨慎为上，上次差点翻车。',
+            '感谢分享，很有用的信息！已收藏。',
+            '这事我也听说了，确实挺有意思的，坐等后续。',
+            '具体情况具体分析吧，不能一概而论，看自身实力。',
+            '哈哈哈哈这个描述太真实了，笑死。',
+            '只有我一个人觉得这事儿有蹊跷吗？',
+            '前排！感觉要出大事。',
+            '已MARK，持续关注中。'
         ];
         var _forumSources = events.slice(0, 2);
         // 无事件时从剧情文本提取话题
@@ -6313,32 +6398,35 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         }
         _forumSources.forEach(function(ev, evIdx) {
             var content = typeof ev === 'string' ? ev : (ev.content || ev.title || '冒险者的日常讨论');
-            // 【BUG修复】将剧情内容改写为论坛讨论帖风格
-            var _forumTitle;
-            var _forumContent;
-            var _snippet = content.slice(0, 20);
+            // 【优化】生成更有网感的标题——疑问句/震惊体/讨论体，而非简单拼接剧情文本
+            var _snippet = content.slice(0, 15);
             var _titleTemplates = [
-                '有人知道关于「' + _snippet + '」的事吗？',
-                '讨论一下：' + _snippet + '...',
-                '今天遇到的趣事——' + _snippet,
-                '分享一个发现：' + _snippet + '...',
-                '「' + _snippet + '」大家怎么看？'
+                '震惊！' + _snippet + '…这是真的吗？',
+                '有人注意到' + _snippet + '了吗？来聊聊',
+                '关于' + _snippet + '，说说我的经历',
+                '求问：' + _snippet + '到底什么情况？',
+                _snippet + '…大家怎么看？在线等',
+                '【讨论】' + _snippet + '，理性分析不吵架',
+                '刚才亲眼看到了' + _snippet + '，有点慌',
+                '老哥们，' + _snippet + '是真的假的？'
             ];
             var _contentTemplates = [
-                '如题，最近在冒险中遇到了相关的情况，想问问大家有没有类似的经历？',
-                '刚才路过的时候注意到了这个，感觉挺值得讨论的，大家怎么看？',
-                '听说最近发生了不少事，有没有了解情况的老哥来说说？',
-                '分享一下我的见闻，希望能帮到其他冒险者。'
+                '如题，今天冒险的时候碰到了这事，感觉挺离谱的，想问问大家有没有类似经历？先说我的情况：',
+                '刚经历了一波操作，赶紧来跟大伙分享一下，你们评评理：',
+                '本来不想说的，但憋着难受。事情是这样的：',
+                '先声明不是引战，单纯想讨论一下。今天遇到的情况：',
+                '兄弟姐妹们救命，刚才发生了这事，不知道该怎么办：',
+                '潜水很久了，今天实在忍不住要出来说一句。事情的经过是这样的：'
             ];
-            _forumTitle = _titleTemplates[(turn + evIdx) % _titleTemplates.length];
-            _forumContent = _contentTemplates[(turn + evIdx) % _contentTemplates.length] + ' （相关：' + content.slice(0, 40) + '）';
-            // 【BUG修复】生成1-2条评论
+            var _forumTitle = _titleTemplates[(turn + evIdx) % _titleTemplates.length];
+            var _forumContent = _contentTemplates[(turn + evIdx) % _contentTemplates.length] + content.slice(0, 50) + '…大家觉得这事儿靠谱吗？';
+            // 【优化】生成2-3条评论，语气更多样
             var _comments = [];
-            var _commentCount = 1 + (turn + evIdx) % 2;
+            var _commentCount = 2 + (turn + evIdx) % 2;
             for (var _ci = 0; _ci < _commentCount; _ci++) {
                 _comments.push({
-                    author: _forumCommentAuthors[(_ci + turn) % _forumCommentAuthors.length],
-                    text: _forumCommentTemplates[(_ci + turn + evIdx) % _forumCommentTemplates.length]
+                    author: _forumCommentAuthors[(_ci + turn + evIdx) % _forumCommentAuthors.length],
+                    text: _forumCommentTemplates[(_ci + turn + evIdx * 3) % _forumCommentTemplates.length]
                 });
             }
             modules.push({
