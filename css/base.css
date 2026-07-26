@@ -2653,3 +2653,21 @@ a,
 .archetype-card-title{font-size:13px;font-weight:700;margin-bottom:4px;color:var(--text)}
 .archetype-card-desc{font-size:11px;color:var(--text-secondary);line-height:1.4}
 .archetype-card-params{font-size:10px;color:var(--text-tertiary);margin-top:6px;font-family:monospace}
+
+/* [P2-2] 日志主页 4 大分类标题与子网格 */
+.log-group-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #555);
+    padding: 6px 8px 4px;
+    margin: 0;
+    border-left: 3px solid var(--accent, var(--primary, #6366f1));
+    background: linear-gradient(90deg, var(--bg-secondary, rgba(0,0,0,0.02)) 0%, transparent 100%);
+    border-radius: 0 4px 4px 0;
+    letter-spacing: 0.05em;
+}
+.log-sub-grid { width: 100%; }
+.log-sub-grid .preset-item { padding: 10px 4px; }
+@media (max-width: 360px) {
+    .log-sub-grid { grid-template-columns: repeat(2, 1fr) !important; }
+}

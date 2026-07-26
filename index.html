@@ -206,7 +206,7 @@
                 <div id="buildVersionBadge"
                     title="点击强制刷新（清缓存）"
                     style="position:absolute;top:6px;right:8px;z-index:50;font-size:10px;line-height:1;color:#888;background:rgba(255,255,255,0.6);padding:3px 6px;border-radius:8px;cursor:pointer;user-select:none;font-family:monospace;pointer-events:auto;">
-                    v1.0.2-p0fix
+                    v1.0.3
                 </div>
                 <!-- 顶部用户信息卡片 -->
                 <div class="menu-top-card">
@@ -234,7 +234,7 @@
                             </div>
                         </div>
                     </div>
-                    <button class="menu-top-star" id="menuTopStar">★</button>
+                    <button class="menu-top-star" id="menuTopStar" data-action="toggleTheme" title="点击切换日/夜模式" aria-label="切换主题">★</button>
                 </div>
 
                 <!-- 预设滑动区域 -->
@@ -1345,36 +1345,37 @@
                                         <div class="preset-slider-group">
                                             <div class="slider-header">
                                                 <span class="slider-label">Temperature</span>
-                                                <span class="slider-value" id="presetTempValue">0.8</span>
+                                                <!-- [P1-5 修复] 数值由 syncParamsToUI 写入，避免 HTML 默认 0.8 与预设 0.85 冲突 -->
+                                                <span class="slider-value" id="presetTempValue">--</span>
                                             </div>
-                                            <input type="range" id="presetTemp" class="wi-slider" min="0" max="2" step="0.1" value="0.8">
+                                            <input type="range" id="presetTemp" class="wi-slider" min="0" max="2" step="0.1" value="">
                                             <div class="slider-desc">控制随机性，值越高输出越随机</div>
                                         </div>
                                         <!-- Frequency Penalty -->
                                         <div class="preset-slider-group">
                                             <div class="slider-header">
                                                 <span class="slider-label">Freq Penalty</span>
-                                                <span class="slider-value" id="presetFreqPenValue">0</span>
+                                                <span class="slider-value" id="presetFreqPenValue">--</span>
                                             </div>
-                                            <input type="range" id="presetFreqPen" class="wi-slider" min="-2" max="2" step="0.1" value="0">
+                                            <input type="range" id="presetFreqPen" class="wi-slider" min="-2" max="2" step="0.1" value="">
                                             <div class="slider-desc">降低高频词的出现频率</div>
                                         </div>
                                         <!-- Presence Penalty -->
                                         <div class="preset-slider-group">
                                             <div class="slider-header">
                                                 <span class="slider-label">Pres Penalty</span>
-                                                <span class="slider-value" id="presetPresPenValue">0</span>
+                                                <span class="slider-value" id="presetPresPenValue">--</span>
                                             </div>
-                                            <input type="range" id="presetPresPen" class="wi-slider" min="-2" max="2" step="0.1" value="0">
+                                            <input type="range" id="presetPresPen" class="wi-slider" min="-2" max="2" step="0.1" value="">
                                             <div class="slider-desc">增加谈论新话题的可能性</div>
                                         </div>
                                         <!-- Top P -->
                                         <div class="preset-slider-group">
                                             <div class="slider-header">
                                                 <span class="slider-label">Top P</span>
-                                                <span class="slider-value" id="presetTopPValue">0.9</span>
+                                                <span class="slider-value" id="presetTopPValue">--</span>
                                             </div>
-                                            <input type="range" id="presetTopP" class="wi-slider" min="0" max="1" step="0.05" value="0.9">
+                                            <input type="range" id="presetTopP" class="wi-slider" min="0" max="1" step="0.05" value="">
                                             <div class="slider-desc">核采样，限制候选词范围</div>
                                         </div>
                                         <!-- Top K -->
@@ -2827,6 +2828,11 @@
                     </div>
                     <div class="modal-body" id="logFeaturesSettingsBody" style="padding:16px;">
                         <!-- 由 JS 动态渲染开关列表 -->
+                    </div>
+                    <!-- [P2-5] 底部操作栏：复制完整配置 JSON + 重置默认 -->
+                    <div class="modal-footer" style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--border,rgba(0,0,0,0.08));">
+                        <button class="btn btn-outline" data-action="copyLogConfigJson" style="flex:1;padding:8px 12px;font-size:13px;border:1px solid var(--border,rgba(0,0,0,0.15));background:transparent;border-radius:6px;cursor:pointer;">复制完整配置 JSON</button>
+                        <button class="btn btn-outline" data-action="resetLogConfig" style="padding:8px 12px;font-size:13px;border:1px solid var(--border,rgba(0,0,0,0.15));background:transparent;border-radius:6px;cursor:pointer;">重置默认</button>
                     </div>
                 </div>
             </div>

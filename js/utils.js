@@ -705,6 +705,9 @@ const ThemeManager = {
         this._updateStar();
     },
 
+    // [P2-3] 暴露 window.toggleTheme 给 data-action 委托使用
+    toggleTheme() { this.toggle(); },
+
     _updateStar() {
         const star = document.getElementById('menuTopStar');
         if (!star) return;
@@ -726,6 +729,10 @@ const ThemeManager = {
         document.documentElement.setAttribute('data-theme', 'dark');
     }
 })();
+
+// [P2-3] 暴露 ThemeManager / toggleTheme 到 window，供 data-action 委托使用
+window.ThemeManager = ThemeManager;
+window.toggleTheme = function() { ThemeManager.toggle(); };
 
 // ========================================
 // 【日志封装】统一日志入口，支持级别开关

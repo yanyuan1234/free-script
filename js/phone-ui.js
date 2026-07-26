@@ -150,15 +150,19 @@ function triggerImportFile() {
 }
 
 // 仅抽"纯文字 + 可选 hint"的简单空状态；带 SVG icon 的复杂空状态保留原样（避免参数爆炸）
+// [P2-1 修复] 统一格式：主文案"暂无 + 名词"，副文案为引导；title 为空时回退「暂无内容」；hint 默认「游戏进行中会自动生成」
 function renderEmptyState(msg, hint) {
-    var html = '<div class="empty-state"><p>' + escapeHtml(msg || '暂无内容') + '</p>';
-    if (hint) html += '<p style="font-size:12px;margin-top:4px;">' + escapeHtml(hint) + '</p>';
-    return html + '</div>';
+    var title = msg || '暂无内容';
+    var sub = hint || '游戏进行中会自动生成';
+    return '<div class="empty-state"><p>' + escapeHtml(title) + '</p>' +
+        '<p style="font-size:12px;margin-top:4px;color:var(--text-tertiary);">' + escapeHtml(sub) + '</p></div>';
 }
 
 function renderSvgEmptyState(iconSvg, title, hint) {
-    var html = '<div class="empty-state"><div class="empty-state-icon">' + (iconSvg || '') + '</div><p>' + escapeHtml(title || '暂无内容') + '</p>';
-    if (hint) html += '<p style="font-size:12px;margin-top:4px;">' + escapeHtml(hint) + '</p>';
+    var t = title || '暂无内容';
+    var sub = hint || '游戏进行中会自动生成';
+    var html = '<div class="empty-state"><div class="empty-state-icon">' + (iconSvg || '') + '</div><p>' + escapeHtml(t) + '</p>';
+    html += '<p style="font-size:12px;margin-top:4px;color:var(--text-tertiary);">' + escapeHtml(sub) + '</p>';
     return html + '</div>';
 }
 
@@ -1045,7 +1049,7 @@ function openMailDetail(index) {
             time) + '</div></div>' +
         '<div class="mail-detail-body">' + body + '</div>' +
         '</div>' +
-        '<div class="mail-detail-bottom"><div class="mail-detail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-detail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-detail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-detail-bottom-btn"><span>...</span>更多</div></div>' +
+        '<div class="mail-detail-bottom"><div class="mail-detail-bottom-btn" role="button" tabindex="0" data-action="mailDelete" data-args=\'[' + index + ']\' title="删除此邮件"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-detail-bottom-btn" role="button" tabindex="0" data-action="mailShare" data-args=\'[' + index + ']\' title="分享此邮件"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-detail-bottom-btn" role="button" tabindex="0" data-action="mailReply" data-args=\'[' + index + ']\' title="回复/转发"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-detail-bottom-btn" role="button" tabindex="0" data-action="mailMore" data-args=\'[' + index + ']\' title="更多操作"><span>...</span>更多</div></div>' +
         '</div>';
     var content = document.getElementById('logSubContent');
     if (content) {
@@ -1076,6 +1080,122 @@ function deleteMail(index) {
             UI.toast('邮件已删除');
             backToMailList();
         }
+    }
+}
+
+// [P0-3 修复] mail 列表底部工具栏 4 个真实 action
+// 从 renderMailPage/renderMailDetail 走 data-action 委托
+function mailDelete(index) {
+    if (typeof index !== 'number' || index < 0) {
+        UI.toast && UI.toast('邮件索引无效');
+        return;
+    }
+    // 委托给 deleteMail（已有实现）
+    return deleteMail(index);
+}
+
+function _getMailByIndex(index) {
+    var mailModules = getModulesByType('mail');
+    if (mailModules.length > 0 && mailModules[0].items && Array.isArray(mailModules[0].items)) {
+        return mailModules[0].items[index];
+    }
+    if (gameState._mails && Array.isArray(gameState._mails)) {
+        return gameState._mails[index];
+    }
+    return null;
+}
+
+function mailShare(index) {
+    var mail = _getMailByIndex(index);
+    if (!mail) { UI.toast && UI.toast('邮件不存在'); return; }
+    var summary = '【' + (mail.subject || '无主题') + '】\n发件人：' + (mail.from || mail.sender || '未知') +
+        '\n时间：' + (mail.date || mail.time || '') +
+        '\n\n' + (mail.body || mail.preview || mail.content || '（无正文）');
+    // 尝试 navigator.share（HTTPS / 现代浏览器），否则降级到剪贴板
+    if (navigator.share) {
+        try {
+            navigator.share({ title: mail.subject || '邮件', text: summary }).catch(function() {
+                _copyToClipboard(summary, '已复制到剪贴板');
+            });
+        } catch (e) {
+            _copyToClipboard(summary, '已复制到剪贴板');
+        }
+    } else {
+        _copyToClipboard(summary, '已复制到剪贴板');
+    }
+}
+
+function mailReply(index) {
+    var mail = _getMailByIndex(index);
+    if (!mail) { UI.toast && UI.toast('邮件不存在'); return; }
+    // 用 prompt 让用户输入回复内容
+    var sender = mail.from || mail.sender || '未知';
+    var subject = mail.subject || '无主题';
+    UI.prompt('回复：' + sender, '主题：Re: ' + subject, '').then(function(text) {
+        if (text === null || !String(text).trim()) return;
+        // 把回复追加到 _replyLog
+        if (!Array.isArray(gameState._mailReplies)) gameState._mailReplies = [];
+        gameState._mailReplies.push({
+            to: sender,
+            originalSubject: subject,
+            reply: String(text),
+            time: new Date().toISOString(),
+            turn: (gameState.currentTurn || 0) + 1
+        });
+        try { autoSave(); } catch (e) {}
+        UI.toast && UI.toast('已发送回复给 ' + sender);
+    });
+}
+
+function mailMore(index) {
+    var mail = _getMailByIndex(index);
+    if (!mail) { UI.toast && UI.toast('邮件不存在'); return; }
+    // 「更多」弹一个简易操作菜单（用 prompt 文字选择，未来可换 UI.choice）
+    UI.prompt('更多操作', '输入数字选择：\n1 = 标记为已读\n2 = 导出为文本\n0 = 取消', '1').then(function(choice) {
+        if (choice === null) return;
+        var c = String(choice).trim();
+        if (c === '0' || c === '') return;
+        if (c === '1') {
+            mail.read = true;
+            try { autoSave(); } catch (e) {}
+            UI.toast && UI.toast('已标记为已读');
+            backToMailList();
+        } else if (c === '2') {
+            var body = mail.body || mail.preview || mail.content || '（无正文）';
+            var text = '主题：' + (mail.subject || '无主题') + '\n发件人：' + (mail.from || mail.sender || '未知') + '\n时间：' + (mail.date || mail.time || '') + '\n\n' + body;
+            _copyToClipboard(text, '已复制邮件内容，可粘贴到任何地方');
+        } else {
+            UI.toast && UI.toast('已取消（输入 "' + c + '" 不在选项中）');
+        }
+    });
+}
+
+function _copyToClipboard(text, successMsg) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function() {
+            UI.toast && UI.toast(successMsg || '已复制');
+        }, function() {
+            // 降级到 textarea 方案
+            _copyToClipboardFallback(text, successMsg);
+        });
+    } else {
+        _copyToClipboardFallback(text, successMsg);
+    }
+}
+
+function _copyToClipboardFallback(text, successMsg) {
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        UI.toast && UI.toast(successMsg || '已复制');
+    } catch (e) {
+        UI.toast && UI.toast('复制失败：浏览器不支持剪贴板');
     }
 }
 
@@ -1129,6 +1249,69 @@ function updateLogFeatureVisibility() {
 function openLogFeaturesModal() {
     renderLogFeaturesSettings();
     UI.showModal('logFeaturesModal');
+}
+
+// [P2-5] 复制完整配置 JSON：把当前日志功能开关、AI 预设、当前世界、当前玩家状态打包成 JSON
+// 供用户备份或迁移用；只复制可序列化字段，过滤掉函数/循环引用。
+function copyLogConfigJson() {
+    try {
+        var payload = {
+            version: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'unknown'),
+            generatedAt: new Date().toISOString(),
+            logFeatures: getLogFeatureSettings(),
+            preset: (function() {
+                try { return StateManager ? StateManager.get('world.preset') : null; } catch (e) { return null; }
+            })(),
+            currentWorld: (function() {
+                try { return StateManager ? StateManager.get('world.current') : null; } catch (e) { return null; }
+            })(),
+            player: (function() {
+                try { return StateManager ? StateManager.get('entities.player') : null; } catch (e) { return null; }
+            })(),
+            flags: (function() {
+                try { return StateManager ? StateManager.get('world.flags') : null; } catch (e) { return null; }
+            })()
+        };
+        var text = JSON.stringify(payload, function(k, v) {
+            // 过滤掉函数/循环引用/undefined
+            if (typeof v === 'function') return undefined;
+            return v;
+        }, 2);
+        if (typeof _copyToClipboard === 'function') {
+            _copyToClipboard(text, '已复制 ' + text.length + ' 字符的完整配置 JSON');
+        } else if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(function() {
+                UI.toast && UI.toast('已复制 ' + text.length + ' 字符的完整配置 JSON');
+            });
+        } else {
+            // 兜底：弹窗展示文本
+            UI.alert && UI.alert('完整配置 JSON', text);
+        }
+    } catch (e) {
+        console.error('[copyLogConfigJson]', e);
+        UI.toast && UI.toast('复制失败：' + (e && e.message ? e.message : '未知错误'));
+    }
+}
+
+// [P2-5] 重置日志功能开关到默认；二次确认避免误操作
+function resetLogConfig() {
+    if (!UI.confirm) {
+        if (!confirm('确认重置日志功能开关为默认值？')) return;
+        _doResetLogConfig();
+        return;
+    }
+    UI.confirm('重置日志功能开关', '将所有 11 个日志子功能恢复为默认开启。是否继续？').then(function(ok) {
+        if (ok) _doResetLogConfig();
+    });
+}
+function _doResetLogConfig() {
+    if (StateManager && StateManager.set) {
+        StateManager.set('settings.logFeatures', JSON.parse(JSON.stringify(LOG_FEATURE_DEFAULTS)), { silent: true });
+    }
+    updateLogFeatureVisibility();
+    renderLogFeaturesSettings();
+    if (typeof autoSave === 'function') autoSave();
+    UI.toast && UI.toast('已重置为默认配置');
 }
 function renderLogFeaturesSettings() {
     var container = document.getElementById('logFeaturesSettingsBody');
@@ -1782,6 +1965,82 @@ var PresetAppManager = (function() {
 })();
 
 // --- 日志页面渲染 ---
+// [P2-2] 把日志主页 12 个子功能入口按 4 大分类重组：社交 / 任务 / 收藏 / 记录
+// 视觉上避免 12 个图标一坨堆；用户首次进入即生效一次，后续仅在 grid 内容变化时刷新。
+// 4 组分类的子功能映射（顺序即显示顺序）：
+//   社交: chat, forum, moments, mail
+//   任务: quests, achieve, calendar
+//   收藏: items, shop, diary
+//   记录: rank, openLogFeaturesModal (设置)
+var _LOG_GROUPS = [
+    { key: 'social', title: '社交', items: ['chat', 'forum', 'moments', 'mail'] },
+    { key: 'quest',  title: '任务', items: ['quests', 'achieve', 'calendar'] },
+    { key: 'collect', title: '收藏', items: ['items', 'shop', 'diary'] },
+    { key: 'record', title: '记录', items: ['rank'] }
+];
+var _logGridRestructured = false;
+function _restructureLogGrid() {
+    var grid = document.getElementById('logFeatureGrid');
+    if (!grid) return;
+
+    // 1) 把原 12 个入口（包含在 sub-grids 里的）逐个 detach 出来，集中到 nodesByKey
+    //    注意：必须先 detach 再 inject，否则后续 inject 时会挪动节点引用
+    var nodesByKey = {};
+    var _settingsNode = null;
+    // 找到所有 leaf preset-item（包括递归 sub-grids）
+    var allLeaves = [];
+    (function collectLeaves(root) {
+        Array.prototype.forEach.call(root.children, function(node) {
+            if (node.classList && node.classList.contains('log-sub-grid')) {
+                collectLeaves(node);
+                return;
+            }
+            allLeaves.push(node);
+        });
+    })(grid);
+    allLeaves.forEach(function(node) {
+        var key = node.dataset && node.dataset.log ? node.dataset.log : null;
+        if (key && !nodesByKey[key]) {
+            nodesByKey[key] = node;
+        } else if (node.getAttribute && node.getAttribute('data-action') && !_settingsNode) {
+            _settingsNode = node;
+        }
+        // 把节点从原父元素 detach（不影响 ref 本身）
+        if (node.parentNode) node.parentNode.removeChild(node);
+    });
+
+    // 2) 设置 grid 容器样式（首次）
+    if (!_logGridRestructured) {
+        grid.style.gridTemplateColumns = 'none';
+        grid.style.display = 'flex';
+        grid.style.flexDirection = 'column';
+        grid.style.gap = '8px';
+        _logGridRestructured = true;
+    }
+
+    // 3) 依次注入 4 组（title + sub-grid）
+    _LOG_GROUPS.forEach(function(group) {
+        var items = group.items
+            .map(function(k) { return nodesByKey[k]; })
+            .filter(function(n) { return !!n; });
+        if (group.key === 'record' && _settingsNode) items.push(_settingsNode);
+        if (items.length === 0) return;
+        var title = document.createElement('div');
+        title.className = 'log-group-title';
+        title.textContent = group.title;
+        grid.appendChild(title);
+        var sub = document.createElement('div');
+        sub.className = 'log-sub-grid';
+        sub.setAttribute('data-log-group', group.key);
+        sub.style.display = 'grid';
+        sub.style.gridTemplateColumns = 'repeat(3, 1fr)';
+        sub.style.gap = '12px 8px';
+        sub.style.padding = '4px 4px 8px';
+        items.forEach(function(node) { sub.appendChild(node); });
+        grid.appendChild(sub);
+    });
+}
+
 function renderLogPage() {
 
     try {
@@ -1816,6 +2075,9 @@ function renderLogPage() {
     _renderPresetApps();
 
     updateLogFeatureVisibility();
+
+    // [P2-2] 把 12 个 log 入口按 4 大分类重组：社交 / 任务 / 收藏 / 记录
+    _restructureLogGrid();
 
     // 近期记忆已迁移到记忆管理页面的"近期记忆"标签页
     // 日志页面不再显示近期记忆摘要
@@ -3447,9 +3709,9 @@ function renderMailPage() {
         '<div class="mail-search-box"><div class="mail-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索</div></div>' +
         '<div class="mail-scroll-list">' + mailListHtml + '</div>' +
         // [P0-3 修复] 空态时隐藏底部工具栏，避免「5 个死控件」视觉错位；
-        // 非空态显示底部工具栏（后续可接 mailDelete/mailShare/... 真实 action）。
+        // 非空态显示底部工具栏（已接 mailDelete/mailShare/mailReply/mailMore 真实 action）。
         (allMails.length > 0 ?
-            '<div class="mail-bottom-bar"><div class="mail-bottom-btn" data-action="mailDelete" title="删除选中"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-bottom-btn" data-action="mailShare" title="分享"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-bottom-btn" data-action="mailReply" title="回复/转发"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-bottom-btn" data-action="mailMore" title="更多"><span>...</span>更多</div></div>' :
+            '<div class="mail-bottom-bar"><div class="mail-bottom-btn" role="button" tabindex="0" data-action="mailDelete" data-args="[0]" title="删除最新一封"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-bottom-btn" role="button" tabindex="0" data-action="mailShare" data-args="[0]" title="分享最新一封"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-bottom-btn" role="button" tabindex="0" data-action="mailReply" data-args="[0]" title="回复最新一封"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-bottom-btn" role="button" tabindex="0" data-action="mailMore" data-args="[0]" title="更多操作"><span>...</span>更多</div></div>' :
             ''
         ) +
         '</div>';

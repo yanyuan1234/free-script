@@ -5563,15 +5563,26 @@ function showStoryLoading() {
     '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>' +
     '<span style="color:var(--text-secondary);font-size:13px;">' + flavors[Math.floor(Math.random() *
         flavors.length)] + '</span>' +
-    '<div style="margin-top:8px;font-size:12px;color:var(--text-tertiary);text-align:center;">已等待 <span id="waitSec">0</span> 秒</div></div>';
+    '<div style="margin-top:8px;font-size:12px;color:var(--text-tertiary);text-align:center;">已等待 <span id="waitSec">0</span> 秒</div>' +
+    // [P2-4] 30s 后显示降级提示；默认 hidden
+    '<div id="loadingDegradeHint" style="display:none;margin-top:12px;padding:8px 12px;font-size:12px;color:#8a5a00;background:#fff5d6;border:1px solid #f0d68a;border-radius:6px;text-align:center;line-height:1.5;">ⓘ 网络响应较慢。若长时间无响应，可点击底部「取消」后重试，或检查 API 设置。</div>' +
+    '</div>';
     optsEl.innerHTML = '';
     var sec = 0;
+    var degradeShown = false;
     TimerManager.setInterval('loadingTimer', function() {
         sec++;
         var el = document.getElementById('waitSec');
         if (el) el.textContent = sec;
         else {
             TimerManager.clearInterval('loadingTimer');
+            return;
+        }
+        // [P2-4] 30s 后显示降级提示
+        if (!degradeShown && sec >= 30) {
+            degradeShown = true;
+            var hint = document.getElementById('loadingDegradeHint');
+            if (hint) hint.style.display = 'block';
         }
 }, 1000);
 }
