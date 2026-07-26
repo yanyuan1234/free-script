@@ -1866,7 +1866,7 @@ function _renderRecentStoryFeed(container) {
         html = '<div id="' + feedId + '" class="recent-story-feed" style="margin-bottom:16px;">' +
             '<div class="recent-feed-title text-13 text-secondary font-medium" style="margin:4px 4px 8px;">近期剧情</div>' +
             recent.map(function(s, idx) {
-                var title = (s.title || ('第' + (s.index !== undefined ? s.index : idx + 1) + '段')).trim();
+                var title = (s.title || _generateChapterTitle(s.text, s.index !== undefined ? s.index : idx)).trim();
                 var preview = (s.text || '').replace(/<[^>]+>/g, '').slice(0, 80);
                 if (preview.length < (s.text || '').replace(/<[^>]+>/g, '').length) preview += '…';
                 var timeStr = s.time ? new Date(s.time).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
@@ -2163,7 +2163,8 @@ function openLogSubPage(type) {
         moments: '朋友圈',
         achieve: '成就',
         diary: '日记',
-        mail: '邮箱'
+        mail: '邮箱',
+        calendar: '日程表'
     };
     var title = titles[type] || type;
     var logSubTitle = document.getElementById('logSubTitle');
@@ -2213,7 +2214,7 @@ function openLogSubPage(type) {
 // 应用日志页面样式
 function _applyLogPageStyle(content, type, html) {
     var isFullScreen = ['chat', 'forum', 'moments', 'rank', 'items', 'diary', 'mail', 'shop', 'quests',
-        'achieve'
+        'achieve', 'calendar'
     ].indexOf(type) >= 0;
 
     if (isFullScreen) {
@@ -2567,6 +2568,44 @@ function renderWorldPage() {
             escapeHtml(mod.title || '信息') + '</div>' + inner + '</div>';
     }).join('');
 }
+// 时间戳格式化工具：将 Unix 时间戳或 ISO 日期统一转为相对时间或游戏内时间
+function _formatPhoneTimestamp(timeVal, fallbackIdx) {
+    if (!timeVal && timeVal !== 0) {
+        // 空值：用 fallbackIdx 生成相对时间
+        var offsetMinutes = (fallbackIdx || 0) * 30 + Math.floor(Math.random() * 30);
+        if (offsetMinutes < 60) return offsetMinutes + '分钟前';
+        if (offsetMinutes < 24 * 60) return Math.floor(offsetMinutes / 60) + '小时前';
+        return Math.floor(offsetMinutes / (24 * 60)) + '天前';
+    }
+    // 数字类型：Unix 时间戳（毫秒）
+    if (typeof timeVal === 'number') {
+        var now = Date.now();
+        var diff = now - timeVal;
+        if (diff < 0) diff = 0;
+        var diffMinutes = Math.floor(diff / 60000);
+        if (diffMinutes < 1) return '刚刚';
+        if (diffMinutes < 60) return diffMinutes + '分钟前';
+        var diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) return diffHours + '小时前';
+        var diffDays = Math.floor(diffHours / 24);
+        if (diffDays < 30) return diffDays + '天前';
+        var d = new Date(timeVal);
+        return (d.getMonth() + 1) + '月' + d.getDate() + '日';
+    }
+    // 字符串类型
+    var str = String(timeVal).trim();
+    // 纯数字字符串：当作 Unix 时间戳处理
+    if (/^\d{10,}$/.test(str)) {
+        return _formatPhoneTimestamp(parseInt(str, 10), fallbackIdx);
+    }
+    // ISO 日期格式（如 2024-01-15T10:30:00）：转为相对时间
+    if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+        var parsed = Date.parse(str);
+        if (!isNaN(parsed)) return _formatPhoneTimestamp(parsed, fallbackIdx);
+    }
+    // 已经是格式化的字符串（如"卯时正刻"、"霜月十五 卯时"）：直接返回
+    return str;
+}
 // 渲染朋友圈页面
 function renderMomentsPage() {
     var playerName = gameState.playerName || '我';
@@ -2617,6 +2656,18 @@ function renderMomentsPage() {
     });
     // 【已移除】gameState._moments 本地兑底，全部由 AI 动态生成
 
+    // 【BUG修复】朋友圈内容去重：相同 author+text 的动态只保留最新一条
+    var _seenMomentKeys = {};
+    posts = posts.filter(function(p) {
+        if (!p) return false;
+        var key = (p.author || '') + '|' + (p.text || p.content || '');
+        // 空内容直接过滤
+        if (!key || key === '|') return false;
+        if (_seenMomentKeys[key]) return false;
+        _seenMomentKeys[key] = true;
+        return true;
+    });
+
     var avatarInitial = playerName.charAt(0);
     var now = new Date();
     var dateStr = now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日';
@@ -2647,15 +2698,8 @@ function renderMomentsPage() {
             var postAvatar = avatarIsUrl ? '<img src="' + escapeHtml(post.avatar) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\';">' +
                 '<div class="avatar-placeholder" style="display:none;">' + escapeHtml(authorName.charAt(0)) + '</div>' :
                 '<div class="avatar-placeholder">' + escapeHtml(authorName.charAt(0)) + '</div>';
-            // 统一使用相对时间格式
-            var postTime = post.time;
-            if (!postTime || /^\d{4}-\d{2}-\d{2}/.test(postTime)) {
-                // 如果时间为空或为绝对时间格式，生成相对时间
-                var offsetMinutes = idx * 30 + Math.floor(Math.random() * 30);
-                if (offsetMinutes < 60) postTime = offsetMinutes + '分钟前';
-                else if (offsetMinutes < 24 * 60) postTime = Math.floor(offsetMinutes / 60) + '小时前';
-                else postTime = Math.floor(offsetMinutes / (24 * 60)) + '天前';
-            }
+            // 统一使用 _formatPhoneTimestamp 格式化时间（处理 Unix 时间戳/ISO 日期/空值）
+            var postTime = _formatPhoneTimestamp(post.time, idx);
             if (!post.likes) post.likes = [];
             var mentions = (post.text || '').indexOf(playerName) !== -1;
             if (!mentions && Array.isArray(post.comments)) {
@@ -3380,7 +3424,7 @@ function renderMailPage() {
             var unreadDot = mail.read ? '' :
                 '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#ff3b30;margin-right:6px;flex-shrink:0;"></span>';
             var sender = mail.from || mail.sender || '未知发件人';
-            var date = mail.date || mail.time || '';
+            var date = _formatPhoneTimestamp(mail.date || mail.time, i);
             var subject = mail.subject || '无主题';
             var preview = mail.preview || mail.body || '';
             if (preview.length > 80) preview = truncateByChars(preview, 80, '...');
@@ -3586,6 +3630,16 @@ function renderCalendarPage() {
     // 获取日程数据
     var calendarModule = _calMod;
     var events = _events;
+
+    // 【BUG修复】渲染前去重：相同 title+time 的事件只保留一条
+    var _seenCalKeys = {};
+    events = events.filter(function(evt) {
+        if (!evt) return false;
+        var key = (evt.title || '') + '|' + (evt.time || '') + '|' + (evt.description || '');
+        if (_seenCalKeys[key]) return false;
+        _seenCalKeys[key] = true;
+        return true;
+    });
 
     // 如果没有数据，显示提示
     if (events.length === 0) {
@@ -4043,6 +4097,18 @@ function renderPlayerPage() {
     // 关系网
     var rels = gameState.relationships || [];
 
+    // 【BUG修复】渲染前去重：相同 from→to:type 的关系只保留一条
+    var _seenRelKeys = {};
+    rels = rels.filter(function(r) {
+        if (!r || !r.from || !r.to) return false;
+        var key1 = r.from + '→' + r.to + ':' + (r.type || '');
+        var key2 = r.to + '→' + r.from + ':' + (r.type || '');
+        if (_seenRelKeys[key1] || _seenRelKeys[key2]) return false;
+        _seenRelKeys[key1] = true;
+        _seenRelKeys[key2] = true;
+        return true;
+    });
+
     if (rels.length === 0 && Object.keys(gameState.allCharacters || {}).length > 0 && typeof _inferRelationshipsFromCharacters === 'function') {
         _inferRelationshipsFromCharacters();
         rels = gameState.relationships || [];
@@ -4190,6 +4256,30 @@ function exportStoryText() {
 // --- 关系网渲染（空壳已删除，使用上方完整实现） ---
 
 // --- 剧情回顾渲染 ---
+// 【BUG修复】从剧情文本生成有意义的章节标题，替代"第N段"占位符
+function _generateChapterTitle(storyText, index) {
+    if (storyText && typeof storyText === 'string') {
+        // 尝试从剧情第一句提取标题
+        var firstLine = storyText.split(/\n/)[0] || '';
+        var firstSentence = firstLine.split(/[。！？]/)[0] || '';
+        firstSentence = firstSentence.trim();
+        if (firstSentence.length >= 4 && firstSentence.length <= 20) {
+            return firstSentence;
+        }
+        if (firstSentence.length > 20) {
+            return firstSentence.slice(0, 18) + '...';
+        }
+        // 尝试从第二句开始找
+        var sentences = storyText.split(/[。！？\n]/).filter(function(s) {
+            return s.trim().length >= 4 && s.trim().length <= 20;
+        });
+        if (sentences.length > 0) {
+            return sentences[0].trim();
+        }
+    }
+    // 兜底：用"第N章"替代"第N段"，更符合小说章节命名习惯
+    return '第' + (index + 1) + '章';
+}
 function renderRecapPage() {
     var container = document.getElementById('recapList');
     if (!container) return;
@@ -4227,7 +4317,7 @@ function renderRecapPage() {
         container.innerHTML = '<div class="recap-timeline">' + stories.map(function(s, i) {
             var isCurrent = i === stories.length - 1;
             var summary = (s.text || '').substring(0, 80);
-            var cardTitle = s.title || ('第' + (i + 1) + '段');
+            var cardTitle = s.title || _generateChapterTitle(s.text, i);
             return '<div class="timeline-item ' + (isCurrent ? 'current' : '') +
                 '" role="button" tabindex="0" data-action="showRecapDetail" data-args=\'[' + i + ']\'>' +
                 '<div class="timeline-item-head"><span class="timeline-item-title">' +
@@ -4245,7 +4335,7 @@ function showRecapDetail(idx) {
     var bodyEl = document.getElementById('recapDetailBody');
     if (!titleEl || !bodyEl) return;
 
-    titleEl.textContent = s.title || '第' + (idx + 1) + '段';
+    titleEl.textContent = s.title || _generateChapterTitle(s.text, idx);
     // s.text 已是 JSON 解析后的 story 字段（getStoryList 处理过），直接 formatStory 即可
     // 仅在 s.text 仍是 JSON 字符串时（旧历史数据）兜底解析一次
     var storyText = s.text || '';

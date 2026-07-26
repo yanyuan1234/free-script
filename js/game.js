@@ -6365,18 +6365,21 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
 
     // 日程表：从任务/事件生成兜底日程（无数据时从剧情生成默认日程）
     // 【BUG修复】改为每轮追加新事件，而非仅首次生成
+    // 【BUG修复v2】修复事件重复问题：用 _turn 字段标记每轮事件，按 turn 去重
+    //              修复只存 .items 不存 .events 导致渲染器读不到数据的问题
+    //              修复 .events 和 .items 双写导致去重检查看到双倍数据
     if (getLogFeatureFlag('calendar') && !_aiReturned('calendar') && turn > 0) {
         // 检查是否已有 calendar 模块
         var _existingCalMods = modules.filter(function(m) { return m && m.type === 'calendar'; });
-        var _calTurnKey = '第' + turn + '轮冒险';
+        // 【BUG修复v2】只检查 .events（渲染器只读 .events），不再合并 .items（避免双倍数据）
         var _alreadyHasTurn = false;
         if (_existingCalMods.length > 0) {
             var _allCalEvents = [];
             _existingCalMods.forEach(function(m) {
                 if (Array.isArray(m.events)) _allCalEvents = _allCalEvents.concat(m.events);
-                if (Array.isArray(m.items)) _allCalEvents = _allCalEvents.concat(m.items);
             });
-            _alreadyHasTurn = _allCalEvents.some(function(e) { return e && e.title === _calTurnKey; });
+            // 【BUG修复v2】用 _turn 字段判断本轮是否已生成，而非靠标题匹配
+            _alreadyHasTurn = _allCalEvents.some(function(e) { return e && e._turn === turn; });
         }
         if (!_alreadyHasTurn) {
             var calEvents = [];
@@ -6389,7 +6392,8 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
                             description: q.desc || q.hint || '推进任务进展',
                             time: _formatCalendarTime(turn),
                             location: '',
-                            type: '任务'
+                            type: '任务',
+                            _turn: turn
                         });
                     }
                 });
@@ -6404,7 +6408,8 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
                             description: evText,
                             time: _formatCalendarTime(turn),
                             location: '',
-                            type: '事件'
+                            type: '事件',
+                            _turn: turn
                         });
                     }
                 });
@@ -6413,30 +6418,32 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
             if (calEvents.length === 0 && storyText) {
                 var _calStorySnippet = storyText.slice(0, 30);
                 calEvents.push({
-                    title: _calTurnKey,
+                    title: '第' + turn + '轮冒险',
                     description: _calStorySnippet,
                     time: _formatCalendarTime(turn),
                     location: '',
-                    type: '冒险'
+                    type: '冒险',
+                    _turn: turn
                 });
             }
             // 彻底无数据时生成一个占位日程
             if (calEvents.length === 0) {
                 calEvents.push({
-                    title: _calTurnKey,
+                    title: '第' + turn + '轮冒险',
                     description: '冒险继续进行中...',
                     time: _formatCalendarTime(turn),
                     location: '',
-                    type: '冒险'
+                    type: '冒险',
+                    _turn: turn
                 });
             }
-            // 【BUG修复】追加到已有 calendar 模块，而非新建（避免只有第1轮有记录）
+            // 【BUG修复v2】追加到已有 calendar 模块的 .events（不再双写 .items）
             if (calEvents.length > 0) {
                 if (_existingCalMods.length > 0) {
                     if (!_existingCalMods[0].events) _existingCalMods[0].events = [];
-                    if (!_existingCalMods[0].items) _existingCalMods[0].items = [];
                     _existingCalMods[0].events = _existingCalMods[0].events.concat(calEvents);
-                    _existingCalMods[0].items = _existingCalMods[0].items.concat(calEvents);
+                    // 同步 items 以兼容可能读取 items 的旧代码
+                    _existingCalMods[0].items = _existingCalMods[0].events;
                 } else {
                     modules.push({ type: 'calendar', title: '日程表', events: calEvents, items: calEvents });
                 }
@@ -6572,28 +6579,89 @@ function ensureLogFallbacks(storyText, aiWorldModules) {
         }
     }
 
-    // 任务兜底：无任务时注入起始任务，确保任务页非空
+    // 任务兜底：无任务时从剧情/事件生成有意义任务，确保任务页非空
+    // 【BUG修复v2】当AI截断导致quests缺失时，从剧情文本和关键事件生成有意义的任务
+    //              而非仅注入通用"探索未知的世界"占位任务
     if (getLogFeatureFlag('quests')) {
         var _questArr = (StateManager && StateManager.get) ? (StateManager.get('entities.quests') || []) : (gameState.currentQuests || []);
         if (!_questArr || _questArr.length === 0) {
-            // 【BUG修复】使用与 QuestSystem 一致的状态值和字段名
-            var _defaultQuest = {
-                id: 'q_main_start_' + Date.now(),
-                title: '探索未知的世界',
-                desc: '你刚刚踏上冒险之旅，前方充满了未知与机遇。去探索这个世界吧！',
-                status: 'active',
-                type: '主线',
-                progress: '0/1',
-                hint: '继续推进剧情即可完成此任务',
-                rewards: [{ type: 'exp', name: '经验值', amount: 10 }]
-            };
-            if (StateManager && StateManager.set) {
-                StateManager.set('entities.quests', [_defaultQuest], { silent: true });
+            var _fallbackQuests = [];
+
+            // 策略1：从关键事件提取任务
+            if (events.length > 0) {
+                events.slice(0, 2).forEach(function(ev, idx) {
+                    var evText = typeof ev === 'string' ? ev : (ev.content || ev.title || '');
+                    if (evText && evText.length > 3) {
+                        _fallbackQuests.push({
+                            id: 'q_event_' + turn + '_' + idx + '_' + Date.now(),
+                            title: evText.slice(0, 15),
+                            desc: evText,
+                            status: 'active',
+                            type: idx === 0 ? '主线' : '支线',
+                            progress: '0/1',
+                            hint: '继续推进剧情即可完成此任务',
+                            rewards: [{ type: 'exp', name: '经验值', amount: 10 + idx * 5 }]
+                        });
+                    }
+                });
             }
-            // 【BUG修复】同时写入 entities.quests 和 currentQuests
-            gameState.currentQuests = [_defaultQuest];
+
+            // 策略2：从剧情文本提取任务（取第一句有意义的话作为任务描述）
+            if (_fallbackQuests.length === 0 && storyText && storyText.length > 20) {
+                var _storySentences = storyText.split(/[。！？\n]/).filter(function(s) {
+                    return s.trim().length > 8;
+                });
+                if (_storySentences.length > 0) {
+                    var _taskDesc = _storySentences[0].trim().slice(0, 30);
+                    _fallbackQuests.push({
+                        id: 'q_story_' + turn + '_' + Date.now(),
+                        title: _taskDesc.slice(0, 12),
+                        desc: _taskDesc,
+                        status: 'active',
+                        type: '主线',
+                        progress: '0/1',
+                        hint: '继续推进剧情即可完成此任务',
+                        rewards: [{ type: 'exp', name: '经验值', amount: 10 }]
+                    });
+                }
+            }
+
+            // 策略3：从角色关系生成社交任务
+            if (_fallbackQuests.length === 0 && charList.length > 0) {
+                var _npc = charList[0];
+                _fallbackQuests.push({
+                    id: 'q_social_' + turn + '_' + Date.now(),
+                    title: '与' + (_npc.name || 'NPC') + '建立关系',
+                    desc: '与' + (_npc.name || 'NPC') + '互动，了解更多信息。',
+                    status: 'active',
+                    type: '支线',
+                    progress: '0/1',
+                    hint: '在剧情中选择与该角色互动的选项',
+                    rewards: [{ type: 'exp', name: '经验值', amount: 15 }]
+                });
+            }
+
+            // 策略4：通用兜底任务
+            if (_fallbackQuests.length === 0) {
+                var _questTitle = turn > 0 ? ('第' + turn + '轮冒险') : '探索未知的世界';
+                _fallbackQuests.push({
+                    id: 'q_main_start_' + Date.now(),
+                    title: _questTitle,
+                    desc: '冒险正在继续，前方充满了未知与机遇。继续推进剧情吧！',
+                    status: 'active',
+                    type: '主线',
+                    progress: '0/1',
+                    hint: '继续推进剧情即可完成此任务',
+                    rewards: [{ type: 'exp', name: '经验值', amount: 10 }]
+                });
+            }
+
+            if (StateManager && StateManager.set) {
+                StateManager.set('entities.quests', _fallbackQuests, { silent: true });
+            }
+            gameState.currentQuests = _fallbackQuests;
             if (gameState.entities) {
-                gameState.entities.quests = [_defaultQuest];
+                gameState.entities.quests = _fallbackQuests;
             }
         }
     }
