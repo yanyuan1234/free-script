@@ -2425,7 +2425,8 @@
                                     <!-- 【优化】删除写作节奏（settingChapterMode）控件——与"字数控制"中的段落风格（wcParagraphStyle）功能重复 -->
                                     <!-- 【优化·narrativeEyes 可调开关】10 项叙事基调，默认全开，用户可关闭不想要的 -->
                                     <div class="setting-row" style="flex-direction:column;align-items:flex-start;">
-                                        <label class="field-label" style="margin-bottom:6px;">叙事基调（可关闭不想要的，最多保留 5 项）</label>
+                                        <!-- [P1-2 修复] 文案统一：建议保留 3-5 项，最多 5 项 -->
+                                        <label class="field-label" style="margin-bottom:6px;">叙事基调（建议保留 3-5 项，最多 5 项）</label>
                                         <!-- 【P2清理】删除未使用 id=narrativeEyesContainer（仅作布局容器，JS 用 class .narrative-eye-toggle 选择） -->
                                         <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;width:100%;font-size:12px;">
                                             <label><input type="checkbox" class="narrative-eye-toggle" data-eye="realistic" checked> 现实感</label>
@@ -2439,7 +2440,7 @@
                                             <label><input type="checkbox" class="narrative-eye-toggle" data-eye="balanced" checked> 戏剧平衡</label>
                                             <label><input type="checkbox" class="narrative-eye-toggle" data-eye="mystery" checked> 超自然</label>
                                         </div>
-                                        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">提示：喜剧与悬疑、日常与命运等基调天然互斥，建议只保留 3-5 项</div>
+                                        <div style="font-size:10px;color:var(--text-tertiary);margin-top:4px;">提示：喜剧与悬疑、日常与命运等基调天然互斥，建议保留 3-5 项，最多 5 项</div>
                                     </div>
 
                                     <!-- 【修复P2-3】移除 NSFW 描写开关——squelchRules 是死代码，该开关无效 -->

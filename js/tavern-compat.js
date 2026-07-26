@@ -6256,6 +6256,8 @@ var MemoryManagerUI = {
     },
 
     saveCharacter: function(oldName) {
+        // [P0-2 修复] 同因
+        var self = this;
         var gm = window.GameMemory; var newName = document.getElementById('editCharName').value.trim(); if (!newName) return;
         var char = gm.tables.characters[oldName] || {};
         var _newCharData = { name: newName, title: document.getElementById('editCharTitle').value.trim(), relation: document.getElementById('editCharRelation').value.trim(), mood: document.getElementById('editCharMood').value.trim(), location: document.getElementById('editCharLocation').value.trim(), outfit: char.outfit || '', favorability: parseInt(document.getElementById('editCharFav').value, 10) || 0, status: char.status || '', history: char.history || [], gameTime: gm.getGameTimeStr(), accessCount: char.accessCount || 0, lastChangedTurn: gm.currentTurn, locked: document.getElementById('editCharLocked').checked };
@@ -6394,6 +6396,8 @@ var MemoryManagerUI = {
     },
 
     saveItem: function(oldName) {
+        // [P0-2 修复] 与 saveNewLocation 同因：函数体内引用 self 但未声明。
+        var self = this;
         var gm = window.GameMemory; var newName = document.getElementById('editItemName').value.trim(); if (!newName) return;
         var item = gm.tables.items[oldName] || {};
         var _newItemData = { name: newName, qty: parseInt(document.getElementById('editItemQty').value, 10) || 1, unit: document.getElementById('editItemUnit').value.trim() || '个', rarity: document.getElementById('editItemRarity').value, desc: document.getElementById('editItemDesc').value.trim(), obtainedTurn: item.obtainedTurn || gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: item.accessCount || 0, history: item.history || [] };
@@ -6527,6 +6531,8 @@ var MemoryManagerUI = {
     },
 
     saveNewItem: function() {
+        // [P0-2 修复] 与 saveNewLocation 同因
+        var self = this;
         var gm = window.GameMemory; var name = document.getElementById('addItemName').value.trim(); if (!name) { UI.toast && UI.toast('请输入物品名称'); return; }
         var _newItemData = { name: name, qty: parseInt(document.getElementById('addItemQty').value, 10) || 1, unit: document.getElementById('addItemUnit').value.trim() || '个', rarity: document.getElementById('addItemRarity').value, desc: document.getElementById('addItemDesc').value.trim(), obtainedTurn: gm.currentTurn, lastChangedTurn: gm.currentTurn, gameTime: gm.getGameTimeStr(), accessCount: 0, history: [{ turn: gm.currentTurn, from: 0, to: parseInt(document.getElementById('addItemQty').value, 10) || 1 }] };
 
@@ -6605,6 +6611,8 @@ var MemoryManagerUI = {
     },
 
     saveLocation: function(oldName) {
+        // [P0-2 修复] 同因
+        var self = this;
         var gm = window.GameMemory; var newName = document.getElementById('editLocName').value.trim(); if (!newName) { UI.toast && UI.toast('请输入地点名称'); return; }
         var loc = gm.tables.locations[oldName]; if (!loc) return;
         var _newLocData = { name: newName, desc: document.getElementById('editLocDesc').value.trim(), features: document.getElementById('editLocFeatures').value.trim(), charactersPresent: loc.charactersPresent || '', lastChangedTurn: gm.currentTurn, locked: document.getElementById('editLocLocked').checked };
@@ -6675,6 +6683,10 @@ var MemoryManagerUI = {
     },
 
     saveNewLocation: function() {
+        // [P0-2 修复] 函数体内引用 self 但未声明，导致向上查找命中外层 GameMemory 作用域的 self
+        // （const self = this on GameMemory），调用 self._mergeRuntimeFields 抛 TypeError
+        // → 表象是「+添加 按钮 noop」。改用显式 var self = this 锁定 MemoryManagerUI 自身。
+        var self = this;
         var gm = window.GameMemory; var name = document.getElementById('addLocName').value.trim(); if (!name) { UI.toast && UI.toast('请输入地点名称'); return; }
         var _newLocData = { name: name, desc: document.getElementById('addLocDesc').value.trim(), features: '', charactersPresent: '', lastChangedTurn: gm.currentTurn, locked: false };
 

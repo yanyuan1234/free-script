@@ -1080,7 +1080,9 @@ function deleteMail(index) {
 }
 
 // [日志功能开关] 默认值与标签
-var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', mail: '邮件', calendar: '日程表' };
+// [P0-7 修复] 文案统一：与日志 tab 网格(index.html)及子页顶栏(openLogSubPage.titles)保持一致，
+//   mail 一律叫「邮箱」，避免「邮箱 / 邮件」在不同入口分裂。
+var LOG_FEATURE_LABELS = { chat: '聊天', forum: '论坛', rank: '排行榜', items: '物品/背包', quests: '任务', shop: '商店', moments: '朋友圈', achieve: '成就', diary: '日记', mail: '邮箱', calendar: '日程表' };
 var LOG_FEATURE_DEFAULTS = { chat: true, forum: true, rank: true, items: true, quests: true, shop: true, moments: true, achieve: true, diary: true, mail: true, calendar: true };
 function getLogFeatureSettings() {
     var stored = (StateManager ? StateManager.get('settings.logFeatures') : null) || {};
@@ -2685,9 +2687,10 @@ function renderMomentsPage() {
     if (posts.length === 0) {
 
         // 修复历史Bug：原"写 暂无朋友圈动态"包含残留的"写 "前缀字符
+        // [P0-5 修复] 用统一空态 SVG（与邮箱空态一致）替换裸字符 ○
         html +=
             '<div class="empty-state" style="padding:60px 20px;text-align:center;">' +
-            '<div style="font-size:36px;margin-bottom:12px;opacity:0.4;">○</div>' +
+            '<div style="margin-bottom:12px;opacity:0.4;"><svg role="img" aria-label="暂无朋友圈" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>' +
             '<div style="font-size:14px;color:var(--text-secondary);">暂无朋友圈动态</div>' +
             '<div style="font-size:12px;color:var(--text-tertiary);margin-top:6px;">游戏进行中会自动生成</div>' +
             '</div>';
@@ -3011,7 +3014,7 @@ function renderForumPage() {
         postDetails +
         '<div class="forum-tab-bar" id="forumTabBar">' +
         '<div class="forum-tab-item active" role="button" tabindex="0" data-action="showForumHot"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><span>热点</span></div>' +
-        '<div class="forum-tab-item" role="button" tabindex="0" data-action="showForumTopic"><div class="forum-tab-icon">#</div><span>话题</span></div>' +
+        '<div class="forum-tab-item" role="button" tabindex="0" data-action="showForumTopic"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/></svg></div><span>话题</span></div>' +
         '<div class="forum-tab-item" role="button" tabindex="0" data-action="showForumMine"><div class="forum-tab-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><span>我的</span></div>' +
         '</div>' +
         '</div>';
@@ -3443,7 +3446,12 @@ function renderMailPage() {
         '<div class="mail-big-title">收件箱</div>' +
         '<div class="mail-search-box"><div class="mail-search-input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>搜索</div></div>' +
         '<div class="mail-scroll-list">' + mailListHtml + '</div>' +
-        '<div class="mail-bottom-bar"><div class="mail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-bottom-btn"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-bottom-btn"><span>...</span>更多</div></div>' +
+        // [P0-3 修复] 空态时隐藏底部工具栏，避免「5 个死控件」视觉错位；
+        // 非空态显示底部工具栏（后续可接 mailDelete/mailShare/... 真实 action）。
+        (allMails.length > 0 ?
+            '<div class="mail-bottom-bar"><div class="mail-bottom-btn" data-action="mailDelete" title="删除选中"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>删除</div><div class="mail-bottom-btn" data-action="mailShare" title="分享"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>分享</div><div class="mail-bottom-btn" data-action="mailReply" title="回复/转发"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>回复转发</div><div class="mail-bottom-btn" data-action="mailMore" title="更多"><span>...</span>更多</div></div>' :
+            ''
+        ) +
         '</div>';
 }
 // 渲染商店页面
@@ -3621,11 +3629,8 @@ function renderCalendarPage() {
     container.className = 'calendar-page';
     container.style.cssText = 'padding:20px;background:var(--bg);min-height:100%;';
 
-    // 标题
-    var title = document.createElement('h2');
-    title.textContent = '📅 日程表';
-    title.style.cssText = 'color:var(--text);margin-bottom:20px;text-align:center;font-size:18px;font-weight:600;';
-    container.appendChild(title);
+    // [P0-6 修复] 删除页内 h2 重复标题：子页面顶栏(logSubTitle)已显示「日程表」，
+    // 这里再渲染一遍会出现「日程表」+「📅 日程表」两个大标题。
 
     // 获取日程数据
     var calendarModule = _calMod;
@@ -5745,16 +5750,32 @@ function bindEvents() {
     });
 
     // 清除数据（分级选择）
+    // [P1-1 修复] 第一次 confirm 用「确定/取消」时，「取消 = 啥也不做」是用户心理模型。
+    // 旧实现「取消 = 仅清存档」会让用户以为放弃，结果实际清档，体感"卡死"。
+    // 改为：第一次用 prompt 让用户在「清存档+设置 / 仅清存档 / 全部清空 / 取消」中选一。
     bindEvent('btnSettingsClear', 'click', async function() {
-        // 第一次确认：选择清除范围
-        var clearAll = await UI.confirm('清除数据', '选择清除范围：\n\n确定 = 清除存档和设置（保留API配置）\n取消 = 仅清除存档（保留设置和API配置）');
-        if (!clearAll) {
-            // 仅清除存档
+        var choice = await UI.prompt('清除数据', '请选择清除范围（输入数字）：\n\n1 = 仅清存档（保留设置和API）\n2 = 清存档+设置（保留API）\n3 = 全部清空（含API）\n0 = 取消', '1');
+        if (choice === null) return;  // 用户点了取消或 ESC
+        var trimmed = String(choice).trim();
+        // 「全部清空（含 API）」二次确认
+        if (trimmed === '3') {
+            var clearEverything = await UI.confirm('清除全部数据', '确定要清除全部数据吗？包括API配置。此操作不可恢复。');
+            if (!clearEverything) return;
+            localStorage.clear();
+            indexedDB.deleteDatabase('BunnyGameDB');
+            location.reload();
+            return;
+        }
+        // 「仅清存档 / 清存档+设置」二次确认
+        if (trimmed === '1' || trimmed === '2') {
+            var label = trimmed === '1' ? '仅清存档（保留设置和 API）' : '清存档和设置（保留 API）';
+            var ok = await UI.confirm('确认清除', '即将：' + label + '。\n此操作不可恢复。');
+            if (!ok) return;
             var keysToRemove = [];
             for (var i = 0; i < localStorage.length; i++) {
                 var key = localStorage.key(i);
                 // 【统一管理】白名单引用 Storage.KEYS，避免拼写错误或遗漏
-                if (key && key !== Storage.KEYS.SETTINGS && key !== Storage.KEYS.API_CONFIG && key !== 'free_script_api_provider') {
+                if (key && key !== Storage.KEYS.API_CONFIG && key !== 'free_script_api_provider' && (trimmed === '1' ? key !== Storage.KEYS.SETTINGS : true)) {
                     keysToRemove.push(key);
                 }
             }
@@ -5763,25 +5784,8 @@ function bindEvents() {
             location.reload();
             return;
         }
-        // 第二次确认：是否清除全部数据（包括API配置）
-        var clearEverything = await UI.confirm('清除全部数据', '确定要清除全部数据吗？包括API配置。此操作不可恢复。');
-        if (clearEverything) {
-            localStorage.clear();
-            indexedDB.deleteDatabase('BunnyGameDB');
-            location.reload();
-        } else {
-            // 清除存档和设置，但保留API配置
-            var keysToRemove2 = [];
-            for (var j = 0; j < localStorage.length; j++) {
-                var key2 = localStorage.key(j);
-                if (key2 && key2 !== Storage.KEYS.API_CONFIG && key2 !== 'free_script_api_provider') {
-                    keysToRemove2.push(key2);
-                }
-            }
-            keysToRemove2.forEach(function(k) { Storage.remove(k); });
-            try { indexedDB.deleteDatabase('BunnyGameDB'); } catch(e) { console.warn('删除IndexedDB失败:', e); }
-            location.reload();
-        }
+        // 输入 0 / 空 / 其他：视为取消
+        UI.toast('已取消（输入 "' + trimmed + '" 不在选项中）');
     });
 
     // 生成结局
@@ -7319,8 +7323,10 @@ function showApiDetail(slot) {
     }
 
     // 绑定清空最近请求按钮
-
-    bindFresh('btnClearApiRecent', 'click', function() {
+    // [P1-4 修复] 加二次确认，避免误点丢失调试信息
+    bindFresh('btnClearApiRecent', 'click', async function() {
+        var ok = await UI.confirm('清空请求记录', '确定清空该配置的最近请求记录？此操作不可恢复。');
+        if (!ok) return;
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot;
         });
@@ -7329,7 +7335,10 @@ function showApiDetail(slot) {
     });
 
     // 绑定清空错误按钮
-    bindFresh('btnClearApiErrors', 'click', function() {
+    // [P1-4 修复] 加二次确认
+    bindFresh('btnClearApiErrors', 'click', async function() {
+        var ok = await UI.confirm('清空错误日志', '确定清空该配置的错误日志？此操作不可恢复。');
+        if (!ok) return;
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot || l.success;
         });

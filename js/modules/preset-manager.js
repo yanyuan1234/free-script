@@ -1179,6 +1179,14 @@ var PresetManager = {
         // 渲染预设附带的正则脚本列表
         this._renderPresetRegexList();
 
+        // [P1-3 修复] 打开详情时同步「参数调节」滑块到该预设的当前值，
+        // 避免用户展开调节区时仍看到 HTML 默认值（0.8/0.9）。
+        if (preset.params) {
+            this.currentParams = Object.assign({}, preset.params);
+            this.saveCurrentParams();
+            this.syncParamsToUI();
+        }
+
         UI.showModal('presetDetailModal');
         },
 
@@ -2197,8 +2205,16 @@ var PresetManager = {
 
     // 导出预设为JSON文件（包含完整内容）
     exportPreset: function(index) {
+        // [P0-8 修复] 空态/索引无效时给用户明确反馈
+        if (!this.presets || this.presets.length === 0) {
+            UI.toast('预设列表为空，无可导出内容');
+            return;
+        }
         var preset = this.presets[index];
-        if (!preset) return;
+        if (!preset) {
+            UI.toast('预设不存在或索引无效');
+            return;
+        }
 
         // 构建完整的导出数据
         var exportData = {
@@ -2307,6 +2323,10 @@ var PresetManager = {
     a.download = (preset.name || 'preset') + '.json';
     a.click();
     TimerManager.setTimeout('revokePresetURL', function() { URL.revokeObjectURL(url); }, 1000);
+    // [P0-8 修复] 给用户导出成功的明确反馈
+    if (typeof UI !== 'undefined' && UI.toast) {
+        UI.toast('已导出：' + (preset.name || 'preset') + '.json');
+    }
     },
 
     // ========================================

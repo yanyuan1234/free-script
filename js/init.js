@@ -317,7 +317,8 @@ if (document.readyState === 'loading') {
             if (checked.length > 5) {
                 this.checked = false;
                 gameState.narrativeEyes[this.dataset.eye] = false;
-                if (typeof UI !== 'undefined' && UI.toast) UI.toast('最多保留 5 项叙事基调，避免矛盾');
+                // [P1-2 修复] 文案统一：与表头/提示保持「建议 3-5 项，最多 5 项」
+                if (typeof UI !== 'undefined' && UI.toast) UI.toast('建议保留 3-5 项叙事基调，最多 5 项，避免矛盾');
             }
             if (typeof autoSave === 'function') autoSave();
         });

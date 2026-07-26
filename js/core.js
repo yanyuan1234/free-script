@@ -573,9 +573,26 @@ var UI = {
             var topModal = document.getElementById(topId);
             if (!topModal) return;
 
-            // Escape 关闭最顶层弹窗（confirm/prompt/generating 需要明确操作，不关闭）
+            // Escape 关闭最顶层弹窗
+            // [P0-1 修复] confirm/prompt 现在允许 ESC 触发「取消」语义
+            // （之前 by design 屏蔽 ESC，导致用户卡死「检测到未保存的进度」弹窗）
+            // generatingModal 仍保持屏蔽（生成中不可中断 UI）
             if (e.key === 'Escape' || e.code === 'Escape' || e.keyCode === 27) {
-                if (topId === 'confirmModal' || topId === 'promptModal' || topId === 'generatingModal') return;
+                if (topId === 'generatingModal') return;
+                if (topId === 'confirmModal') {
+                    // 复用 confirmNo 的处理路径，保证状态机一致
+                    var noBtn = document.getElementById('confirmNo');
+                    if (noBtn && noBtn._confirmHandler) {
+                        noBtn._confirmHandler();
+                        e.preventDefault();
+                        return;
+                    }
+                }
+                if (topId === 'promptModal') {
+                    // prompt 的 ESC 走取消路径
+                    var cancelBtn = document.querySelector('#promptModal [data-close="promptModal"]');
+                    if (cancelBtn) { cancelBtn.click(); e.preventDefault(); return; }
+                }
                 e.preventDefault();
                 UI.hideModal(topId);
                 return;
@@ -693,6 +710,9 @@ var UI = {
         yesBtn._confirmHandler = function() {
             UI.hideModal('confirmModal');
             if (yesBtn._confirmResolve) yesBtn._confirmResolve(true);
+            // [P0-1 修复] 清空对方(confirmNo)残留 resolve，避免下次进入 confirm 时旧 promise 干扰
+            var noBtn2 = document.getElementById('confirmNo');
+            if (noBtn2) noBtn2._confirmResolve = null;
             yesBtn._confirmResolve = null;
         };
         yesBtn.addEventListener('click', yesBtn._confirmHandler);
@@ -709,6 +729,8 @@ var UI = {
             noBtn._confirmHandler = function() {
                 UI.hideModal('confirmModal');
                 if (noBtn._confirmResolve) noBtn._confirmResolve(false);
+                // [P0-1 修复] 同样清空对方残留
+                yesBtn._confirmResolve = null;
                 noBtn._confirmResolve = null;
             };
             noBtn.addEventListener('click', noBtn._confirmHandler);

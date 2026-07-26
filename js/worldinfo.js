@@ -1301,6 +1301,12 @@ var WorldInfo = {
 
     // 导出世界书（导出当前书或所有书）
     exportFile: function() {
+        // [P0-8 修复] 无可导出数据时给出明确反馈，避免「点了没反应」
+        if (!this.books || Object.keys(this.books).length === 0) {
+            UI.toast('没有可导出的世界书，请先创建');
+            return;
+        }
+
         var book = this.getCurrentBook();
         var exportEntries = {};
         var exportName = '';
@@ -1321,11 +1327,17 @@ var WorldInfo = {
                 });
         }
 
+        if (Object.keys(exportEntries).length === 0) {
+            UI.toast('当前没有可导出的条目');
+            return;
+        }
+
         var data = {
             name: exportName,
             entries: exportEntries
             };
         UI.downloadJSON(data, exportName + '.json');
+        UI.toast('已导出：' + exportName + '（' + Object.keys(exportEntries).length + ' 条）');
     },
 
     // 构建导出格式的单个条目
