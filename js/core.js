@@ -3391,6 +3391,23 @@ var GameTimeSystem = {
         return '深夜'; // 23-5
     },
 
+    // 共享工具：将中文数字转换为整数（支持一到九十九）
+    _chineseNumToInt(str) {
+        if (!str) return 0;
+        var digits = { '零':0,'一':1,'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9 };
+        var m = str.match(/([一二两三四五六七八九十]+)/);
+        if (!m) return 0;
+        var s = m[1];
+        if (s === '十') return 10;
+        if (s.indexOf('十') !== -1) {
+            var parts = s.split('十');
+            var tens = parts[0] ? (digits[parts[0]] || 1) : 1;
+            var ones = parts[1] ? (digits[parts[1]] || 0) : 0;
+            return tens * 10 + ones;
+        }
+        return digits[s] || 0;
+    },
+
     // 从剧情文本中智能提取时间信息作为兜底
     _extractTimeFromStory(story) {
         if (!story || typeof story !== 'string') return null;
@@ -3532,10 +3549,12 @@ var GameTimeSystem = {
                 changed = true;
             }
         }
-        // 检测"N天后/N日后"
-        var _daysLaterMatch = story.match(/(\d+)\s*[天日]\s*[后之]/);
+        // 检测"N天后/N日后"（支持阿拉伯数字和中文数字：三天后、五日后等）
+        var _daysLaterMatch = story.match(/(\d+|[一二两三四五六七八九十]+)\s*[天日]\s*[后之]/);
         if (_daysLaterMatch) {
-            var _addDays = parseInt(_daysLaterMatch[1], 10);
+            var _addDays = /^\d+$/.test(_daysLaterMatch[1])
+                ? parseInt(_daysLaterMatch[1], 10)
+                : this._chineseNumToInt(_daysLaterMatch[1]);
             var _expectedDay = _currentDayNum + _addDays;
             // 仅在AI未正确推进到_expectedDay时才修正
             if (_addDays >= 2 && _currentDayNum > 0 && _resolvedDayNum < _expectedDay) {
