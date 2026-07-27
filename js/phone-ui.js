@@ -336,6 +336,15 @@ function collectMailsFromModules() {
             mod.items.forEach(function(item) { mails.push(item); });
         }
     });
+    // fallback：兼容旧版/测试数据直接写入 entities.mails 的情况
+    if (mails.length === 0) {
+        var legacyMails = (typeof StateManager !== 'undefined' && StateManager.get)
+            ? (StateManager.get('entities.mails') || [])
+            : [];
+        if (Array.isArray(legacyMails) && legacyMails.length > 0) {
+            mails = legacyMails.slice();
+        }
+    }
     return mails;
 }
 
@@ -2624,6 +2633,10 @@ function renderChatPage() {
 
     var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
     var html = '<div class="chat-list-page">' +
+        '<div style="padding:10px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">' +
+        '<div style="font-size:14px;font-weight:600;">消息</div>' +
+        '<div class="items-tab-btn" role="button" tabindex="0" data-action="createManualChat" style="display:inline-flex;align-items:center;gap:4px;padding:6px 12px;font-size:13px;">+ 新建聊天</div>' +
+        '</div>' +
         '<div class="chat-list">' +
         chattedNames.map(function(name) {
             var c = gameState.allCharacters[name] || {};
