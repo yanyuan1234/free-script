@@ -126,6 +126,9 @@ function _globalA11yDelegate(e) {
                         if (!Array.isArray(parsed)) parsed = [parsed];
                         fn.apply(actEl, parsed);
                     }
+                    // 【日志-物品冲突修复】阻止 data-action 事件继续冒泡，
+                    // 避免父层（如模态遮罩、工具栏等）的委托/直接绑定被误触发
+                    e.stopPropagation();
                 } catch (err) {
                     console.error('[a11y-delegate] ' + action + ' 执行失败:', err);
                 }

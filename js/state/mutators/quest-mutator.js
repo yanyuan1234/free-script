@@ -108,7 +108,10 @@ const QuestMutator = {
     // 添加任务
     addQuest(quest, options) {
         const normalized = this.normalizeQuest(quest);
-        if (!normalized) return false;
+        if (!normalized) {
+            if (typeof UI !== 'undefined' && UI.toast) UI.toast('任务信息不完整');
+            return false;
+        }
         // [T1-P1-29] addQuest 改走 setQuests（内部用 _smartMerge 保留 id/desc/hint/rewards），
         // 修复前 Object.assign(existing, normalized) 会用新生成的 id 'quest_title_timestamp' 覆盖 existing.id，
         // 导致 AI 每回合 addQuest 同名任务都换新 id → undo 栈与 UI 锚定失效
@@ -122,11 +125,17 @@ const QuestMutator = {
     //   绕过 StateManager，导致 <mem type="quest"> 添加的任务重启后丢失。
     //   该方法统一切换到 StateManager 权威源，由 _syncLegacyMirror 自动同步 gameState.currentQuests。
     resolveQuest(title, status, options) {
-        if (!title) return false;
+        if (!title) {
+            if (typeof UI !== 'undefined' && UI.toast) UI.toast('任务标题不能为空');
+            return false;
+        }
         const targetStatus = status || this.STATUS.COMPLETED;
         const quests = StateManager.get('entities.quests') || [];
         const q = quests.find(function(qq) { return qq && qq.title === title; });
-        if (!q) return false;
+        if (!q) {
+            if (typeof UI !== 'undefined' && UI.toast) UI.toast('未找到该任务');
+            return false;
+        }
         q.status = targetStatus;
         if (targetStatus === this.STATUS.COMPLETED) {
             // 自动补齐进度
@@ -137,7 +146,11 @@ const QuestMutator = {
                 q.progress = '1/1';
             }
         }
-        return this.setQuests(quests, options);
+        const result = this.setQuests(quests, options);
+        if (result && !(options && options.silent) && typeof UI !== 'undefined' && UI.toast) {
+            UI.toast(targetStatus === this.STATUS.COMPLETED ? '任务完成：' + title : '任务状态已更新：' + title);
+        }
+        return result;
     },
 
     // 根据剧情文本自动推进任务进度

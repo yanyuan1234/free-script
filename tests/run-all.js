@@ -23,6 +23,8 @@ var testFiles = [
     'state/time-mutator.test.js',
     // P1 修复回归
     'p1-verification.test.js',
+    // 题材自适应排行榜/成就兜底
+    'theme-adaptive-content.test.js',
     // BUG-011 v2 修复验证
     'verify-bug-011-v2.js',
     // P0 VariableStore defer 性能优化验证

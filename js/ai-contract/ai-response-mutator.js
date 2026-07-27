@@ -353,12 +353,29 @@ const AIResponseMutator = {
     // 物品
     _applyBag(data) {
         const bag = data.bag || data.items || data.inventory;
-        if (!bag || !Array.isArray(bag) || bag.length === 0) return;
+        const bagArr = (bag && Array.isArray(bag)) ? bag : [];
+
+        // 从剧情文本中提取物品（防御式：BagMutator 或 extractItemsFromStory 不存在则跳过）
+        let storyItems = [];
+        if (typeof BagMutator !== 'undefined' && typeof BagMutator.extractItemsFromStory === 'function') {
+            const storyText = data.story;
+            if (storyText && typeof storyText === 'string') {
+                storyItems = BagMutator.extractItemsFromStory(storyText) || [];
+                if (storyItems.length > 0) {
+                    console.log('[AIResponseMutator] 从剧情提取到 ' + storyItems.length + ' 个物品');
+                }
+            }
+        }
+
+        // 合并剧情提取物品与 AI 显式返回的物品，显式 data.bag 优先
+        const allItems = storyItems.concat(bagArr);
+        if (allItems.length === 0) return;
+
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
-            BagMutator.mergeItems(bag, { silent: true });
+            BagMutator.mergeItems(allItems, { silent: true });
         } else {
 
-            StateManager.set('entities.bag', bag, { silent: true });
+            StateManager.set('entities.bag', allItems, { silent: true });
         }
     },
 

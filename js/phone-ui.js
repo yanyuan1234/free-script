@@ -834,6 +834,7 @@ function deleteBagItem(name) {
     } else {
         if (StateManager && StateManager.set) StateManager.set('entities.bag', newBag, { silent: true });
         else if (typeof gameState !== 'undefined') gameState.currentBag = newBag;
+        if (UI.toast) UI.toast('物品已删除');
         openLogSubPage('items');
     }
 }
@@ -930,6 +931,7 @@ function saveBagItem(oldName) {
     } else {
         if (StateManager && StateManager.set) StateManager.set('entities.bag', newBag, { silent: true });
         else if (typeof gameState !== 'undefined') gameState.currentBag = newBag;
+        if (UI.toast) UI.toast(oldName ? '保存成功' : '添加成功');
         openLogSubPage('items');
     }
 }
@@ -2450,6 +2452,12 @@ function openLogSubPage(type) {
     var logMainContent = document.getElementById('logMainContent');
     if (logMainContent) logMainContent.style.display = 'none';
 
+    // 【日志-物品冲突修复】打开日志子页时关闭世界书模态框，
+    // 防止世界书 toolbar 的按钮因层级/事件冒泡被误触发
+    try {
+        if (typeof UI !== 'undefined' && UI.hideModal) UI.hideModal('worldInfoModal');
+    } catch (e) {}
+
     var content = document.getElementById('logSubContent');
     if (!content) return;
 
@@ -2607,8 +2615,11 @@ function renderChatPage() {
 
     if (chattedNames.length === 0) {
         return '<div class="chat-list-page">' +
-            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">NPC 会在剧情推进中主动发来消息</p></div>' +
-            '</div>';
+            '<div class="empty-state"><div class="empty-state-icon"></div><p>暂无消息</p>' +
+            '<p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">NPC 会在剧情推进中主动发来消息</p>' +
+            '<p style="font-size:12px;margin-top:4px;color:var(--text-tertiary);">也可以点击下方按钮手动开启对话</p>' +
+            '<div class="items-tab-btn" role="button" tabindex="0" data-action="createManualChat" style="margin-top:16px;display:inline-flex;align-items:center;gap:4px;padding:8px 16px;">+ 新建聊天</div>' +
+            '</div></div>';
     }
 
     var seen = gameState._notifSeenSnapshot && gameState._notifSeenSnapshot.chat || {};
@@ -2672,6 +2683,51 @@ function renderChatPage() {
         '</div></div>';
     return html;
 }
+
+// 手动新建聊天：列出可用 NPC，点击后进入聊天
+function createManualChat() {
+    var chars = getAllCharactersArray();
+    if (!chars || chars.length === 0) {
+        if (UI.toast) UI.toast('暂无可用 NPC，等待剧情生成角色后再试');
+        return;
+    }
+    var content = document.getElementById('logSubContent');
+    if (!content) return;
+
+    var html = '<div class="chat-list-page">' +
+        '<div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;">' +
+        '<div class="items-tab-btn" role="button" tabindex="0" data-action="openLogSubPage" data-args=\'["chat"]\' style="padding:6px 12px;">← 返回</div>' +
+        '<div style="font-size:16px;font-weight:600;flex:1;text-align:center;">选择要聊天的 NPC</div>' +
+        '</div>' +
+        '<div class="chat-list">';
+    chars.forEach(function(c) {
+        var name = String(c.name || '').trim();
+        if (!name) return;
+        var safeName = name.replace(/[\r\n\t\v\f\0]/g, ' ').slice(0, 100);
+        var firstChar = safeName.charAt(0) || '?';
+        var colorIdx = safeName.charCodeAt(0) % AVATAR_COLORS.length;
+        var avatarColor = AVATAR_COLORS[colorIdx];
+        var args = JSON.stringify([safeName]).replace(/'/g, '&#39;');
+        html += '<div class="chat-item" role="button" tabindex="0" data-action="startManualChat" data-args=\'' + args + '\'>' +
+            '<div class="chat-avatar" style="background:' + avatarColor + ';">' + escapeHtml(firstChar) + '</div>' +
+            '<div class="chat-content"><div class="chat-name">' + escapeHtml(safeName) + '</div>' +
+            '<div class="chat-preview">点击开始对话</div></div></div>';
+    });
+    html += '</div></div>';
+    content.innerHTML = html;
+    if (UI.toast) UI.toast('请选择一位 NPC 开始对话');
+}
+
+// 手动新建聊天的选中回调：打开聊天并给出反馈
+function startManualChat(name) {
+    if (typeof openNpcChat === 'function') {
+        openNpcChat(name);
+        if (UI.toast) UI.toast('已开始与 ' + name + ' 的对话');
+    } else {
+        if (UI.toast) UI.toast('聊天组件未就绪');
+    }
+}
+
 function renderWorldPage() {
     var modules = gameState._worldModules || [];
 
@@ -3284,6 +3340,11 @@ function renderForumPage() {
 // 渲染排行榜页面
 function renderRankPage() {
     var rankMods = getModulesByType('ranking');
+
+    // 当 AI 未返回排行榜模块时，根据当前题材动态生成排行榜
+    if (rankMods.length === 0 && typeof ThemeAdaptiveContent !== 'undefined') {
+        rankMods = ThemeAdaptiveContent.getDynamicRankingModules();
+    }
 
     var _key = 'rank:' + rankMods.length + '|' + (rankMods[0] ? String(rankMods[0].title || '').slice(0, 20) : '');
     if (shouldSkipPageRender('renderRankPage', _key)) return;
@@ -3912,7 +3973,10 @@ function renderCalendarPage() {
     if (events.length === 0) {
         var emptyTip = document.createElement('div');
         emptyTip.style.cssText = 'text-align:center;color:var(--text-tertiary);padding:40px;';
-        emptyTip.innerHTML = '<p>暂无日程安排</p><p style="font-size:12px;margin-top:10px;">小剧场中的日程内容将显示在这里</p>';
+        emptyTip.innerHTML = '<p>暂无日程安排</p>' +
+            '<p style="font-size:12px;margin-top:10px;">小剧场中的日程内容将显示在这里</p>' +
+            '<p style="font-size:12px;margin-top:4px;">也可以点击下方按钮手动添加</p>' +
+            '<div class="items-tab-btn" role="button" tabindex="0" data-action="createManualCalendarEvent" style="margin-top:16px;display:inline-flex;align-items:center;gap:4px;padding:8px 16px;">+ 添加日程</div>';
         container.appendChild(emptyTip);
         return container;
     }
@@ -3971,6 +4035,62 @@ function renderCalendarPage() {
     });
 
     return container;
+}
+
+// 手动添加日程：输入标题、时间、地点、描述，保存到 ui.worldModules 的 calendar 模块
+function createManualCalendarEvent() {
+    if (typeof UI === 'undefined' || !UI.prompt) {
+        if (typeof UI !== 'undefined' && UI.toast) UI.toast('输入组件未就绪');
+        return;
+    }
+    UI.prompt('请输入日程标题：', '').then(function(title) {
+        title = String(title || '').trim();
+        if (!title) {
+            if (UI.toast) UI.toast('日程标题不能为空');
+            return;
+        }
+        return UI.prompt('请输入时间（如 2026-07-27 14:00）：', '').then(function(time) {
+            return UI.prompt('请输入地点（可选）：', '').then(function(location) {
+                return UI.prompt('请输入描述（可选）：', '').then(function(description) {
+                    var _mods = (typeof StateManager !== 'undefined' && StateManager.get)
+                        ? (StateManager.get('ui.worldModules') || [])
+                        : (Array.isArray(gameState._worldModules) ? gameState._worldModules : []);
+                    var calMod = null;
+                    var calIdx = -1;
+                    _mods.forEach(function(m, i) {
+                        if (m && m.type === 'calendar') { calMod = m; calIdx = i; }
+                    });
+                    if (!calMod) {
+                        calMod = { type: 'calendar', events: [] };
+                        _mods.push(calMod);
+                    }
+                    if (!Array.isArray(calMod.events)) calMod.events = [];
+                    calMod.events.push({
+                        title: title,
+                        time: String(time || '').trim() || '待定',
+                        location: String(location || '').trim(),
+                        description: String(description || '').trim()
+                    });
+                    if (typeof StateManager !== 'undefined' && StateManager.set) {
+                        StateManager.set('ui.worldModules', _mods, { silent: true });
+                    } else if (typeof gameState !== 'undefined') {
+                        gameState._worldModules = _mods;
+                    }
+                    if (UI.toast) UI.toast('日程添加成功');
+                    var content = document.getElementById('logSubContent');
+                    if (content) {
+                        content.innerHTML = '';
+                        var rendered = renderCalendarPage();
+                        if (rendered) {
+                            if (typeof rendered === 'string') content.innerHTML = rendered;
+                            else content.appendChild(rendered);
+                        }
+                        _stretchFirstChild(content);
+                    }
+                });
+            });
+        });
+    });
 }
 
 // 【小剧场融合】作者有话说页面渲染
