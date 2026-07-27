@@ -2183,8 +2183,29 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _t0 = performance.now();
         window._perfDebug&&(document.title='PERF:8-parse');
         console.log('[perf] START parseAIResponse');
-        var parseResult = parseAIResponse(response);
-        console.log('[perf] END parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
+        // 【浏览器冻结修复】添加性能看门狗：如果响应特别大，提前警告
+        var _respLen = (response || '').length;
+        if (_respLen > 30000) {
+            console.warn('[perf] 响应体较大(' + _respLen + '字符)，解析可能耗时较长');
+        }
+        var parseResult;
+        try {
+            parseResult = parseAIResponse(response);
+        } catch (parseErr) {
+            // 【浏览器冻结修复】parseAIResponse 抛异常时构造兜底结果，避免后续代码崩溃
+            console.error('[perf] parseAIResponse 异常:', parseErr && parseErr.message);
+            parseResult = {
+                success: false,
+                data: null,
+                storyText: (typeof response === 'string') ? response.substring(0, 5000) : '',
+                mems: []
+            };
+        }
+        var _parseTime = performance.now() - _t0;
+        console.log('[perf] END parseAIResponse: ' + _parseTime.toFixed(1) + 'ms');
+        if (_parseTime > 500) {
+            console.warn('[perf] parseAIResponse 耗时过长(' + _parseTime.toFixed(0) + 'ms)，响应长度=' + _respLen + '，可能导致浏览器短暂卡顿');
+        }
         window._perfDebug&&(document.title='PERF:9-postParse');
         console.log('[perf] parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
         var data = parseResult.data;
@@ -2558,6 +2579,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (data.choices) renderChoices(data.choices);
             if (data.player) renderPlayerStats(data.player);
 
+            // 【浏览器冻结修复】在重计算渲染操作之间插入 yield 点
+            // 让浏览器有机会处理积压的 UI 事件（如取消按钮点击），避免连续同步渲染导致冻结
+            await new Promise(function(r) { setTimeout(r, 0); });
+
             // _doLegacyStateWrites：_aiMutatorApplied=true 时跳过 legacy 状态写入（仅 UI），
             //                       false 时走完整 legacy 路径做兜底（保证 mutator 失败时玩家仍能看到数据）
             // 注意：renderWorldModules 本身是 ui.worldModules 的唯一写入点（无对应 mutator），始终运行
@@ -2613,6 +2638,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
             }
             if (data.world) renderWorldModules(data.world);
+            // 【浏览器冻结修复】world渲染后yield一次，避免与bag/quests渲染连批
+            await new Promise(function(r) { setTimeout(r, 0); });
             if (data.bag) {
                 if (_doLegacyStateWrites) renderBag(data.bag);  // 状态写入 + UI
                 else renderBag();  // AIResponseMutator 已写 entities.bag，仅刷新 UI（不传 items）

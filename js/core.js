@@ -3366,18 +3366,26 @@ var GameTimeSystem = {
     _extractTimeFromStory(story) {
         if (!story || typeof story !== 'string') return null;
         var result = {};
-        // 提取日期：xxxx年xx月xx日 / xx-xx-xx / xx/xx/xx
-        var dateMatch = story.match(/(\d{4}[年/-]\d{1,2}[月/-]\d{1,2}日?)/);
-        if (dateMatch) result.date = dateMatch[1];
+        // 提取日期：第N天/第N日 / xxxx年xx月xx日 / xx-xx-xx / xx/xx/xx
+        var dateMatch1 = story.match(/第\s*(\d+)\s*[天日]/);
+        if (dateMatch1) result.date = '第' + dateMatch1[1] + '天';
+        if (!result.date) {
+            var dateMatch2 = story.match(/(\d{4}[年/-]\d{1,2}[月/-]\d{1,2}日?)/);
+            if (dateMatch2) result.date = dateMatch2[1];
+        }
         // 提取时间：xx:xx
-        var timeMatch = story.match(/(\d{1,2}:\d{2})/);
-        if (timeMatch) result.time = timeMatch[1];
+        var timeMatch = story.match(/(\d{1,2}[:：]\d{2})/);
+        if (timeMatch) result.time = timeMatch[1].replace('：', ':');
         // 提取时段
         var periodKeywords = {
-            '凌晨': '凌晨', '清晨': '清晨', '早晨': '早晨', '早上': '早上',
-            '上午': '上午', '中午': '中午', '午后': '午后', '下午': '下午',
-            '傍晚': '傍晚', '黄昏': '黄昏', '晚上': '晚上', '夜晚': '夜晚', '夜间': '夜间',
-            '深夜': '深夜'
+            '凌晨': '凌晨', '清晨': '清晨', '黎明': '清晨', '拂晓': '清晨',
+            '早晨': '早晨', '早上': '早上',
+            '上午': '上午',
+            '正午': '中午', '中午': '中午', '午时': '中午',
+            '午后': '下午', '下午': '下午',
+            '傍晚': '傍晚', '黄昏': '傍晚',
+            '夜晚': '晚上', '夜间': '晚上', '入夜': '晚上', '夜幕': '晚上', '晚上': '晚上',
+            '深夜': '深夜', '午夜': '深夜', '子夜': '深夜'
         };
         for (let kw in periodKeywords) {
             if (story.indexOf(kw) !== -1) {
@@ -3439,6 +3447,17 @@ var GameTimeSystem = {
             resolved.date = '游戏开始';
             resolved.period = '初始时刻';
         }
+
+        // 【时间变奏修复】检测AI返回的时间是否合理推进
+        // 问题：AI经常只推进几分钟，导致大量剧情压缩在一天内
+        // 策略：从story中提取时间跳转关键词，如果检测到大幅时间跳跃但gameTime未反映，则修正
+        if (data && data.story) {
+            var _corrected = this._enforceTimeProgression(resolved, current, data.story);
+            if (_corrected) {
+                resolved = _corrected;
+            }
+        }
+
         // 【状态层同步】单一写入点：通过 TimeMutator.setTime 写入 StateManager.time
         // _syncLegacyMirror 自动同步到 gameState.gameTime（无需手动赋值）
 
@@ -3451,6 +3470,251 @@ var GameTimeSystem = {
         } else {
             throw new Error('[GameTimeSystem.parseFromAI] TimeMutator/StateManager 未加载，无法写入时间');
         }
+    },
+
+    // 【时间变奏修复】从story中检测时间跳转关键词，修正gameTime
+    // 当AI在剧情中写了"第二天""三天后""数月后"等，但gameTime未正确反映时，强制修正
+    _enforceTimeProgression(resolved, current, story) {
+        if (!story || typeof story !== 'string') return null;
+        var changed = false;
+        var result = {
+            date: resolved.date || '',
+            time: resolved.time || '',
+            period: resolved.period || '',
+            weather: resolved.weather || '',
+            era: resolved.era || ''
+        };
+
+        // 提取当前date的数字（支持"第N天""第N日"格式）
+        var _currentDayNum = 0;
+        if (current.date) {
+            var _dm = current.date.match(/第\s*(\d+)\s*[天日]/);
+            if (_dm) _currentDayNum = parseInt(_dm[1], 10);
+        }
+
+        // 提取resolved.date的数字，用于判断AI是否已正确推进日期
+        var _resolvedDayNum = 0;
+        if (resolved.date) {
+            var _rdm = resolved.date.match(/第\s*(\d+)\s*[天日]/);
+            if (_rdm) _resolvedDayNum = parseInt(_rdm[1], 10);
+        }
+
+        // 检测"次日/第二天/翌日"等关键词
+        // 【修复】仅在AI未正确推进日期时才修正（避免覆盖AI已正确设置的时间）
+        if (/第\s*[二2]\s*[天日]|翌日|次日|第二天/.test(story)) {
+            var _expectedNextDay = _currentDayNum + 1;
+            // 如果AI返回的日期已经是_nextDay或更后，说明AI已正确推进，不覆盖
+            if (_currentDayNum > 0 && _resolvedDayNum < _expectedNextDay) {
+                result.date = '第' + _expectedNextDay + '天';
+                result.time = '07:00';
+                result.period = '清晨';
+                changed = true;
+            }
+        }
+        // 检测"N天后/N日后"
+        var _daysLaterMatch = story.match(/(\d+)\s*[天日]\s*[后之]/);
+        if (_daysLaterMatch) {
+            var _addDays = parseInt(_daysLaterMatch[1], 10);
+            var _expectedDay = _currentDayNum + _addDays;
+            // 仅在AI未正确推进到_expectedDay时才修正
+            if (_addDays >= 2 && _currentDayNum > 0 && _resolvedDayNum < _expectedDay) {
+                result.date = '第' + _expectedDay + '天';
+                result.time = '08:00';
+                result.period = '上午';
+                changed = true;
+            }
+        }
+        // 检测"数天后/几天后/数日后"
+        if (/数\s*[天日]\s*[后之]|几\s*[天日]\s*[后之]/.test(story)) {
+            var _expectedDay3 = _currentDayNum + 3; // 默认3天
+            if (_currentDayNum > 0 && _resolvedDayNum < _expectedDay3) {
+                var _newDay3 = _currentDayNum + 3; // 默认3天
+                result.date = '第' + _newDay3 + '天';
+                result.time = '09:00';
+                result.period = '上午';
+                changed = true;
+            }
+        }
+        // 检测"一周后/数周后/半月后/数月后"
+        if (/一\s*周\s*[后之]|数\s*周\s*[后之]/.test(story)) {
+            var _expectedWeekDay = _currentDayNum + 7;
+            if (_currentDayNum > 0 && _resolvedDayNum < _expectedWeekDay) {
+                result.date = '第' + _expectedWeekDay + '天';
+                result.time = '08:00';
+                result.period = '上午';
+                changed = true;
+            }
+        }
+        if (/半\s*月\s*[后之]|数\s*月\s*[后之]|个\s*月\s*[后之]/.test(story)) {
+            var _expectedMonthDay = _currentDayNum + 30;
+            if (_currentDayNum > 0 && _resolvedDayNum < _expectedMonthDay) {
+                result.date = '第' + _expectedMonthDay + '天';
+                result.time = '08:00';
+                result.period = '上午';
+                changed = true;
+            }
+        }
+
+        // 检测时段关键词，如果story提到某个时段但gameTime的period不匹配，则修正
+        var _periodKeywords = [
+            { kw: '清晨|黎明|拂晓', period: '清晨', time: '06:00' },
+            { kw: '上午', period: '上午', time: '10:00' },
+            { kw: '正午|中午', period: '中午', time: '12:00' },
+            { kw: '下午', period: '下午', time: '14:00' },
+            { kw: '傍晚|黄昏|夕阳', period: '傍晚', time: '17:00' },
+            { kw: '夜晚|入夜|夜幕', period: '晚上', time: '20:00' },
+            { kw: '深夜|午夜|子夜', period: '深夜', time: '23:00' }
+        ];
+        // 只在AI未正确设置period时修正（检测story中的时间段与resolved.period是否矛盾）
+        if (changed) {
+            // 时间已被日期跳转修正，不需要再检测时段
+        } else {
+            for (var i = 0; i < _periodKeywords.length; i++) {
+                var _pk = _periodKeywords[i];
+                if (new RegExp(_pk.kw).test(story)) {
+                    // story提到了某个时段，检查resolved是否一致
+                    if (resolved.period && resolved.period !== _pk.period) {
+                        // 如果resolved的时段与story矛盾，以story为准
+                        // 但只在没有明确日期跳转时修正时段
+                        result.period = _pk.period;
+                        if (!resolved.time || resolved.time === current.time) {
+                            result.time = _pk.time;
+                        }
+                        changed = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 检测"过夜/睡觉/入睡"等，推进到次日清晨
+        if (/入睡|睡觉|过夜|就寝|安歇|回到.*睡|躺在床上.*睡/.test(story)) {
+            var _expectedSleepDay = _currentDayNum + 1;
+            // 仅在AI未正确推进到次日时才修正
+            if (_currentDayNum > 0 && !changed && _resolvedDayNum < _expectedSleepDay) {
+                result.date = '第' + _expectedSleepDay + '天';
+                result.time = '07:00';
+                result.period = '清晨';
+                changed = true;
+            }
+        }
+
+        // 【活动密度检测】如果上面的关键词检测未触发修正，
+        // 但故事描述了大量活动而AI只推进了几分钟，则根据活动类型强制推进时间
+        if (!changed) {
+            var _activityFix = this._enforceActivityBasedTime(result, current, story);
+            if (_activityFix) {
+                result = _activityFix;
+                changed = true;
+            }
+        }
+
+        if (changed) {
+            console.log('[TimeProgress] 时间推进修正: ' + JSON.stringify(current) + ' → ' + JSON.stringify(result));
+            return result;
+        }
+        return null;
+    },
+
+    // 【活动密度检测】根据故事内容的活动量推断合理的时间推进
+    // 解决问题：AI写了很长的剧情（去了多个地方、做了多件事），但gameTime只推进几分钟
+    _enforceActivityBasedTime(resolved, current, story) {
+        if (!story || typeof story !== 'string') return null;
+        // 只在AI确实返回了时间但推进太少时才介入
+        if (!resolved.time || !current.time) return null;
+        // 只有同一天内才需要检测（跨天已由上面的关键词检测处理）
+        if (resolved.date !== current.date) return null;
+
+        // 解析时间差（分钟）
+        var _parseTime = function(t) {
+            if (!t || typeof t !== 'string') return -1;
+            var m = t.match(/(\d{1,2})[:：](\d{2})/);
+            if (m) return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+            return -1;
+        };
+        var _curMin = _parseTime(current.time);
+        var _resMin = _parseTime(resolved.time);
+        if (_curMin < 0 || _resMin < 0) return null;
+        var _diffMin = _resMin - _curMin;
+        // 如果时间倒退了，不处理（由单调性检查处理）
+        if (_diffMin < 0) return null;
+        // 如果AI已经推进了30分钟以上，认为合理，不干预
+        if (_diffMin >= 30) return null;
+
+        // 到这里说明：AI推进时间 < 30分钟，检查故事是否包含大量活动
+        var _activityScore = 0;
+        var _reason = [];
+
+        // 检测活动关键词（每个匹配增加活动分数）
+        var _activities = [
+            // 移动类
+            { kw: /前往|赶到|来到|到达|走进了|推门|穿过|沿着.*走|踏上|出发/, score: 15, label: '移动' },
+            { kw: /旅行|跋涉|远行|赶路|长途/, score: 60, label: '长途旅行' },
+            { kw: /回到.*宿舍|回到.*家|回到.*房间|回到.*住处/, score: 20, label: '返回住所' },
+            // 学习/工作类
+            { kw: /学习|研究|阅读|翻阅|查阅|查阅资料|读书|看书/, score: 30, label: '学习/阅读' },
+            { kw: /训练|练习|修炼|锻炼|操练|演练/, score: 45, label: '训练/修炼' },
+            { kw: /上课|听课|讲座|课程/, score: 60, label: '上课' },
+            { kw: /工作|处理|整理|完成.*任务|制作|锻造|炼制/, score: 45, label: '工作' },
+            // 社交类
+            { kw: /交谈|聊天|讨论|谈判|商量|对话/, score: 20, label: '交谈' },
+            { kw: /宴席|聚餐|聚会|宴会/, score: 60, label: '宴席/聚会' },
+            // 战斗/冒险类
+            { kw: /战斗|交手|对决|厮杀|搏斗/, score: 30, label: '战斗' },
+            { kw: /探索|搜索|搜寻|探查|调查/, score: 40, label: '探索' },
+            // 其他消耗时间的活动
+            { kw: /等待|等了|等候/, score: 30, label: '等待' },
+            { kw: /烹饪|做饭|准备.*食物|用餐|吃饭|午餐|晚餐|早餐/, score: 25, label: '用餐' },
+            { kw: /洗澡|沐浴|洗漱/, score: 15, label: '洗漱' },
+            { kw: /休息|小憩|歇息/, score: 20, label: '休息' }
+        ];
+
+        for (var i = 0; i < _activities.length; i++) {
+            if (_activities[i].kw.test(story)) {
+                _activityScore += _activities[i].score;
+                _reason.push(_activities[i].label);
+            }
+        }
+
+        // 故事长度也是活动量的指标：超过1500字通常意味着大量活动
+        if (story.length > 2000) { _activityScore += 30; _reason.push('长篇剧情(' + story.length + '字)'); }
+        else if (story.length > 1000) { _activityScore += 15; _reason.push('中等剧情(' + story.length + '字)'); }
+
+        // 检测多个场景转换（"到了""来到""走进"等出现多次意味着去了多个地方）
+        var _sceneChanges = (story.match(/来到了|走到了|走进了|回到了|赶到了|推开了|踏入了/g) || []).length;
+        if (_sceneChanges >= 3) { _activityScore += 40; _reason.push('多场景转换(' + _sceneChanges + '次)'); }
+        else if (_sceneChanges >= 2) { _activityScore += 20; _reason.push('场景转换(' + _sceneChanges + '次)'); }
+
+        // 活动分数阈值：如果活动量足够大但时间推进不足30分钟，则强制推进
+        if (_activityScore < 30) return null; // 活动量不大，不干预
+
+        // 根据活动分数推算合理的时间推进（分钟）
+        var _suggestedMin = Math.min(_activityScore, 480); // 上限8小时
+        var _newMin = _curMin + _suggestedMin;
+        var _newHour = Math.floor(_newMin / 60) % 24;
+        var _newMinute = _newMin % 60;
+        var _newTime = String(_newHour).padStart(2, '0') + ':' + String(_newMinute).padStart(2, '0');
+
+        // 推算时段
+        var _newPeriod = resolved.period;
+        if (_newHour >= 5 && _newHour < 8) _newPeriod = '清晨';
+        else if (_newHour >= 8 && _newHour < 11) _newPeriod = '上午';
+        else if (_newHour >= 11 && _newHour < 13) _newPeriod = '中午';
+        else if (_newHour >= 13 && _newHour < 17) _newPeriod = '下午';
+        else if (_newHour >= 17 && _newHour < 19) _newPeriod = '傍晚';
+        else if (_newHour >= 19 && _newHour < 23) _newPeriod = '晚上';
+        else if (_newHour >= 23 || _newHour < 5) _newPeriod = '深夜';
+
+        console.log('[TimeProgress] 活动密度检测: AI仅推进' + _diffMin + '分钟，但检测到活动[' +
+            _reason.join(', ') + ']，活动分数=' + _activityScore + '，建议推进' + _suggestedMin + '分钟');
+
+        return {
+            date: resolved.date,
+            time: _newTime,
+            period: _newPeriod,
+            weather: resolved.weather,
+            era: resolved.era
+        };
     },
 
     // 格式化时间显示（用于UI）

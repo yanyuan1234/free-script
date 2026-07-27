@@ -55,7 +55,7 @@ const AIOutputJSONSchema = {
                         identity: { type: 'string', description: '身份' },
                         stats: {
                             type: 'array',
-                            description: '主角属性',
+                            description: '主角属性。label必须与之前的属性标签保持一致（如之前用"魔力亲和"就一直用"魔力亲和"，不要改成"魔力"或"魔力潜力"）。只更新value，不要改变label名称',
                             items: {
                                 type: 'object',
                                 properties: {
@@ -208,11 +208,11 @@ const AIOutputJSONSchema = {
                 },
                 gameTime: {
                     type: 'object',
-                    description: '游戏内时间',
+                    description: '游戏内时间。必须根据本回合剧情活动量合理推进时间——简单对话推进几分钟到1小时，学习/探索推进数小时，睡眠推进到次日，旅行推进数日',
                     properties: {
-                        date: { type: 'string', description: '日期，如"第3天"' },
-                        time: { type: 'string', description: '时刻，如"卯时"' },
-                        period: { type: 'string', description: '时段：morning/afternoon/evening/night' },
+                        date: { type: 'string', description: '日期，如"第3天"或"2024年3月15日"' },
+                        time: { type: 'string', description: '时刻，HH:MM格式，如"14:30"' },
+                        period: { type: 'string', description: '时段：清晨/上午/中午/下午/傍晚/晚上/深夜' },
                         weather: { type: 'string', description: '晴/阴/雨/雪' },
                         era: { type: 'string', description: '时代/年号' }
                     },

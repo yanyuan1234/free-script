@@ -7072,6 +7072,22 @@ function _restoreGameRender() {
 
         // 渲染导航栏
         renderNavBar('gameNav', MAIN_NAV_TABS, 0);
+
+        // 【P2修复】页面刷新/读档后重新计算Token计数器
+        // 之前只在AI回复后调用updateTokenCount，导致刷新后Token显示为0
+        // 这里在所有游戏状态恢复完成后重新计算
+        try {
+            if (typeof updateTokenCount === 'function') {
+                // 延迟一帧执行，确保DOM已完全渲染
+                requestAnimationFrame(function() {
+                    try { updateTokenCount(); } catch(e) {
+                        console.warn('[restoreGame] updateTokenCount 失败:', e);
+                    }
+                });
+            }
+        } catch(e) {
+            console.warn('[restoreGame] Token计数恢复失败:', e);
+        }
     } catch (e) {
         console.error('_restoreGameRender 渲染失败:', e);
         UI.toast('存档数据已加载，但界面恢复失败');
