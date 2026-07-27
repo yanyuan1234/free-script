@@ -3739,10 +3739,10 @@ var GameTimeSystem = {
         // 对话中提到的"修炼""训练"等词不应被当作实际活动
         // 如："你今天修炼得怎么样？"中的"修炼"不是实际训练活动
         var _storyNoDialogue = story
-            .replace(/"[^"]*"/g, '')   // 中文双引号
-            .replace(/'[^']*'/g, '')   // 中文单引号
-            .replace(/"[^"]*"/g, '')   // 英文双引号
-            .replace(/'[^']*'/g, '');  // 英文单引号
+            .replace(/\u201C[^\u201D]*\u201D/g, '')   // 中文双引号 "..."
+            .replace(/\u2018[^\u2019]*\u2019/g, '')   // 中文单引号 '...'
+            .replace(/"[^"]*"/g, '')                   // 英文双引号
+            .replace(/'[^']*'/g, '');                  // 英文单引号
 
         for (var i = 0; i < _activities.length; i++) {
             if (_activities[i].kw.test(_storyNoDialogue)) {
