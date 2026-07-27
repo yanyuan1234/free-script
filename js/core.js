@@ -3735,8 +3735,17 @@ var GameTimeSystem = {
             { kw: /休息|小憩|歇息/, score: 20, label: '休息' }
         ];
 
+        // 【修复】排除对话内容中的关键词误判
+        // 对话中提到的"修炼""训练"等词不应被当作实际活动
+        // 如："你今天修炼得怎么样？"中的"修炼"不是实际训练活动
+        var _storyNoDialogue = story
+            .replace(/"[^"]*"/g, '')   // 中文双引号
+            .replace(/'[^']*'/g, '')   // 中文单引号
+            .replace(/"[^"]*"/g, '')   // 英文双引号
+            .replace(/'[^']*'/g, '');  // 英文单引号
+
         for (var i = 0; i < _activities.length; i++) {
-            if (_activities[i].kw.test(story)) {
+            if (_activities[i].kw.test(_storyNoDialogue)) {
                 _activityScore += _activities[i].score;
                 _reason.push(_activities[i].label);
             }
@@ -3745,7 +3754,7 @@ var GameTimeSystem = {
         if (story.length > 2000) { _activityScore += 30; _reason.push('长篇剧情(' + story.length + '字)'); }
         else if (story.length > 1000) { _activityScore += 15; _reason.push('中等剧情(' + story.length + '字)'); }
 
-        var _sceneChanges = (story.match(/来到了|走到了|走进了|回到了|赶到了|推开了|踏入了/g) || []).length;
+        var _sceneChanges = (_storyNoDialogue.match(/来到了|走到了|走进了|回到了|赶到了|推开了|踏入了/g) || []).length;
         if (_sceneChanges >= 3) { _activityScore += 40; _reason.push('多场景转换(' + _sceneChanges + '次)'); }
         else if (_sceneChanges >= 2) { _activityScore += 20; _reason.push('场景转换(' + _sceneChanges + '次)'); }
 
