@@ -2210,7 +2210,9 @@ function getLogPageRenderers() {
         mail: renderMailPage,
         shop: renderShopPage,
         // 【小剧场融合】新增渲染器
-        calendar: renderCalendarPage
+        calendar: renderCalendarPage,
+        // 设置页渲染器
+        settings: renderSettingsPage
     };
     return _logPageRenderers;
 }
@@ -2495,7 +2497,7 @@ function openLogSubPage(type) {
 // 应用日志页面样式
 function _applyLogPageStyle(content, type, html) {
     var isFullScreen = ['chat', 'forum', 'moments', 'rank', 'items', 'diary', 'mail', 'shop', 'quests',
-        'achieve', 'calendar'
+        'achieve', 'calendar', 'settings'
     ].indexOf(type) >= 0;
 
     if (isFullScreen) {
@@ -4048,6 +4050,82 @@ function renderCalendarPage() {
     });
 
     return container;
+}
+
+// 渲染设置页面
+function renderSettingsPage() {
+    var _key = 'settings:' + (gameState.theme || '') + '|' + (gameState.genre || '');
+    if (shouldSkipPageRender('renderSettingsPage', _key)) return;
+
+    var isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    var themeLabel = isDark ? '夜间模式' : '日间模式';
+    var themeIcon = isDark ? '🌙' : '☀️';
+
+    var html = '<div style="padding:20px;background:var(--bg);min-height:100%;">' +
+        '<div style="font-size:16px;font-weight:600;margin-bottom:16px;">游戏设置</div>' +
+        '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-bottom:16px;">' +
+        '<div class="settings-row" role="button" tabindex="0" data-action="toggleTheme" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">' + themeIcon + '</span><span>主题切换</span></div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">' + themeLabel + '</div>' +
+        '</div>' +
+        '<div class="settings-row" role="button" tabindex="0" data-action="clearLogRenderCache" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🗑️</span><span>清除日志缓存</span></div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">刷新各页面数据</div>' +
+        '</div>' +
+        '<div class="settings-row" role="button" tabindex="0" data-action="resetNotifications" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);cursor:pointer;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🔔</span><span>重置通知红点</span></div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">一键已读</div>' +
+        '</div>' +
+        '<div class="settings-row" role="button" tabindex="0" data-action="exportGameData" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;cursor:pointer;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">📤</span><span>导出存档</span></div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">JSON</div>' +
+        '</div>' +
+        '</div>' +
+        '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-bottom:16px;">' +
+        '<div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">ℹ️</span><span>版本</span></div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">v1.0.3</div>' +
+        '</div>' +
+        '<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">' +
+        '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🎮</span><span>当前题材</span></div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">' + escapeHtml(gameState.theme || '未设置') + '</div>' +
+        '</div>' +
+        '</div>' +
+        '<p style="font-size:12px;color:var(--text-tertiary);text-align:center;">设置项会随游戏进程自动补充</p>' +
+        '</div>';
+    return html;
+}
+
+// 设置页操作回调
+function clearLogRenderCache() {
+    if (typeof _lastRenderedKeys !== 'undefined') {
+        for (var k in _lastRenderedKeys) { _lastRenderedKeys[k] = ''; }
+    }
+    if (typeof ThemeAdaptiveContent !== 'undefined' && ThemeAdaptiveContent.clearCache) {
+        ThemeAdaptiveContent.clearCache();
+    }
+    if (UI.toast) UI.toast('日志缓存已清除');
+    if (typeof renderLogPage === 'function') renderLogPage();
+}
+
+function resetNotifications() {
+    StateManager.set('ui.notifSeenSnapshot', {}, { silent: true });
+    if (UI.toast) UI.toast('通知红点已重置');
+    if (typeof renderLogPage === 'function') renderLogPage();
+}
+
+function exportGameData() {
+    var data = JSON.stringify(gameState, null, 2);
+    var blob = new Blob([data], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'free-script-save-' + new Date().toISOString().slice(0, 10) + '.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (UI.toast) UI.toast('存档导出中...');
 }
 
 // 手动添加日程：输入标题、时间、地点、描述，保存到 ui.worldModules 的 calendar 模块
