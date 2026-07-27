@@ -2403,7 +2403,8 @@ var _RENDER_CACHE_KEY_MAP = {
     mail: 'renderMailPage',
     calendar: 'renderCalendarPage',
     quests: 'renderQuestPage',
-    achieve: 'renderAchievePage'
+    achieve: 'renderAchievePage',
+    settings: 'renderSettingsPage'
 };
 
 /**
