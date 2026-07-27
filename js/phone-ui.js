@@ -4388,10 +4388,20 @@ function renderPlayerStats(player) {
         var _isEmpty = !_hasName && !_hasIdentity && !_hasStats && !_hasOther;
         if (!_isEmpty) {
             var _existingPD = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('entities.player') || { name: '', stats: [], details: [], bag: [] }) : (gameState.playerData || { name: '', stats: [], details: [], bag: [] });
-            var _mergedPD = Object.assign({}, _existingPD, player);
+            // 【P1修复】过滤 player 中的空值（空数组、空字符串、undefined）后再合并，
+            // 避免 Object.assign 用空值覆盖已有的属性
+            var _cleanPlayer = {};
+            Object.keys(player).forEach(function(k) {
+                var v = player[k];
+                if (v === undefined || v === null) return;
+                if (Array.isArray(v) && v.length === 0) return;
+                if (typeof v === 'string' && v.trim() === '') return;
+                _cleanPlayer[k] = v;
+            });
+            var _mergedPD = Object.assign({}, _existingPD, _cleanPlayer);
 
-            if (player.stats && Array.isArray(player.stats) && player.stats.length > 0) {
-                _mergedPD.stats = player.stats;
+            if (_cleanPlayer.stats && Array.isArray(_cleanPlayer.stats) && _cleanPlayer.stats.length > 0) {
+                _mergedPD.stats = _cleanPlayer.stats;
             }
             if (Array.isArray(player.details) && player.details.length > 0) {
                 _mergedPD.details = player.details;
@@ -6950,9 +6960,8 @@ function _restoreGameRender() {
             if (_parsedData.title || _parsedData.scene) updateSceneTitle(_parsedData.title || _parsedData.scene);
             if (_parsedData.player) {
                 renderPlayerStats(_parsedData.player);
-                if (typeof StateManager !== 'undefined' && StateManager.set) {
-                    StateManager.set('entities.player', _parsedData.player, { silent: true });
-                }
+                // 【P1修复】移除直接写 AI 原始数据到 StateManager 的代码，
+                // renderPlayerStats 内部已做合并保护并写入 StateManager
                 gameState.playerData = Object.assign({}, gameState.playerData || {}, _parsedData.player);
             }
             if (_parsedData.characters) mergeCharacters(_parsedData.characters);

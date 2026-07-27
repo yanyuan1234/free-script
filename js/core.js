@@ -1819,43 +1819,49 @@ var SaveDB = {
     _useFallback: false,
     _fallbackFailCount: 0,
     MAX_FALLBACK_FAILS: 3,
+    _initPromise: null,
     async init() {
         if (this._ready) return;
-        try {
-            this._db = await new Promise((resolve, reject) => {
-                const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
-                // 添加超时保护，防止 IndexedDB 在某些环境中永远不响应
-                var timeoutId = TimerManager.setTimeout('idbOpenTimeout', function() {
-                    reject(new Error('IndexedDB open timeout'));
-                }, 3000);
-                req.onupgradeneeded = function(e) {
-                    var db = e.target.result;
-                    // 存档 store
-                    if (!db.objectStoreNames.contains('saves')) {
-                        db.createObjectStore('saves');
-                    }
-                    // 【P0-2】通用 KV store：用于存储 GameMemory、预设、世界书等大块数据
-                    // 替代 localStorage，突破 5MB 限制
-                    if (!db.objectStoreNames.contains('kv')) {
-                        db.createObjectStore('kv');
-                    }
-                };
-                req.onsuccess = function(e) {
-                    TimerManager.clearTimeout('idbOpenTimeout');
-                    resolve(e.target.result);
-                };
-                req.onerror = function(e) {
-                    TimerManager.clearTimeout('idbOpenTimeout');
-                    reject(e.target.error);
-                };
-            });
-            this._ready = true;
-            console.log('✅ IndexedDB 就绪 (v' + this.DB_VERSION + ', saves+kv)');
-        } catch (e) {
-            console.warn('⚠️ IndexedDB 不可用，回退 localStorage:', e);
-            this._useFallback = true;
-            this._ready = true;
-        }
+        // 【P2修复】缓存 init Promise，避免并发调用各自独立打开 IndexedDB 连接
+        if (this._initPromise) return this._initPromise;
+        this._initPromise = (async () => {
+            try {
+                this._db = await new Promise((resolve, reject) => {
+                    const req = indexedDB.open(this.DB_NAME, this.DB_VERSION);
+                    // 添加超时保护，防止 IndexedDB 在某些环境中永远不响应
+                    var timeoutId = TimerManager.setTimeout('idbOpenTimeout', function() {
+                        reject(new Error('IndexedDB open timeout'));
+                    }, 3000);
+                    req.onupgradeneeded = function(e) {
+                        var db = e.target.result;
+                        // 存档 store
+                        if (!db.objectStoreNames.contains('saves')) {
+                            db.createObjectStore('saves');
+                        }
+                        // 【P0-2】通用 KV store：用于存储 GameMemory、预设、世界书等大块数据
+                        // 替代 localStorage，突破 5MB 限制
+                        if (!db.objectStoreNames.contains('kv')) {
+                            db.createObjectStore('kv');
+                        }
+                    };
+                    req.onsuccess = function(e) {
+                        TimerManager.clearTimeout('idbOpenTimeout');
+                        resolve(e.target.result);
+                    };
+                    req.onerror = function(e) {
+                        TimerManager.clearTimeout('idbOpenTimeout');
+                        reject(e.target.error);
+                    };
+                });
+                this._ready = true;
+                console.log('✅ IndexedDB 就绪 (v' + this.DB_VERSION + ', saves+kv)');
+            } catch (e) {
+                console.warn('⚠️ IndexedDB 不可用，回退 localStorage:', e);
+                this._useFallback = true;
+                this._ready = true;
+            }
+        })();
+        return this._initPromise;
     },
     // ── 底层原始读写（带一次重试，偶发错误不立即永久 fallback） ──
     async _getRaw(key) {
@@ -5557,13 +5563,23 @@ function showStoryLoading() {
     var storyEl = document.getElementById('storyText');
     var optsEl = document.getElementById('optionsContainer');
     if (!storyEl || !optsEl) return;
+    // 【P1修复】基于历史生成耗时计算预估等待时间
+    var _eta = '';
+    try {
+        var _times = (typeof window !== 'undefined' && window._genTimeHistory) || [];
+        if (_times.length > 0) {
+            var _avg = _times.reduce(function(a,b){return a+b;}, 0) / _times.length;
+            var _sec = Math.ceil(_avg / 1000);
+            _eta = '预计约 ' + _sec + ' 秒';
+        }
+    } catch(e) {}
     storyEl.innerHTML =
     '<div style="text-align:center;padding:40px 0;display:flex;flex-direction:column;align-items:center;text-indent:0;">' +
     '<div style="display:flex;justify-content:center;gap:10px;margin-bottom:16px;">' +
     '<div class="loading-dot"></div><div class="loading-dot"></div><div class="loading-dot"></div></div>' +
     '<span style="color:var(--text-secondary);font-size:13px;">' + flavors[Math.floor(Math.random() *
         flavors.length)] + '</span>' +
-    '<div style="margin-top:8px;font-size:12px;color:var(--text-tertiary);text-align:center;">已等待 <span id="waitSec">0</span> 秒</div>' +
+    '<div style="margin-top:8px;font-size:12px;color:var(--text-tertiary);text-align:center;">已等待 <span id="waitSec">0</span> 秒' + (_eta ? ' · <span style="color:var(--accent);">' + _eta + '</span>' : '') + '</div>' +
     // [P2-4] 30s 后显示降级提示；默认 hidden
     '<div id="loadingDegradeHint" style="display:none;margin-top:12px;padding:8px 12px;font-size:12px;color:#8a5a00;background:#fff5d6;border:1px solid #f0d68a;border-radius:6px;text-align:center;line-height:1.5;">ⓘ 网络响应较慢。若长时间无响应，可点击底部「取消」后重试，或检查 API 设置。</div>' +
     '</div>';

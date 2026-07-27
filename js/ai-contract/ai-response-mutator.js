@@ -307,17 +307,34 @@ const AIResponseMutator = {
                 finalName = current.name || '主角';
             }
         }
+        // 【P1修复】补全白名单字段 + stats 按 label 逐项合并，防止属性丢失
+        var _mergedStats;
+        if (Array.isArray(player.stats) && player.stats.length > 0 && Array.isArray(current.stats)) {
+            // 按 label 逐项合并：AI 返回的属性覆盖同 label 的旧值，AI 未返回的属性保留
+            var _statsByLabel = {};
+            current.stats.forEach(function(s) { if (s && s.label) _statsByLabel[s.label] = s; });
+            player.stats.forEach(function(s) { if (s && s.label) _statsByLabel[s.label] = s; });
+            _mergedStats = Object.keys(_statsByLabel).map(function(k) { return _statsByLabel[k]; });
+        } else {
+            _mergedStats = (Array.isArray(player.stats) && player.stats.length > 0) ? player.stats : (current.stats || []);
+        }
         const normalized = {
             name: finalName,
             identity: String(player.identity || current.identity || '').trim(),
 
-            // 避免 AI 返回空 stats（或默认空数组）清空已生成的属性
-            stats: (Array.isArray(player.stats) && player.stats.length > 0) ? player.stats : (current.stats || []),
+            // 【P1修复】stats 按 label 合并，避免 AI 返回部分属性时整体替换导致其他属性丢失
+            stats: _mergedStats,
 
             level: player.level !== undefined ? player.level : current.level,
             exp: player.exp !== undefined ? player.exp : current.exp,
             title: player.title !== undefined ? player.title : current.title,
-            personality: player.personality !== undefined ? player.personality : current.personality
+            personality: player.personality !== undefined ? player.personality : current.personality,
+            // 【P1修复】补全白名单缺失字段，防止全量替换时丢失
+            age: player.age !== undefined ? player.age : current.age,
+            details: (Array.isArray(player.details) && player.details.length > 0) ? player.details : (current.details || []),
+            bag: (Array.isArray(player.bag) && player.bag.length > 0) ? player.bag : (current.bag || []),
+            mood: player.mood !== undefined ? player.mood : current.mood,
+            location: player.location !== undefined ? player.location : current.location
         };
         StateManager.set('entities.player', normalized, { silent: true });
 

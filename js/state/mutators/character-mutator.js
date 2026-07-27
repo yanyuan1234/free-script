@@ -56,8 +56,15 @@ const CharacterMutator = {
                 // 原版行为：AI 是权威，直接覆盖好感度（允许降低）
                 // 新版 Math.max 拒绝降好感度，导致剧情冲突时（如玩家激怒NPC）好感度不降
                 var merged = Object.assign({}, list[idx], normalized);
-                // 【通用去重】合并同名角色时，优先保留较短的名字（不含括号备注的更简洁，
-                // 如"学霸"优于"学霸（暂无名，可自定义）"）。不依赖任何关键词硬编码。
+                // 【P1修复】如果 normalized.desc 为空但已有描述非空，保留已有描述
+                if (!merged.desc && list[idx].desc) {
+                    merged.desc = list[idx].desc;
+                }
+                // 【P1修复】同样保护 appearance/personality/background 等扩展字段
+                if (!merged.appearance && list[idx].appearance) merged.appearance = list[idx].appearance;
+                if (!merged.personality && list[idx].personality) merged.personality = list[idx].personality;
+                if (!merged.background && list[idx].background) merged.background = list[idx].background;
+                // 【通用去重】合并同名角色时，优先保留较短的名字
                 var _prevN = String(list[idx].name || '');
                 var _newN = String(normalized.name || '');
                 if (_prevN && _newN && _prevN.length < _newN.length) {
@@ -75,6 +82,11 @@ const CharacterMutator = {
             if (fuzzyIdx >= 0) {
                 console.log('[CharacterMutator] 模糊匹配命中："' + list[fuzzyIdx].name + '" → "' + normalized.name + '"，合并为同一角色');
                 const merged = Object.assign({}, list[fuzzyIdx], normalized);
+                // 【P1修复】保护 desc/appearance/personality/background 不被空值覆盖
+                if (!merged.desc && list[fuzzyIdx].desc) merged.desc = list[fuzzyIdx].desc;
+                if (!merged.appearance && list[fuzzyIdx].appearance) merged.appearance = list[fuzzyIdx].appearance;
+                if (!merged.personality && list[fuzzyIdx].personality) merged.personality = list[fuzzyIdx].personality;
+                if (!merged.background && list[fuzzyIdx].background) merged.background = list[fuzzyIdx].background;
                 // 【通用去重】合并时优先保留较短的名字
                 var _prevN2 = String(list[fuzzyIdx].name || '');
                 var _newN2 = String(normalized.name || '');

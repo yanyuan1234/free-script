@@ -1302,6 +1302,10 @@ async function sendAIRequest(userMessage, isInit = false) {
     safeAbort();
     window._currentAbort = new AbortController();
     setWaiting(true);
+    // 【P0修复】生成前自动存档，防止页面冻结或崩溃时丢失进度
+    try {
+        if (typeof autoSave === 'function') autoSave();
+    } catch(e) { console.warn('[pre-gen autoSave] failed:', e); }
     // 【BG-001 修复】请求开始时先清理上一轮可能残留的生成弹窗，
     // 避免重试/降级路径下 showGenerating/hideGenerating 调度乱序导致遮罩叠加
     try { if (typeof UI !== 'undefined' && UI.hideGenerating) UI.hideGenerating(); } catch (e) {}
@@ -2156,7 +2160,14 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 【性能诊断】流完成时间戳
         var _t_streamEnd = performance.now();
-        document.title = 'PERF:7-streamDone';
+        window._perfDebug&&(document.title='PERF:7-streamDone');
+        // 【P1修复】记录生成耗时到历史，用于下次显示预估等待时间
+        try {
+            if (!window._genTimeHistory) window._genTimeHistory = [];
+            var _genTime = _t_streamEnd - _t_entry;
+            window._genTimeHistory.push(_genTime);
+            if (window._genTimeHistory.length > 5) window._genTimeHistory.shift();
+        } catch(e) {}
         console.log('[perf] 流完成, responseLen=' + (response ? response.length : 0));
         // 【BUG-002 补充修复】流完成后，后处理（parseAIResponse + renderStory）是重计算操作
         // 在流完成与后处理之间 yield 一次，让浏览器处理积压的 UI 事件（如 CDP 命令），
@@ -2170,7 +2181,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         }
         // 流式空回检测
         var _t0 = performance.now();
-        document.title = 'PERF:8-parse';
+        window._perfDebug&&(document.title='PERF:8-parse');
         console.log('[perf] START parseAIResponse');
         var parseResult = parseAIResponse(response);
         console.log('[perf] END parseAIResponse: ' + (performance.now() - _t0).toFixed(1) + 'ms');
@@ -2329,6 +2340,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         var _aiMutatorApplied = false;
         if (typeof AIResponseMutator !== 'undefined' && AIResponseMutator.apply && parseResult && parseResult.success) {
             try {
+                // 【P0修复】在 parseAIResponse 与 AIResponseMutator 之间 yield 一次，
+                // 让浏览器处理积压的 UI 事件（取消按钮点击等），避免连续同步重计算导致冻结
+                await new Promise(function(resolve) { setTimeout(resolve, 0); });
                 // 【v3审查修复】apply() 内部 try-catch 失败时返回 { success: false } 而非抛异常
                 // 原实现仅凭"未抛异常"就置 _aiMutatorApplied = true，导致后续 deleteLastTurn 误撤销
                 var _t1 = performance.now();
@@ -3452,7 +3466,9 @@ function updateTokenCount(currentResponse) {
         currentTokenEl.textContent = outputTokens > 1000 ?
             (outputTokens / 1000).toFixed(1) + 'k' : outputTokens;
     } else if (currentTokenEl) {
-        currentTokenEl.textContent = '0';
+        // 【P2修复】无 currentResponse 时显示输入 token 估算，而非硬编码 '0'
+        currentTokenEl.textContent = estimated > 1000 ?
+            (estimated / 1000).toFixed(1) + 'k' : (estimated || '0');
     }
     if (totalTokenEl) {
         totalTokenEl.textContent = estimated > 1000 ? 
