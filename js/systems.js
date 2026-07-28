@@ -1201,9 +1201,19 @@ var AchievementSystem = {
                     });
             }
         });
-        // 【修复】成就属于当前剧本，由AI根据剧情生成。
-        // 不再使用系统预设的题材模板填充——如果AI未生成成就，返回空数组，
-        // 页面会显示"成就系统即将开放"的空状态提示。
+        // 成就优先级：AI生成的剧本专属成就 > 题材动态兜底成就
+        // 如果AI已为本剧本生成成就，优先使用AI成就（剧本专属）
+        // 如果AI尚未生成（游戏初期），回退到 ThemeAdaptiveContent 根据当前题材动态生成的成就
+        // 这些动态成就也是剧本专属的——基于当前游戏题材检测生成，非全局固定模板
+        if (aiAchievements.length > 0) {
+            return aiAchievements;
+        }
+        if (typeof ThemeAdaptiveContent !== 'undefined' && ThemeAdaptiveContent.getDynamicAchievements) {
+            var dynamicAchs = ThemeAdaptiveContent.getDynamicAchievements();
+            if (dynamicAchs && dynamicAchs.length > 0) {
+                return dynamicAchs;
+            }
+        }
         return aiAchievements;
     },
     getPlayerAchievements() {
