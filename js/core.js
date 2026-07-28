@@ -3693,10 +3693,10 @@ var GameTimeSystem = {
         return null;
     },
 
-    // 【活动密度检测】根据故事内容的活动量推断合理的时间推进
+    // 【题材无关的活动密度检测】根据故事结构信号推断合理的时间推进
     // 解决问题：AI写了很长的剧情（去了多个地方、做了多件事），但gameTime只推进几分钟
-    // 【修复】1. 使用活动分数依赖的最小时间阈值（而非固定30分钟）
-    //        2. 正确处理午夜跨越（时间超过24:00时自动推进日期）
+    // 设计理念：不依赖任何题材专属关键词，通过故事长度/场景转换/时间流逝词/动作密度判断
+    // 午夜跨越：时间超过24:00时自动推进日期
     _enforceActivityBasedTime(resolved, current, story) {
         if (!story || typeof story !== 'string') return null;
         if (!resolved.time || !current.time) return null;
@@ -3708,74 +3708,78 @@ var GameTimeSystem = {
         var _diffMin = _resMin - _curMin;
         if (_diffMin < 0) return null; // 时间倒退，不处理
 
-        // 先计算活动分数，再根据分数判断是否需要干预
+        // ================================================
+        // 【题材无关的活动密度检测】
+        // 不依赖任何题材专属关键词（如"修炼""锻造""星际航行"等）
+        // 而是通过以下结构信号判断故事中是否包含大量耗时活动：
+        //   1. 故事长度——越长说明描述了越多活动
+        //   2. 场景转换——去了多个地方说明花了时间移动
+        //   3. 时间流逝暗示词——语言层面的通用时间表达（非题材专属）
+        //   4. 动作密度——句号/段落数量反映活动量
+        // ================================================
+
         var _activityScore = 0;
         var _reason = [];
 
-        var _activities = [
-            // 移动类
-            { kw: /前往|赶到|来到|到达|走进了|推门|穿过|沿着.*走|踏上|出发/, score: 15, label: '移动' },
-            { kw: /旅行|跋涉|远行|赶路|长途/, score: 60, label: '长途旅行' },
-            { kw: /回到.*宿舍|回到.*家|回到.*房间|回到.*住处/, score: 20, label: '返回住所' },
-            // 学习/工作类
-            { kw: /学习|研究|阅读|翻阅|查阅|查阅资料|读书|看书/, score: 30, label: '学习/阅读' },
-            { kw: /训练|练习|修炼|锻炼|操练|演练/, score: 45, label: '训练/修炼' },
-            { kw: /上课|听课|讲座|课程/, score: 60, label: '上课' },
-            { kw: /工作|处理|整理|完成.*任务|制作|锻造|炼制/, score: 45, label: '工作' },
-            // 社交类
-            { kw: /交谈|聊天|讨论|谈判|商量|对话/, score: 20, label: '交谈' },
-            { kw: /宴席|聚餐|聚会|宴会/, score: 60, label: '宴席/聚会' },
-            // 战斗/冒险类
-            { kw: /战斗|交手|对决|厮杀|搏斗/, score: 30, label: '战斗' },
-            { kw: /探索|搜索|搜寻|探查|调查/, score: 40, label: '探索' },
-            // 其他消耗时间的活动
-            { kw: /等待|等了|等候/, score: 30, label: '等待' },
-            { kw: /烹饪|做饭|准备.*食物|用餐|吃饭|午餐|晚餐|早餐/, score: 25, label: '用餐' },
-            { kw: /洗澡|沐浴|洗漱/, score: 15, label: '洗漱' },
-            { kw: /休息|小憩|歇息/, score: 20, label: '休息' }
-        ];
+        // --- 信号1：故事长度 ---
+        if (story.length > 2000) { _activityScore += 40; _reason.push('长篇剧情(' + story.length + '字)'); }
+        else if (story.length > 1000) { _activityScore += 20; _reason.push('中等剧情(' + story.length + '字)'); }
+        else if (story.length > 500) { _activityScore += 10; _reason.push('较短剧情(' + story.length + '字)'); }
 
-        // 【修复】排除对话内容中的关键词误判
-        // 对话中提到的"修炼""训练"等词不应被当作实际活动
-        // 如："你今天修炼得怎么样？"中的"修炼"不是实际训练活动
+        // --- 信号2：场景转换（题材无关——任何故事都有"去了某处"的描写） ---
+        // 去掉对话内容后再匹配，避免对话中的场景词干扰
         var _storyNoDialogue = story
             .replace(/\u201C[^\u201D]*\u201D/g, '')   // 中文双引号 "..."
             .replace(/\u2018[^\u2019]*\u2019/g, '')   // 中文单引号 '...'
             .replace(/"[^"]*"/g, '')                   // 英文双引号
             .replace(/'[^']*'/g, '');                  // 英文单引号
 
-        for (var i = 0; i < _activities.length; i++) {
-            if (_activities[i].kw.test(_storyNoDialogue)) {
-                _activityScore += _activities[i].score;
-                _reason.push(_activities[i].label);
+        var _sceneChanges = (_storyNoDialogue.match(/来到了|走到了|走进了|回到了|赶到了|推开了|踏入了|前往|赶到|来到|到达|穿过|出发|返回|进入|离开/g) || []).length;
+        if (_sceneChanges >= 4) { _activityScore += 50; _reason.push('多场景转换(' + _sceneChanges + '次)'); }
+        else if (_sceneChanges >= 3) { _activityScore += 35; _reason.push('频繁场景转换(' + _sceneChanges + '次)'); }
+        else if (_sceneChanges >= 2) { _activityScore += 20; _reason.push('场景转换(' + _sceneChanges + '次)'); }
+
+        // --- 信号3：时间流逝暗示词（语言层面通用，非题材专属） ---
+        // 这些是中文叙事中表达"过了很长时间"的通用写法，适用于任何题材
+        var _timeFlowPatterns = [
+            { kw: /不知不觉|不经意间|转眼|片刻后|不久后/, score: 15, label: '时间流逝叙述' },
+            { kw: /很久|许久|良久|好一阵|好半天|大半天/, score: 30, label: '长时间叙述' },
+            { kw: /数日|数周|数月|数年|半个月|几个月|半年/, score: 60, label: '多日时间叙述' },
+            { kw: /一整天|一上午|一下午|一晚上|彻夜|通宵/, score: 45, label: '全天时间叙述' },
+            { kw: /直到|等到|待到|终于/, score: 20, label: '等待叙述' }
+        ];
+        for (var i = 0; i < _timeFlowPatterns.length; i++) {
+            if (_timeFlowPatterns[i].kw.test(_storyNoDialogue)) {
+                _activityScore += _timeFlowPatterns[i].score;
+                _reason.push(_timeFlowPatterns[i].label);
             }
         }
 
-        if (story.length > 2000) { _activityScore += 30; _reason.push('长篇剧情(' + story.length + '字)'); }
-        else if (story.length > 1000) { _activityScore += 15; _reason.push('中等剧情(' + story.length + '字)'); }
+        // --- 信号4：动作密度（句号数量反映活动量，题材无关） ---
+        var _sentenceCount = (_storyNoDialogue.match(/[。！？\n]/g) || []).length;
+        if (_sentenceCount >= 30) { _activityScore += 30; _reason.push('高密度叙事(' + _sentenceCount + '句)'); }
+        else if (_sentenceCount >= 20) { _activityScore += 20; _reason.push('中密度叙事(' + _sentenceCount + '句)'); }
+        else if (_sentenceCount >= 10) { _activityScore += 10; _reason.push('一般叙事(' + _sentenceCount + '句)'); }
 
-        var _sceneChanges = (_storyNoDialogue.match(/来到了|走到了|走进了|回到了|赶到了|推开了|踏入了/g) || []).length;
-        if (_sceneChanges >= 3) { _activityScore += 40; _reason.push('多场景转换(' + _sceneChanges + '次)'); }
-        else if (_sceneChanges >= 2) { _activityScore += 20; _reason.push('场景转换(' + _sceneChanges + '次)'); }
+        // 活动量不大，不干预
+        if (_activityScore < 30) return null;
 
-        if (_activityScore < 30) return null; // 活动量不大，不干预
-
-        // 【修复】根据活动分数确定最小时间推进阈值（而非固定30分钟）
-        // 高活动量（训练/上课/长途旅行等）需要更长时间，AI推进30分钟远远不够
+        // 根据活动分数确定最小时间推进阈值
         var _minRequiredMin;
-        if (_activityScore >= 60) _minRequiredMin = 120;      // 高活动量至少2小时
-        else if (_activityScore >= 45) _minRequiredMin = 90;   // 中高活动量至少1.5小时
-        else if (_activityScore >= 30) _minRequiredMin = 60;   // 中等活动量至少1小时
+        if (_activityScore >= 80) _minRequiredMin = 120;      // 高活动量至少2小时
+        else if (_activityScore >= 60) _minRequiredMin = 90;   // 中高活动量至少1.5小时
+        else if (_activityScore >= 40) _minRequiredMin = 60;   // 中等活动量至少1小时
         else _minRequiredMin = 30;
 
         // 如果AI已经推进了足够的时间，不干预
         if (_diffMin >= _minRequiredMin) return null;
 
         // 根据活动分数推算合理的时间推进（分钟）
-        var _suggestedMin = Math.min(_activityScore, 480); // 上限8小时
+        // 上限8小时（480分钟），避免单次推进过多
+        var _suggestedMin = Math.min(_activityScore, 480);
         var _newMin = _curMin + _suggestedMin;
 
-        // 【关键修复】处理午夜跨越：如果时间超过24:00，自动推进日期
+        // 处理午夜跨越：如果时间超过24:00，自动推进日期
         var _dayAdvance = Math.floor(_newMin / 1440);
         var _newHour = Math.floor((_newMin % 1440) / 60);
         var _newMinute = _newMin % 60;
@@ -3794,8 +3798,8 @@ var GameTimeSystem = {
             }
         }
 
-        console.log('[TimeProgress] 活动密度检测: AI仅推进' + _diffMin + '分钟（阈值' + _minRequiredMin +
-            '分钟），但检测到活动[' + _reason.join(', ') + ']，活动分数=' + _activityScore +
+        console.log('[TimeProgress] 活动密度检测(题材无关): AI仅推进' + _diffMin + '分钟（阈值' + _minRequiredMin +
+            '分钟），但检测到信号[' + _reason.join(', ') + ']，活动分数=' + _activityScore +
             '，建议推进' + _suggestedMin + '分钟' + (_dayAdvance > 0 ? '（跨天' + _dayAdvance + '日）' : ''));
 
         return {
