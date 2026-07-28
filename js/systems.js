@@ -1201,10 +1201,9 @@ var AchievementSystem = {
                     });
             }
         });
-        // 当 AI 未返回成就模块时，根据当前题材动态生成默认成就库
-        if (aiAchievements.length === 0 && typeof ThemeAdaptiveContent !== 'undefined') {
-            return ThemeAdaptiveContent.getDynamicAchievements();
-        }
+        // 【修复】成就属于当前剧本，由AI根据剧情生成。
+        // 不再使用系统预设的题材模板填充——如果AI未生成成就，返回空数组，
+        // 页面会显示"成就系统即将开放"的空状态提示。
         return aiAchievements;
     },
     getPlayerAchievements() {
@@ -1389,7 +1388,7 @@ var AchievementSystem = {
         var html = '<div class="achieve-page">';
 
         if (all.length === 0) {
-            html += '<div class="empty-state" style="padding:40px 20px;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><p>成就系统即将开放</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">随着剧情推进，AI 将自动生成可解锁的成就</p></div></div>';
+            html += '<div class="empty-state" style="padding:40px 20px;"><div class="empty-state-icon"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><p>成就系统即将开放</p><p style="font-size:13px;margin-top:8px;color:var(--text-secondary);">本剧本的成就将随剧情推进由AI自动生成</p></div></div>';
             container.innerHTML = html;
             return;
         }
@@ -1501,9 +1500,7 @@ var AchievementSystem = {
     var nb = (isU && uD && Date.now() - uD.unlockedAt < 86400000) ?
     '<span class="new-badge">NEW</span>' : '';
     return '<div class="achieve-item ' + (isU ? '' : 'locked') + '" data-achieve-id="' + escapeHtml(ach.id) +
-    '" data-achieve-category="' + escapeHtml(_normalizeCategory(ach.category)) + '"><div class="achieve-icon-wrap ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) + '">' + escapeHtml(ach.icon) +
-    '<div class="achieve-rarity-badge ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) +
-    '"></div></div><div class="achieve-info"><div class="achieve-name">' + escapeHtml(ach.name) + nb +
+    '" data-achieve-category="' + escapeHtml(_normalizeCategory(ach.category)) + '"><div class="achieve-info"><div class="achieve-name">' + escapeHtml(ach.name) + nb +
     '</div><div class="achieve-desc">' + escapeHtml(ach.desc) + '</div>' + ph + ut +
     '</div><div class="achieve-points">' + (isU ? '√ ' : '') + rar.points + '</div></div>';
     },
@@ -1549,9 +1546,6 @@ var AchievementSystem = {
         var rar = this.RARITY[_normalizeRarity(ach.rarity)] || this.RARITY.COMMON;
         var html =
         '<div style="text-align:center;">' +
-        '<div class="achieve-icon-wrap ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) +
-        '" style="margin:0 auto 16px;width:80px;height:80px;font-size:40px;">' + escapeHtml(String(ach.icon || '')) +
-        '<div class="achieve-rarity-badge ' + escapeHtml(_normalizeRarity(ach.rarity).toLowerCase()) + '"></div></div>' +
         '<div style="font-size:20px;font-weight:700;margin-bottom:8px;">' + escapeHtml(String(ach.name || '')) + '</div>' +
 
         // 通过 inline style 绑定 var(--ach-*) 即可，暗色模式自动适配
