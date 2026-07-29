@@ -3242,20 +3242,24 @@ var TypewriterBuffer = {
             // 2000 字时每 50ms 一次 O(n) 扫描累计成主线程阻塞。
             // 改为节流：仅当段落长度变化超过阈值或遇到潜在标签起点（'<'）时才清理，
             // 其余 tick 直接复用上一次清理结果。
+            // 【P0 冻结修复】当总段落数 >50 时，完全跳过流式期间的标签清理（最终渲染时 formatStory 会做）
             var currentText = this._currentParaChars;
-            var _needsClean = !this._lastCleanedPara ||
-                currentText.length - this._lastCleanedPara.length >= 16 ||
-                (currentText.charAt(currentText.length - 1) === '<');
-            if (_needsClean) {
-                if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._cleanUnrecognizedTags) {
-                    currentText = RuntimeBridge._cleanUnrecognizedTags(currentText);
-                } else if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._reDecorTagsTyping) {
-                    RuntimeBridge._reDecorTagsTyping.lastIndex = 0;
-                    currentText = currentText.replace(RuntimeBridge._reDecorTagsTyping, '');
+            var _totalParas = this._completedParagraphs ? this._completedParagraphs.length : 0;
+            if (_totalParas <= 50) {
+                var _needsClean = !this._lastCleanedPara ||
+                    currentText.length - this._lastCleanedPara.length >= 16 ||
+                    (currentText.charAt(currentText.length - 1) === '<');
+                if (_needsClean) {
+                    if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._cleanUnrecognizedTags) {
+                        currentText = RuntimeBridge._cleanUnrecognizedTags(currentText);
+                    } else if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge._reDecorTagsTyping) {
+                        RuntimeBridge._reDecorTagsTyping.lastIndex = 0;
+                        currentText = currentText.replace(RuntimeBridge._reDecorTagsTyping, '');
+                    }
+                    this._lastCleanedPara = currentText;
+                } else {
+                    currentText = this._lastCleanedPara || currentText;
                 }
-                this._lastCleanedPara = currentText;
-            } else {
-                currentText = this._lastCleanedPara || currentText;
             }
             if (!this._currentParaEl || this._currentParaEl.parentNode !== storyEl) {
                 // 创建新段落元素，复用同一节点直到本段结束
@@ -3324,14 +3328,23 @@ var TypewriterBuffer = {
         this.render();
     },
     _renderCurrentPara() {
-        // 渲染当前段落（与原版保持一致：每 tick 直接 render，不做 80ms 节流）
-        // 之前用 rAF + 80ms 节流反而让文本以 3 字/80ms 的节奏跳动，用户感觉"卡"
+        // 渲染当前段落
         // P2-1: 添加 _lastCurrentPara 脏检查，避免 _currentParaChars 未变化时仍调用 render()
-        // 触发不必要的 DOM 操作（layout/reflow）。标点停顿后恢复打字时，_currentParaChars
-        // 可能连续多个 tick 不变，此时跳过 render() 可减少约 15-20% 的无效 DOM 更新。
         if (this._currentParaChars === this._lastCurrentPara) return;
         this._lastCurrentPara = this._currentParaChars;
-        this.render();
+        // 【P0 性能修复】当已完成段落超过 30 个时，启用 80ms 渲染节流
+        // 避免大量 DOM 元素时每 25ms 一次 render() 累积导致主线程冻结
+        var _paraCount = this._completedParagraphs ? this._completedParagraphs.length : 0;
+        if (_paraCount > 30) {
+            if (this._renderThrottleTimer) return;
+            var _self = this;
+            this._renderThrottleTimer = TimerManager.setTimeout('twRenderThrottle', function() {
+                _self._renderThrottleTimer = null;
+                _self.render();
+            }, 80);
+        } else {
+            this.render();
+        }
     },
 
 
