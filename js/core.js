@@ -3248,6 +3248,14 @@ var TypewriterBuffer = {
                     break;
                 }
             }
+            // 清理残留的 story-typing-para 元素（合并时不会走 append 路径，需要手动清理）
+            var _typingParas = storyEl.querySelectorAll('.story-typing-para');
+            for (var _ti = 0; _ti < _typingParas.length; _ti++) {
+                _typingParas[_ti].remove();
+            }
+            this._currentParaEl = null;
+            this._currentParaTextEl = null;
+            this._cursorEl = null;
             this._mergedParaDirty = false;
         }
         if (this._currentParaChars) {
@@ -3345,9 +3353,9 @@ var TypewriterBuffer = {
         if (!text || text.length === 0) return;
         var _trimmed = text.replace(/^\s+|\s+$/g, '');
         if (_trimmed.length > 0 && _trimmed.length < this._MIN_PARA_LEN && this._completedParagraphs.length > 0) {
-            // 合并到前一段：前段 + 空格 + 当前段
+            // 合并到前一段：直接拼接（中文文本不需要空格分隔）
             var _prev = this._completedParagraphs[this._completedParagraphs.length - 1];
-            this._completedParagraphs[this._completedParagraphs.length - 1] = _prev + ' ' + text;
+            this._completedParagraphs[this._completedParagraphs.length - 1] = _prev + text;
             this._mergedParaDirty = true;  // 标记：需要更新最后一个已完成段落的 DOM
         } else {
             this._completedParagraphs.push(text);
