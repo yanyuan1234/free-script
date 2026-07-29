@@ -657,6 +657,18 @@
     contain: content
 }
 
+/* 【P0 性能优化】已完成段落：跳过离屏内容渲染，大幅减少长文本的 layout/paint 开销 */
+.story-completed-para {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 2em;
+    contain: layout style paint
+}
+
+/* 【P0 性能优化】正在打字的段落：隔离布局，避免单段变化引发全文重排 */
+.story-typing-para {
+    contain: layout style
+}
+
 /* 【NEW-003 修复】流式等待 story 字段时的提示 */
 .stream-waiting-hint {
     display: flex;

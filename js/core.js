@@ -3298,6 +3298,23 @@ var TypewriterBuffer = {
             this._cursorEl = null;
         }
 
+        // 【P0 性能优化】自动滚动到底部（节流到每 200ms 一次，避免每 tick 触发 layout）
+        if (this.isTyping || this._queueIdx < this.queue.length) {
+            if (!this._scrollRafPending) {
+                this._scrollRafPending = true;
+                var _self = this;
+                TimerManager.setTimeout('twAutoScroll', function() {
+                    _self._scrollRafPending = false;
+                    var _el = DOMCache.get('storyText', true);
+                    if (_el) {
+                        // 只在用户已滚动到底部附近时才自动滚动（避免打断用户回看）
+                        var _nearBottom = _el.scrollHeight - _el.scrollTop - _el.clientHeight < 120;
+                        if (_nearBottom) _el.scrollTop = _el.scrollHeight;
+                    }
+                }, 200);
+            }
+        }
+
         if (!this.isTyping && this._queueIdx >= this.queue.length) {
             this.cleanCursor();
         }

@@ -4148,6 +4148,20 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
     // streamBuffer为空时跳过后续处理
     if (!streamBuffer) return;
 
+    // 【P0 内存优化】当 streamBuffer 超过 80KB 且 story 已开始提取时，
+    // 裁剪已扫描部分的前半段，只保留最近 32KB 供后续增量扫描。
+    // 这防止长时间生成（>5分钟）时 streamBuffer 无限膨胀导致 GC 压力。
+    if (streamBuffer.length > 80000 && typeof _streamScanPos !== 'undefined' && _streamScanPos > 32000) {
+        var _trimLen = _streamScanPos - 16000;
+        streamBuffer = streamBuffer.substring(_trimLen);
+        _streamScanPos -= _trimLen;
+        _streamJsonScanPos = Math.max(0, (_streamJsonScanPos || 0) - _trimLen);
+        _streamThinkScanPos = Math.max(0, (_streamThinkScanPos || 0) - _trimLen);
+        if (typeof _streamStoryStartIdx === 'number' && _streamStoryStartIdx > 0) {
+            _streamStoryStartIdx -= _trimLen;
+        }
+    }
+
     // 【BUG-006 修复】首个 chunk 到达时更新状态文本，让用户知道正在接收数据
     if (window._chunkCount === 1) {
         if (typeof updateGenStatus === 'function') {
