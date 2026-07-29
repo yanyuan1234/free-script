@@ -3009,6 +3009,7 @@ var TypewriterBuffer = {
             this._cachedParaCount = 0;
             this._lastCompletedCount = 0;
             this._lastCurrentLen = 0;
+            this._mergedParaDirty = false;  // 【段落碎片化治理】重置合并标记
         }
         // 【用户需求】打字机开始时显示「跳过」按钮（无长按快进、无点击屏幕快进）
         try { _showSkipButton(); } catch (e) {}
@@ -3017,7 +3018,7 @@ var TypewriterBuffer = {
         if (self._queueIdx >= self.queue.length) {
             self.pause();
             if (self._currentParaChars) {
-                self._completedParagraphs.push(self._currentParaChars);
+                self._pushCompletedPara(self._currentParaChars);
                 self._currentParaChars = '';
             }
         self._renderCached();
@@ -3053,7 +3054,7 @@ var TypewriterBuffer = {
     while (_nlPos >= 0) {
         self._currentParaChars += _batch.substring(0, _nlPos);
         if (self._currentParaChars.length > 0) {
-            self._completedParagraphs.push(self._currentParaChars);
+            self._pushCompletedPara(self._currentParaChars);
             self._currentParaChars = '';
             self._renderCached();
         }
@@ -3078,7 +3079,7 @@ var TypewriterBuffer = {
                 } else {
                 self.pause();
                 if (self._currentParaChars) {
-                    self._completedParagraphs.push(self._currentParaChars);
+                    self._pushCompletedPara(self._currentParaChars);
                     self._currentParaChars = '';
                 }
             self._renderCached();
@@ -3125,6 +3126,7 @@ var TypewriterBuffer = {
         this._currentParaTextEl = null;
         this._cursorEl = null;
         this._lastCurrentPara = '';
+        this._mergedParaDirty = false;  // 【段落碎片化治理】重置合并标记
         // 【BUG-028 修复】stop 时关闭流式模式，确保后续非流式渲染（如加载存档）走 formatStory 全量路径
         this._streamingMode = false;
 
@@ -3237,6 +3239,17 @@ var TypewriterBuffer = {
         }
 
         // 当前段落：增量更新（极快）
+        // 【段落碎片化治理】合并后更新最后一个已完成段落的 DOM 文本
+        if (this._mergedParaDirty && _completedCount > 0) {
+            var _children = storyEl.children;
+            for (var _ci = _children.length - 1; _ci >= 0; _ci--) {
+                if (_children[_ci].classList && _children[_ci].classList.contains('story-completed-para')) {
+                    _children[_ci].textContent = this._completedParagraphs[_completedCount - 1];
+                    break;
+                }
+            }
+            this._mergedParaDirty = false;
+        }
         if (this._currentParaChars) {
             // 【性能修复】打字机 tick 期间对每 tick 增长的文本跑 _cleanUnrecognizedTags 正则链，
             // 2000 字时每 50ms 一次 O(n) 扫描累计成主线程阻塞。
@@ -3321,6 +3334,23 @@ var TypewriterBuffer = {
 
         if (!this.isTyping && this._queueIdx >= this.queue.length) {
             this.cleanCursor();
+        }
+    },
+    // 【段落碎片化治理】入队时合并过短段落
+    // AI 输出常含大量短行（如"清晨\n的薄雾\n还未散尽"），逐行入队会导致
+    // 280 段落仅 2500 字（平均 9 字/段），DOM 节点过多拖慢渲染。
+    // 阈值 20 字：短于此值的段落合并到前一段，用空格连接。
+    _MIN_PARA_LEN: 20,
+    _pushCompletedPara(text) {
+        if (!text || text.length === 0) return;
+        var _trimmed = text.replace(/^\s+|\s+$/g, '');
+        if (_trimmed.length > 0 && _trimmed.length < this._MIN_PARA_LEN && this._completedParagraphs.length > 0) {
+            // 合并到前一段：前段 + 空格 + 当前段
+            var _prev = this._completedParagraphs[this._completedParagraphs.length - 1];
+            this._completedParagraphs[this._completedParagraphs.length - 1] = _prev + ' ' + text;
+            this._mergedParaDirty = true;  // 标记：需要更新最后一个已完成段落的 DOM
+        } else {
+            this._completedParagraphs.push(text);
         }
     },
     _renderCached() {
