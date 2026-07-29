@@ -740,6 +740,41 @@ var UI = {
         }
         noBtn._confirmResolve = resolve;
     }
+
+    // 【BUG-002 修复】绑定 X 关闭按钮，确保关闭操作也能正确 resolve Promise
+    // 之前 X 按钮仅依赖 data-close 全局委托（在 bindEvents 中注册），
+    // 但初始化阶段 bindEvents 尚未执行，且全局委托只 hideModal 不 resolve，
+    // 导致 await UI.confirm(...) 永久悬挂，对话框无法关闭
+    var closeBtn = document.querySelector('#confirmModal .modal-header [data-close]');
+    if (closeBtn) {
+        if (!closeBtn._confirmCloseHandler) {
+            closeBtn._confirmCloseHandler = function(e) {
+                // 阻止全局 data-close 委托重复调用 hideModal（虽然幂等，但减少冗余操作）
+                e.stopPropagation();
+                UI.hideModal('confirmModal');
+                if (yesBtn._confirmResolve) yesBtn._confirmResolve(false);
+                yesBtn._confirmResolve = null;
+                if (noBtn) noBtn._confirmResolve = null;
+            };
+            closeBtn.addEventListener('click', closeBtn._confirmCloseHandler);
+        }
+    }
+
+    // 【BUG-002 修复】遮罩点击也确保 resolve Promise
+    var confirmOverlay = document.getElementById('confirmModal');
+    if (confirmOverlay && !confirmOverlay._confirmMaskBound) {
+        confirmOverlay._confirmMaskBound = true;
+        // showModal 中的遮罩点击处理已有 confirmModal 分支会 resolve，
+        // 但在初始化阶段 showModal 的遮罩 listener 可能尚未绑定，
+        // 这里补充一个独立 listener 作为双保险
+        confirmOverlay.addEventListener('click', function(e) {
+            if (e.target !== confirmOverlay) return;
+            if (yesBtn._confirmResolve) yesBtn._confirmResolve(false);
+            yesBtn._confirmResolve = null;
+            if (noBtn) noBtn._confirmResolve = null;
+            UI.hideModal('confirmModal');
+        });
+    }
     });
     },
     prompt: function(title, defaultValue) {
@@ -4209,6 +4244,26 @@ function parseAIResponse(reply) {
     let mems = [];
     let parsedByContract = null;
 
+    // 【BUG-001 修复】检测 HTML/WAF 响应（WAF 验证页面、错误页面等）
+    // 在所有解析层之前拦截，避免 HTML 源码被当作剧情内容显示给用户
+    if (reply && typeof reply === 'string') {
+        var _trimmedReply = reply.trim().toLowerCase();
+        var _isHtml = false;
+        if (_trimmedReply.startsWith('<!doctype') || _trimmedReply.startsWith('<html') || _trimmedReply.startsWith('<head')) {
+            _isHtml = true;
+        }
+        if (!_isHtml) {
+            var _tagMatches = _trimmedReply.substring(0, 3000).match(/<\/?(?:html|head|body|script|style|meta|link|title|div|span|form|input|button)\b/gi);
+            if (_tagMatches && _tagMatches.length >= 5) _isHtml = true;
+        }
+        if (_isHtml) {
+            console.warn('[parseAIResponse] 检测到HTML/WAF响应，已拦截');
+            storyText = '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 可能原因：\n• API端点被WAF（防火墙）拦截\n• API地址错误或服务不可用\n• API密钥无效触发了安全验证\n\n请检查API配置或更换API端点后重试。';
+            if (typeof gameState !== 'undefined' && gameState) gameState._lastHtmlBlocked = true;
+            return { story: storyText, choices: [], data: null, success: false };
+        }
+    }
+
 
     // （direct JSON → code block → robust + 状态机 → <mem> tags → plain text）
     // 旧实现在此之后又调 safeJSONParse/robustParse/_parseMemTags 三套重复解析器，
@@ -6288,7 +6343,12 @@ function setWaiting(w) {
     // [BUG-001 修复] 结束等待时清空状态文本，而非设置为"正在生成..."
     // 原代码: if (!w) updateGenStatus('正在生成...');
     // 问题: 生成结束后仍显示"正在生成..."，误导用户
-    if (!w) updateGenStatus('');
+    if (!w) {
+        updateGenStatus('');
+    } else {
+        // 【BUG-006 修复】开始等待时显示加载状态文本，让用户明确知道正在生成
+        updateGenStatus('正在生成...');
+    }
     // 显示/隐藏流式输出进度条
     var progressBar = _getSetWaitingEl('progressBar');
     if (progressBar) {
@@ -6873,6 +6933,17 @@ function _tryDispatchPartialStoryForCtx(ctx, fullText) {
 
 function parseAIResponseFallback(rawBody) {
     if (!rawBody) return '';
+    // 【BUG-001 修复】检测 HTML/WAF 响应，避免 WAF 页面源码泄露到 UI
+    var _trimmed = rawBody.trim().toLowerCase();
+    if (_trimmed.startsWith('<!doctype') || _trimmed.startsWith('<html') || _trimmed.startsWith('<head')) {
+        console.warn('[parseAIResponseFallback] 检测到HTML/WAF响应，拦截返回空字符串');
+        return '';
+    }
+    var _tagMatches = _trimmed.substring(0, 3000).match(/<\/?(?:html|head|body|script|style|meta|link|title|div|span|form|input|button)\b/gi);
+    if (_tagMatches && _tagMatches.length >= 5) {
+        console.warn('[parseAIResponseFallback] 检测到大量HTML标签，拦截返回空字符串');
+        return '';
+    }
     // 1) 整体 JSON
     try {
         var jsonData = JSON.parse(rawBody);

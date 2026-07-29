@@ -2252,13 +2252,29 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 【P0-1 前端重复检测兜底】当 API 端 DRY 采样器不可用时（如 OpenAI 兼容中转站），
         // 在前端检测 AI 输出的重复退化现象（如"苏苏苏苏苏"字符级重复）
-        // 检测到重复时，在 storyText 前添加警告标记，不自动重新生成（避免额外 API 调用）
+        // 【BUG-007 修复】检测到严重退化时自动拦截内容，不显示退化文本，
+        // 改为显示友好的提示和重新生成按钮，避免用户看到无意义的重复内容
         if (storyText && storyText.length > 10) {
             var _repWarn = _detectRepetitionDegeneration(storyText);
             if (_repWarn) {
                 console.warn('[AntiRepeat] 检测到重复退化:', _repWarn);
-                storyText = '⚠️ **AI输出检测到重复退化**（' + _repWarn + '）\n建议重新生成或更换模型/预设。\n\n' + storyText;
                 if (gameState) gameState._lastRepetitionWarning = _repWarn;
+                // 判断退化严重程度：字符多样性极低（<5%）时拦截内容
+                var _charDiversity = 0;
+                var _uniqueChars = {};
+                for (var _ci = 0; _ci < storyText.length; _ci++) {
+                    _uniqueChars[storyText[_ci]] = true;
+                }
+                _charDiversity = Object.keys(_uniqueChars).length / storyText.length;
+                if (_charDiversity < 0.05 && storyText.length > 100) {
+                    // 严重退化：拦截内容，显示提示和重新生成按钮
+                    console.warn('[AntiRepeat] 字符多样性极低（' + (_charDiversity * 100).toFixed(1) + '%），自动拦截退化内容');
+                    storyText = '⚠️ **AI输出检测到严重退化**（' + _repWarn + '）\n\n💡 AI生成的内容存在严重重复，已自动拦截。\n请点击下方「🔄 重新生成」按钮重试，或更换模型/预设。';
+                    if (gameState) gameState._lastContentBlocked = true;
+                } else {
+                    // 轻度退化：保留内容但添加警告标记
+                    storyText = '⚠️ **AI输出检测到重复退化**（' + _repWarn + '）\n建议重新生成或更换模型/预设。\n\n' + storyText;
+                }
             } else {
                 if (gameState) gameState._lastRepetitionWarning = null;
             }
@@ -3432,6 +3448,10 @@ async function sendAIRequest(userMessage, isInit = false) {
             console.log('[sendAIRequest] 用户取消生成（AbortError/BodyStreamBuffer）');
         } else {
             var errDisplay = translateError((error && error.message) ? error.message : '未知错误');
+            // 【BUG-005 修复】通过 Toast 向用户显示友好的错误提示
+            if (typeof UI !== 'undefined' && UI.toast) {
+                UI.toast(errDisplay, 'error');
+            }
             // 【调试】把原始 Error 对象传入，showError 会显示完整堆栈和文件:行号
             showError(errDisplay, error);
 
@@ -4127,6 +4147,17 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
     }
     // streamBuffer为空时跳过后续处理
     if (!streamBuffer) return;
+
+    // 【BUG-006 修复】首个 chunk 到达时更新状态文本，让用户知道正在接收数据
+    if (window._chunkCount === 1) {
+        if (typeof updateGenStatus === 'function') {
+            updateGenStatus('正在接收数据...');
+        }
+        // 首个 chunk 到达时隐藏 loading 动画
+        if (typeof hideStoryLoading === 'function') {
+            hideStoryLoading();
+        }
+    }
 
     // 【NEW-007 修复】增量提取，O(delta) per chunk，不再全缓冲区扫描
     // RegexManager.apply 移到流结束后（parseAIResponse），避免 O(n) 正则替换 × N chunks = O(n²)

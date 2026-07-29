@@ -19,6 +19,19 @@ const ResponseParser = {
             return result;
         }
 
+        // 【BUG-001 修复】检测 HTML/WAF 响应（WAF 验证页面、错误页面等）
+        // 当 API 端点被 WAF 保护或返回 HTML 错误页面时，响应内容是 HTML 而非 JSON/AI 文本
+        // 必须在所有解析层之前拦截，避免 HTML 源码被当作剧情内容显示给用户
+        if (this._isHtmlResponse(rawReply)) {
+            result.warnings.push('HTML/WAF response detected, blocked');
+            result.storyText = '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 可能原因：\n• API端点被WAF（防火墙）拦截\n• API地址错误或服务不可用\n• API密钥无效触发了安全验证\n\n请检查API配置或更换API端点后重试。';
+            result.success = false;
+            result.fallbackLevel = -2;
+            if (typeof gameState !== 'undefined' && gameState) {
+                gameState._lastHtmlBlocked = true;
+            }
+            return result;
+        }
 
         // 推理模型（如 DeepSeek-R1、auto）在正式输出 JSON 前会输出大量思考块，
         // 形如 <think>...</think>、<reasoning>...</reasoning>、<thought>...</thought>、
@@ -917,6 +930,34 @@ const ResponseParser = {
         } catch (e) {
             return defaultVal !== undefined ? defaultVal : {};
         }
+    },
+
+    // 【BUG-001 修复】检测 API 是否返回了 HTML 页面而非 AI 内容
+    // WAF 验证页面、CDN 错误页、502/503 错误页等都会返回 HTML
+    _isHtmlResponse(text) {
+        if (!text || typeof text !== 'string') return false;
+        var trimmed = text.trim().toLowerCase();
+        // 检测 HTML 文档开头的典型标记
+        if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html') || trimmed.startsWith('<head')) {
+            return true;
+        }
+        // 检测 WAF/CDN 安全验证页面的典型特征
+        if (trimmed.includes('waf') || trimmed.includes('captcha') || trimmed.includes('cloudflare') ||
+            trimmed.includes('security check') || trimmed.includes('安全验证') ||
+            trimmed.includes('请完成验证') || trimmed.includes('人机验证')) {
+            // 但排除 AI 正文中可能包含这些词的情况（仅在内容前 2000 字符内检测）
+            if (trimmed.substring(0, 2000).match(/<(?:html|head|body|script|meta|link|title)\b/i)) {
+                return true;
+            }
+        }
+        // 检测大量 HTML 标签（表明内容是 HTML 页面而非包含少量标签的 AI 文本）
+        var htmlTagCount = 0;
+        var checkStr = trimmed.substring(0, 3000);
+        var tagMatches = checkStr.match(/<\/?(?:html|head|body|script|style|meta|link|title|div|span|form|input|button)\b/gi);
+        if (tagMatches && tagMatches.length >= 5) {
+            return true;
+        }
+        return false;
     },
 
     extractObjArr(raw, key, defaultVal) {

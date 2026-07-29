@@ -648,6 +648,8 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overflow-x: hidden;  /* 【BUG-008 修复】防止长 URL/无断行字符串横向溢出 */
+    word-break: break-word;  /* 【BUG-008 修复】长文本自动换行，避免撑破容器 */
     -webkit-overflow-scrolling: touch;
     padding-right: 4px;
     /* 【P3-5】长文本滚动性能优化 */

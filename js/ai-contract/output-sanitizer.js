@@ -156,6 +156,16 @@ const OutputSanitizer = {
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
         let s = text;
+        // 【BUG-001 修复】检测 HTML/WAF 响应作为最后防线
+        // 如果 storyText 是 HTML 页面源码（WAF 验证页面等），拦截并返回友好提示
+        var _lowerS = s.trim().toLowerCase();
+        if (_lowerS.startsWith('<!doctype') || _lowerS.startsWith('<html') || _lowerS.startsWith('<head')) {
+            return '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 请检查API配置或更换API端点后重试。';
+        }
+        var _htmlTags = _lowerS.substring(0, 3000).match(/<\/?(?:html|head|body|script|style|meta|link|title|form|input)\b/gi);
+        if (_htmlTags && _htmlTags.length >= 5) {
+            return '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 请检查API配置或更换API端点后重试。';
+        }
         s = this.stripThinking(s);
         s = this.stripHTMLAndCursors(s);
         // stripBareThinking 必须在 stripHTMLAndCursors 之后：

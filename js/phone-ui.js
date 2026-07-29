@@ -6292,6 +6292,19 @@ function bindEvents() {
             if (target.dataset.close === 'settingsModal' && typeof saveGameSettings === 'function') {
                 saveGameSettings();
             }
+            // 【BUG-002 修复】关闭确认弹窗时，确保 resolve Promise 避免 await 悬挂
+            // confirmNo 自身的 _confirmHandler 已处理 resolve，但 X 按钮仅依赖此委托
+            if (target.dataset.close === 'confirmModal') {
+                var _yBtn = document.getElementById('confirmYes');
+                var _nBtn = document.getElementById('confirmNo');
+                if (_yBtn && _yBtn._confirmResolve) { _yBtn._confirmResolve(false); _yBtn._confirmResolve = null; }
+                if (_nBtn) _nBtn._confirmResolve = null;
+            }
+            // 【BUG-002 修复】同样的保护用于 prompt 弹窗
+            if (target.dataset.close === 'promptModal') {
+                var _oBtn = document.getElementById('promptOk');
+                if (_oBtn && _oBtn._promptResolve) { _oBtn._promptResolve(null); _oBtn._promptResolve = null; }
+            }
             UI.hideModal(target.dataset.close);
         }
     });
@@ -7655,16 +7668,31 @@ function _removeApiCard(slot) {
 function showApiDetail(slot) {
     var newCancelBtn = document.getElementById('btnCancelTestApi');
     var cfg = LocalGameAPI._configs[slot];
-    if (!cfg) return;
-    document.getElementById('apiDetailName').textContent = cfg.name || 'API ' + (slot + 1);
-    document.getElementById('apiDetailUrl').textContent = cfg.baseUrl || '--';
-    document.getElementById('detailApiName').value = cfg.name || '';
-    document.getElementById('detailApiUrl').value = cfg.baseUrl || '';
-    document.getElementById('detailApiKey').value = cfg.apiKey || '';
+    if (!cfg) {
+        console.warn('[showApiDetail] 无效的 slot:', slot);
+        UI.toast('API配置不存在', 'error');
+        return;
+    }
+    // 【BUG-009 修复】添加 null 检查，防止元素不存在时抛 TypeError
+    var _el = function(id) {
+        var e = document.getElementById(id);
+        if (!e) console.warn('[showApiDetail] 元素缺失:', id);
+        return e;
+    };
+    var nameDisplay = _el('apiDetailName');
+    var urlDisplay = _el('apiDetailUrl');
+    var nameInput = _el('detailApiName');
+    var urlInput = _el('detailApiUrl');
+    var keyInput = _el('detailApiKey');
+    if (nameDisplay) nameDisplay.textContent = cfg.name || 'API ' + (slot + 1);
+    if (urlDisplay) urlDisplay.textContent = cfg.baseUrl || '--';
+    if (nameInput) nameInput.value = cfg.name || '';
+    if (urlInput) urlInput.value = cfg.baseUrl || '';
+    if (keyInput) keyInput.value = cfg.apiKey || '';
     // 确保当前模型在select的option列表中，否则手动添加
-    var modelSelect = document.getElementById('detailApiModelSelect');
+    var modelSelect = _el('detailApiModelSelect');
     var currentModel = cfg.model || '';
-    if (currentModel) {
+    if (currentModel && modelSelect) {
         var hasOption = false;
         for (var oi = 0; oi < modelSelect.options.length; oi++) {
             if (modelSelect.options[oi].value === currentModel) { hasOption = true; break; }
@@ -7676,16 +7704,18 @@ function showApiDetail(slot) {
             modelSelect.appendChild(opt);
         }
     }
-    modelSelect.value = currentModel;
-    document.getElementById('detailApiModelInput').value = currentModel;
-    document.getElementById('detailApiGroup').value = cfg.group || '';
+    if (modelSelect) modelSelect.value = currentModel;
+    var _modelInput = _el('detailApiModelInput');
+    if (_modelInput) _modelInput.value = currentModel;
+    var _groupInput = _el('detailApiGroup');
+    if (_groupInput) _groupInput.value = cfg.group || '';
     // 加载兼容模式设置
-    var compatibleModeCheckbox = document.getElementById('detailApiCompatibleMode');
+    var compatibleModeCheckbox = _el('detailApiCompatibleMode');
     if (compatibleModeCheckbox) {
         compatibleModeCheckbox.checked = cfg.compatibleMode === true;
     }
     // 动态填充分组选项
-    var groupSelect = document.getElementById('detailApiGroup');
+    var groupSelect = _el('detailApiGroup');
     if (groupSelect) {
         var currentGroup = cfg.group || '';
         groupSelect.innerHTML = '<option value="">未分组</option>';
@@ -7699,20 +7729,23 @@ function showApiDetail(slot) {
     }
 
     var isCurrent = slot === LocalGameAPI._currentSlot;
-    document.getElementById('apiDetailStatusBadge').textContent = isCurrent ? '正在使用' : '未使用';
-    document.getElementById('apiDetailStatusBadge').className = 'badge ' + (isCurrent ? 'badge-primary' :
-        'badge-soft');
-    document.getElementById('apiDetailModel').textContent = cfg.model || '--';
+    var _statusBadge = _el('apiDetailStatusBadge');
+    if (_statusBadge) {
+        _statusBadge.textContent = isCurrent ? '正在使用' : '未使用';
+        _statusBadge.className = 'badge ' + (isCurrent ? 'badge-primary' : 'badge-soft');
+    }
+    var _modelDisplay = _el('apiDetailModel');
+    if (_modelDisplay) _modelDisplay.textContent = cfg.model || '--';
 
     // 显示请求统计
     var stats = LocalGameAPI.getRequestStats(slot);
-    var reqEl = document.getElementById('apiDetailRequests');
-    var modelEl = document.getElementById('apiDetailModels');
+    var reqEl = _el('apiDetailRequests');
+    var modelEl = _el('apiDetailModels');
     if (reqEl) reqEl.textContent = stats.total;
     if (modelEl) modelEl.textContent = stats.modelCount;
 
     // 显示最近请求
-    var recentEl = document.getElementById('apiDetailRecent');
+    var recentEl = _el('apiDetailRecent');
     if (recentEl) {
         if (stats.recentLogs.length > 0) {
             if (stats.recentLogs.length > 5) {
@@ -7850,37 +7883,59 @@ function showApiDetail(slot) {
     // 绑定保存按钮
 
     bindFresh('btnSaveApiDetail', 'click', function() {
-        var compatibleMode = document.getElementById('detailApiCompatibleMode');
-        var modelSelect = document.getElementById('detailApiModelSelect');
-        var modelInput = document.getElementById('detailApiModelInput');
-        var modelValue = (modelSelect && modelSelect.value) || (modelInput && modelInput.value.trim()) || '';
-        // [BUG-FIX] 当 select 没有选项但 input 有手动输入时，把 input 值同步进 select，
-        // 避免部分浏览器/框架在 display:none 的 input 上取不到值导致 model 为空。
-        if (modelValue && modelSelect) {
-            var hasOption = false;
-            for (var oi = 0; oi < modelSelect.options.length; oi++) {
-                if (modelSelect.options[oi].value === modelValue) { hasOption = true; break; }
+        try {
+            var compatibleMode = document.getElementById('detailApiCompatibleMode');
+            var modelSelect = document.getElementById('detailApiModelSelect');
+            var modelInput = document.getElementById('detailApiModelInput');
+            var modelValue = (modelSelect && modelSelect.value) || (modelInput && modelInput.value.trim()) || '';
+            // [BUG-FIX] 当 select 没有选项但 input 有手动输入时，把 input 值同步进 select，
+            // 避免部分浏览器/框架在 display:none 的 input 上取不到值导致 model 为空。
+            if (modelValue && modelSelect) {
+                var hasOption = false;
+                for (var oi = 0; oi < modelSelect.options.length; oi++) {
+                    if (modelSelect.options[oi].value === modelValue) { hasOption = true; break; }
+                }
+                if (!hasOption) {
+                    var opt = document.createElement('option');
+                    opt.value = modelValue;
+                    opt.textContent = modelValue;
+                    modelSelect.appendChild(opt);
+                }
+                modelSelect.value = modelValue;
             }
-            if (!hasOption) {
-                var opt = document.createElement('option');
-                opt.value = modelValue;
-                opt.textContent = modelValue;
-                modelSelect.appendChild(opt);
+            // 【BUG-009 修复】添加 null 检查，防止元素不存在时报错
+            var _nameEl = document.getElementById('detailApiName');
+            var _urlEl = document.getElementById('detailApiUrl');
+            var _keyEl = document.getElementById('detailApiKey');
+            var _groupEl = document.getElementById('detailApiGroup');
+            var _urlVal = _urlEl ? _urlEl.value.trim() : '';
+            var _keyVal = _keyEl ? _keyEl.value.trim() : '';
+            // 【BUG-010 修复】校验 URL 和 Key 不为空
+            if (!_urlVal || !_keyVal) {
+                UI.toast('接口地址和密钥不能为空');
+                return;
             }
-            modelSelect.value = modelValue;
+            if (!/^https?:\/\/.+/.test(_urlVal)) {
+                UI.toast('接口地址需以 http:// 或 https:// 开头');
+                return;
+            }
+            LocalGameAPI.setConfig(slot, {
+                name: (_nameEl ? _nameEl.value.trim() : '') || cfg.name,
+                baseUrl: _urlVal,
+                apiKey: _keyVal,
+                model: modelValue,
+                group: _groupEl ? _groupEl.value : '',
+                compatibleMode: compatibleMode ? compatibleMode.checked : false
+            });
+            LocalGameAPI.save();
+            UI.hideModal('apiDetailModal');
+            // [M-1] 单行内容变更走 updateApiRow 局部更新，避免 100+ 行 DOM 重建
+            updateApiRow(slot);
+            UI.toast('已保存');
+        } catch (err) {
+            console.error('[btnSaveApiDetail] 保存失败:', err);
+            UI.toast('保存失败：' + (err.message || err), 'error');
         }
-        LocalGameAPI.setConfig(slot, {
-            name: document.getElementById('detailApiName').value.trim() || cfg.name,
-            baseUrl: document.getElementById('detailApiUrl').value.trim(),
-            apiKey: document.getElementById('detailApiKey').value.trim(),
-            model: modelValue,
-            group: document.getElementById('detailApiGroup').value,
-            compatibleMode: compatibleMode ? compatibleMode.checked : false
-        });
-        UI.hideModal('apiDetailModal');
-        // [M-1] 单行内容变更走 updateApiRow 局部更新，避免 100+ 行 DOM 重建
-        updateApiRow(slot);
-        UI.toast('已保存');
     });
 
     // 绑定设为当前按钮
@@ -7992,20 +8047,27 @@ function showApiDetail(slot) {
 
     // 绑定删除按钮
     var deleteBtn = document.getElementById('btnDeleteApi');
-    var newDeleteBtn = deleteBtn.cloneNode(true);
-    deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
-    newDeleteBtn.addEventListener('click', async function() {
-        if (await UI.confirm('删除API', '确定要删除这个API配置吗？')) {
-            LocalGameAPI._configs.splice(slot, 1);
-            if (LocalGameAPI._currentSlot >= LocalGameAPI._configs.length) {
-                LocalGameAPI._currentSlot = Math.max(0, LocalGameAPI._configs.length - 1);
+    if (deleteBtn && deleteBtn.parentNode) {
+        var newDeleteBtn = deleteBtn.cloneNode(true);
+        deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+        newDeleteBtn.addEventListener('click', async function() {
+            try {
+                if (await UI.confirm('删除API', '确定要删除这个API配置吗？')) {
+                    LocalGameAPI._configs.splice(slot, 1);
+                    if (LocalGameAPI._currentSlot >= LocalGameAPI._configs.length) {
+                        LocalGameAPI._currentSlot = Math.max(0, LocalGameAPI._configs.length - 1);
+                    }
+                    LocalGameAPI.save();
+                    UI.hideModal('apiDetailModal');
+                    renderAPISettings();
+                    UI.toast('已删除');
+                }
+            } catch (err) {
+                console.error('[btnDeleteApi] 删除失败:', err);
+                UI.toast('删除失败：' + (err.message || err), 'error');
             }
-            LocalGameAPI.save();
-            UI.hideModal('apiDetailModal');
-            renderAPISettings();
-            UI.toast('已删除');
-        }
-    });
+        });
+    }
 
     // 绑定tab切换（概览/错误）
     var tabs = document.querySelectorAll('#apiDetailModal [data-api-tab]');
@@ -8212,16 +8274,26 @@ function _refreshCreateApiModelInput() {
     }
 }
 function showCreateApiModal() {
-    document.getElementById('createApiName').value = '';
-    document.getElementById('createApiUrl').value = '';
-    document.getElementById('createApiKey').value = '';
+    // 【BUG-003/004 修复】添加 null 检查，防止元素不存在时函数静默失败
+    var nameInput = document.getElementById('createApiName');
+    var urlInput = document.getElementById('createApiUrl');
+    var keyInput = document.getElementById('createApiKey');
     var modelSelect = document.getElementById('createApiModelSelect');
+    var modelInput = document.getElementById('createApiModelInput');
+    var groupSelect = document.getElementById('createApiGroup');
+    if (!nameInput || !urlInput || !keyInput || !modelSelect || !modelInput || !groupSelect) {
+        console.error('[showCreateApiModal] 表单元素缺失，无法打开创建弹窗');
+        UI.toast('表单初始化失败，请刷新页面重试', 'error');
+        return;
+    }
+    nameInput.value = '';
+    urlInput.value = '';
+    keyInput.value = '';
     modelSelect.innerHTML = '<option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
     modelSelect.style.display = 'block';
-    var modelInput = document.getElementById('createApiModelInput');
     modelInput.value = '';
     modelInput.style.display = 'none';
-    document.getElementById('createApiGroup').innerHTML = '<option value="">未分组</option>';
+    groupSelect.innerHTML = '<option value="">未分组</option>';
     var groups = LocalGameAPI.getGroups();
     groups.forEach(function(g) {
         var opt = document.createElement('option');
@@ -8237,49 +8309,69 @@ function showCreateApiModal() {
     newModelSelect.addEventListener('change', _refreshCreateApiModelInput);
 
     var confirmBtn = document.getElementById('btnConfirmCreateApi');
+    if (!confirmBtn || !confirmBtn.parentNode) {
+        console.error('[showCreateApiModal] 确认按钮缺失');
+        UI.toast('界面初始化失败，请刷新页面重试', 'error');
+        return;
+    }
     var newConfirmBtn = confirmBtn.cloneNode(true);
     confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
     newConfirmBtn.addEventListener('click', function() {
-        var url = document.getElementById('createApiUrl').value.trim();
-        var key = document.getElementById('createApiKey').value.trim();
-        if (!url || !key) {
-            UI.toast('请填写接口地址和密钥');
-            return;
+        try {
+            var url = document.getElementById('createApiUrl').value.trim();
+            var key = document.getElementById('createApiKey').value.trim();
+            if (!url || !key) {
+                UI.toast('请填写接口地址和密钥');
+                return;
+            }
+            // 【BUG-003/004 修复】校验 URL 格式，避免无效地址
+            if (!/^https?:\/\/.+/.test(url)) {
+                UI.toast('接口地址需以 http:// 或 https:// 开头');
+                return;
+            }
+            var selectVal = document.getElementById('createApiModelSelect').value;
+            var model = (selectVal === '__manual__')
+                ? document.getElementById('createApiModelInput').value.trim()
+                : selectVal;
+            var newSlot = LocalGameAPI._configs.length;
+            LocalGameAPI._configs.push({
+                name: document.getElementById('createApiName').value.trim() || ('API ' + (newSlot + 1)),
+                baseUrl: url,
+                apiKey: key,
+                model: model,
+                models: [],
+                group: document.getElementById('createApiGroup').value
+            });
+            LocalGameAPI.setCurrentSlot(newSlot); // 新建 API 自动设为当前使用
+            // 【BUG-003/004 修复】创建后立即持久化，防止刷新后丢失
+            LocalGameAPI.save();
+            UI.hideModal('createApiModal');
+            // [M-1] 新增只是追加一行，走局部更新
+            _appendApiCard(newSlot);
+            UI.toast('API已创建并启用');
+        } catch (err) {
+            console.error('[showCreateApiModal] 创建失败:', err);
+            UI.toast('创建失败：' + (err.message || err), 'error');
         }
-        var selectVal = document.getElementById('createApiModelSelect').value;
-        var model = (selectVal === '__manual__')
-            ? document.getElementById('createApiModelInput').value.trim()
-            : selectVal;
-        var newSlot = LocalGameAPI._configs.length;
-        LocalGameAPI._configs.push({
-            name: document.getElementById('createApiName').value.trim(),
-            baseUrl: url,
-            apiKey: key,
-            model: model,
-            models: [],
-            group: document.getElementById('createApiGroup').value
-        });
-        LocalGameAPI.setCurrentSlot(newSlot); // 新建 API 自动设为当前使用
-        UI.hideModal('createApiModal');
-        // [M-1] 新增只是追加一行，走局部更新
-        _appendApiCard(newSlot);
-        UI.toast('API已创建并启用');
     });
 
     // 密码切换
     var togglePwd = document.getElementById('createApiTogglePwd');
-    var newTogglePwd = togglePwd.cloneNode(true);
-    togglePwd.parentNode.replaceChild(newTogglePwd, togglePwd);
-    newTogglePwd.addEventListener('click', function() {
-        var input = document.getElementById('createApiKey');
-        input.type = input.type === 'password' ? 'text' : 'password';
-    });
+    if (togglePwd && togglePwd.parentNode) {
+        var newTogglePwd = togglePwd.cloneNode(true);
+        togglePwd.parentNode.replaceChild(newTogglePwd, togglePwd);
+        newTogglePwd.addEventListener('click', function() {
+            var input = document.getElementById('createApiKey');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        });
+    }
 
     // 获取模型列表
     var fetchBtn = document.getElementById('btnFetchModelsCreate');
-    var newFetchBtn = fetchBtn.cloneNode(true);
-    fetchBtn.parentNode.replaceChild(newFetchBtn, fetchBtn);
-    newFetchBtn.addEventListener('click', async function() {
+    if (fetchBtn && fetchBtn.parentNode) {
+        var newFetchBtn = fetchBtn.cloneNode(true);
+        fetchBtn.parentNode.replaceChild(newFetchBtn, fetchBtn);
+        newFetchBtn.addEventListener('click', async function() {
         var url = document.getElementById('createApiUrl').value.trim();
         var key = document.getElementById('createApiKey').value.trim();
         if (!url || !key) {
@@ -8370,27 +8462,42 @@ function showCreateApiModal() {
         newFetchBtn.disabled = false;
         newFetchBtn.textContent = '获取模型列表';
     });
+    }
 }
 function showCreateGroupModal() {
-    document.getElementById('createGroupName').value = '';
+    var nameInput = document.getElementById('createGroupName');
+    if (!nameInput) {
+        console.error('[showCreateGroupModal] 输入框缺失');
+        return;
+    }
+    nameInput.value = '';
     UI.showModal('createGroupModal');
 
     var confirmBtn = document.getElementById('btnConfirmCreateGroup');
+    if (!confirmBtn || !confirmBtn.parentNode) {
+        console.error('[showCreateGroupModal] 确认按钮缺失');
+        return;
+    }
     var newConfirmBtn = confirmBtn.cloneNode(true);
     confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
     newConfirmBtn.addEventListener('click', function() {
-        var name = document.getElementById('createGroupName').value.trim();
-        if (!name) {
-            UI.toast('请输入分组名称');
-            return;
+        try {
+            var name = document.getElementById('createGroupName').value.trim();
+            if (!name) {
+                UI.toast('请输入分组名称');
+                return;
+            }
+            if (!LocalGameAPI._groups) LocalGameAPI._groups = [];
+            LocalGameAPI._groups.push(name);
+            LocalGameAPI.save();
+            UI.hideModal('createGroupModal');
+            // [M-1] 新增分组只追加一个 tab，不必重绘全部卡片
+            _appendApiGroupTab(name);
+            UI.toast('分组已创建');
+        } catch (err) {
+            console.error('[showCreateGroupModal] 创建失败:', err);
+            UI.toast('创建失败：' + (err.message || err), 'error');
         }
-        if (!LocalGameAPI._groups) LocalGameAPI._groups = [];
-        LocalGameAPI._groups.push(name);
-        LocalGameAPI.save();
-        UI.hideModal('createGroupModal');
-        // [M-1] 新增分组只追加一个 tab，不必重绘全部卡片
-        _appendApiGroupTab(name);
-        UI.toast('分组已创建');
     });
 }
 
