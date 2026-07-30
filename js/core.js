@@ -4547,14 +4547,22 @@ if (Object.keys(theaterContent).length > 0) {
         mems: mems,
         truncated: _truncated,
 
-        // 【NEW-008 修复】success 语义：仅当结构化数据真正解析成功时才为 true
-        // - ResponseParser 返回 success=true（Level 0-3 真 JSON）：尊重该值
-        // - ResponseParser 返回 success=false（Level 4 纯文本）：标记 false，让 legacy 提取路径执行
-        // - data 是空骨架（getDefaultOutput + 仅 storyText）：标记 false，避免空数据被当成功写入
-        // - storyText 存在但 data 为 null：false（纯文本无结构化数据）
-        // 原实现 success=!!(data||storyText) 导致纯文本 fallback 也返回 true，
-        // AIResponseMutator 把空骨架当成功数据写入，tables 全空却 currentTurn 递增
-        success: !!(parsedByContract && parsedByContract.success === true && data && !data._isDefaultSkeleton)
+        // 【v4 修复】success 语义优化：
+        // - ResponseParser 成功解析 JSON + 非空骨架：success=true（Level 0-3）
+        // - storyText 有实质性内容(>100字) 但 JSON 解析失败：也允许 success=true
+        //   让 AIResponseMutator 以最小模式运行（处理 choices/story/turn），
+        //   避免 legacy 路径的 choices 兜底时序不可靠导致选项不生成
+        // - 两者都为空：success=false（真正的失败）
+        // 原 NEW-008 实现过于严格：parsedByContract.success===false 时始终返回 false，
+        // 导致 Round 2+ JSON 退化时 AIResponseMutator 被跳过，连锁引发：
+        //   1. choices 不生成（legacy 兜底时序不可靠）
+        //   2. 角色面板不更新（GameMemory.tables 依赖 AIResponseMutator 同步）
+        //   3. turn 不递增（turn 递增依赖 AIResponseMutator）
+        var _hasSubstantialStory = storyText && storyText.length > 100;
+        success: !!(
+            (parsedByContract && parsedByContract.success === true && data && !data._isDefaultSkeleton) ||
+            (_hasSubstantialStory && data)
+        )
     };
 }
 
@@ -6094,12 +6102,19 @@ function showStoryLoading() {
 }
 function hideStoryLoading() {
     TimerManager.clearInterval('loadingTimer');
-    // 【P0 优化】隐藏进度条
-    try { updateGenProgress(-1); } catch(e) {}
     var storyEl = document.getElementById('storyText');
     if (storyEl && storyEl.querySelector('.loading-dot')) {
-        storyEl.innerHTML = '';
+        // 【BUG修复】保留进度条和降级提示DOM，仅移除loading动画（dots、flavor text、等待秒数）
+        // 原实现 storyEl.innerHTML = '' 会物理删除 #genProgressContainer，
+        // 导致后续 updateGenProgress 找不到容器，进度条永远不显示
+        var progressBar = document.getElementById('genProgressContainer');
+        var degradeHint = document.getElementById('loadingDegradeHint');
+        var progressHTML = (progressBar ? progressBar.outerHTML : '');
+        var hintHTML = (degradeHint ? degradeHint.outerHTML : '');
+        storyEl.innerHTML = '<div style="text-align:center;padding:20px 0;display:flex;flex-direction:column;align-items:center;text-indent:0;">' + progressHTML + hintHTML + '</div>';
     }
+    // 注意：不在 hideStoryLoading 时调用 updateGenProgress(-1)，
+    // 进度条由后续 onStreamChunk 中的 updateGenProgress 自然显示和隐藏
 }
 function showError(msg, errObj) {
     TimerManager.clearInterval('loadingTimer');

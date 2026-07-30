@@ -3175,14 +3175,20 @@ async function sendAIRequest(userMessage, isInit = false) {
             gameState._stats.totalCharacters = charCount;
         }
         // 【P0 优化】每次成功生成后刷新右侧角色面板，确保角色信息实时更新
+        // 【v4 修复】无论 GameMemory.tables 是否已填充，都调度延迟刷新。
+        // 原实现同步检查 GameMemory.tables.characters 存在才调度 setTimeout，
+        // 但 AIResponseMutator 失败时 GameMemory 可能尚未同步，导致角色面板永远不刷新
         try {
             var _charListEl = document.getElementById('characterList');
-            if (_charListEl && typeof window.GameMemory !== 'undefined' && window.GameMemory.tables && window.GameMemory.tables.characters) {
+            if (_charListEl) {
                 // 延迟刷新，避免阻塞当前渲染
                 setTimeout(function() {
                     try {
                         if (typeof TavernHelperCompat !== 'undefined' && TavernHelperCompat.renderCharacters) {
-                            _charListEl.innerHTML = TavernHelperCompat.renderCharacters(window.GameMemory);
+                            // 在延迟回调中重新检查数据是否就绪
+                            if (typeof window.GameMemory !== 'undefined' && window.GameMemory.tables && window.GameMemory.tables.characters) {
+                                _charListEl.innerHTML = TavernHelperCompat.renderCharacters(window.GameMemory);
+                            }
                         }
                     } catch(e) { /* 角色面板刷新失败不影响主流程 */ }
                 }, 100);
