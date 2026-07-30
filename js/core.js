@@ -4541,24 +4541,15 @@ if (Object.keys(theaterContent).length > 0) {
         data = _skeleton;
     }
 
+    // 【v4 修复】success 语义优化：storyText 有实质性内容时也允许 success=true
+    // 避免 Round 2+ JSON 退化时 AIResponseMutator 被跳过，连锁引发选项不生成等问题
+    var _hasSubstantialStory = storyText && storyText.length > 100;
     return {
         data,
         storyText,
         mems: mems,
         truncated: _truncated,
 
-        // 【v4 修复】success 语义优化：
-        // - ResponseParser 成功解析 JSON + 非空骨架：success=true（Level 0-3）
-        // - storyText 有实质性内容(>100字) 但 JSON 解析失败：也允许 success=true
-        //   让 AIResponseMutator 以最小模式运行（处理 choices/story/turn），
-        //   避免 legacy 路径的 choices 兜底时序不可靠导致选项不生成
-        // - 两者都为空：success=false（真正的失败）
-        // 原 NEW-008 实现过于严格：parsedByContract.success===false 时始终返回 false，
-        // 导致 Round 2+ JSON 退化时 AIResponseMutator 被跳过，连锁引发：
-        //   1. choices 不生成（legacy 兜底时序不可靠）
-        //   2. 角色面板不更新（GameMemory.tables 依赖 AIResponseMutator 同步）
-        //   3. turn 不递增（turn 递增依赖 AIResponseMutator）
-        var _hasSubstantialStory = storyText && storyText.length > 100;
         success: !!(
             (parsedByContract && parsedByContract.success === true && data && !data._isDefaultSkeleton) ||
             (_hasSubstantialStory && data)
