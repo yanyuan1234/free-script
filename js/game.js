@@ -2161,6 +2161,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【性能诊断】流完成时间戳
         var _t_streamEnd = performance.now();
         window._perfDebug&&(document.title='PERF:7-streamDone');
+        // 【P0 优化】流式接收完成，进度条设满
+        if (typeof updateGenProgress === 'function') updateGenProgress(100, '生成完成!');
+        if (typeof updateGenStatus === 'function') updateGenStatus('正在解析剧情...');
         // 【P1修复】记录生成耗时到历史，用于下次显示预估等待时间
         try {
             if (!window._genTimeHistory) window._genTimeHistory = [];
@@ -3171,6 +3174,20 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (charCount > (gameState._stats.totalCharacters || 0)) {
             gameState._stats.totalCharacters = charCount;
         }
+        // 【P0 优化】每次成功生成后刷新右侧角色面板，确保角色信息实时更新
+        try {
+            var _charListEl = document.getElementById('characterList');
+            if (_charListEl && typeof window.GameMemory !== 'undefined' && window.GameMemory.tables && window.GameMemory.tables.characters) {
+                // 延迟刷新，避免阻塞当前渲染
+                setTimeout(function() {
+                    try {
+                        if (typeof TavernHelperCompat !== 'undefined' && TavernHelperCompat.renderCharacters) {
+                            _charListEl.innerHTML = TavernHelperCompat.renderCharacters(window.GameMemory);
+                        }
+                    } catch(e) { /* 角色面板刷新失败不影响主流程 */ }
+                }, 100);
+            }
+        } catch(e) { /* 忽略 */ }
         // 兜底提取摘要
         if (!data || !data.contextSummary) {
             var extractedSummary = extractStr(response, 'contextSummary');
@@ -3315,6 +3332,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         setTimeout(function() {
             try { autoSave(); } catch(e) { console.warn('[autoSave] 延迟执行失败:', e); }
         }, 0);
+        // 【P0 优化】生成完成，清理状态文本和进度条
+        setTimeout(function() {
+            try {
+                if (typeof updateGenStatus === 'function') updateGenStatus('');
+                if (typeof updateGenProgress === 'function') updateGenProgress(-1);
+            } catch(e) {}
+        }, 500);
         // 【BUG-001 深度修复】延迟 token 计数到下一 tick。
         // updateTokenCount 内部调用 estimateTokensForMessagesUtil 迭代整个 conversationHistory
         // （最多 200 条消息），是后处理链末尾的重操作。token 计数仅用于 UI 显示，不影响故事渲染，
@@ -3463,6 +3487,8 @@ async function sendAIRequest(userMessage, isInit = false) {
     } finally {
         window._currentAbort = null;
         setWaiting(false);
+        // 【P0 优化】清理进度条
+        try { if (typeof updateGenProgress === 'function') updateGenProgress(-1); } catch(e) {}
         // [BUG-005 修复] 生成失败时重置思维链面板状态
         // 原代码缺少CotPanelController状态重置，导致生成失败时思维链一直显示"正在思考..."
         try {
@@ -4171,6 +4197,28 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
         if (typeof hideStoryLoading === 'function') {
             hideStoryLoading();
         }
+    }
+
+    // 【P0 优化】更新进度条（基于流式接收的字符数估算进度）
+    // 典型响应 2000-15000 字符，分段估算：0-500(连接)→500-5000(故事生成)→5000-15000(完整响应)
+    if (typeof updateGenProgress === 'function' && window._chunkCount % 3 === 0) {
+        var _bufLen = streamBuffer.length;
+        var _progress = 0;
+        var _label = '接收数据中...';
+        if (_bufLen < 500) {
+            _progress = Math.min(15, Math.round(_bufLen / 500 * 15));
+            _label = '正在连接AI...';
+        } else if (_bufLen < 3000) {
+            _progress = 15 + Math.round((_bufLen - 500) / 2500 * 35);
+            _label = 'AI正在构思剧情...';
+        } else if (_bufLen < 8000) {
+            _progress = 50 + Math.round((_bufLen - 3000) / 5000 * 30);
+            _label = '正在生成故事...';
+        } else {
+            _progress = 80 + Math.round(Math.min(1, (_bufLen - 8000) / 7000) * 15);
+            _label = '正在完善细节...';
+        }
+        updateGenProgress(_progress, _label);
     }
 
     // 【NEW-007 修复】增量提取，O(delta) per chunk，不再全缓冲区扫描

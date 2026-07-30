@@ -6061,10 +6061,19 @@ function showStoryLoading() {
     '<span style="color:var(--text-secondary);font-size:13px;">' + flavors[Math.floor(Math.random() *
         flavors.length)] + '</span>' +
     '<div style="margin-top:8px;font-size:12px;color:var(--text-tertiary);text-align:center;">已等待 <span id="waitSec">0</span> 秒' + (_eta ? ' · <span style="color:var(--accent);">' + _eta + '</span>' : '') + '</div>' +
+    // 【P0 优化】生成进度条（流式接收时显示实际进度）
+    '<div id="genProgressContainer" style="display:none;margin-top:14px;width:260px;max-width:80%;">' +
+    '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-tertiary);margin-bottom:4px;">' +
+    '<span id="genProgressLabel">接收数据中...</span>' +
+    '<span id="genProgressPercent">0%</span></div>' +
+    '<div style="height:6px;background:var(--bg-secondary);border-radius:3px;overflow:hidden;">' +
+    '<div id="genProgressFill" style="height:100%;width:0%;background:linear-gradient(90deg,var(--accent),var(--accent2, #a78bfa));border-radius:3px;transition:width 0.3s ease;"></div></div></div>' +
     // [P2-4] 30s 后显示降级提示；默认 hidden
     '<div id="loadingDegradeHint" style="display:none;margin-top:12px;padding:8px 12px;font-size:12px;color:#8a5a00;background:#fff5d6;border:1px solid #f0d68a;border-radius:6px;text-align:center;line-height:1.5;">ⓘ 网络响应较慢。若长时间无响应，可点击底部「取消」后重试，或检查 API 设置。</div>' +
     '</div>';
     optsEl.innerHTML = '';
+    // 重置进度条状态
+    window._genProgressStarted = false;
     var sec = 0;
     var degradeShown = false;
     TimerManager.setInterval('loadingTimer', function() {
@@ -6085,6 +6094,8 @@ function showStoryLoading() {
 }
 function hideStoryLoading() {
     TimerManager.clearInterval('loadingTimer');
+    // 【P0 优化】隐藏进度条
+    try { updateGenProgress(-1); } catch(e) {}
     var storyEl = document.getElementById('storyText');
     if (storyEl && storyEl.querySelector('.loading-dot')) {
         storyEl.innerHTML = '';
@@ -6337,6 +6348,31 @@ function updateGenStatus(text) {
     if (typeof document === 'undefined') return;
     var el = document.getElementById('genStatusText');
     if (el) el.textContent = text || '';  // [BUG-001 修复] 空文本时清空而非默认显示"正在生成..."
+}
+
+// 【P0 优化】更新生成进度条（流式接收时显示实际进度）
+// progress: 0-100 的整数百分比，-1 表示隐藏进度条
+// label: 进度条左侧标签文本
+function updateGenProgress(progress, label) {
+    if (typeof document === 'undefined') return;
+    var container = document.getElementById('genProgressContainer');
+    var fill = document.getElementById('genProgressFill');
+    var percent = document.getElementById('genProgressPercent');
+    var labelEl = document.getElementById('genProgressLabel');
+    if (progress < 0 || !container) {
+        if (container) container.style.display = 'none';
+        window._genProgressStarted = false;
+        return;
+    }
+    // 首次显示进度条
+    if (!window._genProgressStarted) {
+        window._genProgressStarted = true;
+        container.style.display = 'block';
+    }
+    var p = Math.min(100, Math.max(0, Math.round(progress)));
+    if (fill) fill.style.width = p + '%';
+    if (percent) percent.textContent = p + '%';
+    if (labelEl && label) labelEl.textContent = label;
 }
 
 // 缓存 setWaiting 重复 DOM 查询的元素引用
