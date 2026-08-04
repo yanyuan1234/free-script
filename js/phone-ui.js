@@ -4085,7 +4085,7 @@ function renderSettingsPage() {
         '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-bottom:16px;">' +
         '<div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">' +
         '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">ℹ️</span><span>版本</span></div>' +
-        '<div style="color:var(--text-secondary);font-size:13px;">v1.0.3</div>' +
+        '<div style="color:var(--text-secondary);font-size:13px;">' + (document.getElementById('buildVersionBadge') ? document.getElementById('buildVersionBadge').textContent.trim() : 'v1.0.3') + '</div>' +
         '</div>' +
         '<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">' +
         '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🎮</span><span>当前题材</span></div>' +
