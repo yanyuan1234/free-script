@@ -736,21 +736,16 @@ function _buildFormatAnchor() {
             '- 角色：<mem type="character" name="林婉" field="favorability" value="70"/>\n' +
             '- 任务：<mem type="quest" action="add">明日卯时去后山找清虚</mem>\n' +
             '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
-            '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。\n' +
-            '**心声系统·UI渲染依赖**：<giggle>标签是游戏引擎识别心声的唯一标记——这不是风格建议，而是代码语法。\n' +
-            '工作原理：游戏前端扫描你的输出文本，找到<giggle>...</giggle>标签后渲染为气泡卡片。\n' +
-            '如果心声没有用<giggle>包裹，它会被当作普通叙事文本，玩家看不到气泡——功能就坏了。\n' +
-            '请像写HTML标签一样认真对待<giggle>：每个心声都必须有开标签和闭标签。\n' +
-            '每回合穿插2-5个NPC心声，格式：<giggle>角色名：心声内容</giggle>。\n' +
-            '心声=角色嘴上不说但心里在想的话，必须与对话内容形成反差才有效果。';
+            '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
+            '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
     }
     return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**。\n' +
         'gameTime 为必填字段，每回合必须给出具体时间。\n' +
         'quests 若任务已完成，status 填"已完成"、progress 填"1/1"。\n' +
         'currency 必须准确反映剧情中的金钱变化。\n' +
         'hud, relationships, keyEvents, npcMessages, contextSummary 为常用字段，有内容时必须返回；无内容时返回空数组或省略（但 npcMessages 必须保留字段）。\n' +
-        '**玩家使用的心声系统**：<giggle>标签是游戏引擎识别心声的唯一标记——这不是风格建议，而是代码语法。游戏前端扫描输出文本，找到<giggle>...</giggle>后渲染为气泡卡片。没有标签功能就坏了。\n' +
-        '用 <giggle>角色名：心声内容</giggle> 格式穿插NPC心声（每回合2-5个）。心声是角色的真实想法，必须与嘴上说的形成反差。禁止写主角的心声。\n' +
+        '心声系统：用 <giggle>角色名：心声内容</giggle> 格式穿插（每回合2-5个）。\n' +
+        '**禁止写主角角度的心声**，只能写NPC的心声。\n' +
         'gameTime 推进规则：根据剧情中发生的事件合理推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n' +
         'world 模块必须与本回合剧情紧密联动，禁止无关填充；每回合至少呈现 4 个不同模块。\n' +
         '约' + _maxTokensForAnchor + 'tokens输出空间';
@@ -845,11 +840,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '"gameTime": {"date":"日期","time":"时间","period":"时段","weather":"晴/阴/雨/雪","era":"时代/年号"} }\n'
         + '必填/常用字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
         + '**player=主角（玩家唯一操控角色），characters=NPC列表。绝对禁止把主角放进 characters！剧情提到任何角色名都必须放入 characters；已知角色即使本回合未出场也要保留；每回合检查不遗漏；同一角色只用一个固定名字不加括号备注。**\n'
-        + '**NPC命名规则·功能依赖**：NPC的名字不只是叙事元素——它是游戏角色面板、关系网络、记忆系统、聊天功能的数据库主键。\n' +
-        '如果name填了"暂无名""可自定义""（待定）""（未命名）"等占位符：角色面板会显示"暂无名"，关系网络断裂（from/to找不到对应角色），记忆系统无法正确关联事件。\n' +
-        '因此：若玩家用统称/身份词（如"学霸""小少爷""店小二""那名女子""校草"）指代某角色，你必须在该角色首次出场时立即为它取一个符合世界观的正式姓名（2-4字），填入 characters[].name。\n' +
-        '统称只能出现在 desc/title 中。一旦为某角色取名，后续所有剧情、relationships 的 from/to、npcMessages 的 from 中全程统一使用该正式姓名，不得改名。\n' +
-        '这就像数据库中的外键约束——名字是关联一切的标识符，必须稳定且唯一。**\n'
+        + '**NPC命名规则：若玩家用统称/身份词（如"学霸""小少爷""店小二""那名女子""校草"）指代某角色，你必须在该角色首次出场时立即为它取一个符合世界观的正式姓名（2-4字，如"学霸"可取名"陆知行"），填入 characters[].name，并在后续所有剧情、relationships 的 from/to、npcMessages 的 from 中全程统一使用该正式姓名。name 字段严禁填写"暂无名""可自定义""（待定）""（未命名）"等任何占位提示，也禁止加括号备注；统称只能出现在 desc/title 中。一旦为某角色取名，后续回合必须沿用同一姓名，不得改名。**\n'
         + '**player.name 必须严格等于主角姓名，违反会导致游戏崩溃。原始JSON不用```json包裹。**\n'
         + '**player.stats 更新规则：每回合根据剧情事件更新属性值。修炼/锻炼/学习提升属性、购买/消耗降低金币、受伤降低体质等变化必须反映在 stats 中。禁止每回合返回相同的 stats 值（除非本回合确实无属性变化）。**\n'
         + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
