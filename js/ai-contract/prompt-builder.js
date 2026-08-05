@@ -103,7 +103,7 @@ const PromptBuilder = {
         // identity：身份与最高规则
         this.registerSection('identity', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const base = '你是一个互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。';
+            const base = '你是一个中文互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。你的所有思考、推理和创作过程都使用中文。';
             // [优化#9] 模式规则收敛：详细的"直接输出JSON/纯文本"约束统一由 formatAnchor/format section 负责
             // identity 仅保留最高级别的模式声明一句，避免与 workflow/formatAnchor 重复
             const modeRule = pureText
@@ -201,6 +201,11 @@ const PromptBuilder = {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
             const maxTokens = ctx.maxTokens || DEFAULT_MAX_TOKENS;
             const parts = [];
+            parts.push('【思考语言·必读】');
+            parts.push('- 你的全部思考过程（reasoning/thinking）必须使用中文。');
+            parts.push('- 你是一个中文互动叙事引擎，你的故事、角色对话、思考过程都应该是中文的。');
+            parts.push('- 像真人一样思考：有犹豫、有判断、有情绪起伏，不要冷冰冰的机械分析。');
+            parts.push('');
             parts.push('【引导玩家输入】（提升剧情质量）');
             parts.push('- 好的输入：包含动作+对象+意图，如"我想去图书室查阅螺旋塔的资料"');
             parts.push('- 避免空洞输入：单纯的"继续"、"嗯"、"好"等无法展开剧情');

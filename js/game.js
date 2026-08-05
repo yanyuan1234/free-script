@@ -824,10 +824,10 @@ function _buildFormatRules(gs, _t, turn) {
         : '';
 
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
-        + '{ "thinking": "你的思考过程：分析当前局势、规划剧情走向、考虑角色动机，200-500字", "title": "4-8字章节标题", "story": "本回合剧情正文", '
+        + '{ "thinking": "你的思考过程（用中文写）：像真人一样分析当前局势、揣摩角色心理、规划剧情走向，要有内心的犹豫和判断，200-500字", "title": "4-8字章节标题", "story": "本回合剧情正文", '
         + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
         + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请写入 thinking 字段（如果 API 支持 reasoning_content 则写入 reasoning_content，否则写入 JSON 的 thinking 字段），不要写入 story。**\n'
-        + '\n**thinking 字段规则：在 story 之前先输出 thinking 字段，写明你本回合的思考过程——分析用户选择、规划剧情走向、决定NPC反应、考虑关系变化等。thinking 字段内容不会显示给玩家看（以折叠卡片形式展示），只用于思维链面板。**\n'
+        + '\n**thinking 字段规则（重要！）：在 story 之前先输出 thinking 字段，用中文写出你本回合的真实思考过程——像真人一样分析当前局势、揣摩角色心理、规划剧情走向。要有临场感："这个选择有点难办...如果这样做的话..."、"等等，这个角色刚才的反应不太对劲..."。thinking 内容不会显示给玩家看（以折叠卡片形式展示），只用于思维链面板。**\n'
         + '\n**story 长度要求：根据用户设置的字数范围生成，优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
@@ -1929,6 +1929,7 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState.pureTextMode !== true) {
             var _curPlayerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
             var _formatReminder = '【输出格式·必读】直接输出JSON（以 { 开头，以 } 结尾），禁止输出纯文本、思考过程或前缀说明。\n' +
+                '你的思考过程请用中文写在 thinking 字段中，像真人一样有犹豫、有判断。\n' +
                 '必填字段：title(章节标题)、story(叙事正文,\\n换行,「」对话)、gameTime({date,time,period})、keyEvents(本回合关键事件数组)。\n' +
                 '可选字段：choices([{id,text}])、player({name,identity,stats:[{label,value}]}——须包含完整属性数组)、characters([{name,title,relation,favorability,desc}])、bag、quests、world([聊天/论坛/排行榜/商店/日记/朋友圈/邮箱模块])。\n' +
                 '注意：player.stats 必须返回完整属性数组（参考上一轮），不要返回空数组。characters.favorability 须根据剧情动态变化。';
@@ -2176,12 +2177,13 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 在流完成与后处理之间 yield 一次，让浏览器处理积压的 UI 事件（如 CDP 命令），
         // 避免后处理的同步计算阻塞导致浏览器冻结
         await new Promise(function(resolve) { setTimeout(resolve, 0); });
-        // 【酒馆式思维链】流式结束，标记思考完成
-        // 如果有流式 reasoning（reasoning_content 字段），此时面板已显示实时思考内容
-        // 如果没有流式 reasoning（标签式 CoT），后面 parseAIResponse 会提取并通过 show() 显示
+        // 【BUG-009 修复】finishThinking 内部可能触发面板展开 + DOM 更新，
+        // 紧接着的 parseAIResponse 是重计算操作，会导致浏览器来不及渲染面板更新就冻结。
+        // 在 finishThinking 和 parseAIResponse 之间 yield 一次，让浏览器渲染面板更新。
         if (typeof CotPanelController !== 'undefined') {
             CotPanelController.finishThinking();
         }
+        await new Promise(function(resolve) { setTimeout(resolve, 0); });
         // 流式空回检测
         var _t0 = performance.now();
         window._perfDebug&&(document.title='PERF:8-parse');
