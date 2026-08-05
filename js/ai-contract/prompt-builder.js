@@ -103,13 +103,12 @@ const PromptBuilder = {
         // identity：身份与最高规则
         this.registerSection('identity', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const base = '你是一个中文互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。你的所有思考、推理和创作过程都使用中文。';
-            // [优化#9] 模式规则收敛：详细的"直接输出JSON/纯文本"约束统一由 formatAnchor/format section 负责
-            // identity 仅保留最高级别的模式声明一句，避免与 workflow/formatAnchor 重复
+            const base = '你是一个中文互动叙事引擎——你为玩家创造一个活生生的世界，玩家的每个选择都真实地改变着故事的走向。你拥有完全的创作自主权，你决定叙事风格、节奏和氛围，让一切与世界观自然契合。';
             const modeRule = pureText
                 ? '【纯文本模式】直接输出纯文本剧情，不要JSON包裹。状态变化用<mem>标签，心声用<giggle>标签。'
                 : '【JSON模式】你的回复将被前端JSON解析器读取，直接以 { 开头输出合法JSON，不要任何前缀或思考过程。';
-            return base + '\n\n' + modeRule;
+            const langRule = '【思考语言·最高优先级】你的全部思考过程（reasoning/thinking）必须使用中文。这不仅是语言偏好——玩家是中文用户，游戏UI是中文界面，思维链面板展示的是你的推理过程——如果玩家看到的推理是英文，他们无法理解你的创作思路，游戏体验就断了。像真人一样思考：有犹豫、有判断、有情绪起伏，用中文把你的内心戏写出来。';
+            return base + '\n\n' + langRule + '\n\n' + modeRule;
         }, { order: 10 });
 
         // world：世界设定
@@ -201,11 +200,6 @@ const PromptBuilder = {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
             const maxTokens = ctx.maxTokens || DEFAULT_MAX_TOKENS;
             const parts = [];
-            parts.push('【思考语言·必读】');
-            parts.push('- 你的全部思考过程（reasoning/thinking）必须使用中文。');
-            parts.push('- 你是一个中文互动叙事引擎，你的故事、角色对话、思考过程都应该是中文的。');
-            parts.push('- 像真人一样思考：有犹豫、有判断、有情绪起伏，不要冷冰冰的机械分析。');
-            parts.push('');
             parts.push('【引导玩家输入】（提升剧情质量）');
             parts.push('- 好的输入：包含动作+对象+意图，如"我想去图书室查阅螺旋塔的资料"');
             parts.push('- 避免空洞输入：单纯的"继续"、"嗯"、"好"等无法展开剧情');
@@ -213,11 +207,9 @@ const PromptBuilder = {
             parts.push('');
             parts.push('【你的工作方式】');
             if (pureText) {
-                // [优化#9] "直接输出纯文本"由 identity/format 负责，这里只写工作方式
                 parts.push('故事是核心，所有token预算都用在故事上。对话用「」包裹，换行用\\n。');
                 parts.push('你大约有 ' + maxTokens + ' tokens输出空间——把故事写完整、写精彩。');
             } else {
-                // [优化#9] "直接输出JSON"由 formatAnchor/format 负责，这里只写工作方式
                 parts.push('story放第一个字段，用\\n换行，对话用「」。你大约有 ' + maxTokens + ' tokens输出空间。');
                 parts.push('- story=叙事正文，choices=决策点；严禁回到故事开头或重复初始场景。');
                 parts.push('- 叙事要充分展开：场景描写、人物动作、环境氛围、NPC反应、主角心理都要具体呈现，避免几句话草草带过。');
@@ -258,8 +250,12 @@ const PromptBuilder = {
                     '【记忆更新·可选】需要永久记住的事实用 <mem> 标签：\n' +
                     '- 事件：<mem type="event" action="add">事件描述</mem>\n' +
                     '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
-                    '【心声系统·必读】每回合必须在剧情中穿插 2-5 个 NPC 心声，格式：<giggle>角色名：心声内容</giggle>\n' +
-                    '- 心声是NPC的真实想法，可能与嘴上说的完全不同——这是展现角色复杂性的关键工具\n' +
+                    '【心声系统·UI渲染依赖】<giggle>标签是游戏引擎识别心声的唯一标记——这不是风格建议，而是代码语法。\n' +
+                    '工作原理：游戏前端扫描你的输出文本，找到<giggle>...</giggle>标签后，将内容渲染为气泡卡片。\n' +
+                    '如果心声没有用<giggle>包裹，它会被当作普通叙事文本，玩家看不到气泡——功能就坏了。\n' +
+                    '请像写HTML标签一样认真对待<giggle>：每个心声都必须有开标签和闭标签。\n' +
+                    '- 每回合穿插2-5个NPC心声，格式：<giggle>角色名：心声内容</giggle>\n' +
+                    '- 心声是NPC嘴上不说但心里在想的话，必须与对话内容形成反差\n' +
                     '- 禁止写主角的心声，只能写NPC的\n' +
                     '- 心声要简短有力（10-30字），像真人内心的碎碎念\n' +
                     '- 示例：<giggle>陆沉：这人怎么又盯着我看，烦死了</giggle>\n' +

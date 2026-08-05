@@ -736,20 +736,21 @@ function _buildFormatAnchor() {
             '- 角色：<mem type="character" name="林婉" field="favorability" value="70"/>\n' +
             '- 任务：<mem type="quest" action="add">明日卯时去后山找清虚</mem>\n' +
             '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
-            '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
-            '心声是NPC的真实想法，与嘴上说的不同——展现角色复杂性的关键。\n' +
-            '示例：<giggle>陆沉：这人怎么又盯着我看，烦死了</giggle>\n' +
-            '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
+            '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。\n' +
+            '**心声系统·UI渲染依赖**：<giggle>标签是游戏引擎识别心声的唯一标记——这不是风格建议，而是代码语法。\n' +
+            '工作原理：游戏前端扫描你的输出文本，找到<giggle>...</giggle>标签后渲染为气泡卡片。\n' +
+            '如果心声没有用<giggle>包裹，它会被当作普通叙事文本，玩家看不到气泡——功能就坏了。\n' +
+            '请像写HTML标签一样认真对待<giggle>：每个心声都必须有开标签和闭标签。\n' +
+            '每回合穿插2-5个NPC心声，格式：<giggle>角色名：心声内容</giggle>。\n' +
+            '心声=角色嘴上不说但心里在想的话，必须与对话内容形成反差才有效果。';
     }
     return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**。\n' +
         'gameTime 为必填字段，每回合必须给出具体时间。\n' +
         'quests 若任务已完成，status 填"已完成"、progress 填"1/1"。\n' +
         'currency 必须准确反映剧情中的金钱变化。\n' +
         'hud, relationships, keyEvents, npcMessages, contextSummary 为常用字段，有内容时必须返回；无内容时返回空数组或省略（但 npcMessages 必须保留字段）。\n' +
-        '心声系统：用 <giggle>角色名：心声内容</giggle> 格式穿插（每回合2-5个）。\n' +
-        '**禁止写主角角度的心声**，只能写NPC的心声。\n' +
-        '心声是NPC的真实想法，必须与嘴上说的不同——这是展现角色复杂性的关键。\n' +
-        '示例：<giggle>陆沉：这人怎么又盯着我看，烦死了</giggle>\n' +
+        '**玩家使用的心声系统**：<giggle>标签是游戏引擎识别心声的唯一标记——这不是风格建议，而是代码语法。游戏前端扫描输出文本，找到<giggle>...</giggle>后渲染为气泡卡片。没有标签功能就坏了。\n' +
+        '用 <giggle>角色名：心声内容</giggle> 格式穿插NPC心声（每回合2-5个）。心声是角色的真实想法，必须与嘴上说的形成反差。禁止写主角的心声。\n' +
         'gameTime 推进规则：根据剧情中发生的事件合理推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n' +
         'world 模块必须与本回合剧情紧密联动，禁止无关填充；每回合至少呈现 4 个不同模块。\n' +
         '约' + _maxTokensForAnchor + 'tokens输出空间';
@@ -844,7 +845,11 @@ function _buildFormatRules(gs, _t, turn) {
         + '"gameTime": {"date":"日期","time":"时间","period":"时段","weather":"晴/阴/雨/雪","era":"时代/年号"} }\n'
         + '必填/常用字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
         + '**player=主角（玩家唯一操控角色），characters=NPC列表。绝对禁止把主角放进 characters！剧情提到任何角色名都必须放入 characters；已知角色即使本回合未出场也要保留；每回合检查不遗漏；同一角色只用一个固定名字不加括号备注。**\n'
-        + '**NPC命名规则：若玩家用统称/身份词（如"学霸""小少爷""店小二""那名女子""校草"）指代某角色，你必须在该角色首次出场时立即为它取一个符合世界观的正式姓名（2-4字，如"学霸"可取名"陆知行"），填入 characters[].name，并在后续所有剧情、relationships 的 from/to、npcMessages 的 from 中全程统一使用该正式姓名。name 字段严禁填写"暂无名""可自定义""（待定）""（未命名）"等任何占位提示，也禁止加括号备注；统称只能出现在 desc/title 中。一旦为某角色取名，后续回合必须沿用同一姓名，不得改名。**\n'
+        + '**NPC命名规则·功能依赖**：NPC的名字不只是叙事元素——它是游戏角色面板、关系网络、记忆系统、聊天功能的数据库主键。\n' +
+        '如果name填了"暂无名""可自定义""（待定）""（未命名）"等占位符：角色面板会显示"暂无名"，关系网络断裂（from/to找不到对应角色），记忆系统无法正确关联事件。\n' +
+        '因此：若玩家用统称/身份词（如"学霸""小少爷""店小二""那名女子""校草"）指代某角色，你必须在该角色首次出场时立即为它取一个符合世界观的正式姓名（2-4字），填入 characters[].name。\n' +
+        '统称只能出现在 desc/title 中。一旦为某角色取名，后续所有剧情、relationships 的 from/to、npcMessages 的 from 中全程统一使用该正式姓名，不得改名。\n' +
+        '这就像数据库中的外键约束——名字是关联一切的标识符，必须稳定且唯一。**\n'
         + '**player.name 必须严格等于主角姓名，违反会导致游戏崩溃。原始JSON不用```json包裹。**\n'
         + '**player.stats 更新规则：每回合根据剧情事件更新属性值。修炼/锻炼/学习提升属性、购买/消耗降低金币、受伤降低体质等变化必须反映在 stats 中。禁止每回合返回相同的 stats 值（除非本回合确实无属性变化）。**\n'
         + 'bag 装备/消耗品规则：usable=true为消耗品,effect描述效果;equippable=true可装备,slot为装备位(weapon/armor/accessory/head);同slot装备新的替换旧的;消耗品使用count减1为0移除;玩家说"使用/装备"时下回合更新。\n'
@@ -871,7 +876,12 @@ function _buildFormatRules(gs, _t, turn) {
         + '  - layer 仅允许：shortTerm（短期记忆，每轮一条 20 字以内核心事实）/ longTerm（长期归档，写入永久事实区）/ milestone（关键里程碑，importance≥7 的重大事件）。\n'
         + '  - op 仅允许 add/replace/delete；category 仅允许 pcIdentity/settings/worldRules/npcProfiles/promises/worldPlaces。\n'
         + '  - 示例：{"op":"add","category":"settings","layer":"shortTerm","importance":5,"content":"' + (gameState.playerName || '主角') + '答应帮林晚寻找失踪的妹妹"}；{"op":"add","category":"promises","layer":"milestone","importance":8,"content":"林晚与' + (gameState.playerName || '主角') + '正式确立合作关系"}。\n'
-        + '  - 即使剧情没有重大变化，也必须输出至少 1 条 shortTerm 记忆；无长期/里程碑变更则对应层返回空数组或省略。\n'
+        + '  - 即使剧情没有重大变化，也必须输出至少 1 条 shortTerm 记忆；无长期/里程碑变更则对应层返回空数组或省略。\n' +
+        '【locations 地点提取·UI依赖】游戏的地点面板通过 story 文本和 memoryUpdates 中的 worldPlaces 类别来提取和展示地点。\n' +
+        '如果某个地点在剧情中多次出现但没有写入 worldPlaces 记忆，地点面板可能遗漏它。\n' +
+        '因此：每回合剧情中出现的重要地点（场景发生地），请用 memoryUpdates 的 worldPlaces 类别记录：\n' +
+        '  {"op":"add","category":"worldPlaces","layer":"shortTerm","importance":4,"content":"地点名：简短描述"}。\n' +
+        '这确保游戏的地点追踪系统能正确记录所有场景——这是地图功能和地点面板的数据来源。\n'
         + 'gameTime 推进规则：每段剧情必须推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n'
         + '约' + _maxTokens + 'tokens输出空间'
         + _disabledFeaturesHint
@@ -2563,11 +2573,6 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
 
-        // 【修复】代称替换：检测AI是否在使用占位符而非正式角色名
-        // 当AI已经为角色取名后，如果story中仍出现旧代称，自动替换为正式名字
-        if (storyText && parseResult && parseResult.characters && parseResult.characters.length > 0) {
-            storyText = _replacePlaceholderNames(storyText, parseResult.characters);
-        }
 
         // 这样即使COT清理后变空也能被捕获
         if (!storyText || storyText.trim() === '') {
@@ -4755,51 +4760,6 @@ function _looksLikeInitialScene(title, userPrompt) {
 }
 
 
-// 【修复】代称替换：当AI已为角色取名后，将story中残留的旧代称替换为正式名字
-// 例如：用户用"学霸"代称 → AI取名"陆沉" → story中仍出现"学霸" → 替换为"陆沉"
-// 参数：storyText - 剧情文本，characters - AI返回的characters数组
-// 返回：替换后的剧情文本
-function _replacePlaceholderNames(storyText, characters) {
-    if (!storyText || !characters || !characters.length) return storyText;
-    var result = storyText;
-    // 常见代称模式（用户可能用这些词来指代未命名的角色）
-    var placeholderPatterns = [
-        '学霸', '校草', '校花', '班花', '班草', '学渣', '学神', '同桌', '死对头',
-        '小少爷', '大小姐', '公子', '小姐', '师傅', '师父', '师兄', '师姐', '师弟', '师妹',
-        '店小二', '掌柜', '老板', '老板娘', '管家', '侍女', '侍从', '侍卫', '护卫',
-        '将军', '军师', '谋士', '侠客', '剑客', '刀客', '刺客', '杀手',
-        '医生', '护士', '老师', '教授', '教练', '队长', '队友', '对手',
-        '邻居', '房东', '室友', '同事', '上司', '下属', '客户', '朋友',
-        '神秘人', '黑衣人', '白衣人', '红衣人', '陌生人', '那人', '那人',
-        '少年', '少女', '青年', '中年', '老者', '老婆婆', '老爷爷',
-        '王子', '公主', '国王', '王后', '皇帝', '皇后', '太子', '太子妃',
-        '那名女子', '那名男子', '那个女生', '那个男生', '那个女人', '那个男人'
-    ];
-    for (var i = 0; i < characters.length; i++) {
-        var char = characters[i];
-        if (!char || !char.name) continue;
-        var name = String(char.name).trim();
-        if (name.length < 2 || name.length > 4) continue;
-        // 排除明显不是人名的（如"暂无名"、"未命名"、"可自定义"等）
-        if (/[（(].*?[）)]/.test(name)) continue;
-        if (/^(暂|未|可|待|无)/.test(name)) continue;
-        // 检查角色描述中是否包含代称
-        var desc = String(char.desc || char.relation || '').trim();
-        if (!desc) continue;
-        for (var j = 0; j < placeholderPatterns.length; j++) {
-            var placeholder = placeholderPatterns[j];
-            if (desc.indexOf(placeholder) !== -1 && placeholder !== name) {
-                // 找到代称 → 在story中替换（但要避免替换名字本身）
-                // 使用词边界匹配，避免部分替换
-                var escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                var re = new RegExp(escapedPlaceholder, 'g');
-                result = result.replace(re, name);
-            }
-        }
-    }
-    return result;
-}
-
 function _cleanUnrecognizedTags(text) {
     if (!text || typeof text !== 'string') return text;
     // 允许的 HTML/Markdown 标签白名单（保留基础格式）
@@ -4948,30 +4908,6 @@ function formatStory(text) {
 
 
     var allThoughts = [];
-    // 【修复】启发式检测：如果AI没有使用<giggle>标签，尝试从文本中自动检测心声
-    if (text.indexOf('<giggle>') === -1 && text.indexOf('【giggle】') === -1) {
-        // 尝试自动检测心声模式（NPC名字后跟心想/暗想/默默想等）
-        for (let pI = 0; pI < paragraphs.length; pI++) {
-            var pp = paragraphs[pI];
-            // 匹配模式：角色名，心想/暗想/默默想/心里想/心说/在心里...：内容
-            var thoughtMatch = pp.match(/([\u4e00-\u9fa5]{2,4})[，,]\s*(?:心想|暗想|默默想|心里想|心说|在心中|在心里|暗自|心下|暗暗)[：:，,\s]*([^。！？\n]+)/);
-            if (thoughtMatch) {
-                var thoughtChar = thoughtMatch[1].trim();
-                var thoughtText = thoughtMatch[2].trim();
-                // 排除主角名（主角心声不应该显示）
-                var playerName = '';
-                try { if (typeof gameState !== 'undefined' && gameState && gameState.playerName) playerName = gameState.playerName; } catch(e) {}
-                if (thoughtChar !== playerName && thoughtChar !== '主角' && thoughtChar !== '玩家' && thoughtText.length > 2) {
-                    allThoughts.push({
-                        character: thoughtChar,
-                        text: thoughtText,
-                        original: thoughtMatch[0],
-                        paragraphIdx: pI
-                    });
-                }
-            }
-        }
-    }
     if (text.indexOf('<giggle>') !== -1 || text.indexOf('【giggle】') !== -1) {
         for (let pI = 0; pI < paragraphs.length; pI++) {
             var pp = paragraphs[pI];
