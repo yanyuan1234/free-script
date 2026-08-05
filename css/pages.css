@@ -548,6 +548,30 @@
 .cot-toggle[aria-expanded="true"] .cot-arrow {
     transform: rotate(90deg);
 }
+/* 翻译按钮 */
+.cot-translate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px 8px;
+    margin: 0 6px;
+    font-size: 11px;
+    font-family: inherit;
+    color: var(--accent-blue, #007AFF);
+    background: var(--accent-blue-soft, rgba(0,122,255,0.1));
+    border: 1px solid var(--accent-blue-soft, rgba(0,122,255,0.2));
+    border-radius: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.2s, opacity 0.2s;
+}
+.cot-translate-btn:hover {
+    background: var(--accent-blue-soft, rgba(0,122,255,0.2));
+}
+.cot-translate-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
 /* 折叠状态：小卡片样式 */
 .cot-content {
     padding: 6px 10px 8px;

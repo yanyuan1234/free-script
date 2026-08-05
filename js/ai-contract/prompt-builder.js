@@ -258,7 +258,12 @@ const PromptBuilder = {
                     '【记忆更新·可选】需要永久记住的事实用 <mem> 标签：\n' +
                     '- 事件：<mem type="event" action="add">事件描述</mem>\n' +
                     '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
-                    '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）';
+                    '【心声系统·必读】每回合必须在剧情中穿插 2-5 个 NPC 心声，格式：<giggle>角色名：心声内容</giggle>\n' +
+                    '- 心声是NPC的真实想法，可能与嘴上说的完全不同——这是展现角色复杂性的关键工具\n' +
+                    '- 禁止写主角的心声，只能写NPC的\n' +
+                    '- 心声要简短有力（10-30字），像真人内心的碎碎念\n' +
+                    '- 示例：<giggle>陆沉：这人怎么又盯着我看，烦死了</giggle>\n' +
+                    '- 示例：<giggle>林晚：他答应得这么爽快，该不会有诈吧</giggle>';
             }
             return '';
         }, { order: 70 });

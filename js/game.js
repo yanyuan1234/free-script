@@ -737,6 +737,8 @@ function _buildFormatAnchor() {
             '- 任务：<mem type="quest" action="add">明日卯时去后山找清虚</mem>\n' +
             '- 时间：<mem type="time" day="3" period="afternoon"/>\n' +
             '心声穿插：<giggle>角色名：心声内容</giggle>（每回合2-5个）\n' +
+            '心声是NPC的真实想法，与嘴上说的不同——展现角色复杂性的关键。\n' +
+            '示例：<giggle>陆沉：这人怎么又盯着我看，烦死了</giggle>\n' +
             '你有充足空间写完剧情（约' + _maxTokensForAnchor + ' tokens），把字数用在story上。';
     }
     return '【输出要求·JSON模式】直接输出JSON（以 { 开头），**不要任何前缀说明**。\n' +
@@ -746,6 +748,8 @@ function _buildFormatAnchor() {
         'hud, relationships, keyEvents, npcMessages, contextSummary 为常用字段，有内容时必须返回；无内容时返回空数组或省略（但 npcMessages 必须保留字段）。\n' +
         '心声系统：用 <giggle>角色名：心声内容</giggle> 格式穿插（每回合2-5个）。\n' +
         '**禁止写主角角度的心声**，只能写NPC的心声。\n' +
+        '心声是NPC的真实想法，必须与嘴上说的不同——这是展现角色复杂性的关键。\n' +
+        '示例：<giggle>陆沉：这人怎么又盯着我看，烦死了</giggle>\n' +
         'gameTime 推进规则：根据剧情中发生的事件合理推进时间。现代世界按小时推进，古代世界按时辰推进，修仙世界可按修炼周期推进。\n' +
         'world 模块必须与本回合剧情紧密联动，禁止无关填充；每回合至少呈现 4 个不同模块。\n' +
         '约' + _maxTokensForAnchor + 'tokens输出空间';
@@ -2559,6 +2563,11 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
         }
 
+        // 【修复】代称替换：检测AI是否在使用占位符而非正式角色名
+        // 当AI已经为角色取名后，如果story中仍出现旧代称，自动替换为正式名字
+        if (storyText && parseResult && parseResult.characters && parseResult.characters.length > 0) {
+            storyText = _replacePlaceholderNames(storyText, parseResult.characters);
+        }
 
         // 这样即使COT清理后变空也能被捕获
         if (!storyText || storyText.trim() === '') {
@@ -4746,6 +4755,51 @@ function _looksLikeInitialScene(title, userPrompt) {
 }
 
 
+// 【修复】代称替换：当AI已为角色取名后，将story中残留的旧代称替换为正式名字
+// 例如：用户用"学霸"代称 → AI取名"陆沉" → story中仍出现"学霸" → 替换为"陆沉"
+// 参数：storyText - 剧情文本，characters - AI返回的characters数组
+// 返回：替换后的剧情文本
+function _replacePlaceholderNames(storyText, characters) {
+    if (!storyText || !characters || !characters.length) return storyText;
+    var result = storyText;
+    // 常见代称模式（用户可能用这些词来指代未命名的角色）
+    var placeholderPatterns = [
+        '学霸', '校草', '校花', '班花', '班草', '学渣', '学神', '同桌', '死对头',
+        '小少爷', '大小姐', '公子', '小姐', '师傅', '师父', '师兄', '师姐', '师弟', '师妹',
+        '店小二', '掌柜', '老板', '老板娘', '管家', '侍女', '侍从', '侍卫', '护卫',
+        '将军', '军师', '谋士', '侠客', '剑客', '刀客', '刺客', '杀手',
+        '医生', '护士', '老师', '教授', '教练', '队长', '队友', '对手',
+        '邻居', '房东', '室友', '同事', '上司', '下属', '客户', '朋友',
+        '神秘人', '黑衣人', '白衣人', '红衣人', '陌生人', '那人', '那人',
+        '少年', '少女', '青年', '中年', '老者', '老婆婆', '老爷爷',
+        '王子', '公主', '国王', '王后', '皇帝', '皇后', '太子', '太子妃',
+        '那名女子', '那名男子', '那个女生', '那个男生', '那个女人', '那个男人'
+    ];
+    for (var i = 0; i < characters.length; i++) {
+        var char = characters[i];
+        if (!char || !char.name) continue;
+        var name = String(char.name).trim();
+        if (name.length < 2 || name.length > 4) continue;
+        // 排除明显不是人名的（如"暂无名"、"未命名"、"可自定义"等）
+        if (/[（(].*?[）)]/.test(name)) continue;
+        if (/^(暂|未|可|待|无)/.test(name)) continue;
+        // 检查角色描述中是否包含代称
+        var desc = String(char.desc || char.relation || '').trim();
+        if (!desc) continue;
+        for (var j = 0; j < placeholderPatterns.length; j++) {
+            var placeholder = placeholderPatterns[j];
+            if (desc.indexOf(placeholder) !== -1 && placeholder !== name) {
+                // 找到代称 → 在story中替换（但要避免替换名字本身）
+                // 使用词边界匹配，避免部分替换
+                var escapedPlaceholder = placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                var re = new RegExp(escapedPlaceholder, 'g');
+                result = result.replace(re, name);
+            }
+        }
+    }
+    return result;
+}
+
 function _cleanUnrecognizedTags(text) {
     if (!text || typeof text !== 'string') return text;
     // 允许的 HTML/Markdown 标签白名单（保留基础格式）
@@ -4894,6 +4948,30 @@ function formatStory(text) {
 
 
     var allThoughts = [];
+    // 【修复】启发式检测：如果AI没有使用<giggle>标签，尝试从文本中自动检测心声
+    if (text.indexOf('<giggle>') === -1 && text.indexOf('【giggle】') === -1) {
+        // 尝试自动检测心声模式（NPC名字后跟心想/暗想/默默想等）
+        for (let pI = 0; pI < paragraphs.length; pI++) {
+            var pp = paragraphs[pI];
+            // 匹配模式：角色名，心想/暗想/默默想/心里想/心说/在心里...：内容
+            var thoughtMatch = pp.match(/([\u4e00-\u9fa5]{2,4})[，,]\s*(?:心想|暗想|默默想|心里想|心说|在心中|在心里|暗自|心下|暗暗)[：:，,\s]*([^。！？\n]+)/);
+            if (thoughtMatch) {
+                var thoughtChar = thoughtMatch[1].trim();
+                var thoughtText = thoughtMatch[2].trim();
+                // 排除主角名（主角心声不应该显示）
+                var playerName = '';
+                try { if (typeof gameState !== 'undefined' && gameState && gameState.playerName) playerName = gameState.playerName; } catch(e) {}
+                if (thoughtChar !== playerName && thoughtChar !== '主角' && thoughtChar !== '玩家' && thoughtText.length > 2) {
+                    allThoughts.push({
+                        character: thoughtChar,
+                        text: thoughtText,
+                        original: thoughtMatch[0],
+                        paragraphIdx: pI
+                    });
+                }
+            }
+        }
+    }
     if (text.indexOf('<giggle>') !== -1 || text.indexOf('【giggle】') !== -1) {
         for (let pI = 0; pI < paragraphs.length; pI++) {
             var pp = paragraphs[pI];

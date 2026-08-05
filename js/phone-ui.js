@@ -5190,6 +5190,8 @@ var CotPanelController = {
     _isExpanded: false,         // 面板是否展开
     _renderTimer: null,         // 渲染节流定时器
     _viewingHistoryIdx: -1,     // 正在查看的历史索引（-1=当前）
+    _translatedText: '',        // 翻译后的中文文本
+    _isTranslating: false,      // 是否正在翻译中
 
     // === 设置 ===
     get autoExpand() {
@@ -5478,6 +5480,32 @@ var CotPanelController = {
 
         // 更新历史切换按钮
         this._renderHistoryBar();
+
+        // 翻译按钮：仅在状态为 done 且内容非中文时显示
+        var translateBtn = document.getElementById('cotTranslateBtn');
+        if (!translateBtn) {
+            translateBtn = document.createElement('button');
+            translateBtn.id = 'cotTranslateBtn';
+            translateBtn.className = 'cot-translate-btn';
+            translateBtn.textContent = '翻译';
+            translateBtn.title = '将思维链翻译为中文';
+            translateBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                CotPanelController.translateCoT();
+            });
+            // 插入到 toggle 按钮后面
+            if (toggleBtn && toggleBtn.parentNode) {
+                toggleBtn.parentNode.insertBefore(translateBtn, toggleBtn.nextSibling);
+            }
+        }
+        if (this.state === 'done' && this.currentText) {
+            var chineseChars = (this.currentText.match(/[\u4e00-\u9fa5]/g) || []).length;
+            var totalChars = this.currentText.replace(/\s/g, '').length;
+            var isChinese = totalChars > 0 && chineseChars / totalChars > 0.5;
+            translateBtn.style.display = isChinese ? 'none' : 'inline-flex';
+        } else {
+            translateBtn.style.display = 'none';
+        }
     },
 
     // 渲染历史切换按钮
@@ -5557,6 +5585,108 @@ var CotPanelController = {
             statusEl.textContent = '历史 · ' + timeStr + ' · ' + this.history[idx].text.length + ' 字';
             statusEl.className = 'cot-status cot-status-history';
         }
+    },
+
+    // 翻译思维链为中文（使用API翻译）
+    translateCoT: function() {
+        var self = this;
+        if (self._isTranslating) return;
+        var text = self.currentText;
+        if (!text || !text.trim()) return;
+        // 检测是否已经是中文为主（中文字符占比 > 50%）
+        var chineseChars = (text.match(/[\u4e00-\u9fa5]/g) || []).length;
+        var totalChars = text.replace(/\s/g, '').length;
+        if (totalChars > 0 && chineseChars / totalChars > 0.5) {
+            // 已经是中文为主，不需要翻译
+            self._translatedText = text;
+            var statusEl = document.getElementById('cotStatus');
+            if (statusEl) {
+                statusEl.textContent = '已是中文 · ' + text.length + ' 字';
+                statusEl.className = 'cot-status cot-status-done';
+            }
+            return;
+        }
+        self._isTranslating = true;
+        var statusEl = document.getElementById('cotStatus');
+        var translateBtn = document.getElementById('cotTranslateBtn');
+        if (statusEl) {
+            statusEl.textContent = '翻译中...';
+            statusEl.className = 'cot-status cot-status-thinking';
+        }
+        if (translateBtn) translateBtn.disabled = true;
+        // 使用 gameState 中的 API 配置进行翻译
+        var apiConfig = {};
+        try {
+            if (typeof gameState !== 'undefined' && gameState) {
+                apiConfig = {
+                    endpoint: gameState.apiEndpoint || 'https://api.iamhc.cn/v1',
+                    apiKey: gameState.apiKey || '',
+                    model: gameState.currentModel || 'deepseek-v3'
+                };
+            }
+        } catch(e) {}
+        if (!apiConfig.apiKey) {
+            self._isTranslating = false;
+            if (statusEl) statusEl.textContent = '翻译失败：未配置API';
+            if (translateBtn) translateBtn.disabled = false;
+            return;
+        }
+        // 截断过长的文本（最多翻译 4000 字符）
+        var textToTranslate = text.length > 4000 ? text.substring(0, 4000) + '\n...(截断)' : text;
+        var translatePrompt = '请将以下英文AI推理过程翻译为自然流畅的中文。保留原文的推理逻辑、技术术语和格式结构。只输出翻译结果，不要任何解释：\n\n' + textToTranslate;
+        var fetchUrl = (apiConfig.endpoint || '').replace(/\/+$/, '') + '/chat/completions';
+        fetch(fetchUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + apiConfig.apiKey
+            },
+            body: JSON.stringify({
+                model: apiConfig.model || 'deepseek-v3',
+                messages: [{ role: 'user', content: translatePrompt }],
+                max_tokens: Math.min(textToTranslate.length * 2, 8192),
+                temperature: 0.1
+            })
+        }).then(function(res) {
+            if (!res.ok) throw new Error('API error: ' + res.status);
+            return res.json();
+        }).then(function(data) {
+            var translated = '';
+            if (data.choices && data.choices[0] && data.choices[0].message) {
+                translated = data.choices[0].message.content || '';
+            }
+            if (translated) {
+                self._translatedText = translated;
+                self.currentText = translated;
+                // 更新显示
+                var content = document.getElementById('cotContent');
+                if (content) {
+                    var escaped = String(translated)
+                        .replace(/&/g, '&amp;')
+                        .replace(/</g, '&lt;')
+                        .replace(/>/g, '&gt;')
+                        .replace(/"/g, '&quot;');
+                    content.innerHTML = escaped;
+                }
+                if (statusEl) {
+                    statusEl.textContent = '已翻译 · ' + translated.length + ' 字';
+                    statusEl.className = 'cot-status cot-status-done';
+                }
+                // 更新历史记录
+                if (self.history.length > 0) {
+                    self.history[0].text = translated;
+                }
+            }
+        }).catch(function(err) {
+            console.warn('[CotPanel] 翻译失败:', err);
+            if (statusEl) {
+                statusEl.textContent = '翻译失败，请重试';
+                statusEl.className = 'cot-status cot-status-done';
+            }
+        }).finally(function() {
+            self._isTranslating = false;
+            if (translateBtn) translateBtn.disabled = false;
+        });
     }
 };
 
