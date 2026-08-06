@@ -824,10 +824,13 @@ function _buildFormatRules(gs, _t, turn) {
         : '';
 
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
-        + '{ "thinking": "你的思考过程（用中文写）：像真人一样分析当前局势、揣摩角色心理、规划剧情走向，要有内心的犹豫和判断，200-500字", "title": "4-8字章节标题", "story": "本回合剧情正文", '
-        + (hasChoices ? '"choices": [{"id":"A","text":"选项文本"}],' : '')
+        + '**字段输出顺序（严格遵守！）：story → title → player → characters → choices → bag → quests → relationships → world → gameTime → currency → keyEvents → npcMessages → contextSummary → memoryUpdates → thinking（最后）**\n'
+        + '**token预算优先级：story(最高) > player > characters > choices > 其他。thinking 放在JSON最后，token不足时省略thinking，绝不允许因为thinking过长而截断story/player/characters。**\n'
+        + '{ "story": "本回合剧情正文", "title": "4-8字章节标题"'
+        + (hasChoices ? ', "choices": [{"id":"A","text":"选项文本"}]' : '')
+        + ', "thinking": "你的思考过程（中文，50-150字，放JSON最后，token不足可省略）" }\n'
         + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的设计/思考请写入 thinking 字段（如果 API 支持 reasoning_content 则写入 reasoning_content，否则写入 JSON 的 thinking 字段），不要写入 story。**\n'
-        + '\n**thinking 字段规则（重要！）：在 story 之前先输出 thinking 字段，用中文写出你本回合的真实思考过程——像真人一样分析当前局势、揣摩角色心理、规划剧情走向。要有临场感："这个选择有点难办...如果这样做的话..."、"等等，这个角色刚才的反应不太对劲..."。thinking 内容不会显示给玩家看（以折叠卡片形式展示），只用于思维链面板。**\n'
+        + '\n**thinking 字段规则（重要！）：thinking 放在 JSON 最后输出，用中文写50-150字的简要思考。不要写长篇大论，只写核心判断。如果token预算不够，可以省略thinking字段。thinking内容不会显示给玩家看。**\n'
         + '\n**story 长度要求：根据用户设置的字数范围生成，优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
         + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
@@ -1934,7 +1937,8 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState.pureTextMode !== true) {
             var _curPlayerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
             var _formatReminder = '【输出格式·必读】直接输出JSON（以 { 开头，以 } 结尾），禁止输出纯文本、思考过程或前缀说明。\n' +
-                '你的思考过程请用中文写在 thinking 字段中，像真人一样有犹豫、有判断。\n' +
+                'JSON字段输出顺序：story → title → player → characters → choices → 其他数据 → thinking(放最后，50-150字中文，token不足可省略)。\n' +
+                '**token预算：story > player > characters > choices > 其他。thinking绝不能挤占story/player/characters的token空间。**\n' +
                 '必填字段：title(章节标题)、story(叙事正文,\\n换行,「」对话)、gameTime({date,time,period})、keyEvents(本回合关键事件数组)。\n' +
                 '可选字段：choices([{id,text}])、player({name,identity,stats:[{label,value}]}——须包含完整属性数组)、characters([{name,title,relation,favorability,desc}])、bag、quests、world([聊天/论坛/排行榜/商店/日记/朋友圈/邮箱模块])。\n' +
                 '注意：player.stats 必须返回完整属性数组（参考上一轮），不要返回空数组。characters.favorability 须根据剧情动态变化。';
