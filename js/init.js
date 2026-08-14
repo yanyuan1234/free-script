@@ -116,6 +116,22 @@ async function initApp() {
         if (typeof PromptConfig !== 'undefined') PromptConfig.init();
         // 【P0功能】初始化meow_FM结构化摘要系统
         if (typeof MeowFMEnhanced !== 'undefined') MeowFMEnhanced.init();
+        // 【P1功能】初始化伏笔因果链追踪系统
+        if (typeof ForeshadowChain !== 'undefined') ForeshadowChain.init();
+        // 【P1功能】初始化多文风库与切换系统
+        if (typeof StyleLibrary !== 'undefined') StyleLibrary.init();
+        // 【P1功能】初始化游戏内文档视觉渲染引擎
+        if (typeof DocRenderer !== 'undefined') DocRenderer.init();
+        // 【P1功能】初始化结构化状态栏系统
+        if (typeof StatusBar !== 'undefined') StatusBar.init();
+        // 【P2功能】初始化平行世界线追踪系统
+        if (typeof ParallelWorld !== 'undefined') ParallelWorld.init();
+        // 【P2功能】初始化梦境世界构建引擎
+        if (typeof DreamEngine !== 'undefined') DreamEngine.init();
+        // 【P2功能】初始化内嵌电子书阅读器
+        if (typeof EbookReader !== 'undefined') EbookReader.init();
+        // 【P2功能】初始化创意剧场系统
+        if (typeof CreativeTheater !== 'undefined') CreativeTheater.init();
         // 初始化宏引擎
         if (typeof MacroEngine !== 'undefined' && MacroEngine.init) MacroEngine.init();
         // 初始化记忆管理系统（已合并到 MemoryManagerUI，无需单独初始化）
