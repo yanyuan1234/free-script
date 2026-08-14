@@ -100,23 +100,18 @@ var ParallelWorld = {
      * 注册处理器
      */
     _registerProcessor: function() {
-        if (typeof RegexManager === 'undefined') {
+        if (typeof OutputProcessor === 'undefined') {
             var self = this;
-            setTimeout(function() { self._registerProcessor(); }, 1000);
+            setTimeout(function() { self._registerProcessor(); }, 500);
             return;
         }
 
         var self = this;
-        var originalProcess = RegexManager.processOutput;
+        OutputProcessor.register('parallel-world', function(text) {
+            return self._extractAndRender(text);
+        }, 75);
 
-        if (originalProcess) {
-            RegexManager.processOutput = function(text) {
-                text = originalProcess.call(this, text);
-                return self._extractAndRender(text);
-            };
-        }
-
-        console.log('[ParallelWorld] 已注册处理器');
+        console.log('[ParallelWorld] 已注册到 OutputProcessor');
     },
 
     /**

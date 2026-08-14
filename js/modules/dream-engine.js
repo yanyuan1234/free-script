@@ -164,21 +164,18 @@ var DreamEngine = {
      * 注册处理器
      */
     _registerProcessor: function() {
-        if (typeof RegexManager === 'undefined') {
+        if (typeof OutputProcessor === 'undefined') {
             var self = this;
-            setTimeout(function() { self._registerProcessor(); }, 1000);
+            setTimeout(function() { self._registerProcessor(); }, 500);
             return;
         }
 
         var self = this;
-        var originalProcess = RegexManager.processOutput;
+        OutputProcessor.register('dream-engine', function(text) {
+            return self._processDreamTags(text);
+        }, 90);
 
-        if (originalProcess) {
-            RegexManager.processOutput = function(text) {
-                text = originalProcess.call(this, text);
-                return self._processDreamTags(text);
-            };
-        }
+        console.log('[DreamEngine] 已注册到 OutputProcessor');
     },
 
     /**

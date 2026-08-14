@@ -253,21 +253,19 @@ var CreativeTheater = {
      * 核心融合逻辑：解析 <theater> 标签，路由到对应的日志管道
      */
     _registerProcessor: function() {
-        if (typeof RegexManager === 'undefined') {
+        // 使用 OutputProcessor 统一注册中心，替代原先对 RegexManager.processOutput 的 hook
+        if (typeof OutputProcessor === 'undefined') {
             var self = this;
-            setTimeout(function() { self._registerProcessor(); }, 1000);
+            setTimeout(function() { self._registerProcessor(); }, 500);
             return;
         }
 
         var self = this;
-        var originalProcess = RegexManager.processOutput;
+        OutputProcessor.register('creative-theater', function(text) {
+            return self._processTheaterTags(text);
+        }, 80);  // order=80，在状态栏(50)和文档渲染(70)之后执行
 
-        if (originalProcess) {
-            RegexManager.processOutput = function(text) {
-                text = originalProcess.call(this, text);
-                return self._processTheaterTags(text);
-            };
-        }
+        console.log('[CreativeTheater] 已注册到 OutputProcessor');
     },
 
     /**
@@ -298,14 +296,16 @@ var CreativeTheater = {
             var typeName = typeDef ? typeDef.name : type;
 
             // 根据路由管道分发内容
+            var injectedContent = '';
             if (route.pipeline === 'worldModules') {
                 self._injectToWorldModules(route.targetType, content, type);
             } else {
-                self._injectToPresetApp(route.targetType, content, type);
+                // presetApp 管道：获取包装后的内容，放回文本让 PresetAppManager 解析
+                injectedContent = self._injectToPresetApp(route.targetType, content, type) || '';
             }
 
-            // 在正文中保留一个简洁的提示卡片（不再是完整内容）
-            return '<div style="margin:8px 0;padding:8px 12px;background:rgba(75,63,227,0.06);border-radius:8px;border-left:3px solid rgba(75,63,227,0.3);font-size:12px;color:#8a8ac0;">🎭 ' + typeName + ' 已收录到日志-' + route.label + '</div>';
+            // 在正文中保留简洁的提示卡片 + 包装后的标签内容（PresetAppManager 会自动提取并剥离）
+            return injectedContent + '<div style="margin:8px 0;padding:8px 12px;background:rgba(75,63,227,0.06);border-radius:8px;border-left:3px solid rgba(75,63,227,0.3);font-size:12px;color:#8a8ac0;">🎭 ' + typeName + ' 已收录到日志-' + route.label + '</div>';
         });
 
         if (hasMatch) {
@@ -374,30 +374,33 @@ var CreativeTheater = {
      */
     _injectToPresetApp: function(targetType, content, theaterType) {
         try {
-            // PresetAppManager 通过解析 XML 标签工作
-            // 我们将内容包装为对应的标签，然后让 PresetAppManager 解析
+            // PresetAppManager 通过 parseFromText 解析 XML 标签工作
+            // 我们将内容包装为对应的标签，返回给调用方放入文本中
+            // 这样 formatStory → PresetAppManager.parseFromText 会自动提取，
+            // PresetAppManager.stripDecorTags 会从显示中移除
+
+            var wrapped = content;  // 默认直接返回原始内容
 
             if (targetType === 'snow') {
                 // 小剧场：包装为 <snow> 标签
-                // PresetAppManager 会自动解析
-                // 这里不需要额外操作，因为 <details> 标签会被 PresetAppManager 的 snow 解析逻辑捕获
-                // 但我们确保内容中有 <details> 标签
-                if (content.indexOf('<details>') === -1) {
-                    content = '<details><summary>🎭 小剧场</summary>' + content + '</details>';
+                if (content.indexOf('<snow>') === -1) {
+                    wrapped = '<snow>' + content + '</snow>';
                 }
-                // PresetAppManager.parseFromText 会自动捕获 <details> 中的小剧场内容
             } else if (targetType === 'danmu') {
-                // 弹幕：内容已经包含 <danmu> 标签
-                // PresetAppManager 会自动解析
+                // 弹幕：确保有 <danmu> 标签
+                if (content.indexOf('<danmu>') === -1) {
+                    wrapped = '<danmu>' + content + '</danmu>';
+                }
             } else if (targetType === 'bgm') {
-                // 音乐推荐：内容已包含 <bgm> 标签
-                // 需要确保 PresetAppManager 能识别 <bgm> 标签
-                this._ensureBgmTagSupport();
+                // 音乐推荐：用 <snow> 标签承载（PresetAppManager 不原生支持 <bgm>）
+                wrapped = '<snow>🎵 ' + content + '</snow>';
             }
 
             console.log('[CreativeTheater] 注入到 PresetAppManager tag=' + targetType + ' (来自 ' + theaterType + ')');
+            return wrapped;
         } catch(e) {
             console.warn('[CreativeTheater] 注入 PresetAppManager 失败:', e);
+            return content;
         }
     },
 

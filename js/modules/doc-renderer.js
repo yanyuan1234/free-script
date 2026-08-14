@@ -168,29 +168,18 @@ var DocRenderer = {
      * 将 <doc type="xxx">...</doc> 标签渲染为HTML
      */
     _registerRegexProcessor: function() {
-        if (typeof RegexManager === 'undefined') {
+        if (typeof OutputProcessor === 'undefined') {
             var self = this;
-            setTimeout(function() { self._registerRegexProcessor(); }, 1000);
+            setTimeout(function() { self._registerRegexProcessor(); }, 500);
             return;
         }
 
         var self = this;
+        OutputProcessor.register('doc-renderer', function(text) {
+            return self._renderDocTags(text);
+        }, 70);
 
-        // 在 RegexManager 的后处理流程中添加文档渲染
-        var originalProcess = RegexManager.processOutput;
-        if (originalProcess) {
-            RegexManager.processOutput = function(text) {
-                text = originalProcess.call(this, text);
-                return self._renderDocTags(text);
-            };
-        } else {
-            // 如果没有 processOutput，添加为独立方法
-            RegexManager.renderDocs = function(text) {
-                return self._renderDocTags(text);
-            };
-        }
-
-        console.log('[DocRenderer] 已注册正则处理器');
+        console.log('[DocRenderer] 已注册到 OutputProcessor');
     },
 
     /**

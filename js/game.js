@@ -3084,6 +3084,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                             (finalStory.length < _curLen / 3 && _curLen > 200)) {
                             console.warn('[storyProtect] 保留打字机已显示内容，跳过空/短 finalStory 覆盖 (final=' + finalStory.length + ', cur=' + _curLen + ')');
                         } else {
+                            // [OutputProcessor] 在 formatStory 之前处理各模块标签
+                            // （<theater>/<status>/<dream>/<doc>/<parallel_world> 等）
+                            if (typeof OutputProcessor !== 'undefined' && OutputProcessor.count() > 0) {
+                                finalStory = OutputProcessor.process(finalStory);
+                            }
                             st.innerHTML = formatStory(finalStory);
                             console.log('[perf] formatStory+innerHTML: ' + (performance.now() - _t4).toFixed(1) + 'ms (len=' + finalStory.length + ')');
                         }
@@ -4511,6 +4516,12 @@ function renderStory(text) {
         });
     }
 
+    // [OutputProcessor] 统一调用各模块注册的输出处理器
+    // 处理 <theater>/<parallel_world>/<status>/<doc>/<dream> 等标签
+    // 在 regex 之后、formatStory 之前执行
+    if (typeof OutputProcessor !== 'undefined' && OutputProcessor.count() > 0) {
+        text = OutputProcessor.process(text);
+    }
 
     var formatted = sanitizeHtml(formatStory(text));
     if (canCache) {

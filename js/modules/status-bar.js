@@ -111,27 +111,18 @@ var StatusBar = {
      * 从AI输出中解析 <status> 标签
      */
     _registerStatusProcessor: function() {
-        if (typeof RegexManager === 'undefined') {
+        if (typeof OutputProcessor === 'undefined') {
             var self = this;
-            setTimeout(function() { self._registerStatusProcessor(); }, 1000);
+            setTimeout(function() { self._registerStatusProcessor(); }, 500);
             return;
         }
 
         var self = this;
-        var originalProcess = RegexManager.processOutput;
+        OutputProcessor.register('status-bar', function(text) {
+            return self._extractAndStripStatus(text);
+        }, 50);  // order=50，最先执行（状态栏需要先从文本中提取并移除）
 
-        if (originalProcess) {
-            RegexManager.processOutput = function(text) {
-                text = originalProcess.call(this, text);
-                return self._extractAndStripStatus(text);
-            };
-        } else {
-            RegexManager.processStatus = function(text) {
-                return self._extractAndStripStatus(text);
-            };
-        }
-
-        console.log('[StatusBar] 已注册状态处理器');
+        console.log('[StatusBar] 已注册到 OutputProcessor');
     },
 
     /**
