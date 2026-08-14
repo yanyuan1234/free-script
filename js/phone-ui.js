@@ -5829,21 +5829,42 @@ function bindEvents() {
     // 返回主菜单按钮
     bindEvent('btnHomeMenu', 'click', async function() {
         if (typeof UI !== 'undefined' && typeof UI.confirm === 'function') {
-            var confirmed = await UI.confirm('返回主菜单', '确定要返回主菜单吗？当前游戏进度已自动保存，你可以随时通过"加载存档"继续。');
-            if (!confirmed) return;
+            try {
+                var confirmed = await UI.confirm('返回主菜单', '确定要返回主菜单吗？当前游戏进度已自动保存，你可以随时通过"加载存档"继续。');
+                if (!confirmed) return;
+            } catch(e) {
+                console.warn('[btnHomeMenu] confirm error:', e);
+            }
         }
         // 停止当前AI生成
         try { safeAbort(); } catch(e) {}
         try { setWaiting(false); } catch(e) {}
         try { hideStoryLoading(); } catch(e) {}
-        try { TypewriterBuffer.stop(); } catch(e) {}
+        try { 
+            if (typeof TypewriterBuffer !== 'undefined' && TypewriterBuffer.stop) TypewriterBuffer.stop(); 
+        } catch(e) {}
         // 自动保存当前进度
         try {
             if (typeof saveGame === 'function') saveGame();
             else if (typeof autoSave === 'function') autoSave();
         } catch(e) {}
-        // 返回主菜单
-        try { UI.showPage('menuPage'); } catch(e) {}
+        // 返回主菜单 - 直接操作DOM确保页面切换
+        try {
+            var pages = document.querySelectorAll('.page');
+            for (var i = 0; i < pages.length; i++) {
+                pages[i].classList.remove('active');
+            }
+            var menuPage = document.getElementById('menuPage');
+            if (menuPage) {
+                menuPage.classList.add('active');
+            } else {
+                // 找不到菜单页，刷新页面作为兜底
+                window.location.reload();
+            }
+        } catch(e) {
+            // 最终兜底：刷新页面
+            window.location.reload();
+        }
     });
 
     // 生成中取消按钮
