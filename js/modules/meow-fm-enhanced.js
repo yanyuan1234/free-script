@@ -171,7 +171,7 @@ var MeowFMEnhanced = {
      * 提取简单字段
      */
     _extractField: function(text, fieldName) {
-        var regex = new RegExp(fieldName + '\\s*:\\s*(.+?)(?=\\n[a-z_]+\\s*:|$', 'im');
+        var regex = new RegExp(fieldName + '\\s*:\\s*(.+?)(?=\\n[a-z_]+\\s*:|$)', 'im');
         var match = text.match(regex);
         return match ? match[1].trim() : '';
     },
@@ -227,19 +227,16 @@ var MeowFMEnhanced = {
         var short = [];
         var long = [];
 
-        // 匹配 [短期 n/5] 和 [长期]
-        var shortMatches = rawSeeds.matchAll(/\[短期\s*\d+\/5\]\s*([^/[\]]+)/g);
-        if (shortMatches) {
-            for (var m of shortMatches) {
-                if (m[1] && m[1].trim()) short.push(m[1].trim());
-            }
+        // 匹配 [短期 n/5] 和 [长期]（使用 exec 循环替代 matchAll，兼容更多浏览器）
+        var shortRegex = /\[短期\s*\d+\/5\]\s*([^/[\]]+)/g;
+        var m;
+        while ((m = shortRegex.exec(rawSeeds)) !== null) {
+            if (m[1] && m[1].trim()) short.push(m[1].trim());
         }
 
-        var longMatches = rawSeeds.matchAll(/\[长期\]\s*([^/[\]]+)/g);
-        if (longMatches) {
-            for (var m of longMatches) {
-                if (m[1] && m[1].trim()) long.push(m[1].trim());
-            }
+        var longRegex = /\[长期\]\s*([^/[\]]+)/g;
+        while ((m = longRegex.exec(rawSeeds)) !== null) {
+            if (m[1] && m[1].trim()) long.push(m[1].trim());
         }
 
         return { short: short, long: long };
@@ -287,7 +284,7 @@ var MeowFMEnhanced = {
                         text = theaterData.content;
                     }
 
-                    if (text && text.indexOf('meow_FM') !== -1 || text.indexOf('meow_fm') !== -1) {
+                    if (text && (text.indexOf('meow_FM') !== -1 || text.indexOf('meow_fm') !== -1)) {
                         var parsed = self.parse(text);
                         if (parsed) {
                             self._distributeToMemory(parsed);
@@ -303,6 +300,7 @@ var MeowFMEnhanced = {
      */
     _distributeToMemory: function(parsed) {
         if (typeof EnhancedMemory === 'undefined') return;
+        var self = this;
 
         // 1. 角色状态更新
         if (parsed.chars && parsed.chars.length > 0) {
