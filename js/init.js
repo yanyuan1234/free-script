@@ -108,6 +108,14 @@ async function initApp() {
         PresetManager.init();
         // 初始化正则脚本系统
         RegexManager.init();
+        // 【P0功能】初始化内置正则规则（防陈词/格式清洗）
+        if (typeof BuiltinRegexRules !== 'undefined') BuiltinRegexRules.init();
+        // 【P0功能】初始化四步思维链框架
+        if (typeof COTFramework !== 'undefined') COTFramework.init();
+        // 【P0功能】初始化模块化提示词配置系统
+        if (typeof PromptConfig !== 'undefined') PromptConfig.init();
+        // 【P0功能】初始化meow_FM结构化摘要系统
+        if (typeof MeowFMEnhanced !== 'undefined') MeowFMEnhanced.init();
         // 初始化宏引擎
         if (typeof MacroEngine !== 'undefined' && MacroEngine.init) MacroEngine.init();
         // 初始化记忆管理系统（已合并到 MemoryManagerUI，无需单独初始化）
