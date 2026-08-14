@@ -2877,45 +2877,76 @@ var GameMemory = {
     _aiParseSetup: function(fullSetup) {
         var self = this;
 
-        // 【P0 修复】延迟15秒再调用AI，并等待 API 空闲后才执行
-        // 原延迟5秒不够：extractSetupToMemory + sendAIRequest 持续占用API 30-60秒
-        // 三路并发导致持续429限流
-        // 新策略：15秒后检查 API 是否空闲（isWaiting=false），不空闲则每5秒重试检查
+        // 【P0优化】非阻塞化：5秒后开始检查API空闲状态（原15秒太长）
+        // 主故事生成通常在3-5秒内开始占用API，5秒延迟足以避免并发
+        // 同时注册一个一次性回调，当主生成完成时立即触发设定解析
+        self._setupParsePending = true;
+
+        // 注册事件驱动触发：当 setWaiting(false) 被调用时立即检查
+        if (!self._setupParseHookInstalled) {
+            self._setupParseHookInstalled = true;
+            var _origSetWaiting = (typeof window !== 'undefined' && typeof window.setWaiting === 'function') ? window.setWaiting : null;
+            if (_origSetWaiting) {
+                window.setWaiting = function(w) {
+                    _origSetWaiting(w);
+                    // 当主生成完成时，检查是否有待处理的设定解析
+                    if (!w && EnhancedMemory._setupParsePending && !EnhancedMemory._setupParseRunning) {
+                        EnhancedMemory._setupParsePending = false;
+                        TimerManager.setTimeout('aiParseSetupImmediate', function() {
+                            if (typeof RuntimeState !== 'undefined' && !RuntimeState.isWaiting) {
+                                EnhancedMemory._aiParseSetupInner(EnhancedMemory._setupLayers.fullSetup);
+                            }
+                        }, 500);
+                    }
+                };
+            }
+        }
+
         TimerManager.setTimeout('aiParseSetupDelay', function() {
             self._aiParseSetupWhenIdle(fullSetup, 0);
-        }, 15000);
+        }, 5000);
     },
 
     _aiParseSetupWhenIdle: function(fullSetup, checkCount) {
         var self = this;
+        // 如果已经通过事件驱动触发完成了，不再轮询
+        if (!self._setupParsePending) {
+            console.log('[设定解析] 已通过事件驱动触发，跳过轮询');
+            return;
+        }
         // 检查 API 是否正在使用中（主故事生成/设定提取等）
         if (typeof RuntimeState !== 'undefined' && RuntimeState.isWaiting) {
-            // [BUG-004 修复] 将等待窗口从30秒(6次×5秒)延长至2分钟(24次×5秒)
-            // 原代码: if (checkCount < 6) → 最多30秒
-            // 问题: 推理模型生成需要3-5分钟，30秒窗口必然超时，设定解析被跳过
-            // 优化: 24次×5秒=120秒(2分钟)，平衡等待与用户体验
-            // 超时后给用户明确提示，避免长时间无响应状态
-            if (checkCount < 24) {
+            // 【P0优化】将轮询间隔从10秒缩短到3秒，更快检测到API空闲
+            // 总窗口保持10分钟（200次×3秒=600秒）
+            if (checkCount < 200) {
                 TimerManager.setTimeout('aiParseSetupRetry', function() {
                     self._aiParseSetupWhenIdle(fullSetup, checkCount + 1);
-                }, 5000);
+                }, 3000);
             } else {
-                console.log('[设定解析] 等待API空闲超时（120s），跳过AI解析');
-                // 【优化】超时时给用户明确提示
+                console.log('[设定解析] 等待API空闲超时（600s），跳过AI解析');
+                self._setupParsePending = false;
                 try {
                     if (typeof UI !== 'undefined' && UI.toast) {
-                        UI.toast('设定解析等待超时（2分钟），已跳过。可在设置中手动重试。', 'warning');
+                        UI.toast('设定解析等待超时（10分钟），已跳过。可在设置中手动重试。', 'warning');
                     }
                 } catch(e) {}
             }
             return;
         }
         // API 空闲，执行解析
+        self._setupParsePending = false;
         self._aiParseSetupInner(fullSetup);
     },
 
     _aiParseSetupInner: function(fullSetup) {
         var self = this;
+
+        // 【P0优化】防止并发执行：如果已经在解析中，跳过
+        if (self._setupParseRunning) {
+            console.log('[设定解析] 已在执行中，跳过重复调用');
+            return;
+        }
+        self._setupParseRunning = true;
 
         // 【提示词重设计】从「7条硬性提取要点」改为「场景化引导 + 信任模型」
         // 思路：让 AI 理解「两种设定稿的不同读法」和「为什么需要这些字段」
@@ -2991,9 +3022,13 @@ var GameMemory = {
                     console.warn('[设定解析] AI解析失败，使用默认分层:', e);
                     // 失败时保留简单截断方案
                 }
+                self._setupParseRunning = false;
             }).catch(function(e) {
                 console.warn('[设定解析] AI调用失败:', e);
+                self._setupParseRunning = false;
             });
+        } else {
+            self._setupParseRunning = false;
         }
     },
 

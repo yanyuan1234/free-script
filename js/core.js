@@ -422,9 +422,19 @@ var UI = {
         }
         return false;
     },
-    toast: function(msg, type) {
+    toast: function(msg, arg2, arg3) {
         var ct = DOMCache.get('toastContainer', true);
         if (!ct) return;
+        // 【P1优化】支持三种调用方式：
+        // toast(msg) - 默认3秒消失
+        // toast(msg, type) - 指定类型（warning/error/info/success）
+        // toast(msg, duration, type) - 指定持续时间(ms)和类型
+        var type = arg2;
+        var duration = (typeof POPUP_DURATION_MS !== 'undefined') ? POPUP_DURATION_MS : 3000;
+        if (typeof arg2 === 'number') {
+            duration = arg2;
+            type = arg3;
+        }
         // 【第4轮优化】堆叠上限：最多保留 3 个 toast，超出移除最旧的
         // 避免快速连续调用时移动端 toast 溢出视口
         while (ct.children && ct.children.length >= 3) {
@@ -439,12 +449,11 @@ var UI = {
         t.setAttribute('aria-live', 'polite');
         t.setAttribute('aria-atomic', 'true');
         ct.appendChild(t);
-        // 【全游戏弹窗策略】3 秒自动消失——使用 POPUP_DURATION_MS 常量
         // 【缺陷修复】使用唯一 key，避免连续 toast 时旧定时器被清除导致 DOM 永久残留
         var toastKey = 'uiToast_' + Date.now() + '_' + Math.random();
         TimerManager.setTimeout(toastKey, function() {
             if (t.parentNode) t.remove();
-        }, POPUP_DURATION_MS);
+        }, duration);
     },
     showPage: function(id) {
         var el = document.getElementById(id);
@@ -1265,32 +1274,76 @@ var LocalGameAPI = {
             // 避免 _configs 中存在空占位 slot 时显示"配置 2 失败"（实际只有1个可用配置）
             // 优先使用配置名称，无名称时回退到"配置 N"
             var cfgLabel = cfg.name || ('配置 ' + attemptedCount);
-            try {
-                const result = await this._retrySingleRequest(requestFn, slotIdx, 0, MAX_RETRIES, RETRY_DELAY_BASE);
-                this._logRequest(slotIdx, true, '', Date.now() - startTs);
-                this._globalRetryCount = 0; // 【BUG-001 修复】成功 → 重置全局计数
-                // [P0优化] 断路器：成功时重置该slot的失败状态
-                this._markModelSuccess(slotIdx);
-                if (attempt > 0 && slotIdx !== this._currentSlot) {
-                    this.setCurrentSlot(slotIdx);
-                    UI.toast('已自动切换到 ' + cfgLabel);
-                }
-                return result;
-            } catch (e) {
-                var errMsg = translateError((e && e.message) ? e.message : String(e));
-                this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
-                // 失败标记记录原因，超时模型会在短期内被跳过
-                this._markModelFailed(slotIdx, errMsg);
-                // 【BUG-001 修复】失败 → 全局计数 +1
-                this._globalRetryCount = (this._globalRetryCount || 0) + 1;
-                console.warn(cfgLabel + ' (' + cfg.model + ') 调用失败:', errMsg);
 
-                failReasons.push(cfgLabel + '(' + (cfg.model || '?') + '): ' + errMsg);
-                // 超时错误给出明确提示
-                if (/timeout|timed out|超时/i.test(errMsg)) {
-                    UI.toast(cfgLabel + ' 请求超时，已临时跳过');
-                } else if (attemptedCount < totalUsable && !/model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg)) {
-                    UI.toast(cfgLabel + ' 失败，尝试下一个...');
+            // 【P0优化】模型级Fallback：同配置内切换模型
+            // 当当前模型遭遇429/限流时，自动尝试该配置的其他可用模型
+            var _originalModel = cfg.model;
+            var _altModels = [];
+            if (cfg.models && Array.isArray(cfg.models) && cfg.models.length > 0) {
+                _altModels = cfg.models.filter(function(m) {
+                    return m && m !== _originalModel;
+                }).slice(0, 3); // 最多尝试3个备选模型，避免长时间等待
+            }
+            var _modelsToTry = [_originalModel].concat(_altModels);
+
+            for (var _mi = 0; _mi < _modelsToTry.length; _mi++) {
+                var _tryModel = _modelsToTry[_mi];
+                cfg.model = _tryModel;
+                try {
+                    const result = await this._retrySingleRequest(requestFn, slotIdx, 0, MAX_RETRIES, RETRY_DELAY_BASE);
+                    this._logRequest(slotIdx, true, '', Date.now() - startTs);
+                    this._globalRetryCount = 0; // 【BUG-001 修复】成功 → 重置全局计数
+                    // [P0优化] 断路器：成功时重置该slot的失败状态
+                    this._markModelSuccess(slotIdx);
+                    // 如果是通过模型级Fallback成功的，提示用户并保持切换后的模型
+                    if (_mi > 0) {
+                        console.log('[模型级Fallback] ' + cfgLabel + ' 从 ' + _originalModel + ' 切换到 ' + _tryModel + ' 成功');
+                        if (typeof UI !== 'undefined' && UI.toast) {
+                            try { UI.toast('已自动切换模型: ' + _originalModel + ' → ' + _tryModel, 3000, 'info'); } catch (e) {}
+                        }
+                        // 保持切换后的模型（下次请求继续使用成功的模型）
+                        this.save();
+                    } else {
+                        cfg.model = _originalModel;
+                    }
+                    if (attempt > 0 && slotIdx !== this._currentSlot) {
+                        this.setCurrentSlot(slotIdx);
+                        UI.toast('已自动切换到 ' + cfgLabel);
+                    }
+                    return result;
+                } catch (e) {
+                    var errMsg = translateError((e && e.message) ? e.message : String(e));
+                    this._logRequest(slotIdx, false, errMsg, Date.now() - startTs);
+                    // 失败标记记录原因，超时模型会在短期内被跳过
+                    this._markModelFailed(slotIdx, errMsg);
+                    // 【BUG-001 修复】失败 → 全局计数 +1
+                    this._globalRetryCount = (this._globalRetryCount || 0) + 1;
+                    console.warn(cfgLabel + ' (' + _tryModel + ') 调用失败:', errMsg);
+
+                    // 判断错误类型决定是否尝试备选模型
+                    var _isRateLimitErr = /ResourceExhausted|rate.?limit|request limit reached|quota exceeded|too many requests|429|限流|限速/i.test(errMsg);
+                    var _isFatalErr = /model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg);
+
+                    failReasons.push(cfgLabel + '(' + (_tryModel || '?') + '): ' + errMsg);
+
+                    if (_isRateLimitErr && _mi < _modelsToTry.length - 1) {
+                        // 限流错误且有备选模型，尝试下一个模型
+                        if (typeof UI !== 'undefined' && UI.toast) {
+                            try { UI.toast(_tryModel + ' 限流，尝试备选模型 ' + _modelsToTry[_mi + 1] + '...', 2000, 'warning'); } catch (e) {}
+                        }
+                        continue; // 继续尝试下一个模型
+                    } else if (/timeout|timed out|超时/i.test(errMsg)) {
+                        if (typeof UI !== 'undefined' && UI.toast) {
+                            try { UI.toast(cfgLabel + ' (' + _tryModel + ') 请求超时'); } catch (e) {}
+                        }
+                    } else if (attemptedCount < totalUsable && !_isFatalErr) {
+                        if (typeof UI !== 'undefined' && UI.toast) {
+                            try { UI.toast(cfgLabel + ' 失败，尝试下一个配置...'); } catch (e) {}
+                        }
+                    }
+                    // 非限流错误或已是最后一个模型，恢复原始模型并跳出
+                    cfg.model = _originalModel;
+                    break;
                 }
             }
         }
@@ -7578,13 +7631,29 @@ async function callAI(messages, options = {}) {
                 // [P1优化] 添加抖动(Jitter)，防止多客户端同步重试
                 _waitMs = _waitMs * (0.85 + Math.random() * 0.3); // ±15% 随机（Retry-After场景抖动较小）
                 _waitMs = Math.round(_waitMs);
-                var _statusMsg = '速率限制，' + (_waitMs / 1000).toFixed(1) + '秒后自动重试 (' + _attempt429 + '/' + _maxRetries429 + ')';
-                console.warn('[callAI] ' + _statusMsg + (e429 && e429.retryAfter ? ' [Retry-After: ' + e429.retryAfter + ']' : ''));
+
+                // 【P1优化】增强429重试用户反馈：实时倒计时 + 更丰富的状态信息
+                var _currentCfg = LocalGameAPI.getCurrentConfig();
+                var _modelName = _currentCfg ? (_currentCfg.model || '未知模型') : '未知模型';
+                var _baseMsg = 'API限流 (' + _modelName + ')，正在等待重试';
+                console.warn('[callAI] ' + _baseMsg + ', ' + (_waitMs / 1000).toFixed(1) + '秒后重试 (' + _attempt429 + '/' + _maxRetries429 + ')' + (e429 && e429.retryAfter ? ' [Retry-After: ' + e429.retryAfter + ']' : ''));
+
+                // 持久 toast（显示整个等待期间，不自动消失）
                 if (typeof UI !== 'undefined' && UI.toast) {
-                    UI.toast(_statusMsg);
+                    UI.toast(_baseMsg + '（' + Math.ceil(_waitMs / 1000) + '秒）', 'warning');
                 }
-                // 同步更新状态栏文本，让用户在加载条上看到重试信息
-                updateGenStatus(_statusMsg);
+
+                // 实时倒计时：每秒更新状态栏文本
+                var _countdownStart = Date.now();
+                var _countdownInterval = setInterval(function() {
+                    var _elapsed = Date.now() - _countdownStart;
+                    var _remaining = Math.max(0, Math.ceil((_waitMs - _elapsed) / 1000));
+                    if (_remaining > 0) {
+                        updateGenStatus(_baseMsg + '... ' + _remaining + '秒 (' + _attempt429 + '/' + _maxRetries429 + ')');
+                    }
+                }, 1000);
+                updateGenStatus(_baseMsg + '... ' + Math.ceil(_waitMs / 1000) + '秒 (' + _attempt429 + '/' + _maxRetries429 + ')');
+
                 // 等待期间监听 abort 事件，用户取消时提前唤醒
                 await new Promise(function(resolve) {
                     var _timer = setTimeout(resolve, _waitMs);
@@ -7593,6 +7662,7 @@ async function callAI(messages, options = {}) {
                         resolve();
                     }, { once: true });
                 });
+                clearInterval(_countdownInterval);
                 // 等待结束后再次检查：用户取消则抛 AbortError
                 if (localAC.signal.aborted) {
                     var _abortErr = new Error('用户取消请求');
