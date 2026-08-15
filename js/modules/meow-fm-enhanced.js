@@ -312,16 +312,26 @@ var MeowFMEnhanced = {
             if (!text || typeof text !== 'string') return text;
             if (text.indexOf('meow_FM') === -1 && text.indexOf('meow_fm') === -1) return text;
 
-            // 解析结构化摘要并分发到记忆系统
+            // 解析结构化摘要并分发到记忆系统（即使失败也要移除标签）
             if (self.enabled) {
-                var parsed = self.parse(text);
-                if (parsed) {
-                    self._distributeToMemory(parsed);
+                try {
+                    var parsed = self.parse(text);
+                    if (parsed) {
+                        self._distributeToMemory(parsed);
+                    }
+                } catch(e) {
+                    console.warn('[MeowFMEnhanced] 解析/分发失败，但仍会移除标签:', e);
                 }
             }
 
             // 从显示文本中移除 meow_FM 标签（不显示给玩家）
-            return text.replace(/<meow_FM>[\s\S]*?<\/meow_FM>/gi, '').replace(/\n{3,}/g, '\n\n').trim();
+            // 使用 scanPairedTags strip 模式替代正则，避免灾难性回溯
+            if (typeof scanPairedTags === 'function') {
+                text = scanPairedTags(text, ['meow_FM', 'meow_fm'], 'strip');
+            } else {
+                text = text.replace(/<meow_FM>[\s\S]*?<\/meow_FM>/gi, '');
+            }
+            return text.replace(/\n{3,}/g, '\n\n').trim();
         }, 85);
 
         console.log('[MeowFMEnhanced] 已注册到 OutputProcessor');

@@ -157,21 +157,27 @@ var ForeshadowChain = {
                 return text;
             }
 
-            // 解析标签（解析逻辑已在 _enhancePlanTagParser 中注册）
-            // 这里再执行一次以确保解析
+            // 解析标签（即使失败也要移除标签）
             if (self.enabled) {
-                self._parseChainTags(text);
-                self._parseResolveTags(text);
-                self._parseRevealTags(text);
+                try {
+                    self._parseChainTags(text);
+                    self._parseResolveTags(text);
+                    self._parseRevealTags(text);
+                } catch(e) {
+                    console.warn('[ForeshadowChain] 解析失败，但仍会移除标签:', e);
+                }
             }
 
             // 从显示文本中移除所有伏笔相关标签
-            text = text.replace(/<foreshadow\s[^>]*>[\s\S]*?<\/foreshadow>/gi, '');
-            text = text.replace(/<resolve\s[^>]*>[\s\S]*?<\/resolve>/gi, '');
-            text = text.replace(/<reveal\s[^>]*>[\s\S]*?<\/reveal>/gi, '');
-            text = text.replace(/\n{3,}/g, '\n\n').trim();
-
-            return text;
+            // 使用 scanPairedTags strip 模式替代正则，避免灾难性回溯
+            if (typeof scanPairedTags === 'function') {
+                text = scanPairedTags(text, ['foreshadow', 'resolve', 'reveal'], 'strip');
+            } else {
+                text = text.replace(/<foreshadow\s[^>]*>[\s\S]*?<\/foreshadow>/gi, '');
+                text = text.replace(/<resolve\s[^>]*>[\s\S]*?<\/resolve>/gi, '');
+                text = text.replace(/<reveal\s[^>]*>[\s\S]*?<\/reveal>/gi, '');
+            }
+            return text.replace(/\n{3,}/g, '\n\n').trim();
         }, 87);
 
         console.log('[ForeshadowChain] 已注册到 OutputProcessor');
