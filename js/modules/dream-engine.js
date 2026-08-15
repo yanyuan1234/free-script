@@ -71,7 +71,7 @@ var DreamEngine = {
     _loadData: function() {
         try {
             if (typeof Storage !== 'undefined' && Storage.getJSON) {
-                this._dreamSessions = Storage.getJSON('dream_sessions', []) || {};
+                this._dreamSessions = Storage.getJSON('dream_sessions', []) || [];
                 var state = Storage.getJSON('dream_state', null);
                 if (state) {
                     this._inDream = state.inDream || false;
@@ -276,8 +276,8 @@ var DreamEngine = {
     },
 
     _getCurrentTurn: function() {
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._messageCount) {
-            return EnhancedMemory._messageCount;
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.currentTurn) {
+            return EnhancedMemory.currentTurn;
         }
         return 0;
     },

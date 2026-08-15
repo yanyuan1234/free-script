@@ -120,39 +120,42 @@ var ParallelWorld = {
     _extractAndRender: function(text) {
         if (!text || typeof text !== 'string') return text;
 
-        var match = text.match(/<parallel_world>([\s\S]*?)<\/parallel_world>/i);
-        if (!match) return text;
+        var self = this;
+        var regex = /<parallel_world>([\s\S]*?)<\/parallel_world>/gi;
+        var hasMatch = false;
 
-        var content = match[1].trim();
-        var chars = this._parseParallelChars(content);
+        text = text.replace(regex, function(match, content) {
+            hasMatch = true;
+            content = content.trim();
+            var chars = self._parseParallelChars(content);
 
-        // 记录世界线
-        if (chars.length > 0) {
-            this._worldLines.push({
-                turn: this._getCurrentTurn(),
-                chars: chars,
-                timestamp: Date.now()
-            });
+            // 记录世界线
+            if (chars.length > 0) {
+                self._worldLines.push({
+                    turn: self._getCurrentTurn(),
+                    chars: chars,
+                    timestamp: Date.now()
+                });
 
-            // 更新最后已知位置
-            chars.forEach(function(c) {
-                if (c.name && c.location) {
-                    this._lastKnownLocations[c.name] = {
-                        location: c.location,
-                        status: c.status,
-                        turn: this._getCurrentTurn()
-                    };
-                }
-            }, this);
+                // 更新最后已知位置
+                chars.forEach(function(c) {
+                    if (c.name && c.location) {
+                        self._lastKnownLocations[c.name] = {
+                            location: c.location,
+                            status: c.status,
+                            turn: self._getCurrentTurn()
+                        };
+                    }
+                });
 
-            this.saveData();
-        }
+                self.saveData();
+            }
 
-        // 渲染为折叠面板
-        var rendered = this._renderFoldPanel(content);
+            // 渲染为折叠面板
+            return self._renderFoldPanel(content);
+        });
 
-        // 替换原始标签
-        return text.replace(/<parallel_world>[\s\S]*?<\/parallel_world>/i, rendered);
+        return text;
     },
 
     /**
@@ -226,8 +229,8 @@ var ParallelWorld = {
     },
 
     _getCurrentTurn: function() {
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._messageCount) {
-            return EnhancedMemory._messageCount;
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.currentTurn) {
+            return EnhancedMemory.currentTurn;
         }
         return this._worldLines.length;
     },

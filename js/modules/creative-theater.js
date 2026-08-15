@@ -569,8 +569,8 @@ var CreativeTheater = {
     },
 
     _getCurrentTurn: function() {
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._messageCount) {
-            return EnhancedMemory._messageCount;
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.currentTurn) {
+            return EnhancedMemory.currentTurn;
         }
         return this._history.length;
     },

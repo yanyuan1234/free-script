@@ -50,6 +50,7 @@ var MeowFMEnhanced = {
         this._loadSettings();
         this._registerPromptSection();
         this._enhanceBridgeFunction();
+        this._registerProcessor();
         console.log('[MeowFMEnhanced] 结构化摘要系统已初始化');
     },
 
@@ -296,6 +297,37 @@ var MeowFMEnhanced = {
     },
 
     /**
+     * 注册输出处理器
+     * 从AI输出中解析 <meow_FM> 标签并分发到记忆系统，然后从显示中移除
+     */
+    _registerProcessor: function() {
+        if (typeof OutputProcessor === 'undefined') {
+            var self = this;
+            setTimeout(function() { self._registerProcessor(); }, 500);
+            return;
+        }
+
+        var self = this;
+        OutputProcessor.register('meow-fm', function(text) {
+            if (!text || typeof text !== 'string') return text;
+            if (text.indexOf('meow_FM') === -1 && text.indexOf('meow_fm') === -1) return text;
+
+            // 解析结构化摘要并分发到记忆系统
+            if (self.enabled) {
+                var parsed = self.parse(text);
+                if (parsed) {
+                    self._distributeToMemory(parsed);
+                }
+            }
+
+            // 从显示文本中移除 meow_FM 标签（不显示给玩家）
+            return text.replace(/<meow_FM>[\s\S]*?<\/meow_FM>/gi, '').replace(/\n{3,}/g, '\n\n').trim();
+        }, 85);
+
+        console.log('[MeowFMEnhanced] 已注册到 OutputProcessor');
+    },
+
+    /**
      * 将解析的 meow_FM 数据分发到 EnhancedMemory 各层
      */
     _distributeToMemory: function(parsed) {
@@ -359,7 +391,7 @@ var MeowFMEnhanced = {
 
         console.log('[MeowFMEnhanced] 已分发结构化摘要 #serial=' + parsed.serial +
             ' (chars:' + (parsed.chars ? parsed.chars.length : 0) +
-            ', seeds:' + ((parsed.seeds.short || 0).length + (parsed.seeds.long || 0).length) + ')');
+            ', seeds:' + (((parsed.seeds && parsed.seeds.short) || []).length + ((parsed.seeds && parsed.seeds.long) || []).length) + ')');
     },
 
     /**

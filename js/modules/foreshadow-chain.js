@@ -30,6 +30,7 @@ var ForeshadowChain = {
         this._loadData();
         this._registerPromptSection();
         this._enhancePlanTagParser();
+        this._registerProcessor();
         console.log('[ForeshadowChain] 因果链系统已初始化 (chains:' + Object.keys(this._chains).length + ', secrets:' + Object.keys(this._secrets).length + ')');
     },
 
@@ -132,6 +133,48 @@ var ForeshadowChain = {
             }
         });
         return pending.join('\n');
+    },
+
+    /**
+     * 注册输出处理器
+     * 从AI输出中解析伏笔标签并从显示中移除
+     */
+    _registerProcessor: function() {
+        if (typeof OutputProcessor === 'undefined') {
+            var self = this;
+            setTimeout(function() { self._registerProcessor(); }, 500);
+            return;
+        }
+
+        var self = this;
+        OutputProcessor.register('foreshadow-chain', function(text) {
+            if (!text || typeof text !== 'string') return text;
+
+            // 检查是否包含伏笔相关标签
+            if (text.indexOf('<foreshadow') === -1 &&
+                text.indexOf('<resolve') === -1 &&
+                text.indexOf('<reveal') === -1) {
+                return text;
+            }
+
+            // 解析标签（解析逻辑已在 _enhancePlanTagParser 中注册）
+            // 这里再执行一次以确保解析
+            if (self.enabled) {
+                self._parseChainTags(text);
+                self._parseResolveTags(text);
+                self._parseRevealTags(text);
+            }
+
+            // 从显示文本中移除所有伏笔相关标签
+            text = text.replace(/<foreshadow\s[^>]*>[\s\S]*?<\/foreshadow>/gi, '');
+            text = text.replace(/<resolve\s[^>]*>[\s\S]*?<\/resolve>/gi, '');
+            text = text.replace(/<reveal\s[^>]*>[\s\S]*?<\/reveal>/gi, '');
+            text = text.replace(/\n{3,}/g, '\n\n').trim();
+
+            return text;
+        }, 87);
+
+        console.log('[ForeshadowChain] 已注册到 OutputProcessor');
     },
 
     /**
@@ -253,8 +296,8 @@ var ForeshadowChain = {
      * 获取当前回合数
      */
     _getCurrentTurn: function() {
-        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory._messageCount) {
-            return EnhancedMemory._messageCount;
+        if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.currentTurn) {
+            return EnhancedMemory.currentTurn;
         }
         return 0;
     },
