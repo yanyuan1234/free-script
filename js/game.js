@@ -4196,7 +4196,7 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
     // 轻量级正则，只移除已知 AI 标签的开闭标签，不处理内容（避免流式截断误删）
     function _sanitizeStreamTags(text) {
         if (!text) return text;
-        return text.replace(/<\/?(?:foreshadow|plan|recall|trigger|mem|memory|note|comment|system_note|meta|hidden|internal|draft|outline|giggle|doc|state|stats|status|choices|characters|player|bag|currency|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages|memoryUpdates)\b[^>]*>/gi, '');
+        return text.replace(/<\/?(?:foreshadow|plan|recall|trigger|mem|memory|note|comment|system_note|meta|hidden|internal|draft|outline|giggle|doc|state|stats|status|choices|characters|player|bag|currency|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages|memoryUpdates|resolve|effect|action|event|condition|result|consequence|reward)\b[^>]*\/?>/gi, '');
     }
 
     // 【酒馆式思维链】实时推送 reasoning delta 到面板
