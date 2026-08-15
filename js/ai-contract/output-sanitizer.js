@@ -186,10 +186,15 @@ const OutputSanitizer = {
     stripAIPlanTags(text) {
         if (!text || typeof text !== 'string') return '';
         var s = text;
-        // AI 内部标签列表
+        // AI 内部标签列表（含测试中发现的 giggle, doc 等标签）
         var AI_PLAN_TAGS = ['foreshadow', 'plan', 'recall', 'trigger', 'mem',
                            'memory', 'note', 'comment', 'system_note', 'meta',
-                           'hidden', 'internal', 'draft', 'outline'];
+                           'hidden', 'internal', 'draft', 'outline',
+                           'giggle', 'doc', 'state', 'stats', 'status',
+                           'choices', 'characters', 'player', 'bag', 'currency',
+                           'quests', 'gameTime', 'keyEvents', 'world',
+                           'locations', 'relationships', 'hud', 'contextSummary',
+                           'npcMessages', 'memoryUpdates'];
         // 1. 移除配对标签及其内容：<foreshadow ...>内容</foreshadow>
         for (var i = 0; i < AI_PLAN_TAGS.length; i++) {
             var tag = AI_PLAN_TAGS[i];

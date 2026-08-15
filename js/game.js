@@ -2647,10 +2647,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                     _aiTitleReset = true;
                     var preTitle = StateManager ? StateManager.get('progress.preAIState.title') : (gameState._preAIState && gameState._preAIState.title);
 
-                    // 旧实现使用旧 turn，导致初始生成显示"第 0 回合"（应为"第 1 回合"）
+                    // 【ISSUE-014 修复】turn 已在渲染前递增，此处直接使用当前值
                     var turnNumC = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
-                    turnNumC = (turnNumC || 0) + 1;
-                    incomingTitle = preTitle || ('第 ' + turnNumC + ' 回合');
+                    incomingTitle = preTitle || ('第 ' + (turnNumC || 1) + ' 回合');
                     console.warn('[标题防御] AI 返回标题疑似初始场景，已沿用旧标题:', incomingTitle);
                 }
                 updateSceneTitle(incomingTitle);
@@ -2662,9 +2661,9 @@ async function sendAIRequest(userMessage, isInit = false) {
             } else if (gameState && storyText && storyText.trim()) {
 
 
+                // 【ISSUE-014 修复】turn 已在渲染前递增，此处直接使用当前值
                 var turnNum = StateManager ? StateManager.get('progress.turn') : ((gameState._stats && gameState._stats.totalTurns) || 0);
-                turnNum = (turnNum || 0) + 1;
-                var fallbackTurnTitle = '第 ' + turnNum + ' 回合';
+                var fallbackTurnTitle = '第 ' + (turnNum || 1) + ' 回合';
                 updateSceneTitle(fallbackTurnTitle);
                 if (typeof StateManager !== 'undefined' && StateManager.set) {
                     StateManager.set('progress.sceneTitle', fallbackTurnTitle, { silent: true });
@@ -4188,6 +4187,13 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
     window._chunkCount++;
     if (window._chunkCount % 50 === 1) window._perfDebug&&(document.title='PERF:chunk-' + window._chunkCount + '-buf=' + (streamBuffer||'').length);
 
+    // 【ISSUE-003 修复】流式显示时实时清理 AI 内部标签
+    // 轻量级正则，只移除已知 AI 标签的开闭标签，不处理内容（避免流式截断误删）
+    function _sanitizeStreamTags(text) {
+        if (!text) return text;
+        return text.replace(/<\/?(?:foreshadow|plan|recall|trigger|mem|memory|note|comment|system_note|meta|hidden|internal|draft|outline|giggle|doc|state|stats|status|choices|characters|player|bag|currency|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages|memoryUpdates)\b[^>]*>/gi, '');
+    }
+
     // 【酒馆式思维链】实时推送 reasoning delta 到面板
     // 推理模型思考阶段 content 为空，但 reasoningDelta 有内容
     if (reasoningDelta && typeof CotPanelController !== 'undefined') {
@@ -4267,7 +4273,7 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
         var _stateStart = streamBuffer.indexOf('<state>');
         var _displayText = _stateStart >= 0 ? streamBuffer.substring(0, _stateStart).trimEnd() : streamBuffer;
         if (_displayText.length !== _streamLastPushedLen) {
-            TypewriterBuffer.push(_displayText);
+            TypewriterBuffer.push(_sanitizeStreamTags(_displayText));
             _streamLastPushedLen = _displayText.length;
         }
         return;
@@ -4376,7 +4382,7 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
                             RuntimeState.streamModeLocked = true;
                         }
                         _clearStreamWaitingHint();
-                        TypewriterBuffer.push(streamBuffer);
+                        TypewriterBuffer.push(_sanitizeStreamTags(streamBuffer));
                         _streamLastPushedLen = streamBuffer.length;
                     } else {
                         _showStreamWaitingHint();
@@ -4422,7 +4428,7 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
                     RuntimeState.streamModeLocked = true;
                 }
                 _clearStreamWaitingHint();
-                TypewriterBuffer.push(streamBuffer);
+                TypewriterBuffer.push(_sanitizeStreamTags(streamBuffer));
                 _streamLastPushedLen = streamBuffer.length;
             }
             return;
@@ -4433,7 +4439,7 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
     var story = _extractStoryIncremental();
     if (story && story.length > 0 && story.length !== _streamLastPushedLen) {
         // 只在有新增时 push（TypewriterBuffer 内部自动取增量）
-        TypewriterBuffer.push(story);
+        TypewriterBuffer.push(_sanitizeStreamTags(story));
         _streamLastPushedLen = story.length;
     }
     
