@@ -181,7 +181,7 @@ var MeowFMEnhanced = {
      * 提取角色信息
      */
     _extractChars: function(text) {
-        var charsSection = text.match(/chars\s*:\s*([\s\S]*?)(?=\n[a-z_]+\s*:|$)/im);
+        var charsSection = text.match(/chars\s*:\s*([\s\S]*?)(?=\n[a-z_]+\s*:|$)/i);
         if (!charsSection) return [];
 
         var lines = charsSection[1].trim().split('\n');
