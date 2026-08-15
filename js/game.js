@@ -2602,6 +2602,20 @@ async function sendAIRequest(userMessage, isInit = false) {
                 storyText = '【AI未返回剧情内容】\n\n可能原因：\n1. max_tokens设置过小，思考链占用了全部额度\n2. 模型暂时异常，请重试\n3. 上下文过长导致生成空间不足\n\n建议：检查API设置中的max_tokens（建议≥1024），或尝试切换模型。';
             }
         }
+        // 【ISSUE-014 修复】在渲染前递增回合数，确保标题和UI显示一致的回合号
+        // 原实现在渲染后（约500行后）才递增，导致渲染期间读取的 turn 值是旧的
+        var _turnIncremented = false;
+        if (StateManager) {
+            var _preTurn = StateManager.get('progress.turn') || 0;
+            StateManager.set('progress.turn', _preTurn + 1, { silent: true });
+            _turnIncremented = true;
+        } else {
+            if (!gameState._stats) gameState._stats = {};
+            gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
+            _turnIncremented = true;
+        }
+        if (typeof updateTurnLabel === 'function') updateTurnLabel();
+
         // 渲染非剧情部分
         // 【方案C】纯文本模式下，AI不输出JSON时，根据story末段自动生成3个选项
         if (data) {
@@ -3154,20 +3168,20 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 更新统计数据
         if (!gameState) return;
 
-        // StateManager._syncLegacyMirror 会自动同步 _stats.totalTurns 旧字段
-        if (StateManager) {
-            var currentTurn = StateManager.get('progress.turn') || 0;
-            StateManager.set('progress.turn', currentTurn + 1, { silent: true });
-            _turnIncremented = true; // 【BG-004 修复】标记正常路径已递增
-        } else {
-            // 兜底：StateManager 不可用时直接写 gameState._stats
-            if (!gameState._stats) gameState._stats = {};
-            gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
-            _turnIncremented = true; // 【BG-004 修复】标记正常路径已递增
+        // 【ISSUE-014 修复】回合数已在渲染前递增，此处不再重复递增
+        // 仅在未递增的异常路径补递增（BG-004 防御逻辑保留）
+        if (!_turnIncremented) {
+            if (StateManager) {
+                var currentTurn = StateManager.get('progress.turn') || 0;
+                StateManager.set('progress.turn', currentTurn + 1, { silent: true });
+                _turnIncremented = true;
+            } else {
+                if (!gameState._stats) gameState._stats = {};
+                gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
+                _turnIncremented = true;
+            }
+            if (typeof updateTurnLabel === 'function') updateTurnLabel();
         }
-
-        // 旧实现递增后未刷新 UI，storySceneLabel 仍显示旧回合数，玩家感觉"回合数没动"
-        if (typeof updateTurnLabel === 'function') updateTurnLabel();
 
         // 【P0-2 AI驱动滚动摘要】每6轮自动调用AI总结近期剧情，存入mid层并向量化
         // 参考 AI Dungeon Memory System：每6个动作生成一条语义摘要

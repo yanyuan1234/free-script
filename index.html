@@ -42,12 +42,98 @@
         <link rel="stylesheet" href="css/pages.css">
         <link rel="stylesheet" href="css/phone-ui.css">
         <link rel="stylesheet" href="css/systems.css">
+        <!-- =====【P2/P3 修复补丁】ISSUE-015 加载进度 + ISSUE-018 连接全部按钮反馈 + ISSUE-012/018 toast 可读性 =====
+             说明：CSP 的 script-src 不含 'unsafe-inline'，故无法在此内联 JS（错误翻译、空条目过滤等
+             需改动 phone-ui.js / core.js 的逻辑见文末说明）。此处仅内联样式（style-src 允许 'unsafe-inline'）。 -->
+        <style>
+            /* ---------- ISSUE-015：加载页进度指示 ---------- */
+            .app-loading-progress {
+                font-size: 12px;
+                color: var(--text-tertiary);
+                letter-spacing: 1px;
+            }
+            /* 动态省略号：三个点依次淡入，跨浏览器稳定（不依赖 content 动画） */
+            .app-loading-progress .ldot {
+                opacity: 0;
+                animation: appLoadingDot 1.5s ease-in-out infinite;
+            }
+            .app-loading-progress .ldot:nth-child(1) { animation-delay: 0s; }
+            .app-loading-progress .ldot:nth-child(2) { animation-delay: 0.3s; }
+            .app-loading-progress .ldot:nth-child(3) { animation-delay: 0.6s; }
+            @keyframes appLoadingDot {
+                0%, 70%, 100% { opacity: 0; }
+                25%, 50%      { opacity: 1; }
+            }
+            /* 不定进度条（indeterminate） */
+            .app-loading-bar {
+                width: 160px;
+                height: 3px;
+                background: var(--border);
+                border-radius: 2px;
+                overflow: hidden;
+                position: relative;
+            }
+            .app-loading-bar-fill {
+                position: absolute;
+                top: 0; left: 0;
+                height: 100%;
+                width: 40%;
+                background: var(--text-secondary);
+                border-radius: 2px;
+                animation: appLoadingBarMove 1.4s ease-in-out infinite alternate;
+            }
+            @keyframes appLoadingBarMove {
+                0%   { transform: translateX(-160%); }
+                100% { transform: translateX(360%); }
+            }
+            /* "加载时间过长？点击刷新"：10 秒后才显现。
+               visibility:hidden 保证 0~10s 内不可见且不可误触；forwards 使最终态保持可见。
+               若 init 正常完成（<10s），加载层已被 init.js 移除，该链接不会出现。 */
+            .app-loading-refresh {
+                font-size: 12px;
+                color: var(--text-tertiary);
+                text-decoration: underline;
+                margin-top: 4px;
+                opacity: 0;
+                visibility: hidden;
+                animation: appLoadingReveal 0.5s ease 10s forwards;
+            }
+            .app-loading-refresh:hover { color: var(--text-secondary); }
+            @keyframes appLoadingReveal {
+                to { opacity: 1; visibility: visible; }
+            }
+
+            /* ---------- ISSUE-018："全部连接"按钮反馈 ----------
+               phone-ui.js 的 btnRefreshAllApi 处理器已实现：btn.disabled=true + 文案改为"点击取消"
+               + 完成后 UI.toast(成功/失败结果) + 重新启用。此处用 CSS 增强：
+               1) 禁用态显示旋转指示器（textContent 不影响伪元素，故与 JS 改文案兼容）
+               2) 让 toast 的 \n 换行可读（成功/失败多行结果、错误明细） */
+            #btnRefreshAllApi:disabled { opacity: 0.75; }
+            #btnRefreshAllApi:disabled::before {
+                content: '';
+                display: inline-block;
+                width: 12px;
+                height: 12px;
+                margin-right: 6px;
+                vertical-align: -2px;
+                border: 2px solid currentColor;
+                border-top-color: transparent;
+                border-radius: 50%;
+                animation: spin 0.8s linear infinite; /* spin 已在 pages.css:358 定义 */
+            }
+            /* ISSUE-012 / ISSUE-018：toast 支持换行，使"连接成功/失败"多行结果与错误明细可读 */
+            .toast { white-space: pre-wrap; word-break: break-word; }
+        </style>
         </head>
     <body>
         <!-- 加载指示器：JS加载期间显示，initApp完成后隐藏 -->
         <div class="app-loading" id="appLoading">
             <div class="app-loading-spinner"></div>
             <div class="app-loading-text">自由剧本</div>
+            <!-- ISSUE-015：加载进度指示（动画省略号 + 不定进度条 + 10s 后出现的刷新链接） -->
+            <div class="app-loading-progress">正在加载<span class="ldot"></span><span class="ldot"></span><span class="ldot"></span></div>
+            <div class="app-loading-bar" role="progressbar" aria-label="加载进度" aria-valuetext="加载中"><div class="app-loading-bar-fill"></div></div>
+            <a class="app-loading-refresh" href="?refresh=1" id="loadingRefreshLink">加载时间过长？点击刷新</a>
         </div>
 
         <!-- 流式输出进度条 -->
@@ -1836,7 +1922,8 @@
                             </div>
                             <div class="setting-btn-row" style="margin-top:0;">
                                 <!-- 【修复P2-1】统一布尔开关为 switch checkbox，替代双按钮组 -->
-                                <label class="switch"><input type="checkbox" id="apiAutoRotateToggle"><span class="slider"></span></label>
+                                <!-- ISSUE-016：默认开启自动轮询（core.js 中 _autoRotate 默认已是 true，此处 checkbox 默认 checked 与之对齐，避免 JS 加载前/未读取存档时显示为关闭） -->
+                                <label class="switch"><input type="checkbox" id="apiAutoRotateToggle" checked><span class="slider"></span></label>
                             </div>
                         </div>
                         <!-- 分组标签 -->

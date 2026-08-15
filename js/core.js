@@ -1183,7 +1183,7 @@ var LocalGameAPI = {
                 + '• API Key 余额/限流已用完\n'
                 + '• 当前所有 API 配置均不可用\n\n'
                 + '建议操作：\n'
-                + '1. 等待 30 秒后手动重试（错误计数会自动重置）\n'
+                + '1. 等待 30 秒后点击「重新生成」按钮重试（错误计数会自动重置）\n'
                 + '2. 检查并更换其他可用的 API 配置\n'
                 + '3. 确认 API Key 余额充足';
             this._globalRetryCount = 0; // 给用户一次手动重试的机会
@@ -1324,7 +1324,11 @@ var LocalGameAPI = {
                     var _isRateLimitErr = /ResourceExhausted|rate.?limit|request limit reached|quota exceeded|too many requests|429|限流|限速/i.test(errMsg);
                     var _isFatalErr = /model_not_found|invalid_api_key|authentication_error|context_length_exceeded|insufficient_quota/i.test(errMsg);
 
-                    failReasons.push(cfgLabel + '(' + (_tryModel || '?') + '): ' + errMsg);
+                    // 【ISSUE-006 修复】始终从 this._configs[slotIdx] 读取最新配置名，
+                    // 避免使用请求前缓存的 cfgLabel（cfg.name 可能在运行中被修改）
+                    var _freshCfgAtErr = this._configs[slotIdx];
+                    var _freshLabelAtErr = (_freshCfgAtErr && _freshCfgAtErr.name) ? _freshCfgAtErr.name : cfgLabel;
+                    failReasons.push(_freshLabelAtErr + '(' + (_tryModel || '?') + '): ' + errMsg);
 
                     if (_isRateLimitErr && _mi < _modelsToTry.length - 1) {
                         // 限流错误且有备选模型，尝试下一个模型
@@ -1352,7 +1356,7 @@ var LocalGameAPI = {
         if (this._globalRetryCount >= GLOBAL_RETRY_LIMIT) {
             var _limitMsg2 = 'API 持续调用失败，已自动停止重试（累计 ' + this._globalRetryCount + ' 次）。\n\n'
                 + '可能原因：API Key 余额/限流已用完，或所有 API 配置均不可用。\n\n'
-                + '建议：等待 30 秒后手动重试（错误计数会自动重置），或检查并更换其他可用的 API 配置。';
+                + '建议：等待 30 秒后点击「重新生成」按钮重试（错误计数会自动重置），或检查并更换其他可用的 API 配置。';
             var _limitErr2 = new Error(_limitMsg2);
             _limitErr2.name = 'GlobalRetryLimitError';
             _limitErr2.isUserFacing = true;
@@ -1367,12 +1371,18 @@ var LocalGameAPI = {
             // 【P1 修复】收集所有跳过的原因，给出更具体的错误提示
             var skipReasons = [];
             for (var si = 0; si < totalSlots; si++) {
+                // 【ISSUE-006 修复】始终从 this._configs[si] 实时读取最新配置，
+                // 不使用请求前的快照变量 scfg，避免模型名/配置名过时
                 var scfg = this._configs[si];
                 if (!scfg || !scfg.baseUrl || !scfg.apiKey) continue;
                 if (this.isSlotTimeoutRecent(si)) {
-                    var srec = this._failedModels[si + '|' + scfg.model];
+                    // 模型名可能因模型级 Fallback 被临时修改后恢复，读取当前值构建 key
+                    var _curModelName = scfg.model || '?';
+                    var srec = this._failedModels[si + '|' + _curModelName];
                     var sreason = this._getFailedReason(srec || {});
-                    skipReasons.push(scfg.name || scfg.model || ('配置' + (si + 1)) + ': ' + (sreason || '近期失败'));
+                    // 优先用配置名，其次模型名，最后用"配置N"，始终附带失败原因
+                    var _skipLabel = scfg.name || _curModelName || ('配置' + (si + 1));
+                    skipReasons.push(_skipLabel + ': ' + (sreason || '近期失败'));
                 }
             }
             var msg = '没有可用的API配置，请检查API设置（URL和Key是否完整）';
@@ -1784,17 +1794,27 @@ var LocalGameAPI = {
         };
     },
     normalizeUrl(baseUrl) {
-        return baseUrl.replace(/\/$/, '');
+        if (!baseUrl) return '';
+        var u = baseUrl.replace(/\/$/, '');
+        // 【ISSUE-001 修复】自动补全 /v1 前缀
+        // 用户常输入 https://api.example.com 而非 https://api.example.com/v1
+        // 如果 URL 不以 /v1~9 或 /models 结尾，自动追加 /v1
+        if (!/\/v\d+/.test(u) && !/\/models$/.test(u) && !/\/chat\/completions$/.test(u)) {
+            u = u + '/v1';
+        }
+        return u;
     },
     async fetchModels(baseUrl, apiKey) {
         if (!baseUrl) return [];
         try {
             const url = this.normalizeUrl(baseUrl) + '/models';
             console.log('[fetchModels] 请求:', url);
+            // 【ISSUE-001 修复】添加 15 秒超时，避免无限等待
             const res = await fetch(url, {
                 headers: {
                     'Authorization': 'Bearer ' + apiKey
-                }
+                },
+                signal: AbortSignal.timeout(15000)
             });
             console.log('[fetchModels] 响应状态:', res.status, res.statusText);
             if (res.ok) {
@@ -1849,6 +1869,10 @@ var LocalGameAPI = {
             throw new Error(translateError('HTTP ' + res.status + ': ' + (res.statusText || '') + (_errBody ? ' - ' + _errBody.slice(0, 100) : '')));
         } catch (e) {
             console.error('[fetchModels] 失败:', e && e.message, e);
+            // 【ISSUE-001 修复】网络/CORS/超时错误给出友好提示
+            if (e.name === 'TimeoutError' || /Failed to fetch|NetworkError|timeout/i.test(e.message || '')) {
+                throw new Error('无法连接到API服务器获取模型列表。可能原因：\n• API地址不正确（请确认是否需要 /v1 路径）\n• CORS跨域限制（浏览器直接请求被拦截）\n• 网络不通或服务器无响应\n\n您可以直接在模型输入框中手动输入模型名称。');
+            }
             throw e;  // 【BUG-002 修复】透传真实错误，不要用模糊消息替换
         }
     },
@@ -1889,7 +1913,8 @@ var LocalGameAPI = {
         } catch (e) {
         return {
             success: false,
-            message: translateError(e.message)
+            // 【ISSUE-007 修复】e 可能为 null/undefined（throw null 场景），安全提取 message
+            message: translateError((e && e.message) ? e.message : String(e))
             };
     }
     }
@@ -5611,8 +5636,20 @@ var _ERROR_MAPS = {
 
 // API错误信息中文翻译
 function translateError(msg) {
-    if (!msg) return '未知错误，请稍后重试';
-    var m = msg;
+    if (msg === null || msg === undefined || msg === '') return '未知错误，请稍后重试';
+    // 【ISSUE-007 修复】确保 msg 始终为字符串，避免对数字/对象/布尔值调用 .match()/.indexOf() 报错
+    var m;
+    if (typeof msg === 'string') {
+        m = msg;
+    } else if (typeof msg === 'object') {
+        // 错误对象可能传入 { message: "..." } / { error: "..." } 等结构，提取有意义的字符串
+        m = (msg.message) ? String(msg.message)
+          : (msg.error) ? String(msg.error)
+          : (msg.code) ? String(msg.code)
+          : JSON.stringify(msg);
+    } else {
+        m = String(msg);
+    }
     // 常见英文错误 -> 中文翻译映射表
     // 【分类】按错误类型分组，翻译包含：原因 + 建议操作
     var map = {
@@ -6543,7 +6580,17 @@ var VALID_REASONING_EFFORT = ['low', 'medium', 'high', 'auto'];
 
 // 显式判断字段，避免 translateError 对 undefined 返回 undefined 时链式调用炸掉
 function extractErrorMessage(errObj, fallback) {
-    if (!errObj) return fallback;
+    if (errObj === null || errObj === undefined) return fallback;
+    // 【ISSUE-007 修复】errObj 可能是字符串而非对象，直接翻译
+    if (typeof errObj === 'string') {
+        var _strMsg = translateError(errObj);
+        return _strMsg || fallback;
+    }
+    // 【ISSUE-007 修复】非对象类型（数字等）转为字符串后翻译
+    if (typeof errObj !== 'object') {
+        var _scalarMsg = translateError(String(errObj));
+        return _scalarMsg || fallback;
+    }
     if (errObj.message) {
         var m = translateError(errObj.message);
         if (m) return m;
@@ -6557,6 +6604,8 @@ function extractErrorMessage(errObj, fallback) {
         if (t) return t;
     }
     if (errObj.error) {
+        // 【ISSUE-007 修复】errObj.error 可能是嵌套对象 { message: "..." } 或字符串，
+        // translateError 内部已处理对象提取，此处直接传入
         var e = translateError(errObj.error);
         if (e) return e;
     }
@@ -7524,6 +7573,37 @@ async function callAI(messages, options = {}) {
     }
 
     try {
+        // 【ISSUE-010 修复】记录请求开始时间，10 秒后在状态栏显示已等待时长 + 预估剩余时间
+        // 仅主请求（非后台）才启动计时器，后台请求（设定解析/上下文压缩）不影响主状态栏
+        if (!options._isBackground) {
+            var _aiGenStartTime = Date.now();
+            TimerManager.setInterval('aiGenElapsed', function() {
+                var _elapsedSec = Math.floor((Date.now() - _aiGenStartTime) / 1000);
+                if (_elapsedSec >= 10) {
+                    // 仅在状态文本为"正在生成..."或以其开头时更新，
+                    // 避免覆盖 429 倒计时（"API限流..."）等动态状态文本
+                    var _statusEl = (typeof document !== 'undefined') ? document.getElementById('genStatusText') : null;
+                    var _curStatus = _statusEl ? String(_statusEl.textContent || '') : '';
+                    if (!_curStatus || _curStatus === '正在生成...' || _curStatus.indexOf('正在生成') === 0) {
+                        // 基于历史生成耗时估算剩余等待时间
+                        var _etaText = '';
+                        try {
+                            var _times = (typeof window !== 'undefined' && window._genTimeHistory) || [];
+                            if (_times.length > 0) {
+                                var _avgMs = _times.reduce(function(a, b) { return a + b; }, 0) / _times.length;
+                                var _remaining = Math.max(0, Math.ceil((_avgMs - (Date.now() - _aiGenStartTime)) / 1000));
+                                if (_remaining > 0) {
+                                    _etaText = ' · 预计还需 ' + _remaining + ' 秒';
+                                }
+                            }
+                        } catch (_etaErr) {}
+                        if (typeof updateGenStatus === 'function') {
+                            updateGenStatus('正在生成... 已等待 ' + _elapsedSec + ' 秒' + _etaText);
+                        }
+                    }
+                }
+            }, 1000);
+        }
         // 429 速率限制自动重试（指数退避：5s → 10s，最多 2 次）
         // 用户取消（localAC.abort）时立即停止重试，抛 AbortError 给上层
         var _maxRetries429 = 2;
@@ -7570,6 +7650,28 @@ async function callAI(messages, options = {}) {
                                         }
                                         console.warn('[callAI] Worker 遭遇限流，抛回主线程重试（不降级）');
                                         throw wErr;
+                                    }
+                                    // 【ISSUE-005 修复】对 503 错误：服务端暂时过载/维护中，
+                                    // 立即降级到主线程会再次冲击同一 API，极易触发 429 级联限流。
+                                    // 处理策略：延迟 2 秒再降级，给服务端恢复时间；
+                                    // 不抛回外层（503 是临时错误，不应触发 callAI 的 429 重试循环）。
+                                    var _wIs503 = (wErr && wErr.status === 503)
+                                        || /HTTP\s*503/.test(_wMsg)
+                                        || /service unavailable/i.test(_wMsg)
+                                        || /服务不可用/.test(_wMsg)
+                                        || /overloaded/i.test(_wMsg);
+                                    if (_wIs503) {
+                                        console.warn('[callAI] Worker 遭遇 503（服务暂时不可用），延迟 2 秒后降级到主线程，避免级联限流');
+                                        if (typeof UI !== 'undefined' && UI.toast) {
+                                            try { UI.toast('API 服务暂时不可用(503)，等待 2 秒后重试...', 3000, 'warning'); } catch (e) {}
+                                        }
+                                        await new Promise(function(r) { setTimeout(r, 2000); });
+                                        // 等待期间用户可能取消，检查后直接抛 AbortError
+                                        if (localAC.signal.aborted) {
+                                            var _abort503 = new Error('用户取消请求');
+                                            _abort503.name = 'AbortError';
+                                            throw _abort503;
+                                        }
                                     }
                                     console.warn('[callAI] Worker 流式失败，降级到主线程:', wErr && wErr.message);
                                 }
@@ -7681,10 +7783,25 @@ async function callAI(messages, options = {}) {
             if (typeof setWaiting === 'function') {
                 try { setWaiting(false); } catch (e2) {}
             }
-            // 显示一个带"我知道了"按钮的错误提示
-            if (typeof UI !== 'undefined' && typeof UI.alert === 'function') {
+            // 【ISSUE-008 修复】显示带「重新生成」按钮的用户友好错误提示
+            // 优先使用 showError（内含"重新生成"按钮），让用户可以直接点击重试；
+            // showError 会在 storyText 区域渲染错误信息 + 重试按钮 + 堆栈详情
+            var _gRetryMsg = 'API 持续调用失败，已停止自动重试。\n\n'
+                + (e.message || '') + '\n\n'
+                + '请检查 API 配置后点击下方「重新生成」按钮重试，或等待 30 秒后重试（计数会自动重置）。';
+            if (typeof showError === 'function') {
                 try {
-                    UI.alert('API 持续调用失败\n\n' + (e.message || '') + '\n\n请检查 API 配置或更换其他 API 后重试。');
+                    showError(_gRetryMsg, e);
+                } catch (e3) {
+                    console.error('[callAI] GlobalRetryLimit:', e.message);
+                    // showError 失败时回退到 UI.alert
+                    if (typeof UI !== 'undefined' && typeof UI.alert === 'function') {
+                        try { UI.alert(_gRetryMsg); } catch (e4) {}
+                    }
+                }
+            } else if (typeof UI !== 'undefined' && typeof UI.alert === 'function') {
+                try {
+                    UI.alert(_gRetryMsg);
                 } catch (e3) {
                     console.error('[callAI] GlobalRetryLimit:', e.message);
                 }
@@ -7743,6 +7860,8 @@ async function callAI(messages, options = {}) {
         }
         throw e;
     } finally {
+        // 【ISSUE-010 修复】清理已等待时长计时器
+        TimerManager.clearInterval('aiGenElapsed');
         TimerManager.clearTimeout('aiRequestTimeout');
         if (externalListener && externalSignal) {
             try { externalSignal.removeEventListener('abort', externalListener); } catch (e) { /* 忽略 */ }
@@ -8569,7 +8688,8 @@ Promise.race([_setupPromise, _setupTimeoutPromise]).then(function() {
 });
 } catch (e) {
 console.error('初始化游戏失败:', e);
-UI.toast('游戏初始化失败: ' + translateError(e.message));
+// 【ISSUE-007 修复】e 可能为 null/undefined，安全提取 message
+UI.toast('游戏初始化失败: ' + translateError((e && e.message) ? e.message : String(e)));
 }
 }
 // ========================================

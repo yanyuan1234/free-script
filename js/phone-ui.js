@@ -2070,8 +2070,13 @@ function renderLogPage() {
     } catch (e) { /* 缓存失败不阻塞渲染 */ }
     var now = new Date();
     var dateEl = document.getElementById('logTopDate');
-    if (dateEl) dateEl.textContent = String(now.getMonth() + 1).padStart(2, '0') + '/' + String(now
-    .getDate()).padStart(2, '0');
+    if (dateEl) {
+        dateEl.textContent = String(now.getMonth() + 1).padStart(2, '0') + '/' + String(now
+        .getDate()).padStart(2, '0');
+        // 【ISSUE-011 修复】"08/15" 形式的数字此前无任何标签，易被误读为"API配额/使用次数"。
+        // 实为"今日日期（月/日）"。补充 title 提示说明含义，与主菜单 menuTopDate 的 title 模式一致。
+        dateEl.title = '今日日期（月/日，如 08/15 表示 8月15日）';
+    }
 
     // 确保显示主内容区域
     var logMainContent = document.getElementById('logMainContent');
@@ -5321,6 +5326,13 @@ var CotPanelController = {
         this.state = 'hidden';
         this._isExpanded = false;
         this._viewingHistoryIdx = -1;
+        // 【ISSUE-009 修复】取消可能挂起的节流渲染定时器（_scheduleRender 用裸 setTimeout），
+        // 避免面板隐藏后 _renderTimer 仍触发 _render。虽然 _render 会因 state=hidden 早退，
+        // 但残留定时器属于未清理资源，多回合累积会增加调度开销。
+        if (this._renderTimer) {
+            clearTimeout(this._renderTimer);
+            this._renderTimer = null;
+        }
         if (typeof CotTypewriter !== 'undefined') {
             CotTypewriter.stop();
         }
@@ -5738,6 +5750,34 @@ function bindEvent(id, event, handler, opts) {
 function renderMenu() {
     // 渲染预设页面
     renderPresetPages();
+}
+
+// 【ISSUE-013 修复】为故事头部 Token 用量指示器补充可见文字标签（"Token" / "上下文"）。
+// 注：.token-display 容器与 #currentTokenCount / #totalTokenCount 定义在 index.html，
+// 由 game.js 的 updateTokenCount() 填值（如 "2.7k" / "20.6k"），本文件不负责其创建。
+// 遵循“仅修改 phone-ui.js”的约束，这里用一次性幂等 DOM 注入补标签，不改动 index.html。
+// 每个标签仅插入一次（用 .token-label 标记防止重复），updateTokenCount 仅写 textContent
+// 不会覆盖兄弟节点，故标签可长期保留。
+function _ensureTokenLabels() {
+    try {
+        var _cur = document.getElementById('currentTokenCount');
+        var _tot = document.getElementById('totalTokenCount');
+        if (_cur && _cur.parentNode && !_cur.parentNode.querySelector('.token-label')) {
+            var _l1 = document.createElement('span');
+            _l1.className = 'token-label';
+            _l1.textContent = 'Token';
+            _l1.style.marginRight = '2px';
+            // 插在图标之后、数字之前：⚡ Token 2.7k
+            _cur.parentNode.insertBefore(_l1, _cur);
+        }
+        if (_tot && _tot.parentNode && !_tot.parentNode.querySelector('.token-label')) {
+            var _l2 = document.createElement('span');
+            _l2.className = 'token-label';
+            _l2.textContent = '上下文';
+            _l2.style.marginRight = '2px';
+            _tot.parentNode.insertBefore(_l2, _tot);
+        }
+    } catch (e) { /* 标签缺失不影响功能 */ }
 }
 function bindEvents() {
     // 防止重复绑定事件
@@ -6541,14 +6581,18 @@ function bindEvents() {
                 if (result.success) {
                     successList.push(cfg.name || 'API' + (i + 1));
                 } else {
-                    failList.push((cfg.name || 'API' + (i + 1)) + '(' + result.message + ')');
+                    // 【ISSUE-012 修复】使用 translateError 翻译技术错误为友好提示
+                    var _friendlyMsg = (typeof translateError === 'function') ? translateError(result.message || '') : (result.message || '未知错误');
+                    failList.push((cfg.name || 'API' + (i + 1)) + '(' + _friendlyMsg + ')');
                 }
             } catch (e) {
                 if (e.name === 'AbortError') {
                     failList.push('测试已取消');
                     break;
                 }
-                failList.push((cfg.name || 'API' + (i + 1)) + '(' + e.message + ')');
+                // 【ISSUE-012 修复】使用 translateError 翻译技术错误为友好提示
+                var _friendlyErr = (typeof translateError === 'function') ? translateError((e && e.message) ? e.message : String(e)) : ((e && e.message) || String(e));
+                failList.push((cfg.name || 'API' + (i + 1)) + '(' + _friendlyErr + ')');
             }
         }
         btn.disabled = false;
@@ -6842,6 +6886,9 @@ function bindEvents() {
     bindEvent('btnResetSettings', 'click', function() {
         if (typeof resetGameSettings === 'function') resetGameSettings();
     });
+
+    // 【ISSUE-013】为故事头部 Token 指示器补充可见标签（一次性幂等注入）
+    _ensureTokenLabels();
 }
 function startNewGame(forgeResult) {
     var prompt = document.getElementById('worldDescription').value.trim();
@@ -7075,6 +7122,14 @@ function _restoreGameRender() {
         console.log('[restoreGame] 恢复前状态: story(SM=' + (_dbgSM_story ? _dbgSM_story.substring(0,30)+'...' : '空') + ', gs=' + (_dbgGS_story ? String(_dbgGS_story).substring(0,30)+'...' : '空') + ')' +
             ', choices(SM=' + _dbgSM_choices.length + ', gs=' + (Array.isArray(_dbgGS_choices) ? _dbgGS_choices.length : '?') + ')' +
             ', cot(SM=' + (_dbgSM_cot ? _dbgSM_cot.substring(0,30)+'...' : '空') + ', gs=' + (_dbgGS_cot ? String(_dbgGS_cot).substring(0,30)+'...' : '空') + ')');
+
+        // 【ISSUE-014 修复】在渲染新剧情内容之前先刷新回合数标签，确保显示的回合数
+        // 与即将渲染的内容一致（避免旧回合数短暂覆盖新内容的“显示不一致”）。
+        // 注：新回合的 turn 递增逻辑位于 sendAIRequest（game.js），其“先渲染后递增”的根因
+        // （progress.turn 在 renderStory/updateSceneTitle 之后才 set）不在本文件可修范围；
+        // phone-ui.js 的撤销路径（deleteLastTurn）已是“先回滚 turn 再 renderStory”的正确顺序，
+        // 此处保证恢复路径下回合数也与内容同步。
+        if (typeof updateTurnLabel === 'function') updateTurnLabel();
 
         // --- 1. 恢复剧情文本 ---
         var _storyRestored = false;
@@ -7580,6 +7635,8 @@ function renderAPISettings() {
     var connectionStatus = LocalGameAPI._connectionStatus || {};
 
     container.innerHTML = configs.map(function(cfg, i) {
+        // 【ISSUE-017 修复】过滤完全空的 API 条目（无 baseUrl 且无 apiKey）
+        if (!cfg || (!cfg.baseUrl && !cfg.apiKey)) return '';
         var isCurrent = i === currentSlot;
         // 【P2 修复】未配置的占位 API（无 baseUrl 或无 apiKey）不显示"使用中"徽章
         var isPlaceholder = !cfg || !cfg.baseUrl || !cfg.apiKey;
@@ -8189,7 +8246,15 @@ function showApiDetail(slot) {
     // 绑定取消测试按钮
     // [CP-08] 加 null 守卫：旧实现 getElementById('btnCancelTestApi') 返回 null 时直接 addEventListener 抛 TypeError
     if (newCancelBtn) {
-        newCancelBtn.addEventListener('click', function() {
+        // 【ISSUE-009 修复】showApiDetail 每次重开弹窗都会重新执行，btnCancelTestApi 是
+        // 持久 DOM 元素（不会被 innerHTML 重建）。旧实现直接 addEventListener 且不清理旧
+        // listener，导致同一按钮累积 N 个 click 监听：取消一次会触发多次 abort，且监听
+        // 函数随闭包常驻无法回收（内存泄漏 + 行为异常）。
+        // 改用“先 remove 旧 handler 再挂新 handler”的模式（与上方 apiRecentToggle 一致）。
+        if (newCancelBtn._onCancelTest) {
+            newCancelBtn.removeEventListener('click', newCancelBtn._onCancelTest);
+        }
+        newCancelBtn._onCancelTest = function() {
             var newTestBtn = document.getElementById('btnTestApiDetail');
             if (newTestBtn && newTestBtn._testAbortCtrl) {
                 newTestBtn._testAbortCtrl.abort();
@@ -8200,7 +8265,8 @@ function showApiDetail(slot) {
                 newTestBtn.disabled = false;
             }
             newCancelBtn.style.display = 'none';
-        });
+        };
+        newCancelBtn.addEventListener('click', newCancelBtn._onCancelTest);
     }
 
     // 绑定复制按钮

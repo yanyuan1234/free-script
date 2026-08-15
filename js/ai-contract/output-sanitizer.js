@@ -166,6 +166,9 @@ const OutputSanitizer = {
         if (_htmlTags && _htmlTags.length >= 5) {
             return '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 请检查API配置或更换API端点后重试。';
         }
+        // 【ISSUE-003 修复】清理 AI 内部计划标签（foreshadow/plan/recall/trigger/mem 等）
+        // 这些标签是 AI 用于内部结构化输出的，不应出现在用户可见的剧情文本中
+        s = this.stripAIPlanTags(s);
         s = this.stripThinking(s);
         s = this.stripHTMLAndCursors(s);
         // stripBareThinking 必须在 stripHTMLAndCursors 之后：
@@ -175,6 +178,43 @@ const OutputSanitizer = {
         s = s.replace(/[\u0000-\u0008\u000b-\u000c\u000e-\u001f]+/g, ' ');
         s = s.replace(/\n{3,}/g, '\n\n');
         return s.trim();
+    },
+
+    // 【ISSUE-003 修复】剥离 AI 内部计划/结构化标签
+    // 处理 foreshadow, plan, recall, trigger, mem 等自定义标签
+    // 包括完整标签（带属性）、未闭合标签、以及标签内容
+    stripAIPlanTags(text) {
+        if (!text || typeof text !== 'string') return '';
+        var s = text;
+        // AI 内部标签列表
+        var AI_PLAN_TAGS = ['foreshadow', 'plan', 'recall', 'trigger', 'mem',
+                           'memory', 'note', 'comment', 'system_note', 'meta',
+                           'hidden', 'internal', 'draft', 'outline'];
+        // 1. 移除配对标签及其内容：<foreshadow ...>内容</foreshadow>
+        for (var i = 0; i < AI_PLAN_TAGS.length; i++) {
+            var tag = AI_PLAN_TAGS[i];
+            // 匹配 <tag ...>...</tag>（含属性、跨行）
+            var pairRe = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?<\\/' + tag + '>', 'gi');
+            s = s.replace(pairRe, '');
+            // 匹配自闭合标签：<foreshadow .../>
+            var selfCloseRe = new RegExp('<' + tag + '\\b[^>]*/>', 'gi');
+            s = s.replace(selfCloseRe, '');
+        }
+        // 2. 移除未闭合的开口标签：<foreshadow id="first_day" priority="8|
+        // 这处理流式中断导致的残缺标签
+        for (var j = 0; j < AI_PLAN_TAGS.length; j++) {
+            var tag2 = AI_PLAN_TAGS[j];
+            // 匹配 <tag ...> 到行尾或文本末尾（未闭合的情况）
+            var unclosedRe = new RegExp('<' + tag2 + '\\b[^>]*[>|]', 'gi');
+            s = s.replace(unclosedRe, '');
+        }
+        // 3. 移除孤立的闭合标签：</foreshadow>
+        for (var k = 0; k < AI_PLAN_TAGS.length; k++) {
+            var tag3 = AI_PLAN_TAGS[k];
+            var closeRe = new RegExp('<\\/' + tag3 + '>', 'gi');
+            s = s.replace(closeRe, '');
+        }
+        return s;
     },
 
     // 剥离裸思考文本（无标签包裹的思考过程）
