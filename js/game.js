@@ -2605,14 +2605,19 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【ISSUE-014 修复】在渲染前递增回合数，确保标题和UI显示一致的回合号
         // 原实现在渲染后（约500行后）才递增，导致渲染期间读取的 turn 值是旧的
         var _turnIncremented = false;
-        if (StateManager) {
+        if (typeof StateManager !== 'undefined' && StateManager && StateManager.get && StateManager.set) {
             var _preTurn = StateManager.get('progress.turn') || 0;
-            StateManager.set('progress.turn', _preTurn + 1, { silent: true });
+            StateManager.set('progress.turn', _preTurn + 1);
             _turnIncremented = true;
-        } else {
+            // 直接更新 DOM 作为即时反馈
+            var _labelEl = document.getElementById('storySceneLabel');
+            if (_labelEl) _labelEl.textContent = '第 ' + (_preTurn + 1) + ' 回合';
+        } else if (typeof gameState !== 'undefined' && gameState) {
             if (!gameState._stats) gameState._stats = {};
             gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
             _turnIncremented = true;
+            var _labelEl2 = document.getElementById('storySceneLabel');
+            if (_labelEl2) _labelEl2.textContent = '第 ' + gameState._stats.totalTurns + ' 回合';
         }
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
 
@@ -3170,11 +3175,11 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 【ISSUE-014 修复】回合数已在渲染前递增，此处不再重复递增
         // 仅在未递增的异常路径补递增（BG-004 防御逻辑保留）
         if (!_turnIncremented) {
-            if (StateManager) {
+            if (typeof StateManager !== 'undefined' && StateManager && StateManager.set) {
                 var currentTurn = StateManager.get('progress.turn') || 0;
-                StateManager.set('progress.turn', currentTurn + 1, { silent: true });
+                StateManager.set('progress.turn', currentTurn + 1);
                 _turnIncremented = true;
-            } else {
+            } else if (typeof gameState !== 'undefined' && gameState) {
                 if (!gameState._stats) gameState._stats = {};
                 gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
                 _turnIncremented = true;
