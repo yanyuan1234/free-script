@@ -1890,7 +1890,7 @@ var LocalGameAPI = {
                     'Authorization': 'Bearer ' + config.apiKey
                 },
             body: JSON.stringify({
-                model: config.model || '',
+                model: config.model || 'auto',
                 messages: [{
                     role: 'user',
                     content: 'Hi'
@@ -6698,7 +6698,7 @@ function buildAIRequestBody(messages, options, config) {
     var _effectiveMaxTokens = (typeof getEffectiveMaxTokens === 'function') ? getEffectiveMaxTokens() : 0;
     var _apiMaxTokens = _effectiveMaxTokens > 0 ? _effectiveMaxTokens : (presetParams.max_tokens || 4096);
     var params = {
-        model: config.model || '',
+        model: config.model || 'auto',
         messages: messages,
         temperature: presetParams.temperature,
         max_tokens: _apiMaxTokens,

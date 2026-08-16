@@ -8536,8 +8536,9 @@ function showCreateApiModal() {
     nameInput.value = '';
     urlInput.value = '';
     keyInput.value = '';
-    modelSelect.innerHTML = '<option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
+    modelSelect.innerHTML = '<option value="auto">auto（自动选择）</option><option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
     modelSelect.style.display = 'block';
+    modelSelect.value = 'auto';
     modelInput.value = '';
     modelInput.style.display = 'none';
     groupSelect.innerHTML = '<option value="">未分组</option>';
@@ -8631,7 +8632,7 @@ function showCreateApiModal() {
             var select = document.getElementById('createApiModelSelect');
             // 分类：正常  vs  △ 提醒（失败）—— 分两组显示
             // 失败模型依然可选、依然能用，仅作提醒（下架检测已删除）
-            select.innerHTML = '<option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
+            select.innerHTML = '<option value="auto">auto（自动选择）</option><option value="">选择模型</option><option value="__manual__">-- 手动输入 --</option>';
             var normalGroup = document.createElement('optgroup');
             normalGroup.label = '正常模型';
             var warnGroup = document.createElement('optgroup');
