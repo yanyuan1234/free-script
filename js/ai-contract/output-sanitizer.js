@@ -11,6 +11,27 @@
 //   reflection = MiniMax / Reflection 系列
 //   assistantfinal = Qwen3 / 酒馆 fallback
 const THINKING_TAGS = ['think', 'thinking', 'reasoning', 'thought', 'analysis', 'ECoT', 'cot', 'chain_of_thought', 'final', 'inner_thoughts', 'reflection', 'assistantfinal'];
+
+// 【性能优化】白名单 HTML 标签常量，避免每次调用 stripAIPlanTags 时重建
+// 这些是合法的 HTML 格式化标签，内容应保留；其他自定义标签连同内容移除
+const ALLOWED_HTML_TAGS = ['b', 'i', 'em', 'strong', 'u', 's', 'strike', 'del',
+                    'br', 'p', 'span', 'div', 'sub', 'sup', 'small', 'big',
+                    'code', 'pre', 'blockquote', 'hr', 'wbr',
+                    'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+                    'ul', 'ol', 'li', 'dl', 'dt', 'dd',
+                    'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'caption', 'colgroup', 'col',
+                    'a', 'img', 'font', 'center', 'ruby', 'rt', 'rp',
+                    'mark', 'abbr', 'cite', 'q', 'details', 'summary',
+                    'figure', 'figcaption'];
+const ALLOWED_HTML_PATTERN = ALLOWED_HTML_TAGS.join('|');
+// 预编译正则，避免每次调用时重新编译
+// 注意：负向先行断言中的 \/? 必须为可选（\/?），否则无法匹配不带 / 的开标签（如 <p>）
+// 注意：反向引用用 \1（第一个捕获组），(?:...) 是非捕获组不占编号
+var _rePairTags = new RegExp('<(?!\\/?(?:' + ALLOWED_HTML_PATTERN + ')\\b)([a-zA-Z_][\\w.-]*)\\b[^>]*>[\\s\\S]*?<\\/\\1\\s*>', 'gi');
+var _reSelfCloseTags = new RegExp('<(?!\\/?(?:' + ALLOWED_HTML_PATTERN + ')\\b)[a-zA-Z_][\\w.-]*\\b[^>]*\\/>', 'gi');
+var _reUnclosedTags = new RegExp('<(?!\\/?(?:' + ALLOWED_HTML_PATTERN + ')\\b)[a-zA-Z_][\\w.-]*\\b[^>]*>', 'gi');
+var _reCloseTags = new RegExp('<\\/(?!' + ALLOWED_HTML_PATTERN + '\\b)[a-zA-Z_][\\w.-]*\\s*>', 'gi');
+
 const OutputSanitizer = {
     THINKING_TAGS: THINKING_TAGS,
     // P0 修复 BUG-A：裸思考文本检测模式
@@ -156,71 +177,71 @@ const OutputSanitizer = {
     sanitizeStory(text) {
         if (!text || typeof text !== 'string') return '';
         let s = text;
+        // 【性能优化】快速检测：如果文本不含 '<' 且不含控制字符，跳过重正则清理
+        // 纯文本故事（无 AI 标签、无 HTML）无需走完整清理管道
+        var _hasAngleBracket = s.indexOf('<') !== -1;
+        var _hasControlChars = /[\u0000-\u0008\u000b-\u000c\u000e-\u001f]/.test(s);
+
         // 【BUG-001 修复】检测 HTML/WAF 响应作为最后防线
         // 如果 storyText 是 HTML 页面源码（WAF 验证页面等），拦截并返回友好提示
         var _lowerS = s.trim().toLowerCase();
         if (_lowerS.startsWith('<!doctype') || _lowerS.startsWith('<html') || _lowerS.startsWith('<head')) {
             return '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 请检查API配置或更换API端点后重试。';
         }
-        var _htmlTags = _lowerS.substring(0, 3000).match(/<\/?(?:html|head|body|script|style|meta|link|title|form|input)\b/gi);
-        if (_htmlTags && _htmlTags.length >= 5) {
-            return '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 请检查API配置或更换API端点后重试。';
+        if (_hasAngleBracket) {
+            var _htmlTags = _lowerS.substring(0, 3000).match(/<\/?(?:html|head|body|script|style|meta|link|title|form|input)\b/gi);
+            if (_htmlTags && _htmlTags.length >= 5) {
+                return '⚠️ **API返回了HTML页面而非AI内容**\n\n💡 请检查API配置或更换API端点后重试。';
+            }
         }
-        // 【ISSUE-003 修复】清理 AI 内部计划标签（foreshadow/plan/recall/trigger/mem 等）
-        // 这些标签是 AI 用于内部结构化输出的，不应出现在用户可见的剧情文本中
-        s = this.stripAIPlanTags(s);
-        s = this.stripThinking(s);
-        s = this.stripHTMLAndCursors(s);
+        // 【性能优化】仅在检测到 '<' 时执行标签清理
+        if (_hasAngleBracket) {
+            s = this.stripAIPlanTags(s);
+            s = this.stripThinking(s);
+            s = this.stripHTMLAndCursors(s);
+        }
         // stripBareThinking 必须在 stripHTMLAndCursors 之后：
         // HTML 标签（如 <p>）会影响段落分割，先剥 HTML 才能正确按 \n\n 分段
         s = this.stripBareThinking(s);
         s = this.stripJSONArtifacts(s);
-        s = s.replace(/[\u0000-\u0008\u000b-\u000c\u000e-\u001f]+/g, ' ');
+        if (_hasControlChars) {
+            s = s.replace(/[\u0000-\u0008\u000b-\u000c\u000e-\u001f]+/g, ' ');
+        }
         s = s.replace(/\n{3,}/g, '\n\n');
         return s.trim();
     },
 
     // 【ISSUE-003 修复】剥离 AI 内部计划/结构化标签
-    // 处理 foreshadow, plan, recall, trigger, mem 等自定义标签
-    // 包括完整标签（带属性）、未闭合标签、以及标签内容
+    // 【白名单机制修复】从黑名单改为白名单：只保留已知 HTML 格式化标签的内容，
+    // 其他所有自定义标签（AI 内部标签）连同内容一起移除
+    // 这解决了新 AI 标签不断出现导致泄漏的问题
     stripAIPlanTags(text) {
         if (!text || typeof text !== 'string') return '';
         var s = text;
-        // AI 内部标签列表（含测试中发现的 giggle, doc, resolve 等标签）
-        var AI_PLAN_TAGS = ['foreshadow', 'plan', 'recall', 'trigger', 'mem',
-                           'memory', 'note', 'comment', 'system_note', 'meta',
-                           'hidden', 'internal', 'draft', 'outline',
-                           'giggle', 'doc', 'state', 'stats', 'status',
-                           'choices', 'characters', 'player', 'bag', 'currency',
-                           'quests', 'gameTime', 'keyEvents', 'world',
-                           'locations', 'relationships', 'hud', 'contextSummary',
-                           'npcMessages', 'memoryUpdates',
-                           'resolve', 'effect', 'action', 'event',
-                           'condition', 'result', 'consequence', 'reward'];
-        // 1. 移除配对标签及其内容：<foreshadow ...>内容</foreshadow>
-        for (var i = 0; i < AI_PLAN_TAGS.length; i++) {
-            var tag = AI_PLAN_TAGS[i];
-            // 匹配 <tag ...>...</tag>（含属性、跨行）
-            var pairRe = new RegExp('<' + tag + '\\b[^>]*>[\\s\\S]*?<\\/' + tag + '>', 'gi');
-            s = s.replace(pairRe, '');
-            // 匹配自闭合标签：<foreshadow .../>
-            var selfCloseRe = new RegExp('<' + tag + '\\b[^>]*/>', 'gi');
-            s = s.replace(selfCloseRe, '');
-        }
-        // 2. 移除未闭合的开口标签：<foreshadow id="first_day" priority="8|
-        // 这处理流式中断导致的残缺标签
-        for (var j = 0; j < AI_PLAN_TAGS.length; j++) {
-            var tag2 = AI_PLAN_TAGS[j];
-            // 匹配 <tag ...> 到行尾或文本末尾（未闭合的情况）
-            var unclosedRe = new RegExp('<' + tag2 + '\\b[^>]*[>|]', 'gi');
-            s = s.replace(unclosedRe, '');
-        }
-        // 3. 移除孤立的闭合标签：</foreshadow>
-        for (var k = 0; k < AI_PLAN_TAGS.length; k++) {
-            var tag3 = AI_PLAN_TAGS[k];
-            var closeRe = new RegExp('<\\/' + tag3 + '>', 'gi');
-            s = s.replace(closeRe, '');
-        }
+
+        // 1. 移除非白名单配对标签及其内容：<unknown ...>内容</unknown>
+        // 使用预编译正则 + do-while 处理嵌套标签，最多迭代 5 次防止死循环
+        _rePairTags.lastIndex = 0;
+        var prev;
+        var _iter = 0;
+        do {
+            prev = s;
+            s = s.replace(_rePairTags, '');
+            _iter++;
+        } while (s !== prev && _iter < 5);
+
+        // 2. 移除非白名单的自闭合标签：<unknown .../>
+        _reSelfCloseTags.lastIndex = 0;
+        s = s.replace(_reSelfCloseTags, '');
+
+        // 3. 移除非白名单的未闭合开口标签（流式中断残留）
+        _reUnclosedTags.lastIndex = 0;
+        s = s.replace(_reUnclosedTags, '');
+
+        // 4. 移除孤立的非白名单闭合标签：</unknown>
+        _reCloseTags.lastIndex = 0;
+        s = s.replace(_reCloseTags, '');
+
         return s;
     },
 

@@ -1415,7 +1415,29 @@ async function sendAIRequest(userMessage, isInit = false) {
 
         // 【BG-004 修复】跟踪 turn 是否已在正常路径递增，
         // catch 块据此决定是否补递增（避免异常路径读到 turn=0 显示"第 1 回合"）
+        // 【ISSUE-014 根因修复】将 turn 递增移到 sendAIRequest 最前面，
+        // 在任何处理之前就完成递增+UI更新，确保无论后续处理是否成功，
+        // 回合号都能正确显示。
         var _turnIncremented = false;
+        var _turnBeforeIncrement = 0;
+        try {
+            if (typeof StateManager !== 'undefined' && StateManager && StateManager.get && StateManager.set) {
+                _turnBeforeIncrement = StateManager.get('progress.turn') || 0;
+                var _newTurn = _turnBeforeIncrement + 1;
+                StateManager.set('progress.turn', _newTurn);
+                _turnIncremented = true;
+                var _earlyLabelEl = document.getElementById('storySceneLabel');
+                if (_earlyLabelEl) _earlyLabelEl.textContent = '第 ' + _newTurn + ' 回合';
+                console.log('[ISSUE-014] 回合数预递增: ' + _turnBeforeIncrement + ' → ' + _newTurn);
+            } else if (typeof gameState !== 'undefined' && gameState) {
+                if (!gameState._stats) gameState._stats = {};
+                _turnBeforeIncrement = gameState._stats.totalTurns || 0;
+                gameState._stats.totalTurns = _turnBeforeIncrement + 1;
+                _turnIncremented = true;
+                var _earlyLabelEl2 = document.getElementById('storySceneLabel');
+                if (_earlyLabelEl2) _earlyLabelEl2.textContent = '第 ' + gameState._stats.totalTurns + ' 回合';
+            }
+        } catch(e) { console.warn('[ISSUE-014] 预递增失败:', e); }
         
         var messages;
         // isInit: 初始化请求也需要应用预设提示词（写作风格、字数控制等）
@@ -2602,23 +2624,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 storyText = '【AI未返回剧情内容】\n\n可能原因：\n1. max_tokens设置过小，思考链占用了全部额度\n2. 模型暂时异常，请重试\n3. 上下文过长导致生成空间不足\n\n建议：检查API设置中的max_tokens（建议≥1024），或尝试切换模型。';
             }
         }
-        // 【ISSUE-014 修复】在渲染前递增回合数，确保标题和UI显示一致的回合号
-        // 原实现在渲染后（约500行后）才递增，导致渲染期间读取的 turn 值是旧的
-        var _turnIncremented = false;
-        if (typeof StateManager !== 'undefined' && StateManager && StateManager.get && StateManager.set) {
-            var _preTurn = StateManager.get('progress.turn') || 0;
-            StateManager.set('progress.turn', _preTurn + 1);
-            _turnIncremented = true;
-            // 直接更新 DOM 作为即时反馈
-            var _labelEl = document.getElementById('storySceneLabel');
-            if (_labelEl) _labelEl.textContent = '第 ' + (_preTurn + 1) + ' 回合';
-        } else if (typeof gameState !== 'undefined' && gameState) {
-            if (!gameState._stats) gameState._stats = {};
-            gameState._stats.totalTurns = (gameState._stats.totalTurns || 0) + 1;
-            _turnIncremented = true;
-            var _labelEl2 = document.getElementById('storySceneLabel');
-            if (_labelEl2) _labelEl2.textContent = '第 ' + gameState._stats.totalTurns + ' 回合';
-        }
+        // 【ISSUE-014 修复】回合数已在 sendAIRequest 入口处预递增
+        // 此处仅刷新 UI 确保显示正确
         if (typeof updateTurnLabel === 'function') updateTurnLabel();
 
         // 渲染非剧情部分
@@ -2779,8 +2786,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         // 此处兜底会把标题设为用户原始输入（"我想玩西方奇幻游戏..."），误导用户以为标题未更新。
         // 改为用"第 N 回合"作兜底，语义清晰且不会被误认为 AI 标题。
         if (gameState && !StateManager.get('progress.sceneTitle')) {
-            var _fbTurn = StateManager ? (StateManager.get('progress.turn') || 0) : ((gameState._stats && gameState._stats.totalTurns) || 0);
-            var fallbackTitle = '第 ' + (_fbTurn + 1) + ' 回合';
+            // 【ISSUE-014 修复】turn 已在 sendAIRequest 入口预递增，此处直接使用当前值
+            var _fbTurn = StateManager ? (StateManager.get('progress.turn') || 1) : ((gameState._stats && gameState._stats.totalTurns) || 1);
+            var fallbackTitle = '第 ' + _fbTurn + ' 回合';
             console.log('[BUG-002] 正常路径标题兜底触发, sceneTitle was empty, 设置为:', fallbackTitle);
             updateSceneTitle(fallbackTitle);
             if (typeof StateManager !== 'undefined' && StateManager.set) {
@@ -3415,6 +3423,15 @@ async function sendAIRequest(userMessage, isInit = false) {
                     (error.message && error.message.indexOf('STREAM_TIMEOUT') !== -1) ||
                     (error.message && error.message.indexOf('所有API配置均调用失败') !== -1)
                 );
+                // 【ISSUE-014 修复】预递增的 turn 在 API 级错误时需要回滚
+                if (_turnIncremented && _isAPILevelError && !_aiMutatorApplied) {
+                    try {
+                        StateManager.set('progress.turn', _turnBeforeIncrement, { silent: true });
+                        _turnIncremented = false;
+                        if (typeof updateTurnLabel === 'function') updateTurnLabel();
+                        console.warn('[ISSUE-014] API级错误，回合数回滚: ' + (_turnBeforeIncrement + 1) + ' → ' + _turnBeforeIncrement);
+                    } catch(rbErr) { console.error('[ISSUE-014] 回合数回滚失败:', rbErr); }
+                }
                 if (!_turnIncremented && !_aiMutatorApplied && !_isAPILevelError) {
                     var _curT = StateManager.get('progress.turn') || 0;
                     StateManager.set('progress.turn', _curT + 1, { silent: true });
@@ -3424,8 +3441,9 @@ async function sendAIRequest(userMessage, isInit = false) {
                 }
                 var _curSceneTitle = StateManager.get('progress.sceneTitle');
                 if (!_curSceneTitle) {
-                    var _errTurn = StateManager.get('progress.turn') || 0;
-                    var _errFallbackTitle = '第 ' + (_errTurn + 1) + ' 回合';
+                    // 【ISSUE-014 修复】turn 已在入口预递增，异常路径直接使用当前值
+                    var _errTurn = StateManager.get('progress.turn') || 1;
+                    var _errFallbackTitle = '第 ' + _errTurn + ' 回合';
                     console.log('[BUG-002] 异常路径标题兜底触发, sceneTitle was empty, 设置为:', _errFallbackTitle);
                     updateSceneTitle(_errFallbackTitle);
                     if (StateManager.set) {
@@ -4192,11 +4210,28 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
     window._chunkCount++;
     if (window._chunkCount % 50 === 1) window._perfDebug&&(document.title='PERF:chunk-' + window._chunkCount + '-buf=' + (streamBuffer||'').length);
 
+    // 【性能优化】流式标签白名单常量，避免每次调用 _sanitizeStreamTags 时重建
+    var _STREAM_ALLOWED_TAGS = {'b':1,'i':1,'em':1,'strong':1,'u':1,'s':1,'strike':1,'del':1,
+                                'br':1,'p':1,'span':1,'div':1,'sub':1,'sup':1,'small':1,'big':1,
+                                'code':1,'pre':1,'blockquote':1,'hr':1,'wbr':1,
+                                'h1':1,'h2':1,'h3':1,'h4':1,'h5':1,'h6':1,
+                                'ul':1,'ol':1,'li':1,'dl':1,'dt':1,'dd':1,
+                                'table':1,'thead':1,'tbody':1,'tfoot':1,'tr':1,'td':1,'th':1,'caption':1,'colgroup':1,'col':1,
+                                'a':1,'img':1,'font':1,'center':1,'ruby':1,'rt':1,'rp':1,
+                                'mark':1,'abbr':1,'cite':1,'q':1,'details':1,'summary':1,
+                                'figure':1,'figcaption':1};
+    var _reAllHtmlTags = /<\/?([a-zA-Z_][\w.-]*)\b[^>]*\/?>/g;
+
     // 【ISSUE-003 修复】流式显示时实时清理 AI 内部标签
     // 轻量级正则，只移除已知 AI 标签的开闭标签，不处理内容（避免流式截断误删）
     function _sanitizeStreamTags(text) {
         if (!text) return text;
-        return text.replace(/<\/?(?:foreshadow|plan|recall|trigger|mem|memory|note|comment|system_note|meta|hidden|internal|draft|outline|giggle|doc|state|stats|status|choices|characters|player|bag|currency|quests|gameTime|keyEvents|world|locations|relationships|hud|contextSummary|title|npcMessages|memoryUpdates|resolve|effect|action|event|condition|result|consequence|reward)\b[^>]*\/?>/gi, '');
+        // 【白名单机制】只保留已知 HTML 格式化标签，其他所有自定义标签移除
+        _reAllHtmlTags.lastIndex = 0;
+        return text.replace(_reAllHtmlTags, function(match, tagName) {
+            if (_STREAM_ALLOWED_TAGS[tagName.toLowerCase()]) return match;
+            return '';
+        });
     }
 
     // 【酒馆式思维链】实时推送 reasoning delta 到面板
