@@ -11,7 +11,7 @@
 
 // 【修复】缓存名包含时间戳，每次部署新代码时自动失效旧缓存
 // 手动更新：修改此时间戳 → activate 时清理旧缓存 → 用户拿到新代码
-var CACHE_NAME = 'free-script-v2-2026-07-23-registry';
+var CACHE_NAME = 'free-script-v2-2026-08-16-whitelist-fix';
 var CORE_ASSETS = [
     './',
     './index.html',
@@ -134,24 +134,21 @@ self.addEventListener('fetch', function(event) {
         return;
     }
 
-    // 【修复】JS/CSS 文件：stale-while-revalidate
-    // 先返回缓存（快速加载），同时后台从网络获取最新版本更新缓存
-    // 这确保用户总能拿到最新代码（下次加载时），同时不影响当前页面加载速度
+    // 【修复】JS/CSS 文件：网络优先（与 HTML 相同策略）
+    // 原 stale-while-revalidate 策略会先返回旧缓存，导致代码更新后用户首次加载仍用旧代码
+    // 改为网络优先确保用户始终拿到最新代码，离线时才回退缓存
     if (isJSCSS(url.pathname)) {
         event.respondWith(
-            caches.match(req).then(function(cached) {
-                // 后台更新缓存（不阻塞响应）
-                var fetchPromise = fetch(req).then(function(res) {
-                    if (res.ok && res.type === 'basic') {
-                        var clone = res.clone();
-                        caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
-                    }
-                    return res;
-                }).catch(function() {
-                    // 网络失败时忽略，下次再用缓存
+            fetch(req).then(function(res) {
+                if (res.ok && res.type === 'basic') {
+                    var clone = res.clone();
+                    caches.open(CACHE_NAME).then(function(cache) { cache.put(req, clone); });
+                }
+                return res;
+            }).catch(function() {
+                return caches.match(req).then(function(cached) {
+                    return cached || new Response('// Offline', { status: 504, headers: { 'Content-Type': 'application/javascript' } });
                 });
-                // 先返回缓存（如果有），否则等网络
-                return cached || fetchPromise;
             })
         );
         return;
