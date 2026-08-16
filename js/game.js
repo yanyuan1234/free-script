@@ -4500,9 +4500,11 @@ var _heartbeatLast = Date.now();
 TimerManager.setInterval('heartbeat', function() {
     var now = Date.now();
     var gap = now - _heartbeatLast;
-    // 【BUG修复】阈值从1500提升到3000，避免setInterval本身的2秒漂移触发误报
-    // setInterval(2000)的实际间隔可能是2001-2050ms，原1500ms阈值会持续误报
-    if (gap > 3000) {
+    // 【修复】阈值从3000提升到5000，减少页面加载和初始JS解析期间的误报
+    // 仅在游戏进行中（streamBuffer 有内容或 _chunkCount > 0）时报告
+    var _inGame = (typeof streamBuffer !== 'undefined' && streamBuffer && streamBuffer.length > 0) ||
+                  (typeof window !== 'undefined' && window._chunkCount > 0);
+    if (gap > 5000 && _inGame) {
         console.warn('[heartbeat] 主线程阻塞 ' + gap + 'ms (streamBuf=' + (typeof streamBuffer !== 'undefined' ? streamBuffer.length : '?') + ')');
     }
     _heartbeatLast = now;

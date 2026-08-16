@@ -17,9 +17,19 @@ GlobalCleanup.registerListener(window, 'error', function(e) {
 }, true);
 
 GlobalCleanup.registerListener(window, 'unhandledrejection', function(e) {
-    console.error('[未处理的Promise]', e.reason);
+    var reason = e.reason;
+    var msg = String((reason && reason.message) || reason || '');
+    // 【修复】过滤已知的非关键 rejection，避免向用户显示无意义的 toast
+    // AbortError：用户主动取消（切换页面、重新生成等）导致的 fetch abort
+    // transition abort：View Transition API 快速切换导致的 abort
+    if (/abort|AbortError|transition.*abort/i.test(msg)) {
+        console.debug('[未处理的Promise] 已过滤非关键错误:', msg);
+        e.preventDefault();
+        return;
+    }
+    console.error('[未处理的Promise]', reason);
     if (typeof UI !== 'undefined' && UI.toast) {
-        UI.toast('异步操作失败');
+        UI.toast('异步操作失败: ' + msg.slice(0, 50));
     }
     e.preventDefault();
 });

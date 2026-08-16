@@ -675,15 +675,33 @@ const ThemeManager = {
     apply() {
         // P2-4: 主题切换闪烁修复 —— 使用 View Transition API 实现平滑过渡
         // 避免直接设置 data-theme 导致的页面闪烁（FOUC）
+        // 【修复】View Transition API 在某些状态下会抛 "Transition was aborted because of invalid state"
+        // 用 try-catch 包裹，失败时降级到普通切换
         if (document.startViewTransition) {
             var self = this;
-            document.startViewTransition(function() {
+            try {
+                var transition = document.startViewTransition(function() {
+                    if (self._current === 'dark') {
+                        document.documentElement.setAttribute('data-theme', 'dark');
+                    } else {
+                        document.documentElement.setAttribute('data-theme', 'light');
+                    }
+                });
+                // 捕获 transition Promise 的 rejection（用户快速切换时可能 abort）
+                if (transition && transition.finished) {
+                    transition.finished.catch(function(e) {
+                        // 静默处理：用户快速切换主题导致的 abort 是正常行为
+                        console.debug('[Theme] View transition aborted:', e && e.message);
+                    });
+                }
+            } catch (e) {
+                // 降级：直接设置 data-theme
                 if (self._current === 'dark') {
                     document.documentElement.setAttribute('data-theme', 'dark');
                 } else {
                     document.documentElement.setAttribute('data-theme', 'light');
                 }
-            });
+            }
         } else {
             // 降级方案：使用 CSS transition 过渡主题切换
             document.documentElement.style.setProperty('transition', 'background-color 0.3s ease, color 0.3s ease');
