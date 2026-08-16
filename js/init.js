@@ -126,6 +126,12 @@ async function initApp() {
         if (typeof PromptConfig !== 'undefined') PromptConfig.init();
         // 【P0功能】初始化meow_FM结构化摘要系统
         if (typeof MeowFMEnhanced !== 'undefined') MeowFMEnhanced.init();
+        // 【P1功能】初始化活体角色引擎（角色动态成长/骨相锁定/亲密情感映射）
+        if (typeof LivingCharacter !== 'undefined') LivingCharacter.init();
+        // 【P1功能】初始化叙事质感引擎（自由间接引语/反陈腐比喻/防抢话防转述）
+        if (typeof NarrativeCraft !== 'undefined') NarrativeCraft.init();
+        // 【P1功能】初始化剧情导演系统（节奏档位/优质冲突/NPC生态/认知屏障）
+        if (typeof PlotDirector !== 'undefined') PlotDirector.init();
         // 【P1功能】初始化伏笔因果链追踪系统
         if (typeof ForeshadowChain !== 'undefined') ForeshadowChain.init();
         // 【P1功能】初始化多文风库与切换系统

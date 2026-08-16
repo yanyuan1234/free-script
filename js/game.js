@@ -833,7 +833,8 @@ function _buildFormatRules(gs, _t, turn) {
         + '\n**重要：不要在 JSON 中包含 thinking 字段。你的创作思考过程请使用 API 原生的 reasoning_content 输出（如果模型支持），JSON 中只保留故事内容和结构化数据。**\n'
         + '\n**story 长度要求：根据用户设置的字数范围生成，优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
         + ' "player": {"name":"主角名","age":0,"identity":"身份","personality":"性格","title":"称号","stats":[{"label":"属性名","value":0}]}, '
-        + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n' : '')
+        + (hasChoices ? '\n**choices 必填规则：必须返回恰好3个选项，每个选项 id 为 A/B/C，text 为10-25字的完整行动描述（不要截断、不要对话台词、不要引号包裹）。即使 token 紧张也优先保证 choices 完整，缺 choices 会被系统自动生成低质量选项。**\n'
+            + '**三选项须覆盖三种不同走向维度（融合剧情分支设计，禁止三个同质化选项）：A-顺应当前情境，沿正在进行的对话/动作/情感温度自然推进；B-空间或任务转换，有角色主动提议/带领前往新场景或开启新事项；C-张力升级或外部突发，引爆潜藏矛盾/情感裂痕，或引入不可抗力的意外（NPC介入、突发事故、环境剧变）。**\n' : '')
         + '"characters": [{"name":"NPC名","title":"头衔","relation":"关系","favorability":0,"desc":"简述","details":[{"key":"","value":""}]}], '
         + '"world": [{"type":"' + _enabledWorldTypes.join('/') + '","title":"标题","content":"内容","items":[]}], '
         + '"bag": [{"name":"物品名","count":1,"desc":"描述","rarity":"普通/精良/珍稀/传说","usable":false,"effect":"","equippable":false,"equipped":false,"slot":"weapon/armor/accessory/head"}], '
@@ -2813,11 +2814,11 @@ async function sendAIRequest(userMessage, isInit = false) {
                     data = data || {};
                     data.choices = autoChoices;
                 } else {
-                    // 最终兜底：渲染硬编码默认选项（与原版一致）
+                    // 最终兜底：渲染默认选项（按三走向体系：顺应/转换/突发，避免同质化被动选项）
                     renderChoices([
-                        { id: 'A', text: '继续探索' },
-                        { id: 'B', text: '观察四周' },
-                        { id: 'C', text: '等待观望' }
+                        { id: 'A', text: '顺着眼前的情况继续行动' },
+                        { id: 'B', text: '换个地方，去看看别处' },
+                        { id: 'C', text: '打破沉默，把心里的话问出口' }
                     ]);
                 }
             }
