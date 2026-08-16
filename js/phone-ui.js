@@ -7929,7 +7929,22 @@ function showApiDetail(slot) {
     if (keyInput) keyInput.value = cfg.apiKey || '';
     // 确保当前模型在select的option列表中，否则手动添加
     var modelSelect = _el('detailApiModelSelect');
-    var currentModel = cfg.model || '';
+    var currentModel = cfg.model || 'auto';
+    // 【修复】确保 'auto' 选项始终存在于详情弹窗的模型选择器中
+    // 原代码只在 HTML 中放了 <option value="">选择或输入模型</option>，没有 auto 选项
+    // 导致用户编辑配置时看不到 auto，保存后 model 变成空值
+    if (modelSelect) {
+        var _hasAuto = false;
+        for (var _ai = 0; _ai < modelSelect.options.length; _ai++) {
+            if (modelSelect.options[_ai].value === 'auto') { _hasAuto = true; break; }
+        }
+        if (!_hasAuto) {
+            var _autoOpt = document.createElement('option');
+            _autoOpt.value = 'auto';
+            _autoOpt.textContent = 'auto（自动选择）';
+            modelSelect.insertBefore(_autoOpt, modelSelect.firstChild);
+        }
+    }
     if (currentModel && modelSelect) {
         var hasOption = false;
         for (var oi = 0; oi < modelSelect.options.length; oi++) {
