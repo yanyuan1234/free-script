@@ -198,7 +198,10 @@ const PromptBuilder = {
         // workflow：工作方式
         this.registerSection('workflow', function(ctx) {
             const pureText = ctx.pureTextMode || PromptBuilder._mode === 'pureText';
-            const maxTokens = ctx.maxTokens || DEFAULT_MAX_TOKENS;
+            // 【健壮性修复】DEFAULT_MAX_TOKENS 定义在 utils.js，若其加载失败/晚加载，
+            // 此处直接引用会抛 ReferenceError 导致整个 workflow 片段丢失。加 typeof 兜底。
+            const fallbackTokens = (typeof DEFAULT_MAX_TOKENS !== 'undefined') ? DEFAULT_MAX_TOKENS : 65536;
+            const maxTokens = ctx.maxTokens || fallbackTokens;
             const parts = [];
             parts.push('【引导玩家输入】（提升剧情质量）');
             parts.push('- 好的输入：包含动作+对象+意图，如"我想去图书室查阅螺旋塔的资料"');
@@ -210,7 +213,11 @@ const PromptBuilder = {
                 parts.push('故事是核心，所有token预算都用在故事上。对话用「」包裹，换行用\\n。');
                 parts.push('你大约有 ' + maxTokens + ' tokens输出空间——把故事写完整、写精彩。');
             } else {
-                parts.push('story放第一个字段，用\\n换行，对话用「」。你大约有 ' + maxTokens + ' tokens输出空间。');
+                // 【P0 顺序统一】原"story放第一个字段"与格式规则（story放最后一个字段）矛盾，
+                // 模型收到冲突指令后倾向把 story 写在前面，一旦 max_tokens 截断，
+                // 排在 story 之后的 quests/choices/gameTime 等状态字段全部丢失。
+                // 此处与 game.js _buildFormatRules / _formatReminder 保持单一数据源：story 最后输出。
+                parts.push('story放最后一个字段（先写完所有状态字段，最后写story），用\\n换行，对话用「」。你大约有 ' + maxTokens + ' tokens输出空间。');
                 parts.push('- story=叙事正文，choices=决策点；严禁回到故事开头或重复初始场景。');
                 parts.push('- 叙事要充分展开：场景描写、人物动作、环境氛围、NPC反应、主角心理都要具体呈现，避免几句话草草带过。');
             }

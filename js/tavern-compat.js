@@ -1509,10 +1509,9 @@ var GameMemory = {
                 var messages = self._buildForgeMessages(state, fidelity);
 
                 if (typeof callAI !== 'function') {
-                    console.warn('[SetupForge] callAI 不可用，fallback 到原文');
-                    var fallback = self._fallbackFromBlob(state.blob);
-                    self._applyForgedSetup(fallback);
-                    return resolve(fallback);
+                    // 【BUG-05 修复】禁止静默降级：callAI 不可用是配置错误，必须显式报错
+                    // 旧代码 fallback 到原文会显示一堆"未提取"，玩家完全不知道出了什么问题
+                    return reject(new Error('AI 调用不可用：请先配置 API（设置 → API配置），再使用智能锻造'));
                 }
 
                 // 【BG-002 修复】用 Promise.race 给每轮加超时，超时则用当前结果继续
@@ -1527,39 +1526,33 @@ var GameMemory = {
                     callAI(messages, { max_tokens: 16384, temperature: 0.4 }),
                     _passTimer
                 ]).then(function(raw) {
-                    // 超时兜底：用当前已精炼结果继续，避免卡死
+                    // 超时处理【BUG-05 修复】：禁止用本地伪造内容（_generateFallbackOpeningScene）静默降级
+                    // - 已有 AI 结果（extraction/refined 非空）→ 用已有 AI 结果收尾（仍是 AI 产出）
+                    // - 完全没有 AI 结果 → 显式报错，用户可一键重新锻造
                     if (raw && raw.__timeout) {
-                        console.warn('[SetupForge] 第' + state.currentPass + '轮超时(' + _passTimeoutMs + 'ms)，使用当前结果继续');
-                        if (state.currentPass >= passes) {
-                            // 【BUG修复】超时时也进行字段补充，避免"未提取"
-                            var _toResult = state.refined || self._fallbackFromBlob(state.blob);
-                            // 补充缺失字段
-                            if (!_toResult.worldSetting && state.blob) {
-                                _toResult.worldSetting = state.blob;
+                        console.warn('[SetupForge] 第' + state.currentPass + '轮超时(' + _passTimeoutMs + 'ms)');
+                        if (state.extraction && state.refined) {
+                            if (state.currentPass >= passes) {
+                                self._applyForgedSetup(state.refined);
+                                return resolve(state.refined);
                             }
-                            if (!_toResult.openingScene && state.blob) {
-                                _toResult.openingScene = self._generateFallbackOpeningScene(state.blob, _toResult.protagonist);
-                            }
-                            if (!_toResult.protagonist || Object.keys(_toResult.protagonist).length === 0) {
-                                var _tpName = self._extractProtagonistName(state.blob);
-                                _toResult.protagonist = { name: _tpName || '主角' };
-                            }
-                            self._applyForgedSetup(_toResult);
-                            return resolve(_toResult);
+                            return setTimeout(runPass, 0);
                         }
-                        return setTimeout(runPass, 0);
+                        return reject(new Error('锻造第 ' + state.currentPass + ' 轮超时（' + Math.round(_passTimeoutMs / 1000) + ' 秒）。AI 响应过慢或网络不稳定，请点击「重新锻造」重试'));
                     }
                     var parsed = self._parseForgeJSON(raw);
                     if (!parsed.success || !parsed.data) {
                         console.warn('[SetupForge] 第' + state.currentPass + '轮解析失败');
-                        if (state.currentPass === 1) {
-                            var fb = self._fallbackFromBlob(state.blob);
-                            self._applyForgedSetup(fb);
-                            return resolve(fb);
+                        // 【BUG-05 修复】禁止静默降级到本地 fallback：
+                        // - 第 1 轮（结构抽取）失败 → 没有任何 AI 数据可用，必须显式报错
+                        // - 后续轮失败但已有 AI 数据 → 用已有 AI 数据收尾（AI 产出，非本地伪造）
+                        if (!state.extraction) {
+                            return reject(new Error('锻造第 1 轮（结构抽取）失败：AI 返回的内容无法解析为 JSON。' +
+                                '可能原因：模型能力不足 / 输出被截断。请更换模型或点击「重新锻造」重试'));
                         }
                         if (state.currentPass >= passes) {
-                            self._applyForgedSetup(state.refined || self._fallbackFromBlob(state.blob));
-                            return resolve(state.refined || self._fallbackFromBlob(state.blob));
+                            self._applyForgedSetup(state.refined);
+                            return resolve(state.refined);
                         }
                         return runPass();
                     }
@@ -1580,15 +1573,13 @@ var GameMemory = {
                             if (_pName) parsed.data.protagonist.name = _pName;
                             console.warn('[SetupForge] protagonist 缺失，从 blob 补充: name=' + (_pName || '(未匹配)'));
                         }
-                        // openingScene 补充：检查是否为空字符串或与原文完全相同（说明AI只是复制了原文）
+                        // openingScene 补充【纯 AI 驱动】：第 1 轮缺失时不本地伪造，
+                        // 留空交给后续轮次的 AI 补写；最终轮仍缺失则显式报错（见 final 校验）
                         if (!parsed.data.openingScene || !String(parsed.data.openingScene).trim()) {
-                            // 【优化】不再直接复制原文，生成最小化开场叙事
-                            parsed.data.openingScene = self._generateFallbackOpeningScene(_blob, parsed.data.protagonist);
-                            console.warn('[SetupForge] openingScene 缺失，生成最小化开场叙事');
+                            console.warn('[SetupForge] 第1轮 openingScene 缺失，留空交给后续轮次 AI 补写');
                         } else if (String(parsed.data.openingScene).trim() === _blob.trim()) {
                             // AI直接复制了原文作为openingScene，标记给Pass2/3审查
                             console.warn('[SetupForge] openingScene 与原文完全相同（AI复制了原文），将在后续轮次重写');
-                            // 不立即覆盖，留给Pass3重写；但如果这是最终轮，则生成最小化开场
                         }
                         state.extraction = parsed.data;
                         state.refined = parsed.data;
@@ -1635,19 +1626,18 @@ var GameMemory = {
                                 console.warn('[SetupForge] protagonist.name 为占位符，从 blob 提取真名: ' + _realName);
                             }
                         }
-                        // openingScene 补充
+                        // openingScene 补充【BUG-05 修复】：
+                        // - extraction 里有 → 数据合并（AI 产出之间的补齐，允许）
+                        // - 都没有 → 不再本地伪造"最小化开场叙事"，直接显式报错让用户重新锻造
+                        //   （本地伪造开场违背纯 AI 驱动原则，且质量差、玩家无法察觉被降级）
                         if (!_ref.openingScene || !String(_ref.openingScene).trim()) {
                             if (_ext.openingScene) {
                                 _ref.openingScene = _ext.openingScene;
                                 console.warn('[SetupForge] final openingScene 缺失，从 extraction 补充');
                             } else {
-                                _ref.openingScene = self._generateFallbackOpeningScene(state.blob, _ref.protagonist);
-                                console.warn('[SetupForge] final openingScene 缺失，生成最小化开场叙事');
+                                return reject(new Error('AI 在三轮锻造中均未生成开场场景（openingScene）。' +
+                                    '请点击「重新锻造」重试；若反复失败请更换能力更强的模型'));
                             }
-                        } else if (state.blob && String(_ref.openingScene).trim() === state.blob.trim()) {
-                            // 最终轮的openingScene仍然是原文的完整复制，生成最小化开场替代
-                            _ref.openingScene = self._generateFallbackOpeningScene(state.blob, _ref.protagonist);
-                            console.warn('[SetupForge] final openingScene 仍为原文复制，已替换为最小化开场叙事');
                         }
                         // characters 补充
                         if (!_ref.characters || !Array.isArray(_ref.characters) || _ref.characters.length === 0) {
@@ -1684,14 +1674,17 @@ var GameMemory = {
 
                     setTimeout(runPass, 0);
                 }).catch(function(err) {
+                    // 【BUG-05 修复】禁止静默降级：API 调用失败必须显式报错
+                    // 旧代码 fallback 到本地伪造数据，玩家拿到一堆"未提取"却不知道失败了
                     console.error('[SetupForge] API 调用失败:', err);
-                    if (state.currentPass === 1) {
-                        var fb = self._fallbackFromBlob(state.blob);
-                        self._applyForgedSetup(fb);
-                        return resolve(fb);
+                    if (state.extraction && state.refined) {
+                        // 已有 AI 产出（第 1 轮成功，后续轮网络失败）→ 用已有 AI 数据收尾
+                        console.warn('[SetupForge] 使用第 1 轮 AI 抽取结果收尾');
+                        self._applyForgedSetup(state.refined);
+                        return resolve(state.refined);
                     }
-                    self._applyForgedSetup(state.refined || self._fallbackFromBlob(state.blob));
-                    return resolve(state.refined || self._fallbackFromBlob(state.blob));
+                    return reject(new Error('锻造失败：' + ((err && err.message) ? err.message : 'AI 调用异常') +
+                        '。请检查 API 配置后点击「重新锻造」重试'));
                 });
             }
 

@@ -146,7 +146,18 @@ const AIOutputSchema = {
         }
 
         if (raw.contextSummary) out.contextSummary = String(raw.contextSummary);
-        if (raw.hud && typeof raw.hud === 'object' && !Array.isArray(raw.hud)) out.hud = this._shallowClone(raw.hud);
+        // 【Q3 HUD 兜底】兼容两种 AI 输出形状：
+        //   · 对象形 {items:[{label,value,icon}]}（schema 要求）→ 原样克隆
+        //   · 裸数组形 [{label,value,icon}]（实测 agnes/gpt 系常见变体）→ 包装为 {items:[...]}
+        // 旧代码对数组形状直接丢弃，导致 HUD 数据整体丢失。
+        if (raw.hud && typeof raw.hud === 'object') {
+            if (Array.isArray(raw.hud)) {
+                var _hudItems = raw.hud.filter(function(it) { return it && typeof it === 'object' && (it.label || it.value); });
+                if (_hudItems.length > 0) out.hud = { items: _hudItems };
+            } else {
+                out.hud = this._shallowClone(raw.hud);
+            }
+        }
 
         // [P0] memoryUpdates normalize：白名单校验 op/category/layer，过滤非法项
         // AI 可能输出 op='update'（归一为 'replace'）、action 代替 op、type 代替 category 等变体

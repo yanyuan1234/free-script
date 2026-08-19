@@ -350,7 +350,67 @@ const ResponseParser = {
             const r = JSON.parse(fx);
             if (r && typeof r === 'object') return r;
         } catch (e2) {}
+        // 【P1 修复】字符串值内未转义引号 + 裸控制字符联合修复
+        // AI 常在 story 里写对话时用 ASCII 双引号（他说"你好"就走了），JSON.parse 直接失败。
+        // 修复链：先转义内嵌引号（恢复字符串边界状态），再转义字符串内裸 \n \r \t，最后重试。
+        // 只在前面两次直接解析都失败后执行，合法 JSON 不受影响；若修复后仍非法则返回 null 走后续兜底。
+        try {
+            const s3 = raw.trim();
+            let fx3 = this._escapeUnescapedQuotes(s3);
+            if (fx3 !== s3) {
+                fx3 = this._escapeControlCharsInStrings(fx3);
+                // 修复引号可能引入新的尾逗号位置，重跑一次逗号清理
+                fx3 = fx3.replace(/,(\s*[}\]])/g, '$1');
+                const r3 = JSON.parse(fx3);
+                if (r3 && typeof r3 === 'object') return r3;
+            }
+        } catch (e3) {}
         return null;
+    },
+
+    // 【P1 修复】转义 JSON 字符串值内的未转义双引号
+    // 状态机逐字符扫描：处于字符串内部时遇到 '"'，向后看（跳过空白）第一个字符——
+    //   · 若是结构字符 , } ] : → 这是字符串的合法闭合引号
+    //   · 否则（汉字/字母/其他）→ 这是 AI 忘记转义的内嵌引号，补 '\' 转义
+    // 已在字符串内且带 '\' 前缀的合法转义不受影响。
+    // 启发式的已知局限：若内嵌引号后恰好紧跟 ASCII 逗号（如 "停", 后面是剧情正文），
+    // 会被误判为闭合 → JSON.parse 仍失败 → 安全降级到 _extractFieldsFromRaw 逐字段抢救，不会产生脏数据。
+    _escapeUnescapedQuotes(str) {
+        if (!str || typeof str !== 'string' || str.indexOf('"') === -1) return str;
+        var out = [];
+        var inStr = false;
+        var escape = false;
+        var n = str.length;
+        for (var i = 0; i < n; i++) {
+            var ch = str[i];
+            if (inStr) {
+                if (escape) { out.push(ch); escape = false; continue; }
+                if (ch === '\\') { out.push(ch); escape = true; continue; }
+                if (ch === '"') {
+                    // 向后跳过空白，看第一个非空白字符是否为结构字符
+                    var j = i + 1;
+                    while (j < n) {
+                        var c2 = str[j];
+                        if (c2 === ' ' || c2 === '\t' || c2 === '\n' || c2 === '\r') { j++; continue; }
+                        break;
+                    }
+                    var nxt = (j < n) ? str[j] : '';
+                    if (nxt === ',' || nxt === '}' || nxt === ']' || nxt === ':') {
+                        inStr = false;      // 合法闭合引号
+                        out.push(ch);
+                    } else {
+                        out.push('\\', '"'); // 内嵌未转义引号 → 转义
+                    }
+                    continue;
+                }
+                out.push(ch);
+                continue;
+            }
+            // 字符串外
+            if (ch === '"') { inStr = true; out.push(ch); continue; }
+            out.push(ch);
+        }
+        return out.join('');
     },
 
     _tryCodeBlockJSON(raw) {

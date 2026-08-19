@@ -543,10 +543,16 @@ function getEffectiveMaxTokens() {
     // 从字数控制配置自动计算 max_tokens
     var wcConfig = gs.wordCountConfig || {};
     var wcMax = (wcConfig.max || 3000);
-    // 中文字符约需要2个token，加20%余量
-    var autoMaxTokens = Math.ceil(wcMax * 2.4);
-    // 确保最小2048
-    var effective = Math.max(autoMaxTokens, 2048);
+    // 【P0 截断修复】预算公式从 wcMax*2.4 改为 wcMax*2.4 + 1600 结构化开销：
+    // 实测（agnes-2.5-flash，auto 路由）：旧公式默认 wcMax=800 → 2048 max_tokens，
+    // AI 写完 story 后 token 耗尽，JSON 在 bag 之后被截断，quests/choices/gameTime/
+    // keyEvents 等排在 story 之后的字段全部丢失（任务页 0 任务、无选项、时间不更新）。
+    // 1600 开销覆盖：18 字段 JSON 契约的语法+短字段（约 600-900）+ 推理模型思考 token
+    // （实测 123-500+）+ 模型超写故事的安全余量。
+    // 注：max_tokens 是上限不是目标，提高它不增加正常回合的成本（模型写完即停）。
+    var autoMaxTokens = Math.ceil(wcMax * 2.4) + 1600;
+    // 确保最小 4096（原 2048 对完整 JSON 契约过紧）
+    var effective = Math.max(autoMaxTokens, 4096);
     // 也考虑预设的max_tokens（如果存在且更大）
     try {
         var pp = PresetManager.getParams();
@@ -823,12 +829,18 @@ function _buildFormatRules(gs, _t, turn) {
         ? '\n【玩家已关闭的功能】以下内容已被玩家关闭，本回合禁止生成相关模块或在剧情中引入：' + _disabledFeatures.join('、') + '。\n'
         : '';
 
+    // 【P0 截断保护】字段顺序调整：story 从首位移到最后。
+    // 根因：story 是 18 字段中最长的（可达数千 token），放首位时一旦 AI 写超预算被截断，
+    // JSON 在 story 内部断裂 → quests/choices/gameTime/keyEvents 等排在 story 之后的
+    // 关键状态字段全部丢失（任务页0任务、无选项、时间不更新）。
+    // story 移到最后后：即使截断，前面的短状态字段已全部完整输出；JSON.parse 失败时
+    // ResponseParser._extractFieldsFromRaw 逐字段抢救也能救回全部状态字段 + story 前半段。
     return '【输出格式】**直接输出JSON**（以 { 开头），**不要任何前缀**（不要"让我开始"、不要"title:"、不要"story:"），空字段省略。\n'
-        + '**字段输出顺序：story → title → player → characters → choices → bag → quests → relationships → world → gameTime → currency → keyEvents → npcMessages → contextSummary → memoryUpdates**\n'
-        + '**token预算优先级：story(最高) > player > characters > choices > 其他。所有token优先保证 story 完整饱满，绝不允许因为其他字段过长而截断story/player/characters。**\n'
-        + '{ "story": "本回合剧情正文", "title": "4-8字章节标题"'
+        + '**字段输出顺序：title → player → characters → choices → bag → quests → relationships → world → gameTime → currency → keyEvents → npcMessages → contextSummary → memoryUpdates → story（story 必须放最后一个字段，写在 } 之前）**\n'
+        + '**token预算优先级：story(写作预算最高) > player > characters > choices > 其他。story 虽然写作预算最高，但必须放在 JSON 的**最后一个字段**输出——先写完所有短的状态字段，最后写 story，这样即使 token 耗尽，状态数据也已完整。绝不允许因为其他字段过长而截断story/player/characters。**\n'
+        + '{ "title": "4-8字章节标题"'
         + (hasChoices ? ', "choices": [{"id":"A","text":"选项文本"}]' : '')
-        + ' }\n'
+        + ', "story": "本回合剧情正文（最后一个字段）" }\n'
         + '\n**story 字段绝对规则：只能包含纯叙事正文，严禁包含你的思考过程、设计思路、规划步骤、"首先...然后..."、"比如..."、"对，..."、"用户现在需要..."等元话语。你的思考/推理请通过 API 原生的 reasoning_content 输出，不要写入 JSON 的任何字段中。**\n'
         + '\n**重要：不要在 JSON 中包含 thinking 字段。你的创作思考过程请使用 API 原生的 reasoning_content 输出（如果模型支持），JSON 中只保留故事内容和结构化数据。**\n'
         + '\n**story 长度要求：根据用户设置的字数范围生成，优先保证 story 完整饱满，再填充其他数据字段；禁止为了塞数据而压缩剧情长度。**\n'
@@ -842,7 +854,7 @@ function _buildFormatRules(gs, _t, turn) {
         + '"quests": [{"title":"任务名","type":"主线/支线/隐藏","status":"进行中/已完成/失败","progress":"当前/总数","hint":"下一步提示"}], '
         + '"keyEvents": ["本回合重要事件，每条简短一句含人物名"], '
         + '"gameTime": {"date":"日期","time":"时间","period":"时段","weather":"晴/阴/雨/雪","era":"时代/年号"} }\n'
-        + '必填/常用字段: hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
+        + '必填/常用字段: quests(每回合必填,至少1个进行中任务[{title,type,status,progress,hint}],第一回合至少1个主线), hud(最多4个[{label,value,icon}],icon用单字如"生""力"不用emoji), relationships, npcMessages([{from,text}],即时闲聊), contextSummary(每次必须包含,100-200字,融合本回合新剧情)\n'
         + '**player=主角（玩家唯一操控角色），characters=NPC列表。绝对禁止把主角放进 characters！剧情提到任何角色名都必须放入 characters；已知角色即使本回合未出场也要保留；每回合检查不遗漏；同一角色只用一个固定名字不加括号备注。**\n'
         + '**NPC命名规则：若玩家用统称/身份词（如"学霸""小少爷""店小二""那名女子""校草"）指代某角色，你必须在该角色首次出场时立即为它取一个符合世界观的正式姓名（2-4字，如"学霸"可取名"陆知行"），填入 characters[].name，并在后续所有剧情、relationships 的 from/to、npcMessages 的 from 中全程统一使用该正式姓名。name 字段严禁填写"暂无名""可自定义""（待定）""（未命名）"等任何占位提示，也禁止加括号备注；统称只能出现在 desc/title 中。一旦为某角色取名，后续回合必须沿用同一姓名，不得改名。**\n'
         + '**player.name 必须严格等于主角姓名，违反会导致游戏崩溃。原始JSON不用```json包裹。**\n'
@@ -1364,10 +1376,9 @@ async function sendAIRequest(userMessage, isInit = false) {
         SwipeManager.reset();
     }
 
-    if (!isInit && typeof QuestSystem !== 'undefined' && QuestSystem.advanceGuidanceQuest) {
-        QuestSystem.advanceGuidanceQuest();
-    }
-    
+    // 【纯 AI 驱动】移除 QuestSystem.advanceGuidanceQuest() 调用
+    // （本地行动计数推进引导任务，引导任务系统已整体下线）
+
     // 原版从 setWaiting(true) 到 callAI 之间没有异步等待窗口
     // 新版的 requestAnimationFrame 等待帧引入竞态：等待期间取消按钮可误触刚创建的 AbortController
     // 移除等待帧，让 loading 动画由 CSS 动画自动处理（不需要 JS 等待帧）
@@ -1960,11 +1971,21 @@ async function sendAIRequest(userMessage, isInit = false) {
         if (gameState && gameState.pureTextMode !== true) {
             var _curPlayerName = gameState.playerName || (gameState.playerData && gameState.playerData.name) || '';
             var _formatReminder = '【输出格式·必读】直接输出JSON（以 { 开头，以 } 结尾），禁止输出纯文本、思考过程或前缀说明。不要在JSON中包含thinking字段。\n' +
-                'JSON字段输出顺序：story → title → player → characters → choices → 其他数据。\n' +
-                '**token预算：story > player > characters > choices > 其他。所有token优先保证story完整。**\n' +
-                '必填字段：title(章节标题)、story(叙事正文,\\n换行,「」对话)、gameTime({date,time,period})、keyEvents(本回合关键事件数组)。\n' +
-                '可选字段：choices([{id,text}])、player({name,identity,stats:[{label,value}]}——须包含完整属性数组)、characters([{name,title,relation,favorability,desc}])、bag、quests、world([聊天/论坛/排行榜/商店/日记/朋友圈/邮箱模块])。\n' +
+                'JSON字段输出顺序：title → player → characters → choices → 其他数据 → story（story 放最后一个字段）。\n' +
+                '**token预算：story > player > characters > choices > 其他。story 写作预算最高但必须最后输出——先写完所有短状态字段，最后写story，防止截断丢失状态数据。**\n' +
+                '必填字段：title(章节标题)、story(叙事正文,\\n换行,「」对话)、gameTime({date,time,period})、keyEvents(本回合关键事件数组)、quests([{title,type,status,progress,hint}]——每回合必填，至少1个进行中任务，第一回合至少1个主线)。\n' +
+                '可选字段：choices([{id,text}])、player({name,identity,stats:[{label,value}]}——须包含完整属性数组)、characters([{name,title,relation,favorability,desc}])、bag、world([聊天/论坛/排行榜/商店/日记/朋友圈/邮箱模块])。\n' +
                 '注意：player.stats 必须返回完整属性数组（参考上一轮），不要返回空数组。characters.favorability 须根据剧情动态变化。';
+            // 【 quests 缺失纠偏环】若上回合后任务列表仍为空（AI 漏发 quests 字段），
+            // 在离生成最近的位置注入强制纠偏指令，让 AI 本回合补回任务。
+            // 这是纯 AI 驱动的自愈机制：不本地编造任务，只要求 AI 履行契约。
+            try {
+                var _curTurn = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.turn') || 0) : 0;
+                var _curQuests = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.quests') : null;
+                if (_curTurn >= 1 && (!Array.isArray(_curQuests) || _curQuests.length === 0)) {
+                    _formatReminder += '\n【纠偏·必须执行】检测到上一回合响应缺失 quests 字段（当前任务列表为空）。本回合 quests 为最高优先级必填字段：必须根据当前剧情返回至少1个进行中任务（type=主线或支线，status=进行中，progress=当前/总数，hint=下一步提示）。禁止返回空数组 []。';
+                }
+            } catch (e) { /* StateManager 不可用时跳过纠偏注入 */ }
             if (_curPlayerName) {
                 _formatReminder += '\n主角姓名固定为「' + _curPlayerName + '」，不得更改。';
             }
@@ -2191,6 +2212,54 @@ async function sendAIRequest(userMessage, isInit = false) {
             }
             throw e;
         }
+
+        // 【P0 截断自动重试】响应以 { 开头但未以 } 结尾 = max_tokens 耗尽导致 JSON 截断。
+        // 根因链：截断 → parseAIResponse 部分抢救 → 排在截断点之后的字段（quests/choices/
+        // gameTime 等）丢失 → 任务页空/无选项/时间不更新。
+        // 对策：加大 1.6x max_tokens 原样重发一次（非流式，避免打字机重复推送），
+        // 成功后完整 renderStory 全量覆盖第一次的半截显示。
+        // 幂等保护：_truncRetry 标记防止二次截断递归重试；重试失败保留原始响应走原降级路径。
+        try {
+            var _respProbe = (response || '').trim();
+            if (_respProbe.indexOf('```') !== -1) {
+                var _fm = _respProbe.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+                if (_fm) _respProbe = _fm[1].trim();
+            }
+            var _truncated = _respProbe.charAt(0) === '{' && !_respProbe.endsWith('}');
+            if (_truncated && !options._truncRetry) {
+                var _origMax = getEffectiveMaxTokens();
+                // 【钳制修复】上限 32768：原 16384 会在预设 max_tokens=16384 时
+                // 导致 1.6x 后仍被钳回 16384（重试预算与原预算相同，只靠采样随机性碰运气）
+                var _retryMax = Math.min(Math.ceil(_origMax * 1.6), 32768);
+                if (_retryMax <= _origMax) _retryMax = Math.min(_origMax + 4096, 32768);
+                console.warn('[sendAIRequest] 响应被截断（预算 ' + _origMax + ' tokens），自动加大至 ' + _retryMax + ' 重试一次');
+                if (typeof updateGenStatus === 'function') updateGenStatus('生成不完整，正在自动补全...');
+                _resetStreamExtractor();
+                var _retryResp = await callAI(messages, {
+                    max_tokens: _retryMax,
+                    temperature: options.temperature,
+                    _truncRetry: true
+                });
+                if (_retryResp && String(_retryResp).trim()) {
+                    var _retryProbe = String(_retryResp).trim();
+                    if (_retryProbe.indexOf('```') !== -1) {
+                        var _rm2 = _retryProbe.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+                        if (_rm2) _retryProbe = _rm2[1].trim();
+                    }
+                    var _retryComplete = _retryProbe.charAt(0) === '{' && _retryProbe.endsWith('}');
+                    // 重试响应完整，或虽仍截断但比原始长（救回更多字段）→ 采用
+                    if (_retryComplete || _retryProbe.length > _respProbe.length) {
+                        console.log('[sendAIRequest] 截断重试' + (_retryComplete ? '成功（完整JSON）' : '改善（更长响应 ' + _respProbe.length + '→' + _retryProbe.length + '）'));
+                        response = _retryResp;
+                    } else {
+                        console.warn('[sendAIRequest] 重试响应未改善，保留原始响应');
+                    }
+                }
+            }
+        } catch (_truncErr) {
+            console.warn('[sendAIRequest] 截断重试失败，保留原始响应:', _truncErr && _truncErr.message);
+        }
+
         // 【性能诊断】流完成时间戳
         var _t_streamEnd = performance.now();
         window._perfDebug&&(document.title='PERF:7-streamDone');
@@ -4411,8 +4480,11 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
                 }
                 if (_streamIsLikelyJSON) {
                     // JSON 模式但 story 字段未到，显示等待提示
+                    // 【顺序调整后为预期行为】story 排在 JSON 最后一个字段，前面的状态字段
+                    // (player/characters/quests/world等) 输出期间 story 尚未开始属于正常，
+                    // 降级为 console.log（生产日志门控静默，避免用户误以为出错）
                     if (streamBuffer.length > 200 && streamBuffer.length % 1000 < 50) {
-                        console.warn('[onStreamChunk] JSON模式 story 字段延迟出现，缓冲区:', streamBuffer.length);
+                        console.log('[onStreamChunk] JSON模式 story 字段延迟出现（story在末尾，预期），缓冲区:', streamBuffer.length);
                     }
                     // 【安全网】缓冲区超过 50KB 仍未找到 story 字段，切换纯文本模式避免无限等待
                     if (streamBuffer.length > 50000) {
@@ -4455,8 +4527,9 @@ function onStreamChunk(delta, fullText, reasoningDelta) {
                 }
                 if (_jsonStartIdx > 0) {
                     // 找到 JSON 起点：丢弃前缀，继续 JSON 模式等待 story 字段
+                    // 【顺序调整后为预期行为】同上，story 在末尾，状态字段先行输出
                     if (streamBuffer.length - _jsonStartIdx > 200 && streamBuffer.length % 1000 < 50) {
-                        console.warn('[onStreamChunk] JSON模式 story 字段延迟出现（含推理前缀），缓冲区:', streamBuffer.length);
+                        console.log('[onStreamChunk] JSON模式 story 字段延迟出现（含推理前缀，story在末尾，预期），缓冲区:', streamBuffer.length);
                     }
                     _showStreamWaitingHint();
                     return;
@@ -5920,7 +5993,8 @@ async function loadFromSlot(slot) {
         if (gameState) gameState._version = GAME_VERSION;
 
 
-        if (typeof QuestSystem !== 'undefined' && QuestSystem._cachedGuidanceQuest) {
+        // 【纯 AI 驱动】引导任务缓存已废弃，清理旧存档中可能的残留字段
+        if (typeof QuestSystem !== 'undefined') {
             QuestSystem._cachedGuidanceQuest = null;
         }
 

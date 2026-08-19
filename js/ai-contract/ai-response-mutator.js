@@ -368,31 +368,19 @@ const AIResponseMutator = {
     },
 
     // 物品
+    // 【纯 AI 驱动】移除从剧情文本本地正则提取物品（extractItemsFromStory）。
+    // 该机制用关键词猜测"获得/捡到 XX"，误判率高（把剧情叙述当拾取），与 AI 显式返回的
+    // bag 字段冲突产生脏数据。背包现在 100% 由 AI 的 bag 字段驱动。
     _applyBag(data) {
         const bag = data.bag || data.items || data.inventory;
         const bagArr = (bag && Array.isArray(bag)) ? bag : [];
-
-        // 从剧情文本中提取物品（防御式：BagMutator 或 extractItemsFromStory 不存在则跳过）
-        let storyItems = [];
-        if (typeof BagMutator !== 'undefined' && typeof BagMutator.extractItemsFromStory === 'function') {
-            const storyText = data.story;
-            if (storyText && typeof storyText === 'string') {
-                storyItems = BagMutator.extractItemsFromStory(storyText) || [];
-                if (storyItems.length > 0) {
-                    console.log('[AIResponseMutator] 从剧情提取到 ' + storyItems.length + ' 个物品');
-                }
-            }
-        }
-
-        // 合并剧情提取物品与 AI 显式返回的物品，显式 data.bag 优先
-        const allItems = storyItems.concat(bagArr);
-        if (allItems.length === 0) return;
+        if (bagArr.length === 0) return;
 
         if (typeof BagMutator !== 'undefined' && BagMutator.mergeItems) {
-            BagMutator.mergeItems(allItems, { silent: true });
+            BagMutator.mergeItems(bagArr, { silent: true });
         } else {
 
-            StateManager.set('entities.bag', allItems, { silent: true });
+            StateManager.set('entities.bag', bagArr, { silent: true });
         }
     },
 
@@ -419,6 +407,8 @@ const AIResponseMutator = {
     },
 
     // 任务
+    // 【纯 AI 驱动】移除 autoAdvanceByStory 调用（本地关键词推进任务完成）。
+    // 任务状态完全由 AI 返回的 quests 数组的 status 字段决定。
     _applyQuests(data) {
         const quests = data.quests || data.missions || data.tasks;
         if (quests && Array.isArray(quests) && quests.length > 0) {
@@ -428,11 +418,6 @@ const AIResponseMutator = {
 
                 StateManager.set('entities.quests', quests, { silent: true });
             }
-        }
-
-        const story = data.story || '';
-        if (story && typeof QuestMutator !== 'undefined' && QuestMutator.autoAdvanceByStory) {
-            QuestMutator.autoAdvanceByStory(story, { silent: true });
         }
     },
 
@@ -447,24 +432,15 @@ const AIResponseMutator = {
     // LocationMutator.normalizeLocation 处理（保留 features/charactersPresent/lastChangedTurn/locked 等字段）。
     // 旧实现仅产出 {name, desc} 两字段，丢失 6 字段，且双源数据被拍扁后无法反向追溯。
     // 停用词过滤仍在 mutator 层前保留，避免污染 entities.locations。
+    // 【纯 AI 驱动】移除来源 2（EnhancedMemory._extractLocations 从剧情文本正则提取地点）。
+    // 本地正则提取地名误判率高（把比喻/回忆/路途叙述当新地点），污染地点库。
+    // 地点现在 100% 由 AI 显式返回的 locations 字段驱动。
     _applyLocations(data) {
 
         if (typeof LocationMutator === 'undefined' || typeof LocationMutator.mergeLocations !== 'function') return;
         const aiLocations = data.locations || data.places;
-        // 来源 1：AI 显式返回
-        const fromAI = (Array.isArray(aiLocations) && aiLocations.length > 0) ? aiLocations : [];
-        // 来源 2：从 title + story 文本提取（兜底，AI 可能未在 JSON 中列出但剧情中提到）
-        var fromText = [];
-        var storyText = String(data.story || '') + ' ' + String(data.title || data.sceneTitle || data.chapterTitle || '');
-        if (storyText.trim() && typeof EnhancedMemory !== 'undefined' && EnhancedMemory._extractLocations) {
-            try {
-                fromText = EnhancedMemory._extractLocations(storyText) || [];
-            } catch (e) {
-                console.warn('[AIResponseMutator] EnhancedMemory._extractLocations 失败:', e && e.message);
-            }
-        }
-        // 合并两个来源 + 停用词过滤（只过滤名字长度、停用词等基础校验，字段标准化由 mergeLocations 内部处理）
-        var allLocations = fromAI.concat(fromText);
+        // 仅 AI 显式返回 + 停用词过滤（只过滤名字长度、停用词等基础校验，字段标准化由 mergeLocations 内部处理）
+        var allLocations = (Array.isArray(aiLocations) && aiLocations.length > 0) ? aiLocations : [];
         if (allLocations.length === 0) return;
         const filtered = allLocations.filter(function(loc) {
             if (!loc) return false;

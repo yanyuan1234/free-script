@@ -1849,15 +1849,22 @@ var LocalGameAPI = {
                     return true;
                 }
                 var textModels = [];
+                var _seen = {};   // 【BUG-10 修复】按 id 去重，部分中转站 /models 返回重复条目导致下拉大量重复
                 for (var i = 0; i < allModels.length; i++) {
-                    if (_isTextModel(allModels[i])) {
+                    if (_isTextModel(allModels[i]) && !_seen[allModels[i].id]) {
+                        _seen[allModels[i].id] = true;
                         textModels.push(allModels[i].id);
                     }
                 }
                 // 如果过滤后没有模型，返回全部模型（避免误杀）
                 if (textModels.length === 0) {
                     console.warn('[fetchModels] 过滤后无文本模型，返回全部模型');
-                    return allModels.map(function(m) { return m.id; }).sort();
+                    var _allSeen = {};
+                    var _uniq = [];
+                    for (var k = 0; k < allModels.length; k++) {
+                        if (!_allSeen[allModels[k].id]) { _allSeen[allModels[k].id] = true; _uniq.push(allModels[k].id); }
+                    }
+                    return _uniq.sort();
                 }
                 console.log('[fetchModels] 过滤前: ' + allModels.length + ' 个模型，过滤后: ' + textModels.length + ' 个文本模型');
                 return textModels.sort();
@@ -6222,9 +6229,11 @@ function showError(msg, errObj) {
     var errBanner = '<div class="api-error-banner" data-error-ts="' + Date.now() + '" style="background:var(--accent-soft);border:1px solid var(--border);border-radius:6px;padding:12px;margin:12px 0;color:var(--text);font-size:13px;transition:opacity 0.5s;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;"><span style="font-weight:600;">△ 生成失败</span><button onclick="this.closest(\'.api-error-banner\').remove()" style="background:none;border:none;color:var(--text);cursor:pointer;font-size:16px;line-height:1;padding:0 4px;">✕</button></div>' +
         '<div style="margin-bottom:6px;">' + escapeHtml(msg) + '</div>' +
-        (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:4px;">◎ 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
         action +
-        '<details style="font-size:11px;color:var(--text-secondary);"><summary style="cursor:pointer;color:var(--text-secondary);">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
+        // 【BUG-09 修复】file:line 属于开发者信息，与堆栈一起折叠，普通用户只看友好文案
+        '<details style="font-size:11px;color:var(--text-secondary);"><summary style="cursor:pointer;color:var(--text-secondary);">技术详情（报障时可展开复制）</summary>' +
+        (fileLine ? '<div style="margin-top:6px;color:#d35400;">◎ 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
+        '<pre style="white-space:pre-wrap;word-break:break-all;margin-top:6px;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
         '</div>';
     if (hasContent) {
         el.insertAdjacentHTML('beforeend', errBanner);
@@ -6234,11 +6243,13 @@ function showError(msg, errObj) {
         el.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--danger);">' +
             '<div style="font-size:16px;margin-bottom:8px;">△ 生成失败</div>' +
             '<div style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">' + escapeHtml(msg) + '</div>' +
-            (fileLine ? '<div style="font-size:11px;color:#d35400;margin-bottom:8px;">◎ 错误位置: ' + escapeHtml(fileLine) + '</div>' : '') +
             (action ? '<div style="margin-bottom:12px;">' + action + '</div>' : '') +
             // [BUG-008 修复] 添加重试按钮，点击后调用重新生成
             '<div style="margin-bottom:12px;"><button onclick="if(typeof regenerateLastTurn===\'function\'){regenerateLastTurn();}else{location.reload();}" style="padding:8px 20px;background:var(--accent, #6366f1);color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">🔄 重新生成</button></div>' +
-            '<details style="font-size:11px;color:var(--text-tertiary);text-align:left;"><summary style="cursor:pointer;">查看完整堆栈</summary><pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
+            // 【BUG-09 修复】file:line 与堆栈一并折叠为"技术详情"，主界面只保留友好文案
+            '<details style="font-size:11px;color:var(--text-tertiary);text-align:left;"><summary style="cursor:pointer;">技术详情（报障时可展开复制）</summary>' +
+            (fileLine ? '<div style="margin-top:6px;color:#d35400;">◎ 位置: ' + escapeHtml(fileLine) + '</div>' : '') +
+            '<pre style="white-space:pre-wrap;word-break:break-all;padding:8px;background:var(--bg-secondary);border-radius:4px;">' + escapeHtml(stack || msg) + '</pre></details>' +
             '<div style="font-size:12px;color:var(--text-tertiary);margin-top:8px;">请检查网络连接和API设置后重试</div>' +
             '</div>';
     }
@@ -8664,11 +8675,36 @@ var _setupTimeoutPromise = new Promise(function(_, reject) {
     }, _setupTimeoutMs + 500);
 });
 
+// 【BUG-07 修复配套】开局防重入闸门释放器：首条剧情生成结束（成功或失败）后释放，
+// 让用户可以开始下一局。startNewGame（phone-ui.js）在入口处检查闸门。
+function _releaseGameStartGuard() {
+    try {
+        if (typeof startNewGame !== 'undefined' && startNewGame._busy) {
+            startNewGame._busy = false;
+            startNewGame._busyAt = 0;
+        }
+    } catch (e) {}
+}
+function _sendInitRequestWithGuardRelease() {
+    if (typeof RuntimeBridge === 'undefined' || !RuntimeBridge.sendAIRequest) {
+        _releaseGameStartGuard();
+        return;
+    }
+    try {
+        var _p = RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
+        if (_p && typeof _p.then === 'function') {
+            _p.then(_releaseGameStartGuard, _releaseGameStartGuard);
+        } else {
+            _releaseGameStartGuard();
+        }
+    } catch (e) {
+        _releaseGameStartGuard();
+    }
+}
+
 Promise.race([_setupPromise, _setupTimeoutPromise]).then(function() {
     console.log('[开局设定提取] 完成');
-    if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
-        RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
-    }
+    _sendInitRequestWithGuardRelease();
 }).catch(function(e) {
     console.warn('[开局设定提取] 失败/超时，直接开局:', e && e.message);
     // 【BUG-027 修复】设定提取超时不影响主游戏生成
@@ -8682,12 +8718,11 @@ Promise.race([_setupPromise, _setupTimeoutPromise]).then(function() {
         }
         console.log('[开局设定提取] 已清除API配置冷却状态，确保主游戏生成可用');
     }
-    if (typeof RuntimeBridge !== 'undefined' && RuntimeBridge.sendAIRequest) {
-        RuntimeBridge.sendAIRequest('请开始游戏，描述开局场景。', true);
-    }
+    _sendInitRequestWithGuardRelease();
 });
 } catch (e) {
 console.error('初始化游戏失败:', e);
+_releaseGameStartGuard();
 // 【ISSUE-007 修复】e 可能为 null/undefined，安全提取 message
 UI.toast('游戏初始化失败: ' + translateError((e && e.message) ? e.message : String(e)));
 }

@@ -407,7 +407,7 @@
             <!-- ==================== 世界设定页面 ==================== -->
             <div class="page" id="worldSetupPage">
                 <div class="page-header">
-                    <button class="circle-btn" id="worldSetupBackBtn"><svg class="icon">
+                    <button class="circle-btn" id="worldSetupBackBtn" aria-label="返回"><svg class="icon">
                             <use href="#icon-back" />
                         </svg></button>
                     <h2 class="page-title">创造你的世界</h2>
@@ -636,7 +636,7 @@
                                 <use href="#icon-edit" />
                             </svg></button>
                         <input type="text" class="input-field" id="customAction" placeholder="自定义行动..." enterkeyhint="send" autocomplete="off" autocorrect="off" autocapitalize="off">
-                        <button class="send-btn" id="btnSendAction"><svg class="icon icon-sm" style="stroke:var(--on-accent);">
+                        <button class="send-btn" id="btnSendAction" aria-label="发送"><svg class="icon icon-sm" style="stroke:var(--on-accent);">
                                 <use href="#icon-send" />
                             </svg></button>
                     </div>
@@ -891,7 +891,7 @@
                 <div class="modal-content max-w-320">
                     <div class="modal-header">
                         <h3 class="modal-title">世界</h3>
-                        <button class="circle-btn" data-close="presetActionModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="presetActionModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -943,7 +943,7 @@
                 <div class="modal-content modal-enhanced max-w-480 max-h-85vh">
                     <div class="modal-header">
                         <h3 class="modal-title">锻造结果预览</h3>
-                        <button class="circle-btn flex-shrink-0" data-close="forgePreviewModal">
+                        <button class="circle-btn flex-shrink-0" data-close="forgePreviewModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close" /></svg>
                         </button>
                     </div>
@@ -992,7 +992,7 @@
                             <span id="wiModalTitle">世界书</span>
                             <span class="wi-badge" id="wiBookStats"></span>
                         </h3>
-                        <button class="circle-btn" data-close="worldInfoModal" style="flex-shrink:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;border-radius:50%;">
+                        <button class="circle-btn" data-close="worldInfoModal" style="flex-shrink:0;width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;cursor:pointer;border-radius:50%;" aria-label="关闭">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                     </div>
@@ -1073,7 +1073,7 @@
                 <div class="modal-content modal-enhanced">
                     <div class="modal-header">
                         <h3 id="wiEntryModalTitle">编辑条目</h3>
-                        <button class="circle-btn flex-shrink-0" data-close="wiEntryModal">
+                        <button class="circle-btn flex-shrink-0" data-close="wiEntryModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1340,7 +1340,7 @@
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                             预设管理
                         </h3>
-                        <button id="presetManagerCloseBtn" class="circle-btn flex-shrink-0" data-close="presetManagerModal">
+                        <button id="presetManagerCloseBtn" aria-label="关闭" class="circle-btn flex-shrink-0" data-close="presetManagerModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1511,11 +1511,11 @@
             <div class="modal-overlay" id="presetDetailModal">
                 <div class="modal-content modal-enhanced max-w-480 max-h-85vh">
                     <div class="modal-header">
-                        <button class="circle-btn flex-shrink-0" id="btnBackToPresetList">
+                        <button class="circle-btn flex-shrink-0" id="btnBackToPresetList" aria-label="返回列表">
                             <svg class="icon icon-sm"><use href="#icon-back"/></svg>
                         </button>
                         <h3 id="presetDetailTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">预设详情</h3>
-                        <button class="circle-btn flex-shrink-0" data-close="presetDetailModal">
+                        <button class="circle-btn flex-shrink-0" data-close="presetDetailModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1556,7 +1556,7 @@
                 <div class="modal-content modal-enhanced max-w-480 max-h-80vh">
                     <div class="modal-header">
                         <h3 id="promptContentTitle" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">提示条内容</h3>
-                        <button class="circle-btn flex-shrink-0" data-close="promptContentModal">
+                        <button class="circle-btn flex-shrink-0" data-close="promptContentModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1572,7 +1572,7 @@
                 <div class="modal-content max-w-340">
                     <div class="modal-header">
                         <h3 style="margin:0;font-size:16px;">保存预设</h3>
-                        <button class="circle-btn flex-shrink-0" data-close="presetSaveNameModal">
+                        <button class="circle-btn flex-shrink-0" data-close="presetSaveNameModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1594,7 +1594,7 @@
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
                             <span id="regexModalTitle">正则脚本</span>
                         </h3>
-                        <button class="circle-btn flex-shrink-0" data-close="regexManagerModal">
+                        <button class="circle-btn flex-shrink-0" data-close="regexManagerModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1662,7 +1662,7 @@
                 <div class="modal-content modal-enhanced">
                     <div class="modal-header">
                         <h3 id="regexEditTitle">编辑正则</h3>
-                        <button class="circle-btn flex-shrink-0" data-close="regexEditModal">
+                        <button class="circle-btn flex-shrink-0" data-close="regexEditModal" aria-label="关闭">
                             <svg class="icon icon-sm"><use href="#icon-close"/></svg>
                         </button>
                     </div>
@@ -1820,7 +1820,7 @@
                 <div class="modal-content" style="max-width:320px;">
                     <div class="modal-header">
                         <h3 class="modal-title">保存到桌面</h3>
-                        <button class="circle-btn" data-close="savePresetModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="savePresetModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -1836,7 +1836,7 @@
                     </div>
                     <div class="modal-footer">
                         <button class="crystal-btn primary flex-1" id="btnConfirmSavePreset">保存</button>
-                        <button class="crystal-btn flex-1" data-close="savePresetModal">取消</button>
+                        <button class="crystal-btn flex-1" data-close="savePresetModal" aria-label="关闭">取消</button>
                     </div>
                 </div>
             </div>
@@ -1846,7 +1846,7 @@
                 <div class="modal-content" style="max-width:320px;">
                     <div class="modal-header">
                         <h3 class="modal-title">编辑预设</h3>
-                        <button class="circle-btn" data-close="editPresetModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="editPresetModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -1862,7 +1862,7 @@
                     </div>
                     <div class="modal-footer">
                         <button class="crystal-btn primary flex-1" id="btnConfirmEditPreset">保存</button>
-                        <button class="crystal-btn flex-1" data-close="editPresetModal">取消</button>
+                        <button class="crystal-btn flex-1" data-close="editPresetModal" aria-label="关闭">取消</button>
                     </div>
                 </div>
             </div>
@@ -1872,7 +1872,7 @@
                 <div class="modal-content" style="max-height:90vh;">
                     <div class="modal-header">
                         <h3 class="modal-title">API 中转管理</h3>
-                        <button class="circle-btn" data-close="apiConfigModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="apiConfigModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -1943,7 +1943,7 @@
                 <div class="modal-content" style="max-height:90vh;">
                     <div class="modal-header">
                         <div class="flex-row-gap-10">
-                            <button class="circle-btn" id="apiDetailBack"><svg class="icon">
+                            <button class="circle-btn" id="apiDetailBack" aria-label="返回"><svg class="icon">
                                     <use href="#icon-back" />
                                 </svg></button>
                             <div>
@@ -1952,7 +1952,7 @@
                             </div>
                         </div>
                         <div style="display:flex;align-items:center;gap:8px;">
-                            <button class="circle-btn" id="apiDetailRefresh"><svg class="icon icon-sm">
+                            <button class="circle-btn" id="apiDetailRefresh" aria-label="刷新"><svg class="icon icon-sm">
                                     <use href="#icon-refresh" />
                                 </svg></button>
                             <button class="circle-btn" data-close="apiDetailModal" aria-label="关闭"><svg class="icon icon-sm">
@@ -2028,7 +2028,7 @@
                                             <div class="flex gap-6">
                                                 <input type="password" class="input-field" id="detailApiKey"
                                                     style="font-size:13px;padding:8px 10px;flex:1;">
-                                                <button class="api-pwd-toggle" id="detailApiTogglePwd"
+                                                <button class="api-pwd-toggle" id="detailApiTogglePwd" aria-label="显示或隐藏密钥"
                                                     style="width:32px;height:32px;background:#f2f2f7;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-secondary);">
                                                     <svg class="icon icon-sm">
                                                         <use href="#icon-eye" />
@@ -2109,7 +2109,7 @@
             <div class="modal-overlay" id="presetSaveListModal">
                 <div class="modal-content max-w-360 max-h-80vh">
                     <div class="modal-header">
-                        <button class="circle-btn" id="btnBackToPresetAction"><svg class="icon">
+                        <button class="circle-btn" id="btnBackToPresetAction" aria-label="返回"><svg class="icon">
                                 <use href="#icon-back" />
                             </svg></button>
                         <h3 class="modal-title" id="presetSaveListTitle">旅程记录</h3>
@@ -2127,7 +2127,7 @@
                 <div class="modal-content" style="max-width:340px;">
                     <div class="modal-header">
                         <h3 class="modal-title" id="createApiTitle">创建API</h3>
-                        <button class="circle-btn" data-close="createApiModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="createApiModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -2147,7 +2147,7 @@
                                 <div style="display:flex;gap:8px;">
                                     <input type="password" class="input-field" id="createApiKey" placeholder="sk-xxx"
                                         style="flex:1;">
-                                    <button class="api-pwd-toggle" id="createApiTogglePwd"
+                                    <button class="api-pwd-toggle" id="createApiTogglePwd" aria-label="显示或隐藏密钥"
                                         style="width:36px;height:36px;background:#f2f2f7;border:1px solid var(--border);border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--text-secondary);">
                                         <svg class="icon icon-sm">
                                             <use href="#icon-eye" />
@@ -2180,7 +2180,7 @@
                     </div>
                     <div class="modal-footer" style="border-top:1px solid var(--border);">
                         <button class="crystal-btn primary flex-1" id="btnConfirmCreateApi">创建</button>
-                        <button class="crystal-btn flex-1" data-close="createApiModal">取消</button>
+                        <button class="crystal-btn flex-1" data-close="createApiModal" aria-label="关闭">取消</button>
                     </div>
                 </div>
             </div>
@@ -2190,7 +2190,7 @@
                 <div class="modal-content max-w-300">
                     <div class="modal-header">
                         <h3 class="modal-title">创建分组</h3>
-                        <button class="circle-btn" data-close="createGroupModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="createGroupModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -2200,7 +2200,7 @@
                     </div>
                     <div class="modal-footer" style="border-top:1px solid var(--border);">
                         <button class="crystal-btn primary flex-1" id="btnConfirmCreateGroup">创建</button>
-                        <button class="crystal-btn flex-1" data-close="createGroupModal">取消</button>
+                        <button class="crystal-btn flex-1" data-close="createGroupModal" aria-label="关闭">取消</button>
                     </div>
                 </div>
             </div>
@@ -2210,7 +2210,7 @@
                 <div class="modal-content">
                     <div class="modal-header">
                         <h3 class="modal-title" id="npcEditModalTitle">编辑角色</h3>
-                        <button class="circle-btn" data-close="npcEditModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="npcEditModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -2247,7 +2247,7 @@
                     </div>
                     <div class="modal-footer">
                         <button class="crystal-btn flex-1" id="npcEditSave">保存</button>
-                        <button class="crystal-btn flex-1" style="opacity:.7;" data-close="npcEditModal">取消</button>
+                        <button class="crystal-btn flex-1" style="opacity:.7;" data-close="npcEditModal" aria-label="关闭">取消</button>
                     </div>
                 </div>
             </div>
@@ -2304,7 +2304,7 @@
                             </svg>
                         </div>
                         <div class="emoji-panel" id="emojiPanel" aria-hidden="true"></div>
-                        <button class="send-btn" id="npcChatSend"
+                        <button class="send-btn" id="npcChatSend" aria-label="发送"
                             style="width:32px;height:32px;border-radius:6px;background:#07C160;border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;">
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
                                 <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
@@ -2355,7 +2355,7 @@
                 <div class="modal-content" style="max-height:88vh;">
                     <div class="modal-header">
                         <h3 class="modal-title" id="recapDetailTitle">剧情详情</h3>
-                        <button class="circle-btn" data-close="recapDetailModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="recapDetailModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -2369,7 +2369,7 @@
                     <div class="modal-header">
                         <h3 class="modal-title">游戏设置</h3>
                         <button id="btnResetSettings" class="tag-btn" style="font-size:11px;padding:4px 10px;margin-right:6px;background:var(--danger-soft,var(--accent-soft,#fee));color:var(--danger,#c33);border:1px solid var(--danger-border,#fcc);">恢复默认</button>
-                        <button class="circle-btn" data-close="settingsModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="settingsModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -2657,7 +2657,7 @@
                 <div class="modal-content" style="max-width:340px;">
                     <div class="modal-header">
                         <h3 class="modal-title">游戏统计</h3>
-                        <button class="circle-btn" data-close="statsModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="statsModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>
@@ -2722,7 +2722,7 @@
                         <div class="confirm-body" id="confirmMessage"></div>
                         <div class="confirm-actions">
                             <button class="crystal-btn" type="button" id="confirmYes">确定</button>
-                            <button class="crystal-btn" type="button" id="confirmNo" style="opacity:.7;" data-close="confirmModal">取消</button>
+                            <button class="crystal-btn" type="button" id="confirmNo" style="opacity:.7;" data-close="confirmModal" aria-label="关闭">取消</button>
                         </div>
                     </div>
                 </div>
@@ -2910,7 +2910,7 @@
                 <div class="modal-content" style="max-height:80vh;">
                     <div class="modal-header">
                         <h3 class="modal-title">日志功能开关</h3>
-                        <button class="circle-btn" data-close="logFeaturesModal"><svg class="icon icon-sm">
+                        <button class="circle-btn" data-close="logFeaturesModal" aria-label="关闭"><svg class="icon icon-sm">
                                 <use href="#icon-close" />
                             </svg></button>
                     </div>

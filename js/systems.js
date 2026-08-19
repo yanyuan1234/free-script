@@ -13,95 +13,27 @@ var QuestSystem = {
     },
 
     getAllQuests() {
+        // 【纯 AI 驱动】移除本地生成的"继续探索"引导任务。
+        // 引导任务是本地伪造数据（伪任务 + 本地行动计数推进），与 AI 返回的 quests 冲突，
+        // 且当 AI 没返回活跃任务时它会永久顶在任务列表首位，掩盖真实状态。
+        // 现在任务列表 100% 由 AI 的 quests 字段驱动；无活跃任务时显示空态提示即可。
 
         // 当 StateManager 存在但 entities.quests 未初始化时，get 返回 undefined，
         // 后续 quests.filter 抛 TypeError。fallback || [] 只在 StateManager 为 falsy 时生效。
         // 修正为 `(StateManager.get(...) || fallback)` 让 fallback 在 get 返回 falsy 时也生效。
         var quests = (StateManager ? (StateManager.get('entities.quests') || (gameState.currentQuests || [])) : (gameState.currentQuests || []));
         if (!Array.isArray(quests)) quests = [];
-        if (quests.filter(function(q) {
-            return q.status === QuestSystem.STATUS.ACTIVE;
-            }).length === 0 && (gameState.conversationHistory || []).length > 0) {
-
-            // 再次 push 同一个已完成对象，玩家一直看到"继续探索 - 已完成"。
-            // 修复：push 前检查缓存对象 status，已完成则置 null 让下轮重新创建。
-            if (QuestSystem._cachedGuidanceQuest && QuestSystem._cachedGuidanceQuest.status !== QuestSystem.STATUS.ACTIVE) {
-                QuestSystem._cachedGuidanceQuest = null;
-            }
-            if (!QuestSystem._cachedGuidanceQuest) {
-                QuestSystem._cachedGuidanceQuest = QuestSystem.createGuidanceQuest();
-            }
-        quests.push(QuestSystem._cachedGuidanceQuest);
-    }
-    return quests;
-    },
-    // 动态计算引导任务奖励：基于玩家等级、回合进度和 AI 最近返回的任务奖励
-    _computeGuidanceReward: function() {
-        var base = 10;
-
-        var player = (typeof StateManager !== 'undefined' && StateManager.get) ? StateManager.get('entities.player') : null;
-        var level = (player && player.level) || 1;
-        var turns = (typeof StateManager !== 'undefined' && StateManager.get) ? (StateManager.get('progress.turn') || 1) : 1;
-        // 参考 AI 最近返回的任务奖励（避免硬编码）
-        var reference = 0;
-        var quests = (StateManager ? StateManager.get('entities.quests') : (gameState.currentQuests || []));
-        var rewardCount = 0;
-        quests.forEach(function(q) {
-            if (q && q.rewards && q.rewards.length > 0) {
-                q.rewards.forEach(function(r) {
-                    var amt = parseInt(r && r.amount, 10);
-                    if (!isNaN(amt) && amt > 0) {
-                        reference += amt;
-                        rewardCount++;
-                    }
-                });
-            }
+        // 过滤掉旧存档中残留的引导任务（id 以 guidance_ 开头），避免历史脏数据继续显示
+        quests = quests.filter(function(q) {
+            return !(q && q.id && String(q.id).indexOf('guidance_') === 0);
         });
-        var avgReward = rewardCount > 0 ? Math.round(reference / rewardCount) : 0;
-        var dynamic = base + (level - 1) * 5 + Math.floor(turns / 2) * 3;
-        return avgReward > 0 ? Math.max(5, Math.round((avgReward + dynamic) / 2)) : Math.max(5, dynamic);
-    },
-    createGuidanceQuest() {
-        var rewardAmount = this._computeGuidanceReward();
-        return {
-            id: 'guidance_' + Date.now(),
-            title: '继续探索',
-            type: QuestSystem.TYPE.MAIN,
-            status: QuestSystem.STATUS.ACTIVE,
-            desc: '推进剧情发展，探索未知的世界',
-            progress: '0/1',
-            hint: '选择一个选项或输入自定义行动',
-            rewards: [{
-                type: 'exp',
-                name: '经验值',
-                amount: rewardAmount
-                }],
-            timeLimit: null,
-            priority: 999
-            };
+        return quests;
     },
 
-
-    // 本方法仅推进 _cachedGuidanceQuest（transient 引导任务"继续探索"）的进度，
-    // 不操作 StateManager 中的持久化任务。autoAdvanceByStory 负责 AI 返回任务的关键词匹配。
-    // 两者操作不同数据，不会冲突。autoAdvanceByStory 已通过 id 前缀 'guidance_' 跳过引导任务。
-    advanceGuidanceQuest() {
-        if (!QuestSystem._cachedGuidanceQuest) return;
-        var q = QuestSystem._cachedGuidanceQuest;
-        if (q.status !== QuestSystem.STATUS.ACTIVE) return;
-        // 【冗余审计 P1-7】用全局 parseProgressParts 替代内联 split
-        var pp = parseProgressParts(q.progress || '0/1');
-        var current = pp.current;
-        var total = pp.total;
-        if (current < total) {
-            current++;
-            q.progress = current + '/' + total;
-            if (current >= total) {
-                q.status = QuestSystem.STATUS.COMPLETED;
-                console.log('[任务系统] 引导任务完成:', q.title);
-            }
-        }
-    },
+    // 【已移除】createGuidanceQuest / _computeGuidanceReward / advanceGuidanceQuest
+    // 这三者构成"本地伪造引导任务"系统，违背纯 AI 驱动原则，整体下线。
+    // 保留空实现防止旧存档/外部调用报错
+    advanceGuidanceQuest() { /* no-op：纯 AI 驱动，无本地推进 */ },
 
     filterByStatus(quests, status) {
         if (status === 'all') return quests;

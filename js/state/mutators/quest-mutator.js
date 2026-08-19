@@ -153,86 +153,14 @@ const QuestMutator = {
         return result;
     },
 
-    // 根据剧情文本自动推进任务进度
-
-    // - autoAdvanceByStory：基于剧情文本关键词 + 完成类动词，标记 AI 返回的持久化任务完成
-    //   操作对象：StateManager.get('entities.quests')（AI 返回的任务）
-    // - advanceGuidanceQuest：基于玩家行动计数，推进临时引导任务（"继续探索"）进度
-    //   操作对象：QuestSystem._cachedGuidanceQuest（transient，不在 StateManager 持久化）
-    // 两者操作不同数据，不会同一回合重复标记同一任务完成。
-    // 引导任务通过 id 前缀 'guidance_' 跳过关键词匹配（"继续探索"的关键词过于泛化，
-    // 会误匹配大量剧情文本；引导任务只应通过行动计数推进）。
+    // 【纯 AI 驱动】已移除 autoAdvanceByStory（本地关键词匹配推进任务）。
+    // 该机制存在两个问题：
+    //   1. 正则无 /g 标志却在 exec 循环中使用，lastIndex 永不前进 → 死循环冻结页面
+    //   2. 本地关键词猜测与 AI 的结构化 quests 字段冲突，导致任务被误标完成
+    // 任务状态现在完全由 AI 返回的 quests 字段驱动（见 _applyQuests）。
     autoAdvanceByStory(storyText, options) {
-        if (!storyText) return { changed: false };
-        const quests = StateManager.get('entities.quests') || [];
-        let changed = false;
-        var self = this;
-        const lowerStory = String(storyText).toLowerCase();
-        const completionKeywords = /完成|办完|搞定|结束|达成|通过|领取|收到|获得|入学|报到|注册|签到|了解|查明|探明|解决|击败|战胜|说服|答应|同意|邀请/;
-        quests.forEach(function(q) {
-            if (!q || q.status === self.STATUS.COMPLETED || q.status === self.STATUS.FAILED) return;
-            const title = String(q.title || '');
-            if (!title) return;
-
-            // advanceGuidanceQuest 的行动计数推进，不参与关键词匹配，避免"继续探索"
-            // 等泛化关键词误触发完成
-            if (q.id && String(q.id).indexOf('guidance_') === 0) return;
-            // 任务标题关键词在剧情中出现，且伴随完成类动词，则标记完成
-            // 【P2-61修复】要求关键词与完成动词在同一句或邻近窗口（50字符内）出现
-            const titleKeywords = self._extractKeywords(title);
-            const matchedKeywordPos = titleKeywords.map((kw) => {
-                const pos = lowerStory.indexOf(kw);
-                return pos !== -1 ? pos : -1;
-            }).filter((pos) => pos !== -1);
-
-            // 查找邻近窗口内的完成动词
-            var nearbyCompletion = false;
-            var completionMatch;
-            completionKeywords.lastIndex = 0; // 重置正则状态
-            while ((completionMatch = completionKeywords.exec(lowerStory)) !== null) {
-                var completionPos = completionMatch.index;
-                // 检查是否有任何任务关键词在完成动词前后50字符窗口内
-                for (var i = 0; i < matchedKeywordPos.length; i++) {
-                    if (Math.abs(matchedKeywordPos[i] - completionPos) <= 50) {
-                        nearbyCompletion = true;
-                        break;
-                    }
-                }
-                if (nearbyCompletion) break;
-            }
-
-            if (nearbyCompletion) {
-                q.status = self.STATUS.COMPLETED;
-                const parts = self._parseProgressParts(q.progress);
-                if (parts.total > 0) {
-                    q.progress = parts.total + '/' + parts.total;
-                } else {
-                    q.progress = '1/1';
-                }
-                changed = true;
-                console.log('[任务系统] 剧情触发任务完成:', q.title);
-            }
-        });
-        if (changed) {
-            this.setQuests(quests, options);
-        }
-        return { changed: changed };
-    },
-
-    // 从任务标题提取关键词（中文按词/字，英文按词）
-
-    _extractKeywords(title) {
-        const t = String(title).toLowerCase().trim();
-        if (!t) return [];
-        // 停用词列表（整词匹配，非子串）
-        const stopWords = ['的', '了', '和', '与', '或', '在', '到', '去', '个', '件', '项', '等', '之', '后', '前', '中', '上', '下'];
-        let parts = t.split(/[\s·，,、；;:!?！？()（）\[\]【】]+/).filter(function(s) {
-            if (s.length < 2) return false;
-            // 整词匹配停用词
-            return stopWords.indexOf(s) === -1;
-        });
-        if (parts.length === 0 && t.length >= 2) parts = [t];
-        return parts;
+        // 兼容占位：直接忽略，永不本地推进任务
+        return { changed: false };
     },
 
     // 标准化任务

@@ -3,6 +3,42 @@
 * 仅新增工具，不修改任何原有逻辑
 */
 
+// 【BUG-08 修复】生产环境调试日志门控（utils.js 是首个加载的脚本，可拦截所有后续 console.log）
+// 全站 148+ 处 console.log 属于开发调试日志，生产环境会：
+//   1. 在控制台刷屏，普通用户误以为程序出错
+//   2. 泄露内部实现细节（API 配置索引、状态结构、提示词片段）
+//   3. 频繁大对象序列化拖慢低端设备
+// 策略：默认静默 console.log / console.debug，保留 console.warn / console.error（用户报障需要）。
+// 排障逃生口（二选一即可恢复完整日志）：
+//   · URL 加 ?debug 参数（如 index.html?debug）
+//   · localStorage.setItem('debug_verbose', '1')
+(function() {
+    var _verbose = false;
+    try {
+        _verbose = (localStorage.getItem('debug_verbose') === '1')
+            || /[?&#]debug\b/.test(window.location.search || window.location.hash || '');
+    } catch (e) { /* localStorage 不可用（隐私模式等）时保持静默 */ }
+    window.__VERBOSE_LOG__ = _verbose;
+    if (!_verbose) {
+        var _noop = function() {};
+        // 保留原始引用供逃生口动态开启（控制台执行 enableVerboseLog()）
+        console._log = console.log;
+        console.log = _noop;
+        console.debug = _noop;
+        window.enableVerboseLog = function() {
+            console.log = console._log || console.log;
+            try { localStorage.setItem('debug_verbose', '1'); } catch (e) {}
+            window.__VERBOSE_LOG__ = true;
+            console.log('[LogGate] 详细日志已开启（本次会话 + 持久化）');
+        };
+        window.disableVerboseLog = function() {
+            console.log = _noop;
+            try { localStorage.removeItem('debug_verbose'); } catch (e) {}
+            window.__VERBOSE_LOG__ = false;
+        };
+    }
+})();
+
 // 【冗余审计 P0-4】统一 max_tokens / context 默认值常量，消除 20+ 处硬编码
 // 所有 fallback 用此常量，避免 8000/8192 混用导致行为不一致
 // 【动态化修复】取消硬编码上限，让模型能力与上下文窗口动态决定输出预算：

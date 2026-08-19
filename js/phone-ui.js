@@ -6891,8 +6891,25 @@ function bindEvents() {
     _ensureTokenLabels();
 }
 function startNewGame(forgeResult) {
+    // 【BUG-07 修复】防重入闸门：开局流程包含 resetRuntimeState('full') + 最长240s的设定提取，
+    // 期间若用户返回设定页再次点击"创造世界"，会重置正在使用的状态并触发第二次 sendAIRequest，
+    // 造成双重开局/状态错乱。闸门在 initializeGame 的各完成/失败路径释放（core.js 调用 _releaseGameStartGuard）。
+    var _now = Date.now();
+    if (startNewGame._busy) {
+        if (_now - (startNewGame._busyAt || 0) > 600000) {
+            // 安全阀：异常路径未释放（>10分钟）时强制放行，防止永远无法开局
+            console.warn('[startNewGame] 防重入闸门超时强制释放');
+        } else {
+            UI.toast('正在开始游戏，请稍候…');
+            return;
+        }
+    }
+    startNewGame._busy = true;
+    startNewGame._busyAt = _now;
+
     var prompt = document.getElementById('worldDescription').value.trim();
     if (!prompt) {
+        startNewGame._busy = false;  // 校验失败路径必须释放闸门
         UI.toast('请描述你想玩的游戏');
         return;
     }
@@ -8630,11 +8647,18 @@ function showCreateApiModal() {
     }
 
     // 获取模型列表
+    // 【BUG-04 修复】点击按钮后对话框意外关闭的三重防护：
+    // 1. e.preventDefault() 阻止默认行为（type=submit 隐式提交等边缘场景）
+    // 2. 异步拉取期间若对话框被任何路径意外关闭，完成后自动恢复显示，用户输入不丢失
+    // 3. 按钮加"获取中..."状态反馈，防止用户以为没反应而重复点击/点击遮罩
     var fetchBtn = document.getElementById('btnFetchModelsCreate');
     if (fetchBtn && fetchBtn.parentNode) {
         var newFetchBtn = fetchBtn.cloneNode(true);
         fetchBtn.parentNode.replaceChild(newFetchBtn, fetchBtn);
-        newFetchBtn.addEventListener('click', async function() {
+        newFetchBtn.addEventListener('click', async function(e) {
+        if (e && e.preventDefault) e.preventDefault();
+        if (e && e.stopPropagation) e.stopPropagation();
+        if (newFetchBtn.disabled) return; // 防重复点击
         var url = document.getElementById('createApiUrl').value.trim();
         var key = document.getElementById('createApiKey').value.trim();
         if (!url || !key) {
@@ -8642,6 +8666,9 @@ function showCreateApiModal() {
             return;
         }
         newFetchBtn.disabled = true;
+        newFetchBtn.textContent = '获取中...';
+        // 记住拉取前的可见性：完成后若对话框被意外关闭则恢复
+        var modalEl = document.getElementById('createApiModal');
         try {
             var models = await LocalGameAPI.fetchModels(url, key);
             var select = document.getElementById('createApiModelSelect');
@@ -8722,6 +8749,12 @@ function showCreateApiModal() {
             // 5 秒错误 toast 给用户充足时间阅读
             UI.toast(_userMsg, 5000, 'error');
         }
+        // 【BUG-04 修复】若拉取期间对话框被意外关闭，自动恢复显示（用户输入的 URL/Key 不丢失）
+        try {
+            if (modalEl && !modalEl.classList.contains('active')) {
+                UI.showModal('createApiModal');
+            }
+        } catch (e2) { /* 恢复失败不影响主流程 */ }
         newFetchBtn.disabled = false;
         newFetchBtn.textContent = '获取模型列表';
     });
