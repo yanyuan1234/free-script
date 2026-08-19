@@ -2238,6 +2238,8 @@ async function sendAIRequest(userMessage, isInit = false) {
                 var _retryResp = await callAI(messages, {
                     max_tokens: _retryMax,
                     temperature: options.temperature,
+                    // 【重试保真】透传原请求的 JSON Schema 约束，重试才不会退化为自由文本输出
+                    jsonSchema: options.jsonSchema,
                     _truncRetry: true
                 });
                 if (_retryResp && String(_retryResp).trim()) {
@@ -3056,20 +3058,27 @@ async function sendAIRequest(userMessage, isInit = false) {
             if (gameState) {
                 if (!gameState._chatLogs || Array.isArray(gameState._chatLogs)) gameState._chatLogs = {};
                 data.npcMessages.forEach(function(msg) {
-                    if (msg.from && msg.text) {
+                    // 【P0 修复】消费端兼容 from（prompt 契约）与 name（schema 归一化）双字段
+                    var _who = String((msg && (msg.from || msg.name)) || '').trim();
+                    if (_who && msg && msg.text) {
                         if (!gameState._chattedNpcs) gameState._chattedNpcs = {};
-                        gameState._chattedNpcs[msg.from] = true;
-                        if (!gameState._chatLogs[msg.from]) gameState._chatLogs[msg.from] = [];
-                        gameState._chatLogs[msg.from].push({
+                        gameState._chattedNpcs[_who] = true;
+                        if (!gameState._chatLogs[_who]) gameState._chatLogs[_who] = [];
+                        // 【去重修复】AI 跨回合重复返回同一条消息时不再重复入列
+                        // （对比该 NPC 最近一条：同文本直接跳过）
+                        var _logs = gameState._chatLogs[_who];
+                        var _last = _logs.length ? _logs[_logs.length - 1] : null;
+                        if (_last && _last.text === msg.text) return;
+                        _logs.push({
                             role: 'npc',
                             text: msg.text,
                             time: new Date().toLocaleTimeString()
                         });
 
-                        if (gameState._chatLogs[msg.from].length > 50) {
-                            gameState._chatLogs[msg.from] = gameState._chatLogs[msg.from].slice(-50);
+                        if (gameState._chatLogs[_who].length > 50) {
+                            gameState._chatLogs[_who] = gameState._chatLogs[_who].slice(-50);
                         }
-                        showNpcMessageNotification(msg.from, msg.text);
+                        showNpcMessageNotification(_who, msg.text);
                     }
                 });
                 autoSave();

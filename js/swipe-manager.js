@@ -42,9 +42,13 @@ var SwipeManager = {
             StateManager.set('progress.swipes', { versions: [], current: -1, turn: this._currentTurn() }, { silent: true });
             return;
         }
+        // 【越界钳制修复】current 只写 0..versions.length-1，
+        // 防止旧档/损坏档的非法索引被持久化并在下次加载时继续污染
+        var _cur = (typeof current === 'number' && current >= 0) ? current : 0;
+        _cur = Math.min(_cur, versions.length - 1);
         StateManager.set('progress.swipes', {
             versions: versions,
-            current: (typeof current === 'number' && current >= 0) ? current : 0,
+            current: _cur,
             turn: this._currentTurn()
         }, { silent: true });
     },
@@ -66,7 +70,10 @@ var SwipeManager = {
         var state = this._readState();
         if (state && Array.isArray(state.versions) && state.versions.length > 0) {
             this._swipes = state.versions;
-            this._currentIndex = (typeof state.current === 'number') ? state.current : 0;
+            // 【越界钳制修复】旧档/损坏档的 current 可能越界（负数或 >= versions.length），
+            // 直接采信会导致切换器显示错误版本数、switchTo 在非法索引上继续操作
+            var _cur = (typeof state.current === 'number') ? state.current : 0;
+            this._currentIndex = (_cur < 0 || _cur >= state.versions.length) ? 0 : _cur;
             this._renderSwitcher();
         } else {
             this._swipes = [];

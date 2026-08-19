@@ -131,13 +131,19 @@ const AIOutputSchema = {
         }
 
         // [T2-P1-4] npcMessages normalize：保留 name/text/emotion/turn 字段，过滤空文本
+        // 【P0 修复 from 别名】prompt（game.js 格式规则/末尾提醒）要求 AI 输出 [{from,text}]，
+        // 但旧 normalize 只映射 name/speaker/character → 归一化后 from 丢失，
+        // game.js 消费端只认 msg.from → NPC 消息 100% 被丢弃（聊天页永远空）。
+        // 修复：from 纳入别名映射，且输出同时保留 from（双字段兼容两端）。
         if (raw.npcMessages && Array.isArray(raw.npcMessages)) {
             out.npcMessages = raw.npcMessages.map(function(m) {
                 if (!m || typeof m !== 'object') return null;
                 var text = String(m.text || m.content || m.message || '').trim();
                 if (!text) return null;
+                var _name = String(m.name || m.speaker || m.character || m.from || '').trim();
                 return {
-                    name: String(m.name || m.speaker || m.character || '').trim(),
+                    name: _name,
+                    from: _name,
                     text: text,
                     emotion: String(m.emotion || m.mood || '').trim(),
                     turn: typeof m.turn === 'number' ? m.turn : (parseInt(m.turn, 10) || 0)

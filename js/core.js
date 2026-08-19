@@ -2315,6 +2315,18 @@ var SaveDB = {
         return (crc ^ -1) >>> 0;
     },
     // ── localStorage fallback 方法 ──
+    // 【P0 修复】_lsGet 此前未定义：fallback 模式下 _rotateBackup/restore/listBackups
+    // 共 6 处调用 this._lsGet(...)，IndexedDB 不可用降级后一执行就抛 TypeError，
+    // 导致备份轮转失败、存档恢复崩溃。补上定义（从 _lsGetAll 按槽位取值）。
+    _lsGet(slot) {
+        try {
+            var all = this._lsGetAll();
+            return (slot in all) ? all[slot] : null;
+        } catch (e) {
+            console.error('[SaveManager] _lsGet 读取失败:', e);
+            return null;
+        }
+    },
     _lsGetAll() {
         try {
             return Storage.getJSON(Storage.KEYS.LOCAL_SAVES, {});

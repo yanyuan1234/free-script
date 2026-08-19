@@ -1423,11 +1423,16 @@ function renderWorldModules(modules) {
     modules.forEach(function(newMod) {
         if (!newMod || !newMod.type) return;
         if (!accumulateTypes[newMod.type] && replaceTypes.hasOwnProperty(newMod.type)) {
-            // 替换同类型旧模块
-            _existingMods[replaceTypes[newMod.type]] = newMod;
+            // 替换同类型旧模块（【引用隔离】深拷贝后再入列，防止 newMod 仍被
+            // AI 响应对象/渲染路径共享引用，后续渲染改写会反向污染持久化状态）
+            _existingMods[replaceTypes[newMod.type]] = (typeof StateSchema !== 'undefined' && StateSchema.deepClone)
+                ? StateSchema.deepClone(newMod)
+                : JSON.parse(JSON.stringify(newMod));
         } else {
-            // 新增模块（历史型追加）
-            _existingMods.push(newMod);
+            // 新增模块（历史型追加，同样深拷贝隔离引用）
+            _existingMods.push((typeof StateSchema !== 'undefined' && StateSchema.deepClone)
+                ? StateSchema.deepClone(newMod)
+                : JSON.parse(JSON.stringify(newMod)));
         }
     });
     // 限制每种模块类型数量，防止无限增长
@@ -3930,8 +3935,15 @@ function buyShopItem(index) {
         UI.toast(currencyName + '不足！需要 ' + price + '，当前 ' + currency);
         return;
     }
-    // 扣款
-    subtractPlayerMoney(price);
+    // 扣款（【防御修复】必须成功才能入包：price=0 免费品跳过扣款直接领取；
+    // price>0 时若 spend 因竞态/余额变化返回 false，则中止购买，避免白拿物品）
+    if (price > 0) {
+        var _paid = subtractPlayerMoney(price);
+        if (!_paid) {
+            UI.toast(currencyName + '扣款失败，购买未完成');
+            return;
+        }
+    }
     // 加入背包
     var bagItem = { name: item.name || '未知物品', icon: item.icon || '物', count: item.count || 1, desc: item.desc || item.description || '', rarity: item.rarity || '普通', rarityClass: item.rarityClass || 'common' };
 
@@ -7417,6 +7429,13 @@ async function retryStory() {
     // 直接写回备份即可。addSwipe 时 turn 已 +1 回到当前轮
     if (_swipesBackup && typeof StateManager !== 'undefined' && StateManager.set) {
         StateManager.set('progress.swipes', _swipesBackup, { silent: true });
+        // 【内存同步修复】deleteLastTurn 内部会调 SwipeManager.loadCurrentTurn()，
+        // 把上一轮（已回滚）的旧 swipe 加载进内存；此处把备份写回 StateManager 后
+        // 必须重新 loadCurrentTurn() 同步内存，否则 addSwipe 会把新版本
+        // 追加到上一轮的旧数组上（版本串轮）。backup 为空结构时清空内存，行为一致。
+        if (typeof SwipeManager !== 'undefined' && SwipeManager.loadCurrentTurn) {
+            try { SwipeManager.loadCurrentTurn(); } catch (e) { /* 同步失败不阻塞重生成 */ }
+        }
     }
 
     // 重新获取用户消息（deleteLastTurn 可能改变了历史）

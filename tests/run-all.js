@@ -23,6 +23,8 @@ var testFiles = [
     'state/time-mutator.test.js',
     // P1 修复回归
     'p1-verification.test.js',
+    // 第二轮修复回归（存档fallback/npcMessages别名/Swipe钳制/商店扣款/重试保真/日志门控）
+    'fix-round2.test.js',
     // 题材自适应排行榜/成就兜底
     'theme-adaptive-content.test.js',
     // BUG-011 v2 修复验证
