@@ -13,7 +13,16 @@
 //   · URL 加 ?debug 参数（如 index.html?debug）
 //   · localStorage.setItem('debug_verbose', '1')
 (function() {
+    // 【部署修复】Node/测试环境豁免：tests/run-all.js 等子进程会加载 utils.js，
+    // 门控若在 Node 里生效会把 CI 的 console.log 测试输出全部吞掉，
+    // 导致失败用例不可见、排障极难。门控仅针对真实浏览器环境。
+    var _isNode = (typeof process !== 'undefined' && process.versions && process.versions.node);
     var _verbose = false;
+    if (_isNode) {
+        // Node 环境：不门控，原样输出（测试与脚本需要完整日志）
+        try { window.__VERBOSE_LOG__ = true; } catch (e) {}
+        return;
+    }
     try {
         _verbose = (localStorage.getItem('debug_verbose') === '1')
             || /[?&#]debug\b/.test(window.location.search || window.location.hash || '');

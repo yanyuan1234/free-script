@@ -254,29 +254,30 @@ function testPickHigherProgress() {
 }
 
 // ---- _extractKeywords ----
-function testExtractKeywords() {
+// 【纯 AI 驱动改造】本地关键词提取已整体移除（会与 AI 的结构化 quests 字段冲突）。
+// 新契约：_extractKeywords 不存在（或为空实现），任何本地文本猜测都不允许。
+function testExtractKeywordsRemoved() {
     var M = freshState();
-    var kw = M._extractKeywords('寻找 失落 宝箱');
-    helpers.assertOk(kw.indexOf('寻找') !== -1, '应包含 "寻找"');
-    helpers.assertOk(kw.indexOf('失落') !== -1, '应包含 "失落"');
-    helpers.assertOk(kw.indexOf('宝箱') !== -1, '应包含 "宝箱"');
+    helpers.assertEq(typeof M._extractKeywords, 'undefined', '_extractKeywords 应已移除（纯 AI 驱动）');
 }
-
-function testExtractKeywordsStopWords() {
+function testExtractKeywordsNoLocalGuess() {
     var M = freshState();
-    var kw = M._extractKeywords('寻找 的 宝箱');
-    helpers.assertEq(kw.indexOf('的'), -1, '应过滤停用词 "的"');
+    // 即使旧版本曾返回关键词，新版本也绝不允许本地猜测任何文本
+    var kw = (typeof M._extractKeywords === 'function') ? M._extractKeywords('寻找 失落 宝箱') : null;
+    helpers.assertEq(kw, null, '本地关键词提取应不可用');
 }
 
 // ---- autoAdvanceByStory ----
+// 【纯 AI 驱动改造】autoAdvanceByStory 是兼容占位：无论剧情文本出现什么关键词，
+// 都永不本地推进任务状态。任务状态 100% 由 AI 返回的 quests 字段驱动。
 function testAutoAdvanceByStoryMatch() {
     var M = freshState();
     M.setQuests([{ title: '击败魔王', status: '进行中', progress: '0/1' }]);
     var result = M.autoAdvanceByStory('勇者终于击败魔王，王国恢复了和平。');
-    helpers.assertEq(result.changed, true, '应触发任务完成');
+    helpers.assertEq(result.changed, false, '本地关键词命中也不应推进（纯 AI 驱动）');
     var list = global.StateManager.get('entities.quests');
-    helpers.assertEq(list[0].status, '已完成', '任务应被标记完成');
-    helpers.assertEq(list[0].progress, '1/1', '进度应补齐');
+    helpers.assertEq(list[0].status, '进行中', '任务状态只由 AI quests 字段驱动，本地保持不变');
+    helpers.assertEq(list[0].progress, '0/1', '进度保持不变');
 }
 
 function testAutoAdvanceByStoryNoMatch() {
@@ -324,7 +325,7 @@ var cases = [
     testSmartMergePreventRegression, testSmartMergeKeepDescWhenEmpty,
     testSmartMergeDoneLimit3, testSmartMergeKeepAllActive,
     testPickHigherProgress,
-    testExtractKeywords, testExtractKeywordsStopWords,
+    testExtractKeywordsRemoved, testExtractKeywordsNoLocalGuess,
     testAutoAdvanceByStoryMatch, testAutoAdvanceByStoryNoMatch,
     testAutoAdvanceByStorySkipCompleted, testAutoAdvanceByStorySkipGuidance,
     testAutoAdvanceByStoryEmpty
