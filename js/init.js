@@ -226,12 +226,28 @@ async function initApp() {
         // 注：原 _setupGlobalEventDelegation() 已移除，统一由 utils.js 的 _globalA11yDelegate 处理 data-action 委托
 
         // 设置菜单顶部日期为当天
+        // 【ISSUE 修复】"8/26" 裸数字无语义易被误读；且元素 contenteditable 允许用户
+        // 自定义（生日/纪念日），但每次启动都被当天日期覆写，编辑永不生效。
+        // 现改为：优先恢复用户保存的自定义日期，无保存值时才显示当天并加 title 说明。
         try {
             const now = new Date();
-            const dateStr = (now.getMonth() + 1) + '/' + now.getDate();
+            const todayStr = (now.getMonth() + 1) + '/' + now.getDate();
             const dateEl = document.getElementById('menuTopDate');
-            if (dateEl) dateEl.textContent = dateStr;
-        } catch(e) { console.warn('[INIT] 设置菜单日期失败:', e); }
+            if (dateEl) {
+                const savedDate = Storage.get(Storage.KEYS.MENU_TOP_DATE);
+                dateEl.textContent = (savedDate && savedDate.trim()) ? savedDate : todayStr;
+                dateEl.title = savedDate
+                    ? '自定义日期（点击可编辑，自动保存）'
+                    : '今日日期（月/日）。点击可改为生日、纪念日等，自动保存';
+            }
+            const savedName = Storage.get(Storage.KEYS.MENU_TOP_NAME);
+            const nameEl = document.getElementById('menuTopName');
+            if (nameEl && savedName && savedName.trim()) nameEl.textContent = savedName;
+            const savedMotto = Storage.get(Storage.KEYS.MENU_TOP_MOTTO);
+            const mottoEl = document.getElementById('menuTopMotto');
+            if (mottoEl && savedMotto && savedMotto.trim()) mottoEl.textContent = savedMotto;
+            // contenteditable 编辑后自动持久化（见 phone-ui.js _bindMenuTopProfilePersistence）
+        } catch(e) { console.warn('[INIT] 设置菜单资料失败:', e); }
 
         // 触发事件：APP_READY（应用启动完成）
         if (typeof TavernHelperCompat !== 'undefined') {

@@ -1082,7 +1082,7 @@ var LocalGameAPI = {
     save() {
         try {
             // 【安全】写入时混淆 API Key，避免明文存到 localStorage
-            Storage.setJSON(Storage.KEYS.API_CONFIG, {
+            var _result = Storage.setJSON(Storage.KEYS.API_CONFIG, {
                 configs: _obfuscateConfigs(this._configs),
                 currentSlot: this._currentSlot,
                 autoRotate: this._autoRotate,
@@ -1091,6 +1091,32 @@ var LocalGameAPI = {
                 requestLog: this._requestLog.slice(-this._MAX_LOG),
                 failedModels: this._failedModels
                 });
+            // 【BUG-003 修复】写入失败禁止静默吞掉：
+            // 旧逻辑忽略 safeSetItem 返回值，localStorage 满时 API 配置静默丢失，
+            // 下次启动恢复为空白配置——用户以为"配置又没保存上"。
+            // 降级策略：丢弃非关键的请求日志后重试一次；仍失败则明确提示用户。
+            if (_result && _result.success === false) {
+                console.error('保存API配置失败（首次）:', _result.error);
+                var _retry = Storage.setJSON(Storage.KEYS.API_CONFIG, {
+                    configs: _obfuscateConfigs(this._configs),
+                    currentSlot: this._currentSlot,
+                    autoRotate: this._autoRotate,
+                    groups: this._groups || [],
+                    currentGroup: this._currentGroup || 'all',
+                    requestLog: [],           // 非关键：丢弃日志腾出空间
+                    failedModels: {}          // 非关键：失败锁定可重建
+                });
+                if (_retry && _retry.success === false) {
+                    console.error('保存API配置失败（重试后仍失败）:', _retry.error);
+                    if (typeof UI !== 'undefined' && UI.toast) {
+                        UI.toast('API 配置保存失败：浏览器存储空间已满，请清理站点数据或导出存档备份');
+                    }
+                } else {
+                    this._requestLog = [];
+                    this._failedModels = {};
+                    console.warn('API 配置已降级保存（请求日志已清空以腾出空间）');
+                }
+            }
             } catch (e) {
             console.error('保存API配置失败:', e);
             }

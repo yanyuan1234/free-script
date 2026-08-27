@@ -25,6 +25,8 @@ var testFiles = [
     'p1-verification.test.js',
     // 第二轮修复回归（存档fallback/npcMessages别名/Swipe钳制/商店扣款/重试保真/日志门控）
     'fix-round2.test.js',
+    // 第三轮修复回归（锻造性别覆写/回合数同步/API配置持久化/版本号统一/主菜单资料持久化）
+    'fix-round3.test.js',
     // 题材自适应排行榜/成就兜底
     'theme-adaptive-content.test.js',
     // BUG-011 v2 修复验证

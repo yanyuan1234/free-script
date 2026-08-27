@@ -541,6 +541,10 @@ const Storage = {
         LAST_PROMPT: 'freeScript_lastPrompt',          // 上次输入的 prompt
         THEME: 'freeScript_theme',                     // 主题
         LOG_LEVEL: 'free_script_log_level',            // 日志级别
+        // —— 主菜单个人资料（contenteditable 昵称/签名/日期，【ISSUE 修复】新增持久化） ——
+        MENU_TOP_NAME: 'freeScript_menuTopName',       // 主菜单昵称
+        MENU_TOP_MOTTO: 'freeScript_menuTopMotto',     // 主菜单签名
+        MENU_TOP_DATE: 'freeScript_menuTopDate',       // 主菜单自定义日期（生日/纪念日）
         // —— 记忆与世界 ——
         MEMORY: 'freeScript_memory',                   // GameMemory 持久化
         ENHANCED_MEMORY: 'freeScript_enhancedMemory',  // 旧版 EnhancedMemory（迁移源）

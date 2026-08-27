@@ -1267,7 +1267,7 @@ function openLogFeaturesModal() {
 function copyLogConfigJson() {
     try {
         var payload = {
-            version: (typeof APP_VERSION !== 'undefined' ? APP_VERSION : 'unknown'),
+            version: (typeof GAME_VERSION !== 'undefined' ? GAME_VERSION : 'unknown'),
             generatedAt: new Date().toISOString(),
             logFeatures: getLogFeatureSettings(),
             preset: (function() {
@@ -4070,6 +4070,15 @@ function renderCalendarPage() {
     return container;
 }
 
+// 【BUG-004 修复】统一版本号来源：徽章（部署注入构建号）> GAME_VERSION（存档版本）> dev。
+// 徽章仍是 __BUILD_VERSION__ 占位符时（本地直开未走 deploy.yml），读 GAME_VERSION。
+function _getUnifiedVersionText() {
+    var badge = document.getElementById('buildVersionBadge');
+    var text = badge ? (badge.textContent || '').trim() : '';
+    if (text && text !== '__BUILD_VERSION__') return text;
+    return 'v' + ((typeof GAME_VERSION !== 'undefined') ? GAME_VERSION : 'dev') + ' (local)';
+}
+
 // 渲染设置页面
 function renderSettingsPage() {
     var _key = 'settings:' + (gameState.theme || '') + '|' + (gameState.genre || '');
@@ -4102,7 +4111,10 @@ function renderSettingsPage() {
         '<div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius-md);overflow:hidden;margin-bottom:16px;">' +
         '<div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">' +
         '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">ℹ️</span><span>版本</span></div>' +
-        '<div style="color:var(--text-secondary);font-size:13px;">' + (document.getElementById('buildVersionBadge') ? document.getElementById('buildVersionBadge').textContent.trim() : 'v1.0.5') + '</div>' +
+        // 【BUG-004 修复】版本显示与徽章/GAME_VERSION 统一：
+        // 徽章存在→读徽章（部署注入的构建号）；本地预览徽章是 __BUILD_VERSION__ 占位符→读 GAME_VERSION；
+        // 徽章不存在→GAME_VERSION。禁止再出现第三个硬编码版本号。
+        '<div style="color:var(--text-secondary);font-size:13px;">' + _getUnifiedVersionText() + '</div>' +
         '</div>' +
         '<div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;">' +
         '<div style="display:flex;align-items:center;gap:10px;"><span style="font-size:18px;">🎮</span><span>当前题材</span></div>' +
@@ -5861,6 +5873,45 @@ function bindEvents() {
             e.target.value = '';
         });
     }
+
+    // 【ISSUE 修复】主菜单个人资料（昵称/签名/日期）contenteditable 编辑后自动持久化。
+    // 旧逻辑三处均不保存：用户改的昵称/签名/生日日期刷新即丢。
+    // 用事件委托 + blur 触发，输入法组词过程中不写盘。
+    (function _bindMenuTopProfilePersistence() {
+        var _fields = [
+            { id: 'menuTopName', key: Storage.KEYS.MENU_TOP_NAME },
+            { id: 'menuTopMotto', key: Storage.KEYS.MENU_TOP_MOTTO },
+            { id: 'menuTopDate', key: Storage.KEYS.MENU_TOP_DATE }
+        ];
+        _fields.forEach(function(f) {
+            var el = document.getElementById(f.id);
+            if (!el || el.__profileBound) return;
+            el.__profileBound = true;
+            var persist = function() {
+                try {
+                    var text = (el.textContent || '').trim();
+                    // 清空视为恢复默认：删 key，下次启动回退到当天日期/默认值
+                    if (!text) {
+                        Storage.remove(f.key);
+                        return;
+                    }
+                    // 限长防刷屏（昵称/签名/日期都是短文本）
+                    if (text.length > 60) text = text.slice(0, 60);
+                    Storage.set(f.key, text);
+                } catch (e) {
+                    console.warn('[主菜单资料] 保存失败:', e);
+                }
+            };
+            el.addEventListener('blur', persist);
+            // 回车不换行（单行显示），直接失焦提交
+            el.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    el.blur();
+                }
+            });
+        });
+    })();
     
     // 开始按钮
     var startCard = document.getElementById('menuStartCard');
@@ -6014,8 +6065,99 @@ function bindEvents() {
             UI.toast('请先输入开局设定');
             return;
         }
+        // 【BUG-001 修复】锻造 blob 必须带上用户填写的"主角设定"表单字段。
+        // 旧逻辑只传世界描述，AI 完全看不到玩家指定的性别/姓名等，
+        // 会自行编造主角（性别错乱、名字对不上），且锻造出的 pcIdentity
+        // 记忆优先级高于主角表单，玩家设定被永久覆写。
+        blob = _appendMcFormToForgeBlob(blob);
         _startForgeSetup(blob);
     });
+
+    // 【BUG-001 修复】把主角设定表单拼进锻造 blob，标记为最高优先级。
+    // 只拼用户实际填写的字段；全空时返回原 blob 不动。
+    function _appendMcFormToForgeBlob(blob) {
+        try {
+            var parts = [];
+            var labels = {
+                mcName: '姓名', mcGender: '性别', mcIdentity: '身份/职业',
+                mcAge: '年龄', mcAppearance: '外貌', mcAbility: '特殊能力', mcPersonality: '性格'
+            };
+            Object.keys(MC_FIELD_MAP).forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el && el.value && el.value.trim()) {
+                    parts.push(labels[MC_FIELD_MAP[id]] + '：' + el.value.trim());
+                }
+            });
+            if (parts.length === 0) return blob;
+            return blob + '\n\n【玩家指定的主角设定（最高优先级，protagonist 必须完全采用以下信息，禁止更改性别/姓名等任何字段，openingScene 的叙述也必须与之保持一致）】\n'
+                + parts.join('\n');
+        } catch (e) {
+            console.warn('[SetupForge] 拼接主角表单失败:', e);
+            return blob;
+        }
+    }
+
+    // 【BUG-001 修复·第二道防线】玩家显式填写的表单字段是最高优先级：
+    // 即使锻造 AI 仍返回了不一致的主角（性别/姓名等），也强制回写覆盖，
+    // 确保 entities.player / playerData / 锻造记忆 pcIdentity 与表单一致。
+    // 提示词优先级为【核心设定】>【世界描述】>【主角设定】，因此必须在
+    // 记忆区（核心设定）也写入正确的主角身份，否则 AI 仍会被错误记忆带偏。
+    function _forceMcFormOverrides(mc) {
+        if (!mc || Object.keys(mc).length === 0) return;
+        try {
+            // 1) entities.player：用户填写的字段强制覆盖 AI 锻造结果
+            if (typeof StateManager !== 'undefined' && StateManager.get && StateManager.set) {
+                var player = StateManager.get('entities.player');
+                if (player && typeof player === 'object') {
+                    var _mc2Player = {
+                        mcName: 'name', mcGender: 'gender', mcAge: 'age',
+                        mcIdentity: 'identity', mcAppearance: 'appearance',
+                        mcAbility: 'ability', mcPersonality: 'personality'
+                    };
+                    var changed = false;
+                    Object.keys(_mc2Player).forEach(function(k) {
+                        if (mc[k] && String(player[_mc2Player[k]] || '') !== mc[k]) {
+                            player[_mc2Player[k]] = mc[k];
+                            changed = true;
+                        }
+                    });
+                    if (changed) StateManager.set('entities.player', player, { silent: true });
+                }
+            }
+            // 2) playerData 镜像（部分 UI 直接读 gameState.playerData）
+            if (gameState.playerData && typeof gameState.playerData === 'object') {
+                var _pd2Player = {
+                    mcName: 'name', mcGender: 'gender', mcAge: 'age',
+                    mcIdentity: 'identity', mcAppearance: 'appearance',
+                    mcAbility: 'ability', mcPersonality: 'personality'
+                };
+                Object.keys(_pd2Player).forEach(function(k) {
+                    if (mc[k]) gameState.playerData[_pd2Player[k]] = mc[k];
+                });
+            }
+            // 3) 锻造记忆 pcIdentity（核心设定，优先级最高）：以表单为准重建主角身份事实
+            if (typeof EnhancedMemory !== 'undefined' && EnhancedMemory.setPermanentFact) {
+                var idParts = [];
+                if (mc.mcName) idParts.push('姓名：' + mc.mcName);
+                if (mc.mcGender) idParts.push('性别：' + mc.mcGender);
+                if (mc.mcAge) idParts.push('年龄：' + mc.mcAge);
+                if (mc.mcIdentity) idParts.push('身份：' + mc.mcIdentity);
+                if (idParts.length > 0) {
+                    EnhancedMemory.setPermanentFact('pcIdentity', {
+                        content: idParts.join('；') + '（玩家指定，不可更改）',
+                        locked: true,
+                        source: 'mcForm',
+                        createdTurn: 0
+                    });
+                    // 有变更时失效注入缓存，确保下一轮重新生成
+                    EnhancedMemory._cachedInjection = null;
+                    EnhancedMemory._cachedInjectionTurn = -1;
+                }
+            }
+        } catch (e) {
+            console.warn('[SetupForge] 强制主角表单覆盖失败:', e);
+        }
+    }
 
     var _lastForgeBlob = '';
     var _lastForgeData = null;
@@ -6956,6 +7098,11 @@ function startNewGame(forgeResult) {
         var el = document.getElementById(id);
         if (el && el.value.trim()) gameState.protagonistSetup[MC_FIELD_MAP[id]] = el.value.trim();
     });
+
+    // 【BUG-001 修复·第二道防线】玩家显式填写的表单字段是最高优先级：
+    // 即使锻造 AI 仍返回了不一致的主角（性别/姓名等），也强制回写覆盖，
+    // 确保 entities.player、锻造记忆 pcIdentity 三处与表单完全一致。
+    _forceMcFormOverrides(gameState.protagonistSetup);
 
     // 收集作者备注（酒馆Author's Note特性，at_depth 注入深度可调）
     var authorsNoteEl = document.getElementById('authorsNote');
@@ -8151,6 +8298,8 @@ function showApiDetail(slot) {
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot;
         });
+        // 【BUG-003 修复】清理后必须落盘，否则刷新后日志原样复活
+        if (typeof LocalGameAPI.save === 'function') LocalGameAPI.save();
         if (recentEl) recentEl.innerHTML = '<span style="color:var(--text-tertiary);">暂无记录</span>';
         UI.toast('已清空该配置的请求记录');
     });
@@ -8163,6 +8312,8 @@ function showApiDetail(slot) {
         LocalGameAPI._requestLog = LocalGameAPI._requestLog.filter(function(l) {
             return l.slot !== slot || l.success;
         });
+        // 【BUG-003 修复】清理后必须落盘，否则刷新后错误日志原样复活
+        if (typeof LocalGameAPI.save === 'function') LocalGameAPI.save();
         if (errorListEl) errorListEl.innerHTML = renderEmptyState('暂无错误记录');
         UI.toast('已清空该配置的错误记录');
     });

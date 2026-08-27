@@ -6001,6 +6001,28 @@ async function loadFromSlot(slot) {
         ensureGameStateFields(gameState);
         if (gameState) gameState._version = GAME_VERSION;
 
+        // 【BUG-002 修复】读档后回合数镜像同步：
+        // 旧存档可能只有 _stats.totalTurns（legacy）或只有 progress.turn（新 schema）其中之一，
+        // 两者不一致时 UI 显示"第 N 回合"（读 progress.turn）与存档列表回合数（读 totalTurns）
+        // 会各说各话。此处取两者最大值（防倒退：重生成路径会临时回退 turn，存档时应取较大者）
+        // 并同时写回两条路径 + 刷新 UI 标签。
+        try {
+            var _turnA = (gameState && gameState._stats && typeof gameState._stats.totalTurns === 'number') ? gameState._stats.totalTurns : 0;
+            var _turnB = (gameState && gameState.progress && typeof gameState.progress.turn === 'number') ? gameState.progress.turn : _turnA;
+            var _turnMax = Math.max(_turnA, _turnB);
+            if (_turnA !== _turnMax || _turnB !== _turnMax || _turnA !== _turnB) {
+                console.log('[loadFromSlot] 回合数镜像同步: totalTurns=' + _turnA + ', progress.turn=' + _turnB + ' → ' + _turnMax);
+                if (!gameState._stats) gameState._stats = {};
+                gameState._stats.totalTurns = _turnMax;
+                if (!gameState.progress) gameState.progress = {};
+                gameState.progress.turn = _turnMax;
+            }
+            var _labelAfterLoad = document.getElementById('storySceneLabel');
+            if (_labelAfterLoad && _turnMax > 0) _labelAfterLoad.textContent = '第 ' + _turnMax + ' 回合';
+        } catch (_turnSyncErr) {
+            console.warn('[loadFromSlot] 回合数同步失败:', _turnSyncErr);
+        }
+
 
         // 【纯 AI 驱动】引导任务缓存已废弃，清理旧存档中可能的残留字段
         if (typeof QuestSystem !== 'undefined') {

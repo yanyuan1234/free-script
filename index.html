@@ -289,10 +289,13 @@
             <!-- ==================== 主菜单页面（极简手机桌面风格） ==================== -->
             <div class="page active" id="menuPage">
                 <!-- 版本/更新时间标注（每次部署时由 deploy.yml 自动更新）；点击 = 强制刷新清缓存 -->
+                <!-- 【BUG-004 修复】原硬编码 v1.0.7 永不更新（deploy.yml 只替换 __BUILD_VERSION__ 占位符），
+                     与 core.js GAME_VERSION(1.2.0)、设置页 fallback(v1.0.5) 三处不一致。
+                     本地直开时占位符由 version-badge.js 回填为 GAME_VERSION -->
                 <div id="buildVersionBadge"
                     title="点击强制刷新（清缓存）"
                     style="position:absolute;top:6px;right:8px;z-index:50;font-size:10px;line-height:1;color:#888;background:rgba(255,255,255,0.6);padding:3px 6px;border-radius:8px;cursor:pointer;user-select:none;font-family:monospace;pointer-events:auto;">
-                    v1.0.7
+                    __BUILD_VERSION__
                 </div>
                 <!-- 顶部用户信息卡片 -->
                 <div class="menu-top-card">
